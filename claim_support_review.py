@@ -630,6 +630,47 @@ def _build_review_workflow_priority(
     intake_case_summary: Dict[str, Any],
     workflow_phase_priority: Dict[str, Any],
 ) -> Dict[str, Any]:
+    document_drafting_next_action = (
+        intake_case_summary.get("document_drafting_next_action")
+        if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
+        else {}
+    )
+    if str(document_drafting_next_action.get("action") or "").strip().lower() == "realign_document_drafting":
+        target_claim_element_id = str(document_drafting_next_action.get("claim_element_id") or "").strip()
+        executed_claim_element_id = str(document_drafting_next_action.get("executed_claim_element_id") or "").strip()
+        focus_section = str(document_drafting_next_action.get("focus_section") or "").strip()
+        preferred_support_kind = str(document_drafting_next_action.get("preferred_support_kind") or "").strip()
+        chip_labels = []
+        if target_claim_element_id:
+            chip_labels.append(f"target element: {humanize_workflow_priority_label(target_claim_element_id)}")
+        if executed_claim_element_id:
+            chip_labels.append(f"executed first: {humanize_workflow_priority_label(executed_claim_element_id)}")
+        if focus_section:
+            chip_labels.append(f"focus section: {humanize_workflow_priority_label(focus_section)}")
+        if preferred_support_kind:
+            chip_labels.append(f"support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
+        return {
+            "status": "warning",
+            "status_id": "realign_document_drafting",
+            "title": "Realign drafting before further revisions",
+            "chip_labels": chip_labels,
+            "notes": [
+                str(
+                    document_drafting_next_action.get("description")
+                    or "Realign drafting to the top targeted claim element before further revisions."
+                ).strip(),
+                "Open the formal complaint builder and redirect the next draft revision toward the targeted legal element before broadening further edits.",
+            ],
+            "buttons": [
+                _build_review_workflow_priority_button(
+                    "intake-next-action-open-document-builder",
+                    "Open formal complaint builder",
+                )
+            ],
+            "action_id": "realign_document_drafting",
+            "status_message": "Opening the formal complaint builder for drafting realignment.",
+        }
+
     next_action = intake_case_summary.get("next_action") if isinstance(intake_case_summary.get("next_action"), dict) else {}
     if not next_action and isinstance(intake_status.get("next_action"), dict):
         next_action = dict(intake_status.get("next_action") or {})
@@ -3822,6 +3863,21 @@ def build_claim_support_review_payload(
         "required_support_kinds": required_support_kinds,
         "intake_status": intake_status,
         "intake_case_summary": intake_case_summary,
+        "workflow_targeting_summary": (
+            dict(intake_case_summary.get("workflow_targeting_summary") or {})
+            if isinstance(intake_case_summary.get("workflow_targeting_summary"), dict)
+            else {}
+        ),
+        "document_workflow_execution_summary": (
+            dict(intake_case_summary.get("document_workflow_execution_summary") or {})
+            if isinstance(intake_case_summary.get("document_workflow_execution_summary"), dict)
+            else {}
+        ),
+        "document_drafting_next_action": (
+            dict(intake_case_summary.get("document_drafting_next_action") or {})
+            if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
+            else {}
+        ),
         "recommended_next_action": (
             str((intake_status.get("next_action") or {}).get("action") or "")
             if isinstance(intake_status.get("next_action"), dict)

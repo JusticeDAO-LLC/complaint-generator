@@ -4624,6 +4624,7 @@ class ComplaintDenoiser:
                                    dependency_graph: DependencyGraph,
                                    evidence_gaps: List[Dict[str, Any]],
                                    alignment_evidence_tasks: Optional[List[Dict[str, Any]]] = None,
+                                   evidence_workflow_action_queue: Optional[List[Dict[str, Any]]] = None,
                                    max_questions: int = 5) -> List[Dict[str, Any]]:
         """
         Generate denoising questions for evidence phase.
@@ -4633,6 +4634,7 @@ class ComplaintDenoiser:
             dependency_graph: Current dependency graph
             evidence_gaps: Identified evidence gaps
             alignment_evidence_tasks: Shared intake/evidence element tasks to prioritize
+            evidence_workflow_action_queue: Ranked workflow steering actions for evidence follow-up
             max_questions: Maximum questions to generate
             
         Returns:
@@ -4643,6 +4645,11 @@ class ComplaintDenoiser:
         prioritized_tasks = (
             alignment_evidence_tasks
             if isinstance(alignment_evidence_tasks, list)
+            else []
+        )
+        workflow_actions = (
+            evidence_workflow_action_queue
+            if isinstance(evidence_workflow_action_queue, list)
             else []
         )
 
@@ -4719,6 +4726,39 @@ class ComplaintDenoiser:
                     'recommended_queries': recommended_queries,
                 },
                 'priority': priority,
+            })
+
+        for action in workflow_actions:
+            if len(questions) >= max_questions:
+                break
+            if not isinstance(action, dict):
+                continue
+            phase_name = str(action.get('phase_name') or '').strip().lower()
+            if phase_name not in {'graph_analysis', 'document_generation', 'evidence_collection', 'cross_phase'}:
+                continue
+            focus_areas = [
+                str(item).strip()
+                for item in (action.get('focus_areas') or [])
+                if str(item).strip()
+            ]
+            action_text = str(action.get('action') or '').strip()
+            if not action_text:
+                continue
+            question_text = (
+                f"What evidence would best help us {action_text.lower()}"
+                + (f" Focus first on {focus_areas[0]}." if focus_areas else "")
+            )
+            questions.append({
+                'question': self._with_empathy(question_text, 'evidence_clarification'),
+                'type': 'evidence_clarification',
+                'context': {
+                    'workflow_action': True,
+                    'workflow_phase': phase_name,
+                    'workflow_rank': int(action.get('rank', 0) or 0),
+                    'workflow_focus_areas': focus_areas,
+                },
+                'priority': 'high',
+                'proof_priority': 0,
             })
 
         # Questions about missing evidence

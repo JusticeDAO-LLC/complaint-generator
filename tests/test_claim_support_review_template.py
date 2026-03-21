@@ -1,8 +1,16 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from applications.review_ui import create_review_dashboard_app, create_review_surface_app
+
+
+try:
+    import multipart  # type: ignore  # noqa: F401
+    HAS_MULTIPART = True
+except ModuleNotFoundError:
+    HAS_MULTIPART = False
 
 
 def test_claim_support_review_template_exists_and_targets_review_endpoints():
@@ -59,6 +67,21 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "workflow-phase-guidance-card" in content
     assert "Workflow Phase Guidance" in content
     assert "workflowPhasePlan.recommended_order" in content
+    assert "workflowTargetingSummary.count" in content
+    assert "documentWorkflowExecutionSummary.iteration_count" in content
+    assert "documentExecutionDriftSummary.top_targeted_claim_element" in content
+    assert "Workflow Targeting Summary" in content
+    assert "workflow-targeting-summary-block" in content
+    assert "workflow-targeting-summary-chips" in content
+    assert "Document Workflow Execution Summary" in content
+    assert "document-workflow-execution-summary-block" in content
+    assert "document-workflow-execution-summary-chips" in content
+    assert "drafting priority: realign to ${humanizeQueryValue(resolvedTopTargetedElement)}" in content
+    assert "execution drift: yes" in content
+    assert "Realign drafting to ${humanizeQueryValue(resolvedTopTargetedElement)} before further revisions." in content
+    assert "renderReviewWorkflowPriority(workflowPriorityFromPayload)" in content
+    assert "intake-next-action-open-document-builder" in content
+    assert "openDocumentDraftingHandoff()" in content
     assert "workflowPriorityFromPayload" in content
     assert "renderReviewWorkflowPriority(workflowPriorityFromPayload)" in content
     assert "normalizeReviewWorkflowPriorityPayload(workflowPriorityPayload)" in content
@@ -633,6 +656,8 @@ def test_review_dashboard_app_registers_claim_support_review_page():
 
 
 def test_review_surface_app_registers_dashboard_and_api_routes():
+    if not HAS_MULTIPART:
+        pytest.skip("python-multipart is not installed")
     app = create_review_surface_app(mediator=object())
 
     assert any(
@@ -693,17 +718,21 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
 
 
 def test_review_surface_document_route_serves_builder_template():
-	app = create_review_surface_app(mediator=object())
-	client = TestClient(app)
+    if not HAS_MULTIPART:
+        pytest.skip("python-multipart is not installed")
+    app = create_review_surface_app(mediator=object())
+    client = TestClient(app)
 
-	response = client.get("/document")
+    response = client.get("/document")
 
-	assert response.status_code == 200
-	assert "Formal Complaint Builder" in response.text
-	assert "/api/documents/formal-complaint" in response.text
+    assert response.status_code == 200
+    assert "Formal Complaint Builder" in response.text
+    assert "/api/documents/formal-complaint" in response.text
 
 
 def test_review_surface_optimization_trace_route_serves_trace_template():
+    if not HAS_MULTIPART:
+        pytest.skip("python-multipart is not installed")
     app = create_review_surface_app(mediator=object())
     client = TestClient(app)
 

@@ -520,9 +520,116 @@ def _build_runtime_workflow_optimization_guidance(
         guidance = dict(existing_guidance)
         if workflow_phase_plan and "workflow_phase_plan" not in guidance:
             guidance["workflow_phase_plan"] = dict(workflow_phase_plan)
+        intake_case_summary = build_intake_case_review_summary(mediator)
+        document_drafting_next_action = (
+            intake_case_summary.get("document_drafting_next_action")
+            if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
+            else {}
+        )
+        workflow_targeting_summary = (
+            optimization_report.get("workflow_targeting_summary")
+            if isinstance(optimization_report.get("workflow_targeting_summary"), dict)
+            else intake_case_summary.get("workflow_targeting_summary")
+        )
+        document_workflow_execution_summary = (
+            optimization_report.get("document_workflow_execution_summary")
+            if isinstance(optimization_report.get("document_workflow_execution_summary"), dict)
+            else intake_case_summary.get("document_workflow_execution_summary")
+        )
+        document_execution_drift_summary = (
+            optimization_report.get("document_execution_drift_summary")
+            if isinstance(optimization_report.get("document_execution_drift_summary"), dict)
+            else intake_case_summary.get("document_execution_drift_summary")
+        )
+        evidence_workflow_action_queue = (
+            intake_case_summary.get("evidence_workflow_action_queue")
+            if isinstance(intake_case_summary.get("evidence_workflow_action_queue"), list)
+            else []
+        )
+        evidence_workflow_action_summary = (
+            intake_case_summary.get("evidence_workflow_action_summary")
+            if isinstance(intake_case_summary.get("evidence_workflow_action_summary"), dict)
+            else {}
+        )
+        if "evidence_workflow_action_queue" not in guidance:
+            guidance["evidence_workflow_action_queue"] = list(evidence_workflow_action_queue)
+        if "evidence_workflow_action_summary" not in guidance:
+            guidance["evidence_workflow_action_summary"] = dict(evidence_workflow_action_summary)
+        if (
+            "workflow_targeting_summary" not in guidance
+            and isinstance(workflow_targeting_summary, dict)
+        ):
+            guidance["workflow_targeting_summary"] = dict(workflow_targeting_summary)
+        if (
+            "document_workflow_execution_summary" not in guidance
+            and isinstance(document_workflow_execution_summary, dict)
+        ):
+            guidance["document_workflow_execution_summary"] = dict(document_workflow_execution_summary)
+        if (
+            "document_execution_drift_summary" not in guidance
+            and isinstance(document_execution_drift_summary, dict)
+        ):
+            guidance["document_execution_drift_summary"] = dict(document_execution_drift_summary)
+        if (
+            "document_drafting_next_action" not in guidance
+            and isinstance(document_drafting_next_action, dict)
+            and document_drafting_next_action
+        ):
+            guidance["document_drafting_next_action"] = dict(document_drafting_next_action)
+        existing_queue = (
+            guidance.get("workflow_action_queue")
+            if isinstance(guidance.get("workflow_action_queue"), list)
+            else []
+        )
+        drift_flag = bool((document_execution_drift_summary or {}).get("drift_flag"))
+        if drift_flag:
+            top_targeted_claim_element = str(
+                (document_execution_drift_summary or {}).get("top_targeted_claim_element") or ""
+            ).strip()
+            first_executed_claim_element = str(
+                (document_execution_drift_summary or {}).get("first_executed_claim_element") or ""
+            ).strip()
+            drift_action = {
+                "rank": 1,
+                "phase_name": "document_generation",
+                "status": "warning",
+                "action": "Realign drafting to the top targeted claim element before further revisions.",
+                "focus_areas": [
+                    item
+                    for item in [top_targeted_claim_element, first_executed_claim_element]
+                    if item
+                ][:3],
+                "top_targeted_claim_element": top_targeted_claim_element,
+                "first_executed_claim_element": first_executed_claim_element,
+            }
+            if not any(
+                isinstance(item, dict)
+                and str(item.get("action") or "").strip().lower()
+                == drift_action["action"].strip().lower()
+                for item in existing_queue
+            ):
+                guidance["workflow_action_queue"] = [drift_action, *existing_queue]
+                existing_queue = guidance["workflow_action_queue"]
+        if evidence_workflow_action_queue and not existing_queue:
+            guidance["workflow_action_queue"] = [
+                {
+                    "rank": int(action.get("rank") or index + 1),
+                    "phase_name": str(action.get("phase_name") or "graph_analysis").strip() or "graph_analysis",
+                    "status": str(action.get("status") or "warning").strip().lower() or "warning",
+                    "action": str(action.get("action") or "").strip(),
+                    "focus_areas": list(action.get("focus_areas") or [])[:3],
+                }
+                for index, action in enumerate(evidence_workflow_action_queue)
+                if isinstance(action, dict) and str(action.get("action") or "").strip()
+            ]
         return guidance
 
     intake_case_summary = build_intake_case_review_summary(mediator)
+    optimization_workflow_targeting_summary = (
+        optimization_report.get("workflow_targeting_summary")
+        if isinstance(optimization_report.get("workflow_targeting_summary"), dict)
+        else {}
+    )
     intake_sections = (
         intake_case_summary.get("intake_sections")
         if isinstance(intake_case_summary.get("intake_sections"), dict)
@@ -536,6 +643,48 @@ def _build_runtime_workflow_optimization_guidance(
     claim_packet_summary = (
         intake_case_summary.get("claim_support_packet_summary")
         if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
+        else {}
+    )
+    evidence_workflow_action_queue = (
+        intake_case_summary.get("evidence_workflow_action_queue")
+        if isinstance(intake_case_summary.get("evidence_workflow_action_queue"), list)
+        else []
+    )
+    evidence_workflow_action_summary = (
+        intake_case_summary.get("evidence_workflow_action_summary")
+        if isinstance(intake_case_summary.get("evidence_workflow_action_summary"), dict)
+        else {}
+    )
+    workflow_targeting_summary = (
+        optimization_workflow_targeting_summary
+        if optimization_workflow_targeting_summary
+        else (
+            intake_case_summary.get("workflow_targeting_summary")
+            if isinstance(intake_case_summary.get("workflow_targeting_summary"), dict)
+            else {}
+        )
+    )
+    document_workflow_execution_summary = (
+        optimization_report.get("document_workflow_execution_summary")
+        if isinstance(optimization_report.get("document_workflow_execution_summary"), dict)
+        else (
+            intake_case_summary.get("document_workflow_execution_summary")
+            if isinstance(intake_case_summary.get("document_workflow_execution_summary"), dict)
+            else {}
+        )
+    )
+    document_execution_drift_summary = (
+        optimization_report.get("document_execution_drift_summary")
+        if isinstance(optimization_report.get("document_execution_drift_summary"), dict)
+        else (
+            intake_case_summary.get("document_execution_drift_summary")
+            if isinstance(intake_case_summary.get("document_execution_drift_summary"), dict)
+            else {}
+        )
+    )
+    document_drafting_next_action = (
+        intake_case_summary.get("document_drafting_next_action")
+        if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
         else {}
     )
     candidate_claims = _coerce_list(intake_case_summary.get("candidate_claims"))
@@ -557,6 +706,11 @@ def _build_runtime_workflow_optimization_guidance(
                 if int(claim_packet_summary.get("unsupported_element_count") or 0) > 0
                 else ""
             ],
+            *[
+                str((action or {}).get("claim_element_label") or (action or {}).get("claim_element_id") or "").strip()
+                for action in evidence_workflow_action_queue
+                if isinstance(action, dict)
+            ],
         ]
     )
     document_focus_areas = _unique_preserving_order(
@@ -575,6 +729,76 @@ def _build_runtime_workflow_optimization_guidance(
         cross_phase_findings.append(
             "Graph support issues are still affecting drafting readiness, especially in claims-for-relief and chronology-dependent allegations."
         )
+    workflow_action_queue: List[Dict[str, Any]] = []
+    if bool(document_execution_drift_summary.get("drift_flag")):
+        top_targeted_claim_element = str(
+            document_execution_drift_summary.get("top_targeted_claim_element") or ""
+        ).strip()
+        first_executed_claim_element = str(
+            document_execution_drift_summary.get("first_executed_claim_element") or ""
+        ).strip()
+        workflow_action_queue.append(
+            {
+                "rank": 1,
+                "phase_name": "document_generation",
+                "status": "warning",
+                "action": "Realign drafting to the top targeted claim element before further revisions.",
+                "focus_areas": [
+                    item
+                    for item in [top_targeted_claim_element, first_executed_claim_element]
+                    if item
+                ][:3],
+                "top_targeted_claim_element": top_targeted_claim_element,
+                "first_executed_claim_element": first_executed_claim_element,
+            }
+        )
+    workflow_action_queue.extend(
+        [
+            *[
+                {
+                    "rank": int(action.get("rank") or index + 1),
+                    "phase_name": str(action.get("phase_name") or "graph_analysis").strip() or "graph_analysis",
+                    "status": str(action.get("status") or "warning").strip().lower() or "warning",
+                    "action": str(action.get("action") or "").strip(),
+                    "focus_areas": list(action.get("focus_areas") or [])[:3],
+                    "claim_type": str(action.get("claim_type") or "").strip(),
+                    "claim_element_id": str(action.get("claim_element_id") or "").strip(),
+                }
+                for index, action in enumerate(evidence_workflow_action_queue[:2])
+                if isinstance(action, dict) and str(action.get("action") or "").strip()
+            ],
+            *[
+                item
+                for item in [
+                    {
+                        "rank": 100,
+                        "phase_name": "graph_analysis",
+                        "status": "warning" if graph_focus_areas else "ready",
+                        "action": "Close graph and claim-support gaps before final drafting.",
+                        "focus_areas": graph_focus_areas[:3],
+                    },
+                    {
+                        "rank": 101,
+                        "phase_name": "intake_questioning",
+                        "status": "warning" if intake_focus_areas else "ready",
+                        "action": "Target remaining intake gaps that block graph-supported drafting.",
+                        "focus_areas": intake_focus_areas[:3],
+                    },
+                    {
+                        "rank": 102,
+                        "phase_name": "document_generation",
+                        "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
+                        "action": "Revise complaint sections still flagged by drafting readiness.",
+                        "focus_areas": document_focus_areas[:3],
+                    },
+                ]
+                if not (
+                    item["phase_name"] == "graph_analysis"
+                    and evidence_workflow_action_queue
+                )
+            ],
+        ]
+    )
     return {
         "workflow_phase_plan": dict(workflow_phase_plan or {}),
         "phase_scorecards": {
@@ -587,6 +811,7 @@ def _build_runtime_workflow_optimization_guidance(
                 "status": "warning" if graph_focus_areas else "ready",
                 "focus_areas": graph_focus_areas,
                 "unsupported_element_count": int(claim_packet_summary.get("unsupported_element_count") or 0),
+                "evidence_workflow_action_count": int(evidence_workflow_action_summary.get("count") or 0),
             },
             "document_generation": {
                 "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
@@ -595,6 +820,13 @@ def _build_runtime_workflow_optimization_guidance(
             },
         },
         "cross_phase_findings": cross_phase_findings,
+        "workflow_action_queue": workflow_action_queue,
+        "evidence_workflow_action_queue": list(evidence_workflow_action_queue),
+        "evidence_workflow_action_summary": dict(evidence_workflow_action_summary),
+        "workflow_targeting_summary": dict(workflow_targeting_summary),
+        "document_workflow_execution_summary": dict(document_workflow_execution_summary),
+        "document_execution_drift_summary": dict(document_execution_drift_summary),
+        "document_drafting_next_action": dict(document_drafting_next_action),
         "complaint_type_generalization_summary": {
             "complaint_types": claim_types,
             "complaint_type_count": len(claim_types),
@@ -605,6 +837,77 @@ def _build_runtime_workflow_optimization_guidance(
             "blocking_warning_count": int(drafting_readiness.get("warning_count") or 0),
         },
     }
+
+
+def _build_workflow_optimization_warning_entries(
+    workflow_optimization_guidance: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    guidance = workflow_optimization_guidance if isinstance(workflow_optimization_guidance, dict) else {}
+    phase_scorecards = guidance.get("phase_scorecards") if isinstance(guidance.get("phase_scorecards"), dict) else {}
+    document_execution_drift_summary = (
+        guidance.get("document_execution_drift_summary")
+        if isinstance(guidance.get("document_execution_drift_summary"), dict)
+        else {}
+    )
+    warnings: List[Dict[str, Any]] = []
+    phase_labels = {
+        "intake_questioning": "intake questioning",
+        "graph_analysis": "graph analysis",
+        "document_generation": "document generation",
+    }
+    for phase_name, label in phase_labels.items():
+        scorecard = phase_scorecards.get(phase_name) if isinstance(phase_scorecards.get(phase_name), dict) else {}
+        status = str(scorecard.get("status") or "ready").strip().lower()
+        if status == "ready":
+            continue
+        focus_areas = _dedupe_text_values(scorecard.get("focus_areas") or [])
+        focus_suffix = f" Focus areas: {', '.join(focus_areas[:3])}." if focus_areas else ""
+        warnings.append(
+            {
+                "code": f"workflow_{phase_name}_optimization_warning",
+                "severity": "warning" if status == "warning" else status,
+                "message": f"Workflow optimization still flags {label} as {status}.{focus_suffix}",
+                "phase": phase_name,
+                "focus_areas": focus_areas,
+            }
+        )
+
+    for finding in list(guidance.get("cross_phase_findings") or [])[:2]:
+        text = str(finding or "").strip()
+        if not text:
+            continue
+        warnings.append(
+            {
+                "code": "workflow_cross_phase_optimization_warning",
+                "severity": "warning",
+                "message": text,
+            }
+        )
+    if bool(document_execution_drift_summary.get("drift_flag")):
+        top_targeted_claim_element = str(
+            document_execution_drift_summary.get("top_targeted_claim_element") or ""
+        ).strip()
+        first_executed_claim_element = str(
+            document_execution_drift_summary.get("first_executed_claim_element") or ""
+        ).strip()
+        focus_areas = _dedupe_text_values(
+            [top_targeted_claim_element, first_executed_claim_element]
+        )
+        warnings.append(
+            {
+                "code": "workflow_document_execution_drift_warning",
+                "severity": "warning",
+                "message": (
+                    "Document optimization is revising the wrong claim element first; "
+                    "realign drafting to the top targeted legal element before further revisions."
+                ),
+                "phase": "document_generation",
+                "focus_areas": focus_areas,
+                "top_targeted_claim_element": top_targeted_claim_element,
+                "first_executed_claim_element": first_executed_claim_element,
+            }
+        )
+    return warnings
 
 
 class FormalComplaintDocumentBuilder:
@@ -899,6 +1202,36 @@ class FormalComplaintDocumentBuilder:
             workflow_phase_plan=workflow_phase_plan,
             document_optimization=document_optimization,
         )
+        workflow_targeting_summary = (
+            workflow_optimization_guidance.get("workflow_targeting_summary")
+            if isinstance(workflow_optimization_guidance.get("workflow_targeting_summary"), dict)
+            else (
+                document_optimization.get("workflow_targeting_summary")
+                if isinstance(document_optimization, dict)
+                and isinstance(document_optimization.get("workflow_targeting_summary"), dict)
+                else {}
+            )
+        )
+        document_workflow_execution_summary = (
+            workflow_optimization_guidance.get("document_workflow_execution_summary")
+            if isinstance(workflow_optimization_guidance.get("document_workflow_execution_summary"), dict)
+            else (
+                document_optimization.get("document_workflow_execution_summary")
+                if isinstance(document_optimization, dict)
+                and isinstance(document_optimization.get("document_workflow_execution_summary"), dict)
+                else {}
+            )
+        )
+        document_execution_drift_summary = (
+            workflow_optimization_guidance.get("document_execution_drift_summary")
+            if isinstance(workflow_optimization_guidance.get("document_execution_drift_summary"), dict)
+            else (
+                document_optimization.get("document_execution_drift_summary")
+                if isinstance(document_optimization, dict)
+                and isinstance(document_optimization.get("document_execution_drift_summary"), dict)
+                else {}
+            )
+        )
         filing_checklist = self._build_filing_checklist(drafting_readiness)
         self._annotate_filing_checklist_review_links(
             filing_checklist=filing_checklist,
@@ -910,6 +1243,12 @@ class FormalComplaintDocumentBuilder:
             draft["workflow_phase_plan"] = workflow_phase_plan
         if workflow_optimization_guidance:
             draft["workflow_optimization_guidance"] = workflow_optimization_guidance
+        if workflow_targeting_summary:
+            draft["workflow_targeting_summary"] = dict(workflow_targeting_summary)
+        if document_workflow_execution_summary:
+            draft["document_workflow_execution_summary"] = dict(document_workflow_execution_summary)
+        if document_execution_drift_summary:
+            draft["document_execution_drift_summary"] = dict(document_execution_drift_summary)
         draft["filing_checklist"] = filing_checklist
         draft["affidavit"] = self._build_affidavit(draft)
         claim_support_temporal_handoff = self._build_claim_support_temporal_handoff(document_optimization)
@@ -943,6 +1282,9 @@ class FormalComplaintDocumentBuilder:
             "artifacts": artifacts,
             "document_optimization": document_optimization,
             "workflow_optimization_guidance": workflow_optimization_guidance,
+            "workflow_targeting_summary": dict(workflow_targeting_summary),
+            "document_workflow_execution_summary": dict(document_workflow_execution_summary),
+            "document_execution_drift_summary": dict(document_execution_drift_summary),
             "intake_summary_handoff": intake_summary_handoff,
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),
@@ -5436,9 +5778,18 @@ class FormalComplaintDocumentBuilder:
             drafting_readiness=readiness_payload,
             document_optimization=None,
         )
+        workflow_optimization_guidance = _build_runtime_workflow_optimization_guidance(
+            mediator=self.mediator,
+            drafting_readiness=readiness_payload,
+            workflow_phase_plan=workflow_phase_plan,
+            document_optimization=None,
+        )
         workflow_warnings = self._build_workflow_phase_warning_entries(workflow_phase_plan)
+        optimization_warnings = _build_workflow_optimization_warning_entries(workflow_optimization_guidance)
         if workflow_phase_plan:
             readiness_payload["workflow_phase_plan"] = workflow_phase_plan
+        if workflow_optimization_guidance:
+            readiness_payload["workflow_optimization_guidance"] = workflow_optimization_guidance
         if workflow_warnings:
             readiness_payload["warnings"] = workflow_warnings
             readiness_payload["warning_count"] = int(readiness_payload.get("warning_count") or 0) + len(workflow_warnings)
@@ -5516,6 +5867,14 @@ class FormalComplaintDocumentBuilder:
             readiness_payload["warning_count"] = int(readiness_payload.get("warning_count") or 0) + len(gap_warnings)
             readiness_payload["status"] = _merge_status(str(readiness_payload.get("status") or "ready"), "warning")
             readiness_payload["phase_status"] = _merge_status(str(readiness_payload.get("phase_status") or "ready"), "warning")
+        if optimization_warnings:
+            readiness_payload.setdefault("warnings", []).extend(optimization_warnings)
+            readiness_payload["warning_count"] = int(readiness_payload.get("warning_count") or 0) + len(optimization_warnings)
+            for warning in optimization_warnings:
+                readiness_payload["status"] = _merge_status(
+                    str(readiness_payload.get("status") or "ready"),
+                    str(warning.get("severity") or "ready"),
+                )
 
         return readiness_payload
 

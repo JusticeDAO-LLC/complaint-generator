@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+from adversarial_harness.demo_autopatch import _build_runtime_optimization_guidance
+
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "run_hacc_adversarial_report.py"
 SPEC = importlib.util.spec_from_file_location("run_hacc_adversarial_report", MODULE_PATH)
@@ -68,6 +70,7 @@ def test_main_persists_workflow_phase_task_plan(tmp_path, monkeypatch):
                         "shared_context": {"coverage_remediation": {}},
                         "phase_scorecards": {"intake_questioning": {"status": "critical"}},
                         "cross_phase_findings": ["Intake gaps suppress graph quality."],
+                        "workflow_action_queue": [{"phase_name": "intake_questioning", "action": "Improve intake targeting."}],
                     }
                 ),
                 report,
@@ -144,6 +147,7 @@ def test_main_persists_workflow_phase_task_plan(tmp_path, monkeypatch):
     assert workflow_tasks[0]["target_files"] == ["adversarial_harness/session.py"]
     assert workflow_bundle["phase_scorecards"]["intake_questioning"]["status"] == "critical"
     assert workflow_bundle["cross_phase_findings"] == ["Intake gaps suppress graph quality."]
+    assert workflow_bundle["workflow_action_queue"][0]["phase_name"] == "intake_questioning"
     assert summary["workflow_phase_task_count"] == 1
     assert summary["artifacts"]["workflow_optimization_bundle_json"] == str(workflow_bundle_path)
     assert summary["artifacts"]["workflow_phase_tasks_json"] == str(workflow_tasks_path)
@@ -270,3 +274,42 @@ def test_main_can_emit_phase_autopatch_artifacts(tmp_path, monkeypatch):
     assert autopatch_results[0]["patch_cid"] == "phase-cid"
     assert summary["workflow_phase_autopatch_count"] == 1
     assert summary["artifacts"]["workflow_phase_autopatch_results_json"] == str(autopatch_results_path)
+
+
+def test_runtime_optimization_guidance_preserves_document_evidence_targeting_summary():
+    guidance = _build_runtime_optimization_guidance(
+        workflow_bundle={"shared_context": {"workflow_targeting_summary": {"count": 2, "phase_counts": {"graph_analysis": 1, "document_generation": 1}}}},
+        report_payload={
+            "document_evidence_targeting_summary": {
+                "count": 1,
+                "claim_element_counts": {"protected_activity": 1},
+            },
+            "document_workflow_execution_summary": {
+                "iteration_count": 2,
+                "first_focus_section": "claims_for_relief",
+                "first_targeted_claim_element": "protected_activity",
+            },
+            "document_execution_drift_summary": {
+                "drift_flag": True,
+                "top_targeted_claim_element": "causation",
+                "first_executed_claim_element": "protected_activity",
+            },
+            "workflow_action_queue": [
+                {"phase_name": "graph_analysis", "action": "Collect chronology support."}
+            ],
+        },
+    )
+
+    assert guidance["document_evidence_targeting_summary"]["count"] == 1
+    assert guidance["document_evidence_targeting_summary"]["claim_element_counts"] == {
+        "protected_activity": 1,
+    }
+    assert guidance["workflow_targeting_summary"]["count"] == 2
+    assert guidance["workflow_targeting_summary"]["phase_counts"] == {
+        "graph_analysis": 1,
+        "document_generation": 1,
+    }
+    assert guidance["document_workflow_execution_summary"]["iteration_count"] == 2
+    assert guidance["document_workflow_execution_summary"]["first_focus_section"] == "claims_for_relief"
+    assert guidance["document_execution_drift_summary"]["drift_flag"] is True
+    assert guidance["document_execution_drift_summary"]["top_targeted_claim_element"] == "causation"

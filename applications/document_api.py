@@ -361,6 +361,50 @@ def _build_document_review_workflow_priority(
     claim_review_map: Dict[str, Dict[str, Any]],
     section_review_map: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
+    document_drafting_next_action = (
+        intake_case_summary.get("document_drafting_next_action")
+        if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
+        else {}
+    )
+    if str(document_drafting_next_action.get("action") or "").strip().lower() == "realign_document_drafting":
+        target_claim_element_id = str(document_drafting_next_action.get("claim_element_id") or "").strip()
+        executed_claim_element_id = str(document_drafting_next_action.get("executed_claim_element_id") or "").strip()
+        focus_section = str(document_drafting_next_action.get("focus_section") or "claims_for_relief").strip() or "claims_for_relief"
+        preferred_support_kind = str(document_drafting_next_action.get("preferred_support_kind") or "").strip()
+        action_url = _append_review_query_params(
+            _resolve_document_review_url(
+                user_id=user_id,
+                dashboard_url=dashboard_url,
+                claim_review_map=claim_review_map,
+                section_review_map=section_review_map,
+                claim_type=default_claim_type,
+                section_key=focus_section,
+            ),
+            follow_up_support_kind=_default_support_kind_for_section(focus_section),
+        )
+        chip_labels = []
+        if target_claim_element_id:
+            chip_labels.append(f"target element: {humanize_workflow_priority_label(target_claim_element_id)}")
+        if executed_claim_element_id:
+            chip_labels.append(f"executed first: {humanize_workflow_priority_label(executed_claim_element_id)}")
+        if focus_section:
+            chip_labels.append(f"focus section: {humanize_workflow_priority_label(focus_section)}")
+        if preferred_support_kind:
+            chip_labels.append(f"support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
+        return {
+            "status": "warning",
+            "title": "Realign drafting before further revisions",
+            "description": str(
+                document_drafting_next_action.get("description")
+                or "Realign drafting to the top targeted claim element before further revisions."
+            ).strip(),
+            "action_label": "Open formal complaint builder",
+            "action_url": action_url,
+            "action_kind": "link",
+            "dashboard_url": dashboard_url,
+            "chip_labels": chip_labels,
+        }
+
     next_action = intake_status.get("next_action") if isinstance(intake_status.get("next_action"), dict) else {}
     if not next_action and isinstance(intake_case_summary.get("next_action"), dict):
         next_action = intake_case_summary.get("next_action") or {}
@@ -591,6 +635,11 @@ def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, A
         if isinstance(intake_status.get("primary_validation_target"), dict)
         else {}
     )
+    document_drafting_next_action = (
+        intake_status.get("document_drafting_next_action")
+        if isinstance(intake_status.get("document_drafting_next_action"), dict)
+        else {}
+    )
     return {
         "score": float(intake_status.get("score") or 0.0),
         "ready_to_advance": bool(intake_status.get("ready_to_advance", False)),
@@ -600,6 +649,7 @@ def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, A
         "contradictions": contradiction_list[:2],
         "next_action": next_action,
         "primary_validation_target": primary_validation_target,
+        "document_drafting_next_action": document_drafting_next_action,
     }
 
 
@@ -951,6 +1001,21 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         "sections": section_links,
         "intake_status": intake_status,
         "intake_case_summary": intake_case_summary,
+        "workflow_targeting_summary": (
+            dict(intake_case_summary.get("workflow_targeting_summary") or {})
+            if isinstance(intake_case_summary.get("workflow_targeting_summary"), dict)
+            else {}
+        ),
+        "document_workflow_execution_summary": (
+            dict(intake_case_summary.get("document_workflow_execution_summary") or {})
+            if isinstance(intake_case_summary.get("document_workflow_execution_summary"), dict)
+            else {}
+        ),
+        "document_drafting_next_action": (
+            dict(intake_case_summary.get("document_drafting_next_action") or {})
+            if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
+            else {}
+        ),
         "recommended_next_action": (
             str((intake_status.get("next_action") or {}).get("action") or "")
             if isinstance(intake_status.get("next_action"), dict)

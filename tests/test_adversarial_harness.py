@@ -1201,6 +1201,45 @@ SUGGESTIONS:
         assert payload['anchor_section_summary']['expected'] == ['grievance_hearing']
         assert payload['anchor_section_summary']['covered'] == ['grievance_hearing']
 
+    def test_session_result_to_dict_preserves_workflow_optimization_guidance(self):
+        result = SessionResult(
+            session_id="test_session",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=1,
+            num_turns=1,
+            final_state={
+                "workflow_optimization_guidance": {
+                    "phase_scorecards": {
+                        "intake_questioning": {"status": "warning", "focus_areas": ["timeline"]},
+                    },
+                    "cross_phase_findings": ["Intake gaps still affect graph support."],
+                }
+            },
+            critic_score=CriticScore(
+                overall_score=0.7,
+                question_quality=0.7,
+                information_extraction=0.7,
+                empathy=0.7,
+                efficiency=0.7,
+                coverage=0.7,
+                feedback="ok",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+            ),
+            success=True,
+        )
+
+        payload = result.to_dict()
+
+        assert payload["final_state"]["workflow_optimization_guidance"]["phase_scorecards"]["intake_questioning"]["status"] == "warning"
+        assert payload["final_state"]["workflow_optimization_guidance"]["cross_phase_findings"] == [
+            "Intake gaps still affect graph support."
+        ]
+
     def test_fallback_probe_prioritizes_missing_anchor_section(self):
         session = AdversarialSession(
             "test_session",

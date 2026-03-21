@@ -635,6 +635,219 @@ class Mediator:
 			}
 		return pressure_map
 
+	def _build_intake_workflow_action_queue(
+		self,
+		intake_case_file: Dict[str, Any],
+		claim_pressure: Dict[str, Dict[str, Any]],
+		matching_pressure: Dict[str, Dict[str, Any]],
+	) -> List[Dict[str, Any]]:
+		queue: List[Dict[str, Any]] = []
+		intake_sections = (
+			intake_case_file.get('intake_sections')
+			if isinstance(intake_case_file, dict) and isinstance(intake_case_file.get('intake_sections'), dict)
+			else {}
+		)
+		intake_focus_areas = [
+			str(section_name).strip().lower()
+			for section_name, payload in intake_sections.items()
+			if isinstance(payload, dict) and str(payload.get('status') or '').strip().lower() != 'complete'
+		]
+		graph_focus_areas: List[str] = []
+		for claim_type, claim_state in (claim_pressure or {}).items():
+			if not isinstance(claim_state, dict):
+				continue
+			if int(claim_state.get('missing_count', 0) or 0) > 0:
+				graph_focus_areas.append(str(claim_type).strip().lower())
+		for claim_type, matching_state in (matching_pressure or {}).items():
+			if not isinstance(matching_state, dict):
+				continue
+			if int(matching_state.get('missing_requirement_count', 0) or 0) > 0:
+				for element_id in matching_state.get('missing_requirement_element_ids') or []:
+					element_text = str(element_id).strip().lower()
+					if element_text and element_text not in graph_focus_areas:
+						graph_focus_areas.append(element_text)
+		document_focus_areas = [
+			name
+			for name in ('proof_leads', 'harm', 'remedy')
+			if name in intake_focus_areas
+		]
+		queue.append(
+			{
+				'rank': 1,
+				'phase_name': 'graph_analysis',
+				'status': 'warning' if graph_focus_areas else 'ready',
+				'action': 'Close graph and legal-element gaps that still block complaint development.',
+				'focus_areas': graph_focus_areas[:4],
+			}
+		)
+		queue.append(
+			{
+				'rank': 2,
+				'phase_name': 'intake_questioning',
+				'status': 'warning' if intake_focus_areas else 'ready',
+				'action': 'Target remaining intake sections that still prevent a complete complaint narrative.',
+				'focus_areas': intake_focus_areas[:4],
+			}
+		)
+		queue.append(
+			{
+				'rank': 3,
+				'phase_name': 'document_generation',
+				'status': 'warning' if document_focus_areas else 'ready',
+				'action': 'Collect proof, harm, and remedy details needed for drafting-ready allegations.',
+				'focus_areas': document_focus_areas[:4],
+			}
+		)
+		return queue
+
+	def _summarize_intake_workflow_action_queue(self, queue: Any) -> Dict[str, Any]:
+		summary = {
+			'count': 0,
+			'phase_counts': {},
+			'status_counts': {},
+			'focus_area_counts': {},
+			'actions': [],
+		}
+		if not isinstance(queue, list):
+			return summary
+		summary['count'] = len(queue)
+		for item in queue:
+			if not isinstance(item, dict):
+				continue
+			phase_name = str(item.get('phase_name') or '').strip()
+			status = str(item.get('status') or '').strip()
+			if phase_name:
+				summary['phase_counts'][phase_name] = summary['phase_counts'].get(phase_name, 0) + 1
+			if status:
+				summary['status_counts'][status] = summary['status_counts'].get(status, 0) + 1
+			for focus_area in item.get('focus_areas') or []:
+				focus_text = str(focus_area).strip()
+				if focus_text:
+					summary['focus_area_counts'][focus_text] = summary['focus_area_counts'].get(focus_text, 0) + 1
+			summary['actions'].append(item)
+		return summary
+
+	def _build_evidence_workflow_action_queue(
+		self,
+		alignment_evidence_tasks: Any,
+		evidence_gaps: Any,
+	) -> List[Dict[str, Any]]:
+		queue: List[Dict[str, Any]] = []
+		tasks = alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else []
+		for index, task in enumerate(tasks, start=1):
+			if not isinstance(task, dict):
+				continue
+			focus_areas = [
+				str(item).strip()
+				for item in (
+					[
+						task.get('claim_element_id'),
+						task.get('claim_type'),
+						*(task.get('missing_fact_bundle') or []),
+					]
+				)
+				if str(item).strip()
+			]
+			queue.append(
+				{
+					'rank': index,
+					'phase_name': 'graph_analysis' if bool(task.get('blocking')) else 'document_generation',
+					'status': 'warning',
+					'action': str(task.get('action') or 'fill_evidence_gaps').replace('_', ' '),
+					'focus_areas': focus_areas[:4],
+					'claim_type': str(task.get('claim_type') or '').strip(),
+					'claim_element_id': str(task.get('claim_element_id') or '').strip(),
+				}
+			)
+		if not queue:
+			for gap in (evidence_gaps if isinstance(evidence_gaps, list) else [])[:3]:
+				if not isinstance(gap, dict):
+					continue
+				queue.append(
+					{
+						'rank': len(queue) + 1,
+						'phase_name': 'evidence_collection',
+						'status': 'warning',
+						'action': str(gap.get('name') or gap.get('description') or 'close evidence gap').strip(),
+						'focus_areas': [
+							str(item).strip()
+							for item in [gap.get('related_claim'), gap.get('name')]
+							if str(item).strip()
+						][:3],
+					}
+				)
+		return queue
+
+	def _summarize_evidence_workflow_action_queue(self, queue: Any) -> Dict[str, Any]:
+		summary = {
+			'count': 0,
+			'phase_counts': {},
+			'status_counts': {},
+			'actions': [],
+		}
+		if not isinstance(queue, list):
+			return summary
+		summary['count'] = len(queue)
+		for item in queue:
+			if not isinstance(item, dict):
+				continue
+			phase_name = str(item.get('phase_name') or '').strip()
+			status = str(item.get('status') or '').strip()
+			if phase_name:
+				summary['phase_counts'][phase_name] = summary['phase_counts'].get(phase_name, 0) + 1
+			if status:
+				summary['status_counts'][status] = summary['status_counts'].get(status, 0) + 1
+			summary['actions'].append(item)
+		return summary
+
+	def _build_question_workflow_action_matches(
+		self,
+		candidate: Dict[str, Any],
+		workflow_action_queue: List[Dict[str, Any]],
+	) -> Dict[str, Any]:
+		explanation = candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {}
+		question_text = str(candidate.get('question') or '').strip().lower()
+		phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip().lower()
+		target_claim_type = str(explanation.get('target_claim_type') or candidate.get('target_claim_type') or '').strip().lower()
+		target_element_id = str(explanation.get('target_element_id') or candidate.get('target_element_id') or '').strip().lower()
+		best_rank = 99
+		match_count = 0
+		matched_phase = ''
+		matched_focus_areas: List[str] = []
+		for action in workflow_action_queue if isinstance(workflow_action_queue, list) else []:
+			if not isinstance(action, dict):
+				continue
+			phase_name = str(action.get('phase_name') or '').strip().lower()
+			rank = int(action.get('rank', 99) or 99)
+			focus_areas = [
+				str(item).strip().lower()
+				for item in (action.get('focus_areas') or [])
+				if str(item).strip()
+			]
+			phase_match = (
+				(phase_name == 'graph_analysis' and phase1_section == 'graph_analysis')
+				or (phase_name == 'intake_questioning' and phase1_section in {'chronology', 'actors', 'claim_elements', 'harm_remedy', 'proof_leads', 'contradictions'})
+				or (phase_name == 'document_generation' and phase1_section in {'proof_leads', 'harm_remedy'})
+			)
+			focus_matches = [
+				focus
+				for focus in focus_areas
+				if focus in {target_claim_type, target_element_id, phase1_section}
+				or (focus and focus in question_text)
+			]
+			if phase_match or focus_matches:
+				match_count += len(focus_matches) or 1
+				if rank < best_rank:
+					best_rank = rank
+					matched_phase = phase_name
+					matched_focus_areas = focus_matches or focus_areas[:2]
+		return {
+			'workflow_action_match_count': match_count,
+			'workflow_action_rank': best_rank if best_rank != 99 else None,
+			'workflow_action_phase': matched_phase,
+			'workflow_action_focus_areas': matched_focus_areas,
+		}
+
 	def _annotate_intake_question_candidate(
 		self,
 		candidate: Dict[str, Any],
@@ -831,7 +1044,7 @@ class Mediator:
 			'informational': 0.0,
 		}.get(blocking_level, 0.0)
 		score += {
-			'dependency_graph_contradiction': 35.0,
+			'dependency_graph_contradiction': 48.0,
 			'intake_claim_element_gap': 18.0,
 			'intake_claim_temporal_gap': 16.0,
 			'intake_proof_gap': 12.0,
@@ -850,6 +1063,9 @@ class Mediator:
 		if direct_legal_target_match:
 			score += 15.0
 		score += max(-3.0, min(6.0, actor_critic_score)) * (4.0 if intake_priority_match else 3.0)
+		if question_type == 'contradiction':
+			score += 12.0
+		score += max(-3.0, min(6.0, actor_critic_score)) * 3.0
 		if date_anchor_timeline_match:
 			score += 11.0
 		if causation_match:
@@ -886,6 +1102,18 @@ class Mediator:
 		if any(token in expected_proof_gain for token in ('date', 'timeline', 'chronolog', 'caus', 'because', 'adverse', 'protected activity')):
 			score += 4.0
 		score += phase_focus_bonus
+		workflow_action_queue = self._build_intake_workflow_action_queue(
+			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {},
+			claim_pressure,
+			matching_pressure,
+		)
+		workflow_action_matches = self._build_question_workflow_action_matches(annotated, workflow_action_queue)
+		workflow_action_rank = workflow_action_matches.get('workflow_action_rank')
+		workflow_action_match_count = int(workflow_action_matches.get('workflow_action_match_count', 0) or 0)
+		if workflow_action_match_count:
+			score += workflow_action_match_count * 5.0
+		if workflow_action_rank is not None:
+			score += max(0.0, 5.0 - float(workflow_action_rank))
 
 		selector_signals = {
 			'candidate_source': candidate_source,
@@ -922,6 +1150,10 @@ class Mediator:
 			'intake_priority_match': intake_priority_match,
 			'intake_priority_rank': intake_priority_rank,
 			'intake_priority_match_count': intake_priority_match_count,
+			'workflow_action_match_count': workflow_action_match_count,
+			'workflow_action_rank': workflow_action_rank,
+			'workflow_action_phase': workflow_action_matches.get('workflow_action_phase', ''),
+			'workflow_action_focus_areas': list(workflow_action_matches.get('workflow_action_focus_areas') or []),
 		}
 		annotated['selector_score'] = score
 		annotated['selector_signals'] = selector_signals
@@ -4665,6 +4897,11 @@ class Mediator:
 		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', len(kg_gaps))
 		intake_matching_pressure = self._build_intake_matching_pressure_map(kg, dg, intake_case_file)
+		intake_workflow_action_queue = self._build_intake_workflow_action_queue(
+			intake_case_file,
+			self._build_intake_claim_pressure_map(dg),
+			intake_matching_pressure,
+		)
 		question_candidates = self.denoiser.collect_question_candidates(
 			kg,
 			dg,
@@ -4672,6 +4909,7 @@ class Mediator:
 			intake_case_file=intake_case_file,
 		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure', intake_matching_pressure)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_workflow_action_queue', intake_workflow_action_queue)
 		questions = self.denoiser.generate_questions(
 			kg,
 			dg,
@@ -4695,6 +4933,8 @@ class Mediator:
 			'dependency_graph_summary': dg.summary(),
 			'intake_case_file': intake_case_file,
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
+			'intake_workflow_action_queue': intake_workflow_action_queue,
+			'intake_workflow_action_summary': self._summarize_intake_workflow_action_queue(intake_workflow_action_queue),
 			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
 				intake_matching_pressure,
 				question_candidates,
@@ -5571,7 +5811,13 @@ class Mediator:
 			intake_case_file=intake_case_file,
 		)
 		intake_matching_pressure = self._build_intake_matching_pressure_map(kg, dg, intake_case_file)
+		intake_workflow_action_queue = self._build_intake_workflow_action_queue(
+			intake_case_file,
+			self._build_intake_claim_pressure_map(dg),
+			intake_matching_pressure,
+		)
 		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure', intake_matching_pressure)
+		self.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_workflow_action_queue', intake_workflow_action_queue)
 		questions = self.denoiser.generate_questions(
 			kg,
 			dg,
@@ -5616,6 +5862,8 @@ class Mediator:
 			'gaps_remaining': gaps,
 			'converged': converged,
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
+			'intake_workflow_action_queue': intake_workflow_action_queue,
+			'intake_workflow_action_summary': self._summarize_intake_workflow_action_queue(intake_workflow_action_queue),
 			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
 				intake_matching_pressure,
 				question_candidates,
@@ -7747,8 +7995,10 @@ class Mediator:
 		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		alignment_summary = self._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
 		alignment_tasks = self._build_alignment_evidence_tasks(alignment_summary)
+		evidence_workflow_action_queue = self._build_evidence_workflow_action_queue(alignment_tasks, unsatisfied)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'intake_evidence_alignment_summary', alignment_summary)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', alignment_tasks)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_workflow_action_queue', evidence_workflow_action_queue)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates', [])
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history', [])
 		
@@ -7759,6 +8009,8 @@ class Mediator:
 			'claim_support_packets': claim_support_packets,
 			'intake_evidence_alignment_summary': alignment_summary,
 			'alignment_evidence_tasks': alignment_tasks,
+			'evidence_workflow_action_queue': evidence_workflow_action_queue,
+			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
 			'suggested_evidence_types': self._suggest_evidence_types(unsatisfied, kg_gaps),
 			'next_action': self.phase_manager.get_next_action()
 		}
@@ -8230,6 +8482,10 @@ class Mediator:
 		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		alignment_summary = self._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
 		alignment_tasks = self._build_alignment_evidence_tasks(alignment_summary)
+		evidence_workflow_action_queue = self._build_evidence_workflow_action_queue(
+			alignment_tasks,
+			self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps') or [],
+		)
 		alignment_task_updates = self._summarize_alignment_task_updates(
 			prior_alignment_tasks,
 			alignment_tasks,
@@ -8243,6 +8499,7 @@ class Mediator:
 		)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'intake_evidence_alignment_summary', alignment_summary)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', alignment_tasks)
+		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_workflow_action_queue', evidence_workflow_action_queue)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates', alignment_task_updates)
 		self.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history', alignment_task_update_history)
 		packet_summary = self._summarize_claim_support_packets(claim_support_packets)
@@ -8263,6 +8520,8 @@ class Mediator:
 			'claim_support_packet_summary': packet_summary,
 			'intake_evidence_alignment_summary': alignment_summary,
 			'alignment_evidence_tasks': alignment_tasks,
+			'evidence_workflow_action_queue': evidence_workflow_action_queue,
+			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
 			'alignment_task_updates': alignment_task_updates,
 			'alignment_task_update_history': alignment_task_update_history,
 			'evidence_outcomes': evidence_outcomes,
@@ -8310,6 +8569,7 @@ class Mediator:
 		# Generate next evidence questions
 		evidence_gaps = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps') or []
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		evidence_workflow_action_queue = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_workflow_action_queue') or []
 		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
 		alignment_task_update_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
 		if not evidence_refreshed:
@@ -8329,6 +8589,15 @@ class Mediator:
 				ComplaintPhase.EVIDENCE,
 				'alignment_evidence_tasks',
 				alignment_evidence_tasks,
+			)
+			evidence_workflow_action_queue = self._build_evidence_workflow_action_queue(
+				alignment_evidence_tasks,
+				evidence_gaps,
+			)
+			self.phase_manager.update_phase_data(
+				ComplaintPhase.EVIDENCE,
+				'evidence_workflow_action_queue',
+				evidence_workflow_action_queue,
 			)
 			if answer_task_updates:
 				last_sequence = 0
@@ -8364,6 +8633,7 @@ class Mediator:
 			dg,
 			evidence_gaps,
 			alignment_evidence_tasks=alignment_evidence_tasks,
+			evidence_workflow_action_queue=evidence_workflow_action_queue,
 			max_questions=3,
 		)
 		
@@ -8383,6 +8653,8 @@ class Mediator:
 			'updates': updates,
 			'next_questions': questions,
 			'alignment_evidence_tasks': alignment_evidence_tasks,
+			'evidence_workflow_action_queue': evidence_workflow_action_queue,
+			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
 			'alignment_task_updates': alignment_task_updates,
 			'alignment_task_update_history': alignment_task_update_history,
 			'next_action': self.phase_manager.get_next_action(),
@@ -8676,8 +8948,10 @@ class Mediator:
 			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary') or {}
 		)
 		intake_matching_pressure = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_matching_pressure') or {}
+		intake_workflow_action_queue = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_workflow_action_queue') or []
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		alignment_evidence_tasks = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') or []
+		evidence_workflow_action_queue = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'evidence_workflow_action_queue') or []
 		alignment_task_updates = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates') or []
 		alignment_task_update_history = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history') or []
 		timeline_anchors = intake_case_file.get('timeline_anchors', []) if isinstance(intake_case_file, dict) else []
@@ -8808,6 +9082,8 @@ class Mediator:
 			'remedy_profile': remedy_profile if isinstance(remedy_profile, dict) else {},
 			'complainant_summary_confirmation': complainant_summary_confirmation if isinstance(complainant_summary_confirmation, dict) else {},
 			'intake_matching_summary': self._summarize_intake_matching_pressure(intake_matching_pressure),
+			'intake_workflow_action_queue': intake_workflow_action_queue if isinstance(intake_workflow_action_queue, list) else [],
+			'intake_workflow_action_summary': self._summarize_intake_workflow_action_queue(intake_workflow_action_queue),
 			'intake_legal_targeting_summary': self._summarize_intake_legal_targeting(
 				intake_matching_pressure,
 				question_candidates,
@@ -8824,6 +9100,8 @@ class Mediator:
 				claim_support_packets,
 			),
 			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
+			'evidence_workflow_action_queue': evidence_workflow_action_queue if isinstance(evidence_workflow_action_queue, list) else [],
+			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
 			'alignment_task_summary': alignment_task_summary,
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],

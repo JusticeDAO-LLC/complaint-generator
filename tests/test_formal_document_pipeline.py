@@ -1,6 +1,7 @@
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -597,6 +598,110 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
     }
 
 
+def test_document_api_annotation_promotes_document_drafting_next_action_into_review_links():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="Jane Doe", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "intake_readiness": {
+            "score": 0.82,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 2, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "question_candidate_summary": {},
+        "document_workflow_execution_summary": {
+            "iteration_count": 2,
+            "accepted_iteration_count": 1,
+            "first_focus_section": "claims_for_relief",
+            "first_targeted_claim_element": "causation",
+            "first_preferred_support_kind": "testimony",
+        },
+        "document_execution_drift_summary": {
+            "drift_flag": True,
+            "top_targeted_claim_element": "protected_activity",
+            "first_executed_claim_element": "causation",
+            "first_focus_section": "claims_for_relief",
+            "first_preferred_support_kind": "testimony",
+        },
+        "next_action": {"action": "complete_evidence"},
+    }
+
+    payload = _annotate_review_links(
+        {
+            "draft": {
+                "title": "Jane Doe v. Acme Corporation",
+                "source_context": {"user_id": "Jane Doe"},
+            },
+            "drafting_readiness": {
+                "status": "warning",
+                "workflow_phase_plan": {
+                    "recommended_order": ["document_generation"],
+                    "phases": {
+                        "document_generation": {
+                            "status": "warning",
+                            "summary": "Document generation still needs targeted revision before filing.",
+                            "recommended_actions": [
+                                "Review claims-for-relief and factual allegations before filing.",
+                            ],
+                        },
+                    },
+                },
+                "sections": {
+                    "claims_for_relief": {
+                        "status": "warning",
+                        "title": "Claims For Relief",
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "status": "warning",
+                    }
+                ],
+            },
+            "document_optimization": {},
+        },
+        mediator=mediator,
+        user_id="Jane Doe",
+    )
+
+    assert payload["review_links"]["document_drafting_next_action"] == {
+        "action": "realign_document_drafting",
+        "phase_name": "document_generation",
+        "description": "Realign drafting to protected_activity before further revisions; the draft loop acted on causation first.",
+        "claim_element_id": "protected_activity",
+        "executed_claim_element_id": "causation",
+        "focus_section": "claims_for_relief",
+        "preferred_support_kind": "testimony",
+    }
+    assert payload["review_links"]["workflow_priority"] == {
+        "status": "warning",
+        "title": "Realign drafting before further revisions",
+        "description": "Realign drafting to protected_activity before further revisions; the draft loop acted on causation first.",
+        "action_label": "Open formal complaint builder",
+        "action_url": "/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=claims_for_relief&follow_up_support_kind=authority",
+        "action_kind": "link",
+        "dashboard_url": "/claim-support-review?user_id=Jane+Doe",
+        "chip_labels": [
+            "target element: Protected Activity",
+            "executed first: Causation",
+            "focus section: Claims For Relief",
+            "support lane: Testimony",
+        ],
+    }
+
+
 def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch):
     mediator = _build_seeded_mediator()
     optimizer = document_optimization.AgenticDocumentOptimizer(
@@ -631,6 +736,11 @@ def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch
     )
     monkeypatch.setattr(optimizer, '_select_support_context', lambda **kwargs: {'focus_section': 'factual_allegations'})
     monkeypatch.setattr(optimizer, '_build_upstream_optimizer_metadata', lambda **kwargs: {'selected_provider': 'test-provider'})
+    monkeypatch.setattr(
+        optimizer,
+        '_build_upstream_optimizer_metadata',
+        lambda **kwargs: {'selected_provider': 'test-provider'},
+    )
     monkeypatch.setattr(optimizer, '_router_status', lambda: {'available': False})
     monkeypatch.setattr(optimizer, '_router_usage_summary', lambda: {'llm_calls': 0})
     monkeypatch.setattr(
@@ -738,8 +848,8 @@ def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
         },
     )
 
-    assert review['prioritized_workflow_phase'] == 'graph_analysis'
-    assert review['workflow_phase_order'][0] == 'graph_analysis'
+    assert review['prioritized_workflow_phase'] == 'intake_questioning'
+    assert review['workflow_phase_order'][0] == 'intake_questioning'
     assert review['workflow_phase_target_sections']['graph_analysis'] == 'factual_allegations'
     assert review['recommended_focus'] == 'factual_allegations'
 

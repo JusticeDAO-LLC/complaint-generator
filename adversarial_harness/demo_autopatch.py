@@ -52,6 +52,26 @@ def _build_runtime_optimization_guidance(
     if not isinstance(cross_phase_findings, list):
         cross_phase_findings = report.get("cross_phase_findings")
     cross_phase_findings = [str(item).strip() for item in list(cross_phase_findings or []) if str(item).strip()]
+    document_evidence_targeting_summary = (
+        report.get("document_evidence_targeting_summary")
+        if isinstance(report.get("document_evidence_targeting_summary"), dict)
+        else shared_context.get("document_evidence_targeting_summary")
+    )
+    workflow_targeting_summary = (
+        report.get("workflow_targeting_summary")
+        if isinstance(report.get("workflow_targeting_summary"), dict)
+        else shared_context.get("workflow_targeting_summary")
+    )
+    document_workflow_execution_summary = (
+        report.get("document_workflow_execution_summary")
+        if isinstance(report.get("document_workflow_execution_summary"), dict)
+        else shared_context.get("document_workflow_execution_summary")
+    )
+    document_execution_drift_summary = (
+        report.get("document_execution_drift_summary")
+        if isinstance(report.get("document_execution_drift_summary"), dict)
+        else shared_context.get("document_execution_drift_summary")
+    )
 
     if not any(
         (
@@ -61,6 +81,10 @@ def _build_runtime_optimization_guidance(
             complaint_targets,
             evidence_targets,
             cross_phase_findings,
+            document_evidence_targeting_summary,
+            workflow_targeting_summary,
+            document_workflow_execution_summary,
+            document_execution_drift_summary,
         )
     ):
         return {}
@@ -69,7 +93,12 @@ def _build_runtime_optimization_guidance(
         "workflow_phase_plan": dict(workflow_phase_plan or {}),
         "phase_scorecards": dict(phase_scorecards or {}),
         "cross_phase_findings": cross_phase_findings,
+        "workflow_action_queue": list(bundle.get("workflow_action_queue") or report.get("workflow_action_queue") or []),
         "document_handoff_summary": dict(document_handoff_summary or {}),
+        "workflow_targeting_summary": dict(workflow_targeting_summary or {}),
+        "document_evidence_targeting_summary": dict(document_evidence_targeting_summary or {}),
+        "document_workflow_execution_summary": dict(document_workflow_execution_summary or {}),
+        "document_execution_drift_summary": dict(document_execution_drift_summary or {}),
         "complaint_type_generalization_summary": dict(complaint_targets or {}),
         "evidence_modality_generalization_summary": dict(evidence_targets or {}),
     }

@@ -279,6 +279,38 @@ class CLI:
 			if promotion_ref:
 				target_line += f' ref={promotion_ref}'
 			lines.append(target_line)
+		document_workflow_execution_summary = (
+			intake_status.get('document_workflow_execution_summary')
+			if isinstance(intake_status.get('document_workflow_execution_summary'), dict)
+			else {}
+		)
+		if document_workflow_execution_summary:
+			first_focus_section = str(document_workflow_execution_summary.get('first_focus_section') or '')
+			first_targeted_claim_element = str(document_workflow_execution_summary.get('first_targeted_claim_element') or '')
+			first_preferred_support_kind = str(document_workflow_execution_summary.get('first_preferred_support_kind') or '')
+			execution_target_parts = [part for part in (first_focus_section, first_targeted_claim_element) if part]
+			execution_label = ' / '.join(self._humanize_cli_label(part) for part in execution_target_parts) if execution_target_parts else 'unspecified'
+			execution_line = (
+				f"  document_execution: iterations={int(document_workflow_execution_summary.get('iteration_count', 0) or 0)} "
+				f"accepted={int(document_workflow_execution_summary.get('accepted_iteration_count', 0) or 0)} "
+				f"first={execution_label}"
+			)
+			if first_preferred_support_kind:
+				execution_line += f' [{self._humanize_cli_label(first_preferred_support_kind)}]'
+			lines.append(execution_line)
+		document_execution_drift_summary = (
+			intake_status.get('document_execution_drift_summary')
+			if isinstance(intake_status.get('document_execution_drift_summary'), dict)
+			else {}
+		)
+		if bool(document_execution_drift_summary.get('drift_flag')):
+			top_targeted_claim_element = str(document_execution_drift_summary.get('top_targeted_claim_element') or '')
+			first_executed_claim_element = str(document_execution_drift_summary.get('first_executed_claim_element') or '')
+			top_label = self._humanize_cli_label(top_targeted_claim_element) if top_targeted_claim_element else 'Unspecified'
+			drift_line = f'  drafting_priority: realign to {top_label} before further revisions'
+			if first_executed_claim_element:
+				drift_line += f" (executed {self._humanize_cli_label(first_executed_claim_element)} first)"
+			lines.append(drift_line)
 		return '\n'.join(lines)
 
 	def _format_claim_review_quality_summary(self, claim_coverage_summary):

@@ -1,6 +1,42 @@
 from typing import Any, Dict, List
 
 
+def _build_document_drafting_next_action(document_execution_drift_summary: Any) -> Dict[str, Any]:
+    drift_summary = (
+        document_execution_drift_summary
+        if isinstance(document_execution_drift_summary, dict)
+        else {}
+    )
+    if not bool(drift_summary.get("drift_flag")):
+        return {}
+
+    top_targeted_claim_element = str(drift_summary.get("top_targeted_claim_element") or "").strip()
+    first_executed_claim_element = str(drift_summary.get("first_executed_claim_element") or "").strip()
+    first_focus_section = str(drift_summary.get("first_focus_section") or "").strip()
+    first_preferred_support_kind = str(drift_summary.get("first_preferred_support_kind") or "").strip()
+
+    description = "Realign drafting to the top targeted claim element before further revisions."
+    if top_targeted_claim_element and first_executed_claim_element:
+        description = (
+            f"Realign drafting to {top_targeted_claim_element} before further revisions; "
+            f"the draft loop acted on {first_executed_claim_element} first."
+        )
+    elif top_targeted_claim_element:
+        description = (
+            f"Realign drafting to {top_targeted_claim_element} before further revisions."
+        )
+
+    return {
+        "action": "realign_document_drafting",
+        "phase_name": "document_generation",
+        "description": description,
+        "claim_element_id": top_targeted_claim_element,
+        "executed_claim_element_id": first_executed_claim_element,
+        "focus_section": first_focus_section,
+        "preferred_support_kind": first_preferred_support_kind,
+    }
+
+
 def _build_confirmed_intake_summary_handoff(raw_status: Any) -> Dict[str, Any]:
     status = raw_status if isinstance(raw_status, dict) else {}
     confirmation = status.get("complainant_summary_confirmation")
@@ -413,6 +449,13 @@ def build_intake_status_summary(
         contradiction_count = len(normalized_contradictions)
     next_action = raw_status.get("next_action")
     next_action = next_action if isinstance(next_action, dict) else {}
+    document_execution_drift_summary = raw_status.get("document_execution_drift_summary")
+    raw_document_drafting_next_action = raw_status.get("document_drafting_next_action")
+    document_drafting_next_action = (
+        dict(raw_document_drafting_next_action)
+        if isinstance(raw_document_drafting_next_action, dict) and raw_document_drafting_next_action
+        else _build_document_drafting_next_action(document_execution_drift_summary)
+    )
     compact_next_action: Dict[str, Any] = {}
     primary_validation_target = {}
     if next_action:
@@ -435,6 +478,8 @@ def build_intake_status_summary(
                 "promotion_ref": str(primary_validation_target_value.get("promotion_ref") or "").strip(),
             }
             compact_next_action["primary_validation_target"] = primary_validation_target
+    if document_drafting_next_action:
+        compact_next_action["document_drafting_next_action"] = dict(document_drafting_next_action)
 
     summary = {
         "current_phase": str(raw_status.get("current_phase") or "").strip(),
@@ -456,6 +501,7 @@ def build_intake_status_summary(
             else []
         ),
         "next_action": compact_next_action,
+        "document_drafting_next_action": document_drafting_next_action,
         "primary_validation_target": primary_validation_target,
         "candidate_claim_count": int(readiness.get("candidate_claim_count", 0) or 0),
         "canonical_fact_count": int(readiness.get("canonical_fact_count", 0) or 0),
@@ -508,6 +554,19 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     recent_validation_outcome = raw_status.get("recent_validation_outcome")
     alignment_validation_focus_summary = raw_status.get("alignment_validation_focus_summary")
     alignment_promotion_drift_summary = raw_status.get("alignment_promotion_drift_summary")
+    intake_workflow_action_queue = raw_status.get("intake_workflow_action_queue")
+    intake_workflow_action_summary = raw_status.get("intake_workflow_action_summary")
+    evidence_workflow_action_queue = raw_status.get("evidence_workflow_action_queue")
+    evidence_workflow_action_summary = raw_status.get("evidence_workflow_action_summary")
+    workflow_targeting_summary = raw_status.get("workflow_targeting_summary")
+    document_workflow_execution_summary = raw_status.get("document_workflow_execution_summary")
+    document_execution_drift_summary = raw_status.get("document_execution_drift_summary")
+    raw_document_drafting_next_action = raw_status.get("document_drafting_next_action")
+    document_drafting_next_action = (
+        dict(raw_document_drafting_next_action)
+        if isinstance(raw_document_drafting_next_action, dict) and raw_document_drafting_next_action
+        else _build_document_drafting_next_action(document_execution_drift_summary)
+    )
     next_action = raw_status.get("next_action")
     question_candidate_summary = raw_status.get("question_candidate_summary")
     adversarial_intake_priority_summary = raw_status.get("adversarial_intake_priority_summary")
@@ -638,6 +697,32 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             if isinstance(alignment_promotion_drift_summary, dict)
             else {}
         ),
+        "intake_workflow_action_queue": (
+            intake_workflow_action_queue if isinstance(intake_workflow_action_queue, list) else []
+        ),
+        "intake_workflow_action_summary": (
+            intake_workflow_action_summary if isinstance(intake_workflow_action_summary, dict) else {}
+        ),
+        "evidence_workflow_action_queue": (
+            evidence_workflow_action_queue if isinstance(evidence_workflow_action_queue, list) else []
+        ),
+        "evidence_workflow_action_summary": (
+            evidence_workflow_action_summary if isinstance(evidence_workflow_action_summary, dict) else {}
+        ),
+        "workflow_targeting_summary": (
+            workflow_targeting_summary if isinstance(workflow_targeting_summary, dict) else {}
+        ),
+        "document_workflow_execution_summary": (
+            document_workflow_execution_summary
+            if isinstance(document_workflow_execution_summary, dict)
+            else {}
+        ),
+        "document_execution_drift_summary": (
+            document_execution_drift_summary
+            if isinstance(document_execution_drift_summary, dict)
+            else {}
+        ),
+        "document_drafting_next_action": document_drafting_next_action,
         "next_action": next_action if isinstance(next_action, dict) else {},
         "question_candidate_summary": (
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}

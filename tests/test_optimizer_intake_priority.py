@@ -387,9 +387,12 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
     assert "evidence_modality_performance" in payload["shared_context"]
     assert "phase_scorecards" in payload["shared_context"]
     assert "document_handoff_summary" in payload["shared_context"]
+    assert payload["shared_context"]["workflow_action_queue"]
     assert payload["phase_scorecards"]["document_generation"]["status"] in {"critical", "warning", "ready"}
     assert payload["cross_phase_findings"]
     assert all(task["method"] == "TEST_DRIVEN" for task in payload["phase_tasks"])
+    assert payload["workflow_action_queue"]
+    assert payload["workflow_action_queue"][0]["phase_name"] == report.workflow_phase_plan["recommended_order"][0]
 
 
 def test_analyze_builds_cross_phase_scorecards_and_document_handoff_summary():
@@ -448,6 +451,8 @@ def test_analyze_builds_cross_phase_scorecards_and_document_handoff_summary():
     assert report.complaint_type_generalization_summary["weakest"][0]["name"] in {"retaliation", "narrative_intake"}
     assert report.evidence_modality_generalization_summary["weakest"][0]["name"] == "image_evidence"
     assert report.cross_phase_findings
+    assert report.workflow_action_queue
+    assert any(item["phase_name"] == "cross_phase" for item in report.workflow_action_queue)
 
 
 def test_analyze_tracks_complaint_type_and_evidence_modality_performance():
@@ -540,6 +545,310 @@ def test_build_phase_patch_tasks_carries_generalization_targets():
     assert "image_evidence" in graph_task.metadata["weak_evidence_modalities"]
     assert "Weak complaint types to generalize for" in graph_task.description
     assert "Weak evidence modalities to improve" in graph_task.description
+
+
+def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_document_targets",
+        0.52,
+        {
+            "workflow_optimization_guidance": {
+                "document_evidence_targeting_summary": {
+                    "count": 2,
+                    "claim_element_counts": {"protected_activity": 2},
+                    "support_kind_counts": {"testimony": 2},
+                    "targets": [
+                        {
+                            "focus_section": "factual_allegations",
+                            "claim_type": "retaliation",
+                            "claim_element_id": "protected_activity",
+                            "preferred_support_kind": "testimony",
+                            "kind": "evidence_workflow_action",
+                            "text": "Collect chronology support for protected activity.",
+                        }
+                    ],
+                }
+                ,
+                "document_workflow_execution_summary": {
+                    "iteration_count": 2,
+                    "accepted_iteration_count": 1,
+                    "focus_section_counts": {"claims_for_relief": 1},
+                    "top_support_kind_counts": {"workflow_targeting_claim_element": 1},
+                    "targeted_claim_element_counts": {"causation": 1},
+                    "preferred_support_kind_counts": {"testimony": 1},
+                    "first_focus_section": "claims_for_relief",
+                    "first_top_support_kind": "workflow_targeting_claim_element",
+                    "first_targeted_claim_element": "causation",
+                    "first_preferred_support_kind": "testimony",
+                },
+            },
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["timeline"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["timeline"],
+            },
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 2, "total_relationships": 1, "gaps": 3}
+    result.dependency_graph_summary = {"total_nodes": 2, "total_dependencies": 1, "satisfaction_rate": 0.2}
+
+    report = optimizer.analyze([result])
+    assert report.document_evidence_targeting_summary["count"] == 1
+    assert report.document_workflow_execution_summary["first_targeted_claim_element"] == "causation"
+    assert report.document_execution_drift_summary["drift_flag"] is True
+    assert report.document_execution_drift_summary["top_targeted_claim_element"] == "protected_activity"
+    assert report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
+    assert "protected_activity" in report.phase_scorecards["document_generation"]["targeted_claim_elements"]
+    assert report.phase_scorecards["document_generation"]["execution_mismatch_flag"] is True
+    assert report.phase_scorecards["document_generation"]["execution_drift_summary"]["drift_flag"] is True
+    assert report.phase_scorecards["document_generation"]["first_executed_claim_element"] == "causation"
+    assert any("protected_activity" in recommendation for recommendation in report.recommendations)
+    assert any("acting on the highest-priority targeted claim element first" in recommendation for recommendation in report.recommendations)
+
+    tasks, _ = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+    document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
+    assert "Draft loop evidence targets" in document_task.description
+    assert "Preferred support lanes" in document_task.description
+    assert any(path.name == "document_optimization.py" for path in document_task.target_files)
+    assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)
+    assert "document_optimization.py" in document_task.constraints["target_symbols"]
+    assert "_select_support_context" in document_task.constraints["target_symbols"]["document_optimization.py"]
+    assert document_task.metadata["document_evidence_targeting_summary"]["count"] == 1
+    assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
+    assert document_task.metadata["document_execution_drift_summary"]["drift_flag"] is True
+    assert document_task.metadata["report_summary"]["document_evidence_targeting_summary"]["claim_element_counts"] == {
+        "protected_activity": 1,
+    }
+    assert document_task.metadata["report_summary"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
+    assert document_task.metadata["report_summary"]["document_execution_drift_summary"]["drift_flag"] is True
+
+    bundle, bundle_report = optimizer.build_workflow_optimization_bundle(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+    payload = bundle.to_dict()
+    assert payload["shared_context"]["document_evidence_targeting_summary"]["count"] == 1
+    assert payload["shared_context"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
+    assert payload["shared_context"]["document_execution_drift_summary"]["drift_flag"] is True
+    assert bundle_report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
+
+
+def test_document_execution_mismatch_escalates_document_phase_priority():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_document_mismatch",
+        0.58,
+        {
+            "workflow_optimization_guidance": {
+                "document_evidence_targeting_summary": {
+                    "count": 2,
+                    "claim_element_counts": {"protected_activity": 2},
+                    "support_kind_counts": {"testimony": 2},
+                },
+                "document_workflow_execution_summary": {
+                    "iteration_count": 1,
+                    "accepted_iteration_count": 1,
+                    "focus_section_counts": {"claims_for_relief": 1},
+                    "top_support_kind_counts": {"workflow_targeting_claim_element": 1},
+                    "targeted_claim_element_counts": {"causation": 1},
+                    "preferred_support_kind_counts": {"testimony": 1},
+                    "first_focus_section": "claims_for_relief",
+                    "first_top_support_kind": "workflow_targeting_claim_element",
+                    "first_targeted_claim_element": "causation",
+                    "first_preferred_support_kind": "testimony",
+                },
+            },
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": [],
+                "covered_objectives": [],
+                "uncovered_objectives": [],
+            },
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 3, "total_relationships": 2, "gaps": 0}
+    result.dependency_graph_summary = {"total_nodes": 3, "total_dependencies": 2, "satisfaction_rate": 0.9}
+
+    report = optimizer.analyze([result])
+
+    document_phase = report.workflow_phase_plan["phases"]["document_generation"]
+    assert document_phase["status"] in {"critical", "warning"}
+    assert "document_generation" in report.workflow_phase_plan["recommended_order"][:2]
+
+
+def test_analyze_and_phase_tasks_carry_graph_element_targeting_summary():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_graph_targets",
+        0.49,
+        {
+            "evidence_workflow_action_queue": [
+                {
+                    "phase_name": "graph_analysis",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "focus_areas": ["timeline", "chronology"],
+                    "action": "Resolve chronology support for causation.",
+                }
+            ],
+            "intake_legal_targeting_summary": {
+                "claims": {
+                    "retaliation": {
+                        "missing_requirement_element_ids": ["protected_activity"],
+                    }
+                }
+            },
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["timeline"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["timeline"],
+            },
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 1, "total_relationships": 0, "gaps": 4}
+    result.dependency_graph_summary = {"total_nodes": 1, "total_dependencies": 0, "satisfaction_rate": 0.0}
+
+    report = optimizer.analyze([result])
+    assert report.graph_element_targeting_summary["count"] == 2
+    assert report.graph_element_targeting_summary["claim_element_counts"]["causation"] == 1
+    assert report.graph_element_targeting_summary["claim_element_counts"]["protected_activity"] == 1
+    assert "causation" in report.phase_scorecards["graph_analysis"]["targeted_claim_elements"]
+    assert any("causation" in recommendation for recommendation in report.recommendations)
+
+    tasks, _ = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+    graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
+    assert "Graph evidence targets" in graph_task.description
+    assert "Graph focus areas" in graph_task.description
+    assert any(path.name == "denoiser.py" for path in graph_task.target_files)
+    assert any(path.name == "dependency_graph.py" for path in graph_task.target_files)
+    assert "complaint_phases/denoiser.py" in graph_task.constraints["target_symbols"]
+    assert "collect_question_candidates" in graph_task.constraints["target_symbols"]["complaint_phases/denoiser.py"]
+    assert graph_task.metadata["graph_element_targeting_summary"]["count"] == 2
+    assert graph_task.metadata["report_summary"]["graph_element_targeting_summary"]["claim_element_counts"] == {
+        "causation": 1,
+        "protected_activity": 1,
+    }
+
+    bundle, bundle_report = optimizer.build_workflow_optimization_bundle(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+    payload = bundle.to_dict()
+    assert payload["shared_context"]["graph_element_targeting_summary"]["count"] == 2
+    assert bundle_report.graph_element_targeting_summary["claim_element_counts"]["causation"] == 1
+
+
+def test_analyze_and_phase_tasks_carry_intake_targeting_summary():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_intake_targets",
+        0.55,
+        {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["timeline", "documents", "harm_remedy"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["timeline", "documents", "harm_remedy"],
+            },
+            "intake_workflow_action_queue": [
+                {
+                    "focus_areas": ["timeline", "proof_leads"],
+                    "target_element_id": "protected_activity",
+                    "action": "Clarify the retaliation timeline and collect proof leads.",
+                }
+            ],
+            "intake_legal_targeting_summary": {
+                "claims": {
+                    "retaliation": {
+                        "missing_requirement_element_ids": ["causation"],
+                    }
+                }
+            },
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 2, "total_relationships": 1, "gaps": 2}
+    result.dependency_graph_summary = {"total_nodes": 2, "total_dependencies": 1, "satisfaction_rate": 0.2}
+
+    report = optimizer.analyze([result])
+    assert report.intake_targeting_summary["count"] >= 3
+    assert report.intake_targeting_summary["objective_counts"]["timeline"] >= 1
+    assert report.intake_targeting_summary["claim_element_counts"]["protected_activity"] == 1
+    assert report.intake_targeting_summary["claim_element_counts"]["causation"] == 1
+    assert "timeline" in report.phase_scorecards["intake_questioning"]["targeted_intake_objectives"]
+    assert any("timeline" in recommendation for recommendation in report.recommendations)
+
+    tasks, _ = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+    intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
+    assert "Intake targets" in intake_task.description
+    assert "Legal elements to probe" in intake_task.description
+    assert any(path.name == "mediator.py" for path in intake_task.target_files)
+    assert "mediator/mediator.py" in intake_task.constraints["target_symbols"]
+    assert "_build_intake_workflow_action_queue" in intake_task.constraints["target_symbols"]["mediator/mediator.py"]
+    assert intake_task.metadata["intake_targeting_summary"]["claim_element_counts"]["causation"] == 1
+    assert intake_task.metadata["report_summary"]["intake_targeting_summary"]["objective_counts"]["timeline"] >= 1
+
+    bundle, bundle_report = optimizer.build_workflow_optimization_bundle(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+    payload = bundle.to_dict()
+    assert payload["shared_context"]["workflow_targeting_summary"]["count"] >= 4
+    assert payload["shared_context"]["workflow_targeting_summary"]["phase_counts"]["intake_questioning"] >= 3
+    assert payload["shared_context"]["workflow_targeting_summary"]["phase_counts"]["graph_analysis"] >= 1
+    assert payload["shared_context"]["workflow_targeting_summary"]["phase_counts"]["document_generation"] == 0
+    assert payload["shared_context"]["intake_targeting_summary"]["count"] >= 3
+    assert bundle_report.intake_targeting_summary["claim_element_counts"]["causation"] == 1
+    assert bundle_report.workflow_targeting_summary["shared_claim_element_counts"]["causation"] >= 1
 
 
 def test_analyze_without_successful_sessions_returns_critical_workflow_phase_plan():

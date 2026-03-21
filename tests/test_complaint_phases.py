@@ -765,6 +765,34 @@ class TestComplaintDenoiser:
         assert questions[0]['context']['alignment_task'] is True
         assert questions[0]['context']['claim_element_id'] == 'protected_activity'
         assert 'Protected activity' in questions[0]['question']
+
+    def test_generate_evidence_questions_can_use_workflow_action_queue(self):
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+
+        questions = denoiser.generate_evidence_questions(
+            kg,
+            dg,
+            evidence_gaps=[],
+            alignment_evidence_tasks=[],
+            evidence_workflow_action_queue=[
+                {
+                    'rank': 1,
+                    'phase_name': 'graph_analysis',
+                    'status': 'warning',
+                    'action': 'close graph and claim-support gaps before final drafting',
+                    'focus_areas': ['causation'],
+                }
+            ],
+            max_questions=2,
+        )
+
+        assert questions
+        assert questions[0]['context']['workflow_action'] is True
+        assert questions[0]['context']['workflow_phase'] == 'graph_analysis'
+        assert 'causation' in questions[0]['question'].lower()
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

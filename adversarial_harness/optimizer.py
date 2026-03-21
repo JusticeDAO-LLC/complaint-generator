@@ -72,10 +72,17 @@ class OptimizationReport:
     recommended_hacc_preset: str | None = None
     workflow_phase_plan: Dict[str, Any] | None = None
     phase_scorecards: Dict[str, Dict[str, Any]] | None = None
+    intake_targeting_summary: Dict[str, Any] | None = None
+    workflow_targeting_summary: Dict[str, Any] | None = None
     complaint_type_generalization_summary: Dict[str, Any] | None = None
     evidence_modality_generalization_summary: Dict[str, Any] | None = None
     document_handoff_summary: Dict[str, Any] | None = None
+    graph_element_targeting_summary: Dict[str, Any] | None = None
+    document_evidence_targeting_summary: Dict[str, Any] | None = None
+    document_workflow_execution_summary: Dict[str, Any] | None = None
+    document_execution_drift_summary: Dict[str, Any] | None = None
     cross_phase_findings: List[str] | None = None
+    workflow_action_queue: List[Dict[str, Any]] | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -120,10 +127,17 @@ class OptimizationReport:
             'recommended_hacc_preset': self.recommended_hacc_preset,
             'workflow_phase_plan': self.workflow_phase_plan or {},
             'phase_scorecards': self.phase_scorecards or {},
+            'intake_targeting_summary': self.intake_targeting_summary or {},
+            'workflow_targeting_summary': self.workflow_targeting_summary or {},
             'complaint_type_generalization_summary': self.complaint_type_generalization_summary or {},
             'evidence_modality_generalization_summary': self.evidence_modality_generalization_summary or {},
             'document_handoff_summary': self.document_handoff_summary or {},
+            'graph_element_targeting_summary': self.graph_element_targeting_summary or {},
+            'document_evidence_targeting_summary': self.document_evidence_targeting_summary or {},
+            'document_workflow_execution_summary': self.document_workflow_execution_summary or {},
+            'document_execution_drift_summary': self.document_execution_drift_summary or {},
             'cross_phase_findings': list(self.cross_phase_findings or []),
+            'workflow_action_queue': list(self.workflow_action_queue or []),
         }
 
 
@@ -140,6 +154,7 @@ class WorkflowOptimizationBundle:
     shared_context: Dict[str, Any]
     phase_scorecards: Dict[str, Dict[str, Any]] | None = None
     cross_phase_findings: List[str] | None = None
+    workflow_action_queue: List[Dict[str, Any]] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -152,6 +167,7 @@ class WorkflowOptimizationBundle:
             "shared_context": dict(self.shared_context or {}),
             "phase_scorecards": dict(self.phase_scorecards or {}),
             "cross_phase_findings": list(self.cross_phase_findings or []),
+            "workflow_action_queue": list(self.workflow_action_queue or []),
         }
 
 
@@ -407,6 +423,8 @@ class Optimizer:
         coverage_avg: float,
         graph_summary: Dict[str, Any],
         coverage_remediation: Dict[str, Any],
+        document_evidence_targeting_summary: Dict[str, Any],
+        document_workflow_execution_summary: Dict[str, Any],
     ) -> Dict[str, Any]:
         intake_actions = list((coverage_remediation.get("intake_priorities") or {}).get("recommended_actions") or [])
         intake_signals: List[str] = []
@@ -637,6 +655,40 @@ class Optimizer:
                     "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization.",
                 }
             )
+        targeted_document_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((document_evidence_targeting_summary or {}).get("claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:2]
+            if str(name)
+        ]
+        first_executed_document_element = str(
+            (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
+        ).strip()
+        if (
+            targeted_document_elements
+            and first_executed_document_element
+            and first_executed_document_element != targeted_document_elements[0]
+        ):
+            document_signals.append(
+                "document execution is not starting with the highest-priority targeted legal element"
+            )
+            document_severity = max(document_severity + 4, intake_severity + 1)
+            document_recommendations.insert(
+                0,
+                {
+                    "focus": "document_execution_alignment",
+                    "signal": "document_execution_mismatch",
+                    "recommended_action": (
+                        "Make the drafting loop prioritize "
+                        + targeted_document_elements[0]
+                        + " before "
+                        + first_executed_document_element
+                        + " when selecting focus sections and support rows."
+                    ),
+                }
+            )
 
         phases = {
             "intake_questioning": {
@@ -723,8 +775,42 @@ class Optimizer:
     def _workflow_phase_constraints(
         phase_name: str,
         target_paths: List[Path],
+        report: Optional[OptimizationReport] = None,
     ) -> Dict[str, Any]:
         target_map: Dict[str, List[str]] = {}
+        intake_targeting_summary = dict(report.intake_targeting_summary or {}) if report else {}
+        graph_targeting_summary = dict(report.graph_element_targeting_summary or {}) if report else {}
+        document_targeting_summary = dict(report.document_evidence_targeting_summary or {}) if report else {}
+        intake_targeted_elements = {
+            str(name)
+            for name in dict(intake_targeting_summary.get("claim_element_counts") or {}).keys()
+            if str(name)
+        }
+        intake_focus_areas = {
+            str(name)
+            for name in dict(intake_targeting_summary.get("focus_area_counts") or {}).keys()
+            if str(name)
+        }
+        graph_targeted_elements = {
+            str(name)
+            for name in dict(graph_targeting_summary.get("claim_element_counts") or {}).keys()
+            if str(name)
+        }
+        graph_focus_areas = {
+            str(name)
+            for name in dict(graph_targeting_summary.get("focus_area_counts") or {}).keys()
+            if str(name)
+        }
+        targeted_focus_sections = {
+            str(item.get("focus_section") or "").strip()
+            for item in list(document_targeting_summary.get("targets") or [])
+            if isinstance(item, dict) and str(item.get("focus_section") or "").strip()
+        }
+        targeted_support_kinds = {
+            str(name)
+            for name in dict(document_targeting_summary.get("support_kind_counts") or {}).keys()
+            if str(name)
+        }
         for path in target_paths:
             key = path.as_posix()
             if str(phase_name) == "intake_questioning":
@@ -734,15 +820,26 @@ class Optimizer:
                         "_reprioritize_candidates_for_intake_objectives",
                         "_summarize_intake_priority_coverage",
                     ]
+                    if {"timeline", "chronology", "proof_leads"} & intake_focus_areas:
+                        target_map[key].append("_build_fallback_probe")
                 elif path.name == "mediator.py":
                     target_map[key] = [
                         "select_intake_question_candidates",
                         "build_inquiry_gap_context",
                     ]
+                    if intake_targeted_elements:
+                        target_map[key].extend(
+                            [
+                                "_build_intake_workflow_action_queue",
+                                "_build_question_workflow_action_matches",
+                            ]
+                        )
                 elif path.name == "complainant.py":
                     target_map[key] = [
                         "build_default_context",
                     ]
+                    if {"actors", "harm_remedy"} & intake_focus_areas:
+                        target_map[key].append("generate_response")
             elif str(phase_name) == "graph_analysis":
                 if path.name == "knowledge_graph.py":
                     target_map[key] = [
@@ -750,20 +847,33 @@ class Optimizer:
                         "_extract_entities",
                         "_extract_relationships",
                     ]
+                    if {"chronology", "timeline", "actors"} & graph_focus_areas:
+                        target_map[key].append("_detect_claim_types")
                 elif path.name == "dependency_graph.py":
                     target_map[key] = [
                         "get_claim_readiness",
                     ]
+                    if graph_targeted_elements:
+                        target_map[key].append("build_from_claims")
                 elif path.name == "denoiser.py":
                     target_map[key] = [
                         "process_answer",
                     ]
+                    if graph_targeted_elements:
+                        target_map[key].extend(
+                            [
+                                "collect_question_candidates",
+                                "generate_questions",
+                            ]
+                        )
                 elif path.name == "intake_case_file.py":
                     target_map[key] = [
                         "build_intake_case_file",
                         "build_timeline_consistency_summary",
                         "build_open_items",
                     ]
+                    if {"chronology", "timeline", "actors"} & graph_focus_areas:
+                        target_map[key].append("build_intake_sections")
             elif str(phase_name) == "document_generation":
                 if path.name == "document_pipeline.py":
                     target_map[key] = [
@@ -771,16 +881,27 @@ class Optimizer:
                         "_build_runtime_workflow_phase_plan",
                         "_build_drafting_readiness",
                     ]
+                    if targeted_focus_sections:
+                        target_map[key].append("_build_runtime_workflow_optimization_guidance")
                 elif path.name == "document_optimization.py":
                     target_map[key] = [
                         "optimize_draft",
                     ]
+                    if targeted_support_kinds:
+                        target_map[key].extend(
+                            [
+                                "_select_support_context",
+                                "_build_document_evidence_targeting_summary",
+                            ]
+                        )
                 elif path.name == "synthesize_hacc_complaint.py":
                     target_map[key] = [
                         "_merge_seed_with_grounding",
                         "_factual_allegations",
                         "_claims_theory",
                     ]
+                    if "factual_allegations" in targeted_focus_sections:
+                        target_map[key].append("_factual_background")
                 elif path.name == "formal_document.py":
                     target_map[key] = [
                         "ComplaintDocumentBuilder",
@@ -813,11 +934,26 @@ class Optimizer:
         )
 
         if str(phase_name) == "graph_analysis":
+            targeting_summary = dict(report.graph_element_targeting_summary or {})
+            targeted_elements = {
+                str(name)
+                for name in dict(targeting_summary.get("claim_element_counts") or {}).keys()
+                if str(name)
+            }
+            targeted_focus_areas = {
+                str(name)
+                for name in dict(targeting_summary.get("focus_area_counts") or {}).keys()
+                if str(name)
+            }
             priorities: List[str] = []
             kg_empty = int(report.kg_sessions_empty or 0) > 0 or float(report.kg_avg_total_entities or 0.0) <= 2.0
             dg_weak = float(report.dg_avg_satisfaction_rate or 0.0) < 0.5
             gaps_high = float(report.kg_avg_gaps or 0.0) >= 1.0 or int(report.kg_sessions_gaps_not_reducing or 0) > 0
 
+            if targeted_elements:
+                priorities.extend(["denoiser.py", "dependency_graph.py"])
+            if {"chronology", "timeline", "actors"} & targeted_focus_areas:
+                priorities.extend(["intake_case_file.py", "knowledge_graph.py"])
             if blocker_objectives:
                 priorities.extend(["dependency_graph.py", "denoiser.py", "knowledge_graph.py"])
 
@@ -843,16 +979,35 @@ class Optimizer:
             return selected or target_paths[:2]
 
         if str(phase_name) == "document_generation":
-            priorities = (
-                ["document_optimization.py", "synthesize_hacc_complaint.py", "formal_document.py", "document_pipeline.py"]
-                if blocker_objectives
-                else [
-                    "synthesize_hacc_complaint.py",
-                    "document_pipeline.py",
-                    "document_optimization.py",
-                    "formal_document.py",
-                ]
-            )
+            targeting_summary = dict(report.document_evidence_targeting_summary or {})
+            targeted_focus_sections = {
+                str(item.get("focus_section") or "").strip()
+                for item in list(targeting_summary.get("targets") or [])
+                if isinstance(item, dict) and str(item.get("focus_section") or "").strip()
+            }
+            targeted_support_kinds = {
+                str(name)
+                for name in dict(targeting_summary.get("support_kind_counts") or {}).keys()
+                if str(name)
+            }
+            priorities: List[str] = []
+            if targeted_support_kinds:
+                priorities.append("document_optimization.py")
+            if "factual_allegations" in targeted_focus_sections:
+                priorities.append("synthesize_hacc_complaint.py")
+            if "claims_for_relief" in targeted_focus_sections:
+                priorities.append("formal_document.py")
+            if blocker_objectives:
+                priorities.extend(["document_optimization.py", "synthesize_hacc_complaint.py", "formal_document.py", "document_pipeline.py"])
+            else:
+                priorities.extend(
+                    [
+                        "synthesize_hacc_complaint.py",
+                        "document_pipeline.py",
+                        "document_optimization.py",
+                        "formal_document.py",
+                    ]
+                )
             selected: List[Path] = []
             seen = set()
             for name in priorities:
@@ -871,6 +1026,17 @@ class Optimizer:
                     if path.name == "session.py":
                         return [path]
                 return target_paths[:1]
+            targeting_summary = dict(report.intake_targeting_summary or {})
+            targeted_elements = {
+                str(name)
+                for name in dict(targeting_summary.get("claim_element_counts") or {}).keys()
+                if str(name)
+            }
+            targeted_focus_areas = {
+                str(name)
+                for name in dict(targeting_summary.get("focus_area_counts") or {}).keys()
+                if str(name)
+            }
             priorities = (
                 ["session.py", "mediator.py", "complainant.py"]
                 if blocker_objectives
@@ -880,6 +1046,12 @@ class Optimizer:
                     "mediator.py",
                 ]
             )
+            if targeted_elements:
+                priorities = ["mediator.py", *priorities]
+            if {"timeline", "chronology", "proof_leads"} & targeted_focus_areas:
+                priorities = ["session.py", "mediator.py", *priorities]
+            if {"actors", "harm_remedy"} & targeted_focus_areas:
+                priorities = ["complainant.py", *priorities]
             selected: List[Path] = []
             seen = set()
             for name in priorities:
@@ -993,17 +1165,425 @@ class Optimizer:
             "ready_for_document_optimization": not blockers,
         }
 
+    @staticmethod
+    def _build_document_evidence_targeting_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        focus_section_counts: Dict[str, int] = {}
+        claim_type_counts: Dict[str, int] = {}
+        claim_element_counts: Dict[str, int] = {}
+        support_kind_counts: Dict[str, int] = {}
+        targets: List[Dict[str, Any]] = []
+
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            workflow_guidance = (
+                final_state.get("workflow_optimization_guidance")
+                if isinstance(final_state.get("workflow_optimization_guidance"), dict)
+                else {}
+            )
+            targeting_summary = (
+                workflow_guidance.get("document_evidence_targeting_summary")
+                if isinstance(workflow_guidance.get("document_evidence_targeting_summary"), dict)
+                else final_state.get("document_evidence_targeting_summary")
+                if isinstance(final_state.get("document_evidence_targeting_summary"), dict)
+                else {}
+            )
+            for item in list(targeting_summary.get("targets") or []):
+                if not isinstance(item, dict):
+                    continue
+                focus_section = str(item.get("focus_section") or "").strip()
+                claim_type = str(item.get("claim_type") or "").strip()
+                claim_element_id = str(item.get("claim_element_id") or "").strip()
+                support_kind = str(item.get("preferred_support_kind") or "").strip()
+                text = str(item.get("text") or "").strip()
+                kind = str(item.get("kind") or "").strip()
+                if not any((focus_section, claim_type, claim_element_id, support_kind, text)):
+                    continue
+                if focus_section:
+                    focus_section_counts[focus_section] = focus_section_counts.get(focus_section, 0) + 1
+                if claim_type:
+                    claim_type_counts[claim_type] = claim_type_counts.get(claim_type, 0) + 1
+                if claim_element_id:
+                    claim_element_counts[claim_element_id] = claim_element_counts.get(claim_element_id, 0) + 1
+                if support_kind:
+                    support_kind_counts[support_kind] = support_kind_counts.get(support_kind, 0) + 1
+                targets.append(
+                    {
+                        "focus_section": focus_section,
+                        "claim_type": claim_type,
+                        "claim_element_id": claim_element_id,
+                        "preferred_support_kind": support_kind,
+                        "kind": kind,
+                        "text": text,
+                    }
+                )
+
+        return {
+            "count": len(targets),
+            "focus_section_counts": focus_section_counts,
+            "claim_type_counts": claim_type_counts,
+            "claim_element_counts": claim_element_counts,
+            "support_kind_counts": support_kind_counts,
+            "targets": targets[:10],
+        }
+
+    @staticmethod
+    def _build_document_workflow_execution_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        focus_section_counts: Dict[str, int] = {}
+        top_support_kind_counts: Dict[str, int] = {}
+        targeted_claim_element_counts: Dict[str, int] = {}
+        preferred_support_kind_counts: Dict[str, int] = {}
+        first_focus_section = ""
+        first_top_support_kind = ""
+        first_targeted_claim_element = ""
+        first_preferred_support_kind = ""
+        iteration_count = 0
+        accepted_iteration_count = 0
+
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            workflow_guidance = (
+                final_state.get("workflow_optimization_guidance")
+                if isinstance(final_state.get("workflow_optimization_guidance"), dict)
+                else {}
+            )
+            execution_summary = (
+                workflow_guidance.get("document_workflow_execution_summary")
+                if isinstance(workflow_guidance.get("document_workflow_execution_summary"), dict)
+                else final_state.get("document_workflow_execution_summary")
+                if isinstance(final_state.get("document_workflow_execution_summary"), dict)
+                else {}
+            )
+            iteration_count += int(execution_summary.get("iteration_count") or 0)
+            accepted_iteration_count += int(execution_summary.get("accepted_iteration_count") or 0)
+            for name, count in dict(execution_summary.get("focus_section_counts") or {}).items():
+                normalized = str(name or "").strip()
+                if normalized:
+                    focus_section_counts[normalized] = focus_section_counts.get(normalized, 0) + int(count or 0)
+            for name, count in dict(execution_summary.get("top_support_kind_counts") or {}).items():
+                normalized = str(name or "").strip()
+                if normalized:
+                    top_support_kind_counts[normalized] = top_support_kind_counts.get(normalized, 0) + int(count or 0)
+            for name, count in dict(execution_summary.get("targeted_claim_element_counts") or {}).items():
+                normalized = str(name or "").strip()
+                if normalized:
+                    targeted_claim_element_counts[normalized] = targeted_claim_element_counts.get(normalized, 0) + int(count or 0)
+            for name, count in dict(execution_summary.get("preferred_support_kind_counts") or {}).items():
+                normalized = str(name or "").strip()
+                if normalized:
+                    preferred_support_kind_counts[normalized] = preferred_support_kind_counts.get(normalized, 0) + int(count or 0)
+            if not first_focus_section:
+                first_focus_section = str(execution_summary.get("first_focus_section") or "").strip()
+            if not first_top_support_kind:
+                first_top_support_kind = str(execution_summary.get("first_top_support_kind") or "").strip()
+            if not first_targeted_claim_element:
+                first_targeted_claim_element = str(execution_summary.get("first_targeted_claim_element") or "").strip()
+            if not first_preferred_support_kind:
+                first_preferred_support_kind = str(execution_summary.get("first_preferred_support_kind") or "").strip()
+
+        return {
+            "iteration_count": iteration_count,
+            "accepted_iteration_count": accepted_iteration_count,
+            "focus_section_counts": focus_section_counts,
+            "top_support_kind_counts": top_support_kind_counts,
+            "targeted_claim_element_counts": targeted_claim_element_counts,
+            "preferred_support_kind_counts": preferred_support_kind_counts,
+            "first_focus_section": first_focus_section,
+            "first_top_support_kind": first_top_support_kind,
+            "first_targeted_claim_element": first_targeted_claim_element,
+            "first_preferred_support_kind": first_preferred_support_kind,
+        }
+
+    @staticmethod
+    def _build_document_execution_drift_summary(
+        *,
+        document_evidence_targeting_summary: Dict[str, Any],
+        document_workflow_execution_summary: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        targeted_counts = (
+            document_evidence_targeting_summary.get("claim_element_counts")
+            if isinstance(document_evidence_targeting_summary.get("claim_element_counts"), dict)
+            else {}
+        )
+        top_targeted_claim_element = ""
+        top_targeted_claim_element_count = 0
+        if targeted_counts:
+            top_targeted_claim_element, top_targeted_claim_element_count = sorted(
+                (
+                    (str(name or "").strip(), int(count or 0))
+                    for name, count in targeted_counts.items()
+                    if str(name or "").strip()
+                ),
+                key=lambda item: (-item[1], item[0]),
+            )[0]
+        first_executed_claim_element = str(
+            document_workflow_execution_summary.get("first_targeted_claim_element") or ""
+        ).strip()
+        return {
+            "drift_flag": bool(
+                top_targeted_claim_element
+                and first_executed_claim_element
+                and top_targeted_claim_element != first_executed_claim_element
+            ),
+            "top_targeted_claim_element": top_targeted_claim_element,
+            "top_targeted_claim_element_count": top_targeted_claim_element_count,
+            "first_executed_claim_element": first_executed_claim_element,
+            "first_focus_section": str(document_workflow_execution_summary.get("first_focus_section") or "").strip(),
+            "first_preferred_support_kind": str(
+                document_workflow_execution_summary.get("first_preferred_support_kind") or ""
+            ).strip(),
+            "iteration_count": int(document_workflow_execution_summary.get("iteration_count") or 0),
+            "accepted_iteration_count": int(document_workflow_execution_summary.get("accepted_iteration_count") or 0),
+        }
+
+    @staticmethod
+    def _build_graph_element_targeting_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        claim_type_counts: Dict[str, int] = {}
+        claim_element_counts: Dict[str, int] = {}
+        focus_area_counts: Dict[str, int] = {}
+        source_counts: Dict[str, int] = {}
+        targets: List[Dict[str, Any]] = []
+
+        def add_target(*, source: str, claim_type: str, claim_element_id: str, focus_areas: List[str], text: str) -> None:
+            normalized_claim_type = str(claim_type or "").strip()
+            normalized_element = str(claim_element_id or "").strip()
+            normalized_focus_areas = [str(item).strip() for item in focus_areas if str(item).strip()]
+            normalized_text = str(text or "").strip()
+            if not any((normalized_claim_type, normalized_element, normalized_focus_areas, normalized_text)):
+                return
+            source_counts[source] = source_counts.get(source, 0) + 1
+            if normalized_claim_type:
+                claim_type_counts[normalized_claim_type] = claim_type_counts.get(normalized_claim_type, 0) + 1
+            if normalized_element:
+                claim_element_counts[normalized_element] = claim_element_counts.get(normalized_element, 0) + 1
+            for focus_area in normalized_focus_areas:
+                focus_area_counts[focus_area] = focus_area_counts.get(focus_area, 0) + 1
+            targets.append(
+                {
+                    "source": source,
+                    "claim_type": normalized_claim_type,
+                    "claim_element_id": normalized_element,
+                    "focus_areas": normalized_focus_areas,
+                    "text": normalized_text,
+                }
+            )
+
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+
+            for action in list(final_state.get("evidence_workflow_action_queue") or []):
+                if not isinstance(action, dict):
+                    continue
+                add_target(
+                    source="evidence_workflow_action",
+                    claim_type=str(action.get("claim_type") or ""),
+                    claim_element_id=str(action.get("claim_element_id") or ""),
+                    focus_areas=list(action.get("focus_areas") or []),
+                    text=str(action.get("action") or ""),
+                )
+
+            for task in list(final_state.get("alignment_evidence_tasks") or []):
+                if not isinstance(task, dict):
+                    continue
+                add_target(
+                    source="alignment_evidence_task",
+                    claim_type=str(task.get("claim_type") or ""),
+                    claim_element_id=str(task.get("claim_element_id") or ""),
+                    focus_areas=list(task.get("fallback_lanes") or []),
+                    text=str(task.get("action") or ""),
+                )
+
+            legal_targeting = final_state.get("intake_legal_targeting_summary")
+            if isinstance(legal_targeting, dict):
+                for claim_type, payload in dict(legal_targeting.get("claims") or {}).items():
+                    if not isinstance(payload, dict):
+                        continue
+                    for element_id in list(payload.get("missing_requirement_element_ids") or []):
+                        add_target(
+                            source="intake_legal_targeting",
+                            claim_type=str(claim_type or ""),
+                            claim_element_id=str(element_id or ""),
+                            focus_areas=["claim_elements"],
+                            text=f"Unresolved legal requirement for {claim_type}",
+                        )
+
+        return {
+            "count": len(targets),
+            "claim_type_counts": claim_type_counts,
+            "claim_element_counts": claim_element_counts,
+            "focus_area_counts": focus_area_counts,
+            "source_counts": source_counts,
+            "targets": targets[:12],
+        }
+
+    @staticmethod
+    def _build_intake_targeting_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        objective_counts: Dict[str, int] = {}
+        claim_element_counts: Dict[str, int] = {}
+        focus_area_counts: Dict[str, int] = {}
+        source_counts: Dict[str, int] = {}
+        targets: List[Dict[str, Any]] = []
+
+        def add_target(*, source: str, objective: str, claim_element_id: str, focus_areas: List[str], text: str) -> None:
+            normalized_objective = str(objective or "").strip()
+            normalized_element = str(claim_element_id or "").strip()
+            normalized_focus_areas = [str(item).strip() for item in focus_areas if str(item).strip()]
+            normalized_text = str(text or "").strip()
+            if not any((normalized_objective, normalized_element, normalized_focus_areas, normalized_text)):
+                return
+            source_counts[source] = source_counts.get(source, 0) + 1
+            if normalized_objective:
+                objective_counts[normalized_objective] = objective_counts.get(normalized_objective, 0) + 1
+            if normalized_element:
+                claim_element_counts[normalized_element] = claim_element_counts.get(normalized_element, 0) + 1
+            for focus_area in normalized_focus_areas:
+                focus_area_counts[focus_area] = focus_area_counts.get(focus_area, 0) + 1
+            targets.append(
+                {
+                    "source": source,
+                    "objective": normalized_objective,
+                    "claim_element_id": normalized_element,
+                    "focus_areas": normalized_focus_areas,
+                    "text": normalized_text,
+                }
+            )
+
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+
+            intake_priority_summary = final_state.get("adversarial_intake_priority_summary")
+            if isinstance(intake_priority_summary, dict):
+                for objective in list(intake_priority_summary.get("uncovered_objectives") or []):
+                    add_target(
+                        source="intake_priority",
+                        objective=str(objective or ""),
+                        claim_element_id="",
+                        focus_areas=["intake_priorities"],
+                        text=f"Uncovered intake objective: {objective}",
+                    )
+
+            for action in list(final_state.get("intake_workflow_action_queue") or []):
+                if not isinstance(action, dict):
+                    continue
+                focus_areas = list(action.get("focus_areas") or [])
+                objective = focus_areas[0] if focus_areas else ""
+                add_target(
+                    source="intake_workflow_action",
+                    objective=str(objective or ""),
+                    claim_element_id=str(action.get("target_element_id") or ""),
+                    focus_areas=focus_areas,
+                    text=str(action.get("action") or ""),
+                )
+
+            legal_targeting = final_state.get("intake_legal_targeting_summary")
+            if isinstance(legal_targeting, dict):
+                for _claim_type, payload in dict(legal_targeting.get("claims") or {}).items():
+                    if not isinstance(payload, dict):
+                        continue
+                    for element_id in list(payload.get("missing_requirement_element_ids") or []):
+                        add_target(
+                            source="intake_legal_targeting",
+                            objective="claim_elements",
+                            claim_element_id=str(element_id or ""),
+                            focus_areas=["claim_elements"],
+                            text=f"Missing intake legal element: {element_id}",
+                        )
+
+        return {
+            "count": len(targets),
+            "objective_counts": objective_counts,
+            "claim_element_counts": claim_element_counts,
+            "focus_area_counts": focus_area_counts,
+            "source_counts": source_counts,
+            "targets": targets[:12],
+        }
+
+    @staticmethod
+    def _build_workflow_targeting_summary(
+        *,
+        intake_targeting_summary: Dict[str, Any],
+        graph_element_targeting_summary: Dict[str, Any],
+        document_evidence_targeting_summary: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        intake = intake_targeting_summary if isinstance(intake_targeting_summary, dict) else {}
+        graph = graph_element_targeting_summary if isinstance(graph_element_targeting_summary, dict) else {}
+        document = (
+            document_evidence_targeting_summary
+            if isinstance(document_evidence_targeting_summary, dict)
+            else {}
+        )
+        phase_summaries = {
+            "intake_questioning": dict(intake),
+            "graph_analysis": dict(graph),
+            "document_generation": dict(document),
+        }
+        phase_counts = {
+            phase_name: int((payload or {}).get("count") or 0)
+            for phase_name, payload in phase_summaries.items()
+        }
+        total_target_count = sum(phase_counts.values())
+        phase_order = [
+            phase_name
+            for phase_name, _count in sorted(
+                phase_counts.items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )
+            if int(phase_counts.get(phase_name) or 0) > 0
+        ]
+
+        shared_claim_elements: Dict[str, int] = {}
+        for payload in phase_summaries.values():
+            for claim_element_id, count in dict(payload.get("claim_element_counts") or {}).items():
+                normalized = str(claim_element_id or "").strip()
+                if not normalized:
+                    continue
+                shared_claim_elements[normalized] = shared_claim_elements.get(normalized, 0) + int(count or 0)
+
+        shared_focus_areas: Dict[str, int] = {}
+        for payload in phase_summaries.values():
+            focus_counts = {}
+            if "focus_area_counts" in payload:
+                focus_counts = dict(payload.get("focus_area_counts") or {})
+            elif "objective_counts" in payload:
+                focus_counts = dict(payload.get("objective_counts") or {})
+            for focus_area, count in focus_counts.items():
+                normalized = str(focus_area or "").strip()
+                if not normalized:
+                    continue
+                shared_focus_areas[normalized] = shared_focus_areas.get(normalized, 0) + int(count or 0)
+
+        return {
+            "count": total_target_count,
+            "phase_counts": phase_counts,
+            "prioritized_phases": phase_order,
+            "shared_claim_element_counts": shared_claim_elements,
+            "shared_focus_area_counts": shared_focus_areas,
+            "phase_summaries": phase_summaries,
+        }
+
     def _build_phase_scorecards(
         self,
         *,
         report: OptimizationReport,
         graph_summary: Dict[str, Any],
+        intake_targeting_summary: Dict[str, Any],
         complaint_type_summary: Dict[str, Any],
         evidence_modality_summary: Dict[str, Any],
         document_handoff_summary: Dict[str, Any],
+        graph_element_targeting_summary: Dict[str, Any],
+        document_evidence_targeting_summary: Dict[str, Any],
+        document_workflow_execution_summary: Dict[str, Any],
+        document_execution_drift_summary: Dict[str, Any],
     ) -> Dict[str, Dict[str, Any]]:
         workflow_phases = dict((report.workflow_phase_plan or {}).get("phases") or {})
         weakest_objectives = self._top_uncovered_intake_objectives(report, limit=5)
+        targeted_intake_objectives = [
+            str(name)
+            for name, _count in sorted(
+                dict((intake_targeting_summary or {}).get("objective_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
         weakest_complaint_types = [
             str(item.get("name") or "")
             for item in list((complaint_type_summary or {}).get("weakest") or [])
@@ -1014,6 +1594,38 @@ class Optimizer:
             for item in list((evidence_modality_summary or {}).get("weakest") or [])
             if str(item.get("name") or "")
         ]
+        graph_targeted_claim_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((graph_element_targeting_summary or {}).get("claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        targeted_claim_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((document_evidence_targeting_summary or {}).get("claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        executed_claim_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((document_workflow_execution_summary or {}).get("targeted_claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        first_executed_claim_element = str(
+            (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
+        ).strip()
+        execution_mismatch_flag = bool(
+            targeted_claim_elements
+            and first_executed_claim_element
+            and first_executed_claim_element != targeted_claim_elements[0]
+        )
         kg_avg_gaps = self._safe_float((graph_summary or {}).get("kg_avg_gaps")) or 0.0
         dg_satisfaction_rate = self._safe_float((graph_summary or {}).get("dg_avg_satisfaction_rate")) or 0.0
         return {
@@ -1023,9 +1635,13 @@ class Optimizer:
                     (float(report.question_quality_avg or 0.0) + float(report.efficiency_avg or 0.0) + float(report.coverage_avg or 0.0)) / 3.0,
                     4,
                 ),
-                "focus_areas": weakest_objectives[:3],
+                "focus_areas": [
+                    *weakest_objectives[:2],
+                    *targeted_intake_objectives[:2],
+                ][:3],
                 "generalization_targets": weakest_complaint_types[:3],
                 "evidence_targets": weakest_modalities[:3],
+                "targeted_intake_objectives": targeted_intake_objectives,
             },
             "graph_analysis": {
                 "status": str((workflow_phases.get("graph_analysis") or {}).get("status") or "ready"),
@@ -1039,6 +1655,7 @@ class Optimizer:
                 ],
                 "generalization_targets": weakest_complaint_types[:3],
                 "evidence_targets": weakest_modalities[:3],
+                "targeted_claim_elements": graph_targeted_claim_elements,
             },
             "document_generation": {
                 "status": str((workflow_phases.get("document_generation") or {}).get("status") or "ready"),
@@ -1050,9 +1667,19 @@ class Optimizer:
                     ) / 3.0,
                     4,
                 ),
-                "focus_areas": list((document_handoff_summary or {}).get("unresolved_intake_objectives") or [])[:3],
+                "focus_areas": [
+                    *list((document_handoff_summary or {}).get("unresolved_intake_objectives") or [])[:2],
+                    *targeted_claim_elements[:2],
+                ][:3],
                 "generalization_targets": weakest_complaint_types[:3],
                 "evidence_targets": weakest_modalities[:3],
+                "targeted_claim_elements": targeted_claim_elements,
+                "executed_claim_elements": executed_claim_elements,
+                "first_executed_claim_element": first_executed_claim_element,
+                "first_focus_section": str((document_workflow_execution_summary or {}).get("first_focus_section") or ""),
+                "first_top_support_kind": str((document_workflow_execution_summary or {}).get("first_top_support_kind") or ""),
+                "execution_mismatch_flag": execution_mismatch_flag,
+                "execution_drift_summary": dict(document_execution_drift_summary or {}),
             },
         }
 
@@ -1084,6 +1711,59 @@ class Optimizer:
                 "Phase scorecards do not show a dominant cross-phase bottleneck; preserve the current handoff order and focus on consistency."
             )
         return findings
+
+    @staticmethod
+    def _build_workflow_action_queue(
+        *,
+        workflow_phase_plan: Dict[str, Any],
+        phase_scorecards: Dict[str, Dict[str, Any]],
+        cross_phase_findings: List[str],
+    ) -> List[Dict[str, Any]]:
+        phases = dict((workflow_phase_plan or {}).get("phases") or {})
+        ordered_names = [
+            str(name)
+            for name in list((workflow_phase_plan or {}).get("recommended_order") or [])
+            if str(name)
+        ]
+        queue: List[Dict[str, Any]] = []
+        for index, phase_name in enumerate(ordered_names, start=1):
+            phase_payload = dict(phases.get(phase_name) or {})
+            scorecard = dict((phase_scorecards or {}).get(phase_name) or {})
+            recommended_actions = [
+                str((item or {}).get("recommended_action") or "").strip()
+                for item in list(phase_payload.get("recommended_actions") or [])
+                if isinstance(item, dict) and str((item or {}).get("recommended_action") or "").strip()
+            ]
+            focus_areas = [
+                str(item).strip()
+                for item in list(scorecard.get("focus_areas") or [])
+                if str(item).strip()
+            ]
+            queue.append(
+                {
+                    "rank": index,
+                    "phase_name": phase_name,
+                    "status": str(phase_payload.get("status") or scorecard.get("status") or "ready"),
+                    "action": recommended_actions[0] if recommended_actions else str(phase_payload.get("summary") or "").strip(),
+                    "focus_areas": focus_areas[:3],
+                    "score": float(scorecard.get("score") or 0.0),
+                }
+            )
+        for finding in list(cross_phase_findings or [])[:3]:
+            text = str(finding or "").strip()
+            if not text:
+                continue
+            queue.append(
+                {
+                    "rank": len(queue) + 1,
+                    "phase_name": "cross_phase",
+                    "status": "warning",
+                    "action": text,
+                    "focus_areas": [],
+                    "score": 0.0,
+                }
+            )
+        return queue
 
     def build_agentic_patch_task(
         self,
@@ -1249,30 +1929,72 @@ class Optimizer:
                 description += " Weak complaint types to generalize for: " + ", ".join(weak_complaint_types[:3]) + "."
             if weak_evidence_modalities:
                 description += " Weak evidence modalities to improve: " + ", ".join(weak_evidence_modalities[:3]) + "."
+            if phase_name == "intake_questioning":
+                targeting_summary = dict(report.intake_targeting_summary or {})
+                targeted_objectives = [
+                    str(name)
+                    for name, _count in sorted(
+                        dict(targeting_summary.get("objective_counts") or {}).items(),
+                        key=lambda item: (-int(item[1] or 0), item[0]),
+                    )[:3]
+                    if str(name)
+                ]
+                targeted_elements = [
+                    str(name)
+                    for name, _count in sorted(
+                        dict(targeting_summary.get("claim_element_counts") or {}).items(),
+                        key=lambda item: (-int(item[1] or 0), item[0]),
+                    )[:2]
+                    if str(name)
+                ]
+                if targeted_objectives:
+                    description += " Intake targets: " + ", ".join(targeted_objectives[:3]) + "."
+                if targeted_elements:
+                    description += " Legal elements to probe: " + ", ".join(targeted_elements[:2]) + "."
             if phase_name == "graph_analysis":
-                description += (
-                    f" Current graph signals: avg_gaps={graph_signal_context['kg_avg_gaps']:.2f}, "
-                    f"gap_delta_per_iter={graph_signal_context['kg_avg_gaps_delta_per_iter']:.2f}, "
-                    f"dependency_satisfaction={graph_signal_context['dg_avg_satisfaction_rate']:.2f}, "
-                    f"gap_stall_sessions={graph_signal_context['kg_sessions_gaps_not_reducing']}."
-                )
-            elif phase_name == "intake_questioning":
-                description += (
-                    f" Current intake signals: question_quality={intake_signal_context['question_quality_avg']:.2f}, "
-                    f"empathy={intake_signal_context['empathy_avg']:.2f}, "
-                    f"efficiency={intake_signal_context['efficiency_avg']:.2f}."
-                )
-                unresolved = ", ".join(str(v) for v in intake_signal_context["uncovered_intake_objectives"][:5])
-                if unresolved:
-                    description += f" Unresolved intake objectives: {unresolved}."
-            elif phase_name == "document_generation":
-                blockers = ", ".join(str(v) for v in document_signal_context["document_blockers"][:5])
-                description += (
-                    f" Current document signals: coverage={document_signal_context['coverage_avg']:.2f}, "
-                    f"phase_status={document_signal_context['document_generation_status']}."
-                )
-                if blockers:
-                    description += f" Current document blockers: {blockers}."
+                targeting_summary = dict(report.graph_element_targeting_summary or {})
+                targeted_elements = [
+                    str(name)
+                    for name, _count in sorted(
+                        dict(targeting_summary.get("claim_element_counts") or {}).items(),
+                        key=lambda item: (-int(item[1] or 0), item[0]),
+                    )[:3]
+                    if str(name)
+                ]
+                targeted_focus_areas = [
+                    str(name)
+                    for name, _count in sorted(
+                        dict(targeting_summary.get("focus_area_counts") or {}).items(),
+                        key=lambda item: (-int(item[1] or 0), item[0]),
+                    )[:2]
+                    if str(name)
+                ]
+                if targeted_elements:
+                    description += " Graph evidence targets: " + ", ".join(targeted_elements[:3]) + "."
+                if targeted_focus_areas:
+                    description += " Graph focus areas: " + ", ".join(targeted_focus_areas[:2]) + "."
+            if phase_name == "document_generation":
+                targeting_summary = dict(report.document_evidence_targeting_summary or {})
+                targeted_elements = [
+                    str(name)
+                    for name, _count in sorted(
+                        dict(targeting_summary.get("claim_element_counts") or {}).items(),
+                        key=lambda item: (-int(item[1] or 0), item[0]),
+                    )[:3]
+                    if str(name)
+                ]
+                targeted_support_kinds = [
+                    str(name)
+                    for name, _count in sorted(
+                        dict(targeting_summary.get("support_kind_counts") or {}).items(),
+                        key=lambda item: (-int(item[1] or 0), item[0]),
+                    )[:2]
+                    if str(name)
+                ]
+                if targeted_elements:
+                    description += " Draft loop evidence targets: " + ", ".join(targeted_elements[:3]) + "."
+                if targeted_support_kinds:
+                    description += " Preferred support lanes: " + ", ".join(targeted_support_kinds[:2]) + "."
 
             tasks.append(
                 task_cls(
@@ -1303,6 +2025,12 @@ class Optimizer:
                             else {}
                         ),
                         "cross_phase_findings": list(report.cross_phase_findings or []),
+                        "intake_targeting_summary": dict(report.intake_targeting_summary or {}),
+                        "workflow_targeting_summary": dict(report.workflow_targeting_summary or {}),
+                        "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
+                        "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
+                        "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
+                        "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                         "report_summary": {
                             "average_score": report.average_score,
                             "score_trend": report.score_trend,
@@ -1312,6 +2040,12 @@ class Optimizer:
                             "evidence_modality_performance": evidence_modality_performance,
                             "phase_scorecards": dict(report.phase_scorecards or {}),
                             "document_handoff_summary": dict(report.document_handoff_summary or {}),
+                            "intake_targeting_summary": dict(report.intake_targeting_summary or {}),
+                            "workflow_targeting_summary": dict(report.workflow_targeting_summary or {}),
+                            "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
+                            "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
+                            "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
+                            "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                             "cross_phase_findings": list(report.cross_phase_findings or []),
                         },
                         **dict(metadata or {}),
@@ -1369,10 +2103,17 @@ class Optimizer:
             "intake_priority_performance": dict(report.intake_priority_performance or {}),
             "coverage_remediation": dict(report.coverage_remediation or {}),
             "phase_scorecards": dict(report.phase_scorecards or {}),
+            "intake_targeting_summary": dict(report.intake_targeting_summary or {}),
+            "workflow_targeting_summary": dict(report.workflow_targeting_summary or {}),
             "complaint_type_generalization_summary": dict(report.complaint_type_generalization_summary or {}),
             "evidence_modality_generalization_summary": dict(report.evidence_modality_generalization_summary or {}),
             "document_handoff_summary": dict(report.document_handoff_summary or {}),
+            "graph_element_targeting_summary": dict(report.graph_element_targeting_summary or {}),
+            "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
+            "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
+            "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
             "cross_phase_findings": list(report.cross_phase_findings or []),
+            "workflow_action_queue": list(report.workflow_action_queue or []),
         }
         bundle = WorkflowOptimizationBundle(
             timestamp=datetime.now(UTC).isoformat(),
@@ -1389,6 +2130,7 @@ class Optimizer:
             shared_context=shared_context,
             phase_scorecards=dict(report.phase_scorecards or {}),
             cross_phase_findings=list(report.cross_phase_findings or []),
+            workflow_action_queue=list(report.workflow_action_queue or []),
         )
         return bundle, report
 
@@ -1900,6 +2642,12 @@ class Optimizer:
             anchor_missing=self._most_common(all_anchor_missing, top_n=5),
             intake_priority_performance=intake_priority_performance,
         )
+        document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(successful)
+        document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
+        document_execution_drift_summary = self._build_document_execution_drift_summary(
+            document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_workflow_execution_summary=document_workflow_execution_summary,
+        )
         workflow_phase_plan = self._build_workflow_phase_plan(
             question_quality_avg=sum(question_quality_scores) / len(question_quality_scores),
             information_extraction_avg=sum(info_extraction_scores) / len(info_extraction_scores),
@@ -1922,6 +2670,8 @@ class Optimizer:
                 "kg_sessions_gaps_not_reducing": kg_gaps_not_reducing,
             },
             coverage_remediation=coverage_remediation,
+            document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_workflow_execution_summary=document_workflow_execution_summary,
         )
         recommended_hacc_preset = None
         if hacc_preset_performance:
@@ -1999,6 +2749,72 @@ class Optimizer:
                     "Improve evidence-modality coverage: " + ", ".join(weak_modalities[:3]),
                 )
 
+        graph_element_targeting_summary = self._build_graph_element_targeting_summary(successful)
+        graph_targeted_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((graph_element_targeting_summary or {}).get("claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        if graph_targeted_elements:
+            recommendations.append(
+                "Graph analysis is repeatedly targeting these claim elements for stronger structure and support propagation: "
+                + ", ".join(graph_targeted_elements)
+                + ". Improve KG/DG updates and denoiser routing for those elements."
+            )
+            priority_improvements.insert(
+                0,
+                "Improve graph element targeting: " + ", ".join(graph_targeted_elements[:3]),
+            )
+
+        targeted_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((document_evidence_targeting_summary or {}).get("claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        targeted_support_kinds = [
+            str(name)
+            for name, _count in sorted(
+                dict((document_evidence_targeting_summary or {}).get("support_kind_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:2]
+            if str(name)
+        ]
+        if targeted_elements:
+            recommendations.append(
+                "Document optimization is repeatedly targeting these claim elements for stronger support: "
+                + ", ".join(targeted_elements)
+                + ". Improve drafting handoff and support retrieval for those elements."
+            )
+            if targeted_support_kinds:
+                priority_improvements.insert(
+                    0,
+                    "Improve document-evidence targeting for "
+                    + ", ".join(targeted_elements[:2])
+                    + " via "
+                    + ", ".join(targeted_support_kinds),
+                )
+        first_executed_claim_element = str(
+            (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
+        ).strip()
+        if targeted_elements and first_executed_claim_element and first_executed_claim_element != targeted_elements[0]:
+            recommendations.append(
+                "Document optimization is not acting on the highest-priority targeted claim element first. "
+                f"Targeted first element should be {targeted_elements[0]}, but drafting acted on {first_executed_claim_element}."
+            )
+            priority_improvements.insert(
+                0,
+                "Align document execution with targeting priorities: "
+                + targeted_elements[0]
+                + " before "
+                + first_executed_claim_element,
+            )
+
         if intake_priority_performance:
             weakest_objectives = [
                 (name, payload)
@@ -2037,6 +2853,40 @@ class Optimizer:
             if anchor_focus:
                 priority_improvements.insert(0, f"Close anchor-section coverage gaps: {anchor_focus}")
         
+        intake_targeting_summary = self._build_intake_targeting_summary(successful)
+        targeted_intake_objectives = [
+            str(name)
+            for name, _count in sorted(
+                dict((intake_targeting_summary or {}).get("objective_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        targeted_intake_elements = [
+            str(name)
+            for name, _count in sorted(
+                dict((intake_targeting_summary or {}).get("claim_element_counts") or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name)
+        ]
+        if targeted_intake_objectives or targeted_intake_elements:
+            recommendations.append(
+                "Intake questioning is repeatedly targeting these objectives/elements: "
+                + ", ".join((targeted_intake_objectives + targeted_intake_elements)[:4])
+                + ". Improve intake routing, fallback prompts, and legal-element probes for those gaps."
+            )
+            priority_improvements.insert(
+                0,
+                "Improve intake targeting: " + ", ".join((targeted_intake_objectives + targeted_intake_elements)[:3]),
+            )
+
+        workflow_targeting_summary = self._build_workflow_targeting_summary(
+            intake_targeting_summary=intake_targeting_summary,
+            graph_element_targeting_summary=graph_element_targeting_summary,
+            document_evidence_targeting_summary=document_evidence_targeting_summary,
+        )
+
         complaint_type_generalization_summary = self._build_generalization_summary(
             complaint_type_performance,
             avg_score,
@@ -2109,21 +2959,38 @@ class Optimizer:
             recommended_hacc_preset=recommended_hacc_preset,
             workflow_phase_plan=workflow_phase_plan,
             phase_scorecards=phase_scorecards_placeholder,
+            intake_targeting_summary=intake_targeting_summary,
+            workflow_targeting_summary=workflow_targeting_summary,
             complaint_type_generalization_summary=complaint_type_generalization_summary,
             evidence_modality_generalization_summary=evidence_modality_generalization_summary,
             document_handoff_summary=document_handoff_summary,
+            graph_element_targeting_summary=graph_element_targeting_summary,
+            document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_workflow_execution_summary=document_workflow_execution_summary,
+            document_execution_drift_summary=document_execution_drift_summary,
             cross_phase_findings=[],
+            workflow_action_queue=[],
         )
         report.phase_scorecards = self._build_phase_scorecards(
             report=report,
             graph_summary=graph_summary_payload,
+            intake_targeting_summary=intake_targeting_summary,
             complaint_type_summary=complaint_type_generalization_summary,
             evidence_modality_summary=evidence_modality_generalization_summary,
             document_handoff_summary=document_handoff_summary,
+            graph_element_targeting_summary=graph_element_targeting_summary,
+            document_evidence_targeting_summary=document_evidence_targeting_summary,
+            document_workflow_execution_summary=document_workflow_execution_summary,
+            document_execution_drift_summary=document_execution_drift_summary,
         )
         report.cross_phase_findings = self._build_cross_phase_findings(
             phase_scorecards=report.phase_scorecards,
             document_handoff_summary=document_handoff_summary,
+        )
+        report.workflow_action_queue = self._build_workflow_action_queue(
+            workflow_phase_plan=report.workflow_phase_plan,
+            phase_scorecards=report.phase_scorecards,
+            cross_phase_findings=report.cross_phase_findings,
         )
         
         self.history.append(report)

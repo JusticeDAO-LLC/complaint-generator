@@ -315,6 +315,11 @@ def main() -> int:
         "statistics": statistics,
         "workflow_phase_plan": optimizer_payload.get("workflow_phase_plan") or {},
         "workflow_optimization_bundle": workflow_bundle_payload,
+        "document_execution_drift_summary": (
+            optimizer_payload.get("document_execution_drift_summary")
+            if isinstance(optimizer_payload.get("document_execution_drift_summary"), dict)
+            else {}
+        ),
         "workflow_phase_task_count": len(workflow_phase_tasks),
         "workflow_phase_autopatch_count": len(workflow_phase_autopatch_results),
         "artifacts": {

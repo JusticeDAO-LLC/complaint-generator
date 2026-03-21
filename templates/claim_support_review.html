@@ -2807,6 +2807,15 @@
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object'
                 ? intakeCaseSummary.claim_support_packet_summary
                 : {};
+            const workflowTargetingSummary = intakeCaseSummary.workflow_targeting_summary && typeof intakeCaseSummary.workflow_targeting_summary === 'object'
+                ? intakeCaseSummary.workflow_targeting_summary
+                : {};
+            const documentWorkflowExecutionSummary = intakeCaseSummary.document_workflow_execution_summary && typeof intakeCaseSummary.document_workflow_execution_summary === 'object'
+                ? intakeCaseSummary.document_workflow_execution_summary
+                : {};
+            const documentExecutionDriftSummary = intakeCaseSummary.document_execution_drift_summary && typeof intakeCaseSummary.document_execution_drift_summary === 'object'
+                ? intakeCaseSummary.document_execution_drift_summary
+                : {};
             const workflowPhasePlan = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_plan && typeof reviewRenderState.payload.workflow_phase_plan === 'object'
                 ? reviewRenderState.payload.workflow_phase_plan
                 : {};
@@ -3027,6 +3036,72 @@
                 workflowPhaseGuidanceCard.hidden = true;
                 workflowPhaseGuidanceChips.innerHTML = '';
                 workflowPhaseGuidanceNotes.textContent = '';
+            }
+
+            const workflowTargetingCount = Number(workflowTargetingSummary.count || 0);
+            if (workflowTargetingCount) {
+                const workflowTargetingPhaseCounts = workflowTargetingSummary.phase_counts && typeof workflowTargetingSummary.phase_counts === 'object'
+                    ? workflowTargetingSummary.phase_counts
+                    : {};
+                const workflowTargetingSharedElements = workflowTargetingSummary.shared_claim_element_counts && typeof workflowTargetingSummary.shared_claim_element_counts === 'object'
+                    ? workflowTargetingSummary.shared_claim_element_counts
+                    : {};
+                const workflowTargetingSharedFocusAreas = workflowTargetingSummary.shared_focus_area_counts && typeof workflowTargetingSummary.shared_focus_area_counts === 'object'
+                    ? workflowTargetingSummary.shared_focus_area_counts
+                    : {};
+                const prioritizedWorkflowTargetingPhases = Array.isArray(workflowTargetingSummary.prioritized_phases)
+                    ? workflowTargetingSummary.prioritized_phases.filter(Boolean)
+                    : [];
+                const workflowTargetingChips = [
+                    `<span class="chip">workflow targets: ${workflowTargetingCount}</span>`,
+                    ...Object.entries(workflowTargetingPhaseCounts).map(([phaseName, count]) =>
+                        `<span class="chip">phase ${humanizeQueryValue(phaseName)}: ${Number(count || 0)}</span>`
+                    ),
+                ];
+                const sharedElementLabels = Object.keys(workflowTargetingSharedElements).slice(0, 3).map((value) => humanizeQueryValue(value));
+                const sharedFocusLabels = Object.keys(workflowTargetingSharedFocusAreas).slice(0, 3).map((value) => humanizeQueryValue(value));
+                workflowPhaseGuidanceCard.hidden = false;
+                workflowPhaseGuidanceChips.innerHTML = `${workflowPhaseGuidanceChips.innerHTML}${workflowTargetingChips.join('')}`;
+                workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="workflow-targeting-summary-block" style="margin-top: 10px;"><strong>Workflow Targeting Summary</strong><div class="chip-row" id="workflow-targeting-summary-chips" style="margin-top: 8px;">${workflowTargetingChips.join('')}</div><div id="workflow-targeting-summary-notes" style="margin-top: 8px;">Prioritized phases: ${escapeHtml(prioritizedWorkflowTargetingPhases.map((value) => humanizeQueryValue(value)).join(', ') || 'none')}. Shared claim elements: ${escapeHtml(sharedElementLabels.join(', ') || 'none')}. Shared focus areas: ${escapeHtml(sharedFocusLabels.join(', ') || 'none')}.</div></div>`;
+            }
+            const documentWorkflowExecutionCount = Number(documentWorkflowExecutionSummary.iteration_count || 0);
+            if (documentWorkflowExecutionCount) {
+                const firstExecutionElement = String(documentWorkflowExecutionSummary.first_targeted_claim_element || '').trim();
+                const firstExecutionSection = String(documentWorkflowExecutionSummary.first_focus_section || '').trim();
+                const firstExecutionSupportKind = String(documentWorkflowExecutionSummary.first_preferred_support_kind || '').trim();
+                const targetedElementCounts = workflowTargetingSummary.shared_claim_element_counts && typeof workflowTargetingSummary.shared_claim_element_counts === 'object'
+                    ? workflowTargetingSummary.shared_claim_element_counts
+                    : {};
+                const topTargetedElement = Object.entries(targetedElementCounts)
+                    .sort((left, right) => {
+                        const rightCount = Number(right[1] || 0);
+                        const leftCount = Number(left[1] || 0);
+                        if (rightCount !== leftCount) {
+                            return rightCount - leftCount;
+                        }
+                        return String(left[0] || '').localeCompare(String(right[0] || ''));
+                    })
+                    .map(([name]) => String(name || '').trim())
+                    .find(Boolean) || '';
+                const driftTopTargetedElement = String(documentExecutionDriftSummary.top_targeted_claim_element || '').trim();
+                const driftFirstExecutedElement = String(documentExecutionDriftSummary.first_executed_claim_element || '').trim();
+                const resolvedTopTargetedElement = driftTopTargetedElement || topTargetedElement;
+                const resolvedFirstExecutedElement = driftFirstExecutedElement || firstExecutionElement;
+                const executionMismatch = Boolean(documentExecutionDriftSummary.drift_flag || (resolvedTopTargetedElement && resolvedFirstExecutedElement && resolvedTopTargetedElement !== resolvedFirstExecutedElement));
+                const executionChips = [
+                    `<span class="chip">document workflow iterations: ${documentWorkflowExecutionCount}</span>`,
+                    `<span class="chip">accepted iterations: ${Number(documentWorkflowExecutionSummary.accepted_iteration_count || 0)}</span>`,
+                    firstExecutionSection ? `<span class="chip">first focus section: ${humanizeQueryValue(firstExecutionSection)}</span>` : '',
+                    firstExecutionElement ? `<span class="chip">first executed element: ${humanizeQueryValue(firstExecutionElement)}</span>` : '',
+                    firstExecutionSupportKind ? `<span class="chip">first support lane: ${humanizeQueryValue(firstExecutionSupportKind)}</span>` : '',
+                    executionMismatch && resolvedTopTargetedElement ? `<span class="chip">drafting priority: realign to ${humanizeQueryValue(resolvedTopTargetedElement)}</span>` : '',
+                    executionMismatch ? '<span class="chip">execution drift: yes</span>' : '<span class="chip">execution drift: no</span>',
+                ].filter(Boolean);
+                const executionNotes = executionMismatch
+                    ? `Drafting acted on ${humanizeQueryValue(resolvedFirstExecutedElement)} first, while workflow targeting emphasized ${humanizeQueryValue(resolvedTopTargetedElement)}. Realign drafting to ${humanizeQueryValue(resolvedTopTargetedElement)} before further revisions.`
+                    : `Drafting execution is aligned with the current workflow targeting priorities${firstExecutionElement ? ` for ${humanizeQueryValue(firstExecutionElement)}` : ''}.`;
+                workflowPhaseGuidanceCard.hidden = false;
+                workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-workflow-execution-summary-block" style="margin-top: 10px;"><strong>Document Workflow Execution Summary</strong><div class="chip-row" id="document-workflow-execution-summary-chips" style="margin-top: 8px;">${executionChips.join('')}</div><div id="document-workflow-execution-summary-notes" style="margin-top: 8px;">${escapeHtml(executionNotes)}</div></div>`;
             }
 
             if (recentValidationOutcome.claim_element_id || recentValidationOutcome.claim_type) {

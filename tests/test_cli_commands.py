@@ -121,6 +121,18 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'promotion_kind': 'document',
                 'promotion_ref': 'doc:retaliation:1',
             },
+            'document_workflow_execution_summary': {
+                'iteration_count': 2,
+                'accepted_iteration_count': 1,
+                'first_focus_section': 'claims_for_relief',
+                'first_targeted_claim_element': 'causation',
+                'first_preferred_support_kind': 'testimony',
+            },
+            'document_execution_drift_summary': {
+                'drift_flag': True,
+                'top_targeted_claim_element': 'protected_activity',
+                'first_executed_claim_element': 'causation',
+            },
         },
         'claim_coverage_summary': {
             'retaliation': {
@@ -265,6 +277,8 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert '- phase=evidence ready=false score=0.67 gaps=1 contradictions=0' in rendered
     assert 'next_action: validate_promoted_support targets=2' in rendered
     assert 'primary_validation_target: Retaliation / Adverse Action [Document] ref=doc:retaliation:1' in rendered
+    assert 'document_execution: iterations=2 accepted=1 first=Claims For Relief / Causation [Testimony]' in rendered
+    assert 'drafting_priority: realign to Protected Activity before further revisions (executed Causation first)' in rendered
     assert 'claim review quality summary:' in rendered
     assert '- retaliation: low_quality=2 issue_elements=1 avg_quality=62.50 authority_supportive=1 authority_adverse=1 authority_uncertain=1' in rendered
     assert 'refresh: Causal connection' in rendered

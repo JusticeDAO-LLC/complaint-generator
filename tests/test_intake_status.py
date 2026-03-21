@@ -75,6 +75,7 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
                 "promotion_ref": "doc:retaliation:1",
             },
         },
+        "document_drafting_next_action": {},
         "primary_validation_target": {
             "claim_type": "retaliation",
             "claim_element_id": "adverse_action",
@@ -102,6 +103,48 @@ def test_build_intake_status_summary_preserves_legacy_alias_fields():
         "canonical_fact_count": 2,
         "proof_lead_count": 0,
     }
+
+
+def test_build_intake_status_summary_includes_document_drafting_next_action_from_drift():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "intake_readiness": {
+            "score": 0.61,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": [],
+            "criteria": {},
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        },
+        "next_action": {
+            "action": "validate_promoted_support",
+            "validation_target_count": 1,
+        },
+        "document_execution_drift_summary": {
+            "drift_flag": True,
+            "top_targeted_claim_element": "protected_activity",
+            "first_executed_claim_element": "causation",
+            "first_focus_section": "claims_for_relief",
+            "first_preferred_support_kind": "testimony",
+        },
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["document_drafting_next_action"] == {
+        "action": "realign_document_drafting",
+        "phase_name": "document_generation",
+        "description": "Realign drafting to protected_activity before further revisions; the draft loop acted on causation first.",
+        "claim_element_id": "protected_activity",
+        "executed_claim_element_id": "causation",
+        "focus_section": "claims_for_relief",
+        "preferred_support_kind": "testimony",
+    }
+    assert summary["next_action"]["document_drafting_next_action"] == summary["document_drafting_next_action"]
 
 
 def test_build_intake_case_review_summary_returns_additive_structured_fields():
@@ -353,6 +396,54 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
                 },
             ],
         },
+        "evidence_workflow_action_queue": [
+            {
+                "rank": 1,
+                "phase_name": "graph_analysis",
+                "action": "Collect chronology support for protected activity.",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "claim_element_label": "Protected activity",
+                "focus_areas": ["protected_activity", "chronology"],
+                "status": "warning",
+            }
+        ],
+        "evidence_workflow_action_summary": {
+            "count": 1,
+            "phase_counts": {"graph_analysis": 1},
+            "focus_area_counts": {"protected_activity": 1, "chronology": 1},
+            "status_counts": {"warning": 1},
+        },
+        "workflow_targeting_summary": {
+            "count": 4,
+            "phase_counts": {
+                "intake_questioning": 2,
+                "graph_analysis": 1,
+                "document_generation": 1,
+            },
+            "prioritized_phases": ["intake_questioning", "document_generation", "graph_analysis"],
+            "shared_claim_element_counts": {"protected_activity": 2},
+            "shared_focus_area_counts": {"timeline": 2},
+        },
+        "document_workflow_execution_summary": {
+            "iteration_count": 2,
+            "accepted_iteration_count": 1,
+            "focus_section_counts": {"claims_for_relief": 1, "factual_allegations": 1},
+            "top_support_kind_counts": {"workflow_targeting_claim_element": 1, "evidence_workflow_action": 1},
+            "targeted_claim_element_counts": {"causation": 1, "protected_activity": 1},
+            "preferred_support_kind_counts": {"testimony": 1, "document": 1},
+            "first_focus_section": "claims_for_relief",
+            "first_top_support_kind": "workflow_targeting_claim_element",
+            "first_targeted_claim_element": "causation",
+            "first_preferred_support_kind": "testimony",
+        },
+        "document_execution_drift_summary": {
+            "drift_flag": True,
+            "top_targeted_claim_element": "protected_activity",
+            "first_executed_claim_element": "causation",
+            "first_focus_section": "claims_for_relief",
+            "first_preferred_support_kind": "testimony",
+        },
         "next_action": {
             "action": "validate_promoted_support",
             "pending_conversion_count": 2,
@@ -522,6 +613,22 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["alignment_validation_focus_summary"]["promotion_kind_counts"] == {
         "testimony": 1,
         "document": 1,
+    }
+    assert summary["evidence_workflow_action_queue"][0]["claim_element_id"] == "protected_activity"
+    assert summary["evidence_workflow_action_summary"]["count"] == 1
+    assert summary["evidence_workflow_action_summary"]["phase_counts"] == {"graph_analysis": 1}
+    assert summary["workflow_targeting_summary"]["count"] == 4
+    assert summary["workflow_targeting_summary"]["phase_counts"]["intake_questioning"] == 2
+    assert summary["document_workflow_execution_summary"]["iteration_count"] == 2
+    assert summary["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
+    assert summary["document_drafting_next_action"] == {
+        "action": "realign_document_drafting",
+        "phase_name": "document_generation",
+        "description": "Realign drafting to protected_activity before further revisions; the draft loop acted on causation first.",
+        "claim_element_id": "protected_activity",
+        "executed_claim_element_id": "causation",
+        "focus_section": "claims_for_relief",
+        "preferred_support_kind": "testimony",
     }
     assert summary["recent_validation_outcome"]["resolution_status"] == "resolved_supported"
     assert summary["recent_validation_outcome"]["improved"] is True

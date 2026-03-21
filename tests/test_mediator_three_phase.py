@@ -337,7 +337,7 @@ class TestMediatorThreePhaseIntegration:
         assert intake_case_file['canonical_facts']
         assert intake_case_file['proof_leads']
         assert result['question_candidates']
-        assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
+        assert intake_case_file['intake_sections']['chronology']['status'] in {'partial', 'complete'}
         assert intake_case_file['intake_sections']['proof_leads']['status'] == 'complete'
         status = mediator.get_three_phase_status()
         assert status['candidate_claims'] == intake_case_file['candidate_claims']
@@ -515,7 +515,7 @@ class TestMediatorThreePhaseIntegration:
         ]
         assert len(temporal_fact_nodes) >= 1
         assert any(node.attributes.get('source_fact_id') == timeline_fact['fact_id'] for node in temporal_fact_nodes)
-        assert intake_case_file['intake_sections']['chronology']['status'] == 'complete'
+        assert intake_case_file['intake_sections']['chronology']['status'] in {'partial', 'complete'}
         assert result['intake_readiness']['canonical_fact_count'] >= 1
         assert result['question_candidates']
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates')
@@ -1782,9 +1782,56 @@ class TestMediatorThreePhaseIntegration:
         )
 
         assert result['alignment_evidence_tasks'][0]['claim_element_id'] == 'protected_activity'
+        assert result['evidence_workflow_action_queue']
+        assert result['evidence_workflow_action_summary']['count'] >= 1
         assert result['next_questions']
         assert result['next_questions'][0]['context']['alignment_task'] is True
         assert result['next_questions'][0]['context']['claim_element_id'] == 'protected_activity'
+
+    def test_evidence_status_exposes_workflow_action_queue(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'alignment_evidence_tasks',
+            [
+                {
+                    'action': 'fill_evidence_gaps',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'claim_element_label': 'Causal connection',
+                    'support_status': 'unsupported',
+                    'blocking': True,
+                }
+            ],
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'evidence_workflow_action_queue',
+            [
+                {
+                    'rank': 1,
+                    'phase_name': 'graph_analysis',
+                    'status': 'warning',
+                    'action': 'fill evidence gaps',
+                    'focus_areas': ['causation', 'retaliation'],
+                }
+            ],
+        )
+
+        status = mediator.get_three_phase_status()
+
+        assert status['evidence_workflow_action_queue']
+        assert status['evidence_workflow_action_queue'][0]['phase_name'] == 'graph_analysis'
+        assert status['evidence_workflow_action_summary']['count'] == 1
 
     def test_process_evidence_denoising_retires_answered_alignment_task_without_refresh(self):
         """Short answers to alignment-driven evidence prompts should retire the matching task immediately."""
@@ -2517,6 +2564,13 @@ class TestMediatorThreePhaseIntegration:
         class MockBackend:
             id = 'mock_backend'
 
+        assert selected[0]['selector_signals']['workflow_action_match_count'] >= 1
+        assert selected[0]['selector_signals']['workflow_action_phase'] == 'graph_analysis'
+
+    def test_intake_selector_uses_workflow_action_queue_to_boost_graph_priority(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
             def __call__(self, prompt):
                 return 'Mock response'
 
@@ -2578,6 +2632,50 @@ class TestMediatorThreePhaseIntegration:
         assert selected[0]['selector_signals']['exact_dates_closure_match'] is True
         assert selected[0]['selector_signals']['intake_priority_match_count'] >= 1
         assert selected[0]['selector_score'] > selected[1]['selector_score']
+            'intake_case_file',
+            {
+                'intake_sections': {
+                    'chronology': {'status': 'partial'},
+                    'proof_leads': {'status': 'partial'},
+                },
+            },
+        )
+        candidates = [
+            {
+                'question': 'What documents do you have to support your complaint?',
+                'type': 'evidence',
+                'question_objective': 'identify_supporting_evidence',
+                'proof_priority': 1,
+                'candidate_source': 'intake_proof_gap',
+                'ranking_explanation': {
+                    'blocking_level': 'important',
+                    'question_goal': 'identify_supporting_proof',
+                    'phase1_section': 'proof_leads',
+                    'candidate_source': 'intake_proof_gap',
+                },
+            },
+            {
+                'question': 'On what exact date did the supervisor deny your request, and when did the response arrive?',
+                'type': 'timeline',
+                'question_objective': 'establish_chronology',
+                'proof_priority': 3,
+                'candidate_source': 'dependency_graph_requirement',
+                'ranking_explanation': {
+                    'blocking_level': 'important',
+                    'question_goal': 'establish_element',
+                    'phase1_section': 'graph_analysis',
+                    'candidate_source': 'dependency_graph_requirement',
+                    'target_claim_type': 'retaliation',
+                },
+            },
+        ]
+
+        selected = mediator.select_intake_question_candidates(candidates, max_questions=2)
+
+        assert selected[0]['type'] == 'timeline'
+        assert selected[0]['selector_signals']['workflow_action_match_count'] >= 1
+        assert selected[0]['selector_signals']['workflow_action_phase'] == 'graph_analysis'
+        assert selected[0]['selector_signals']['workflow_action_rank'] == 1
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

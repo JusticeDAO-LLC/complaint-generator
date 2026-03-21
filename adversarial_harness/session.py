@@ -521,6 +521,67 @@ class AdversarialSession:
         return any(term in text for term in witness_terms)
 
     @staticmethod
+    def _build_runtime_workflow_guidance(final_state: Dict[str, Any]) -> Dict[str, Any]:
+        state = final_state if isinstance(final_state, dict) else {}
+        intake_sections = state.get('intake_sections') if isinstance(state.get('intake_sections'), dict) else {}
+        question_summary = state.get('question_candidate_summary') if isinstance(state.get('question_candidate_summary'), dict) else {}
+        packet_summary = state.get('claim_support_packet_summary') if isinstance(state.get('claim_support_packet_summary'), dict) else {}
+        alignment_summary = state.get('alignment_task_summary') if isinstance(state.get('alignment_task_summary'), dict) else {}
+
+        intake_focus_areas = [
+            str(section_name)
+            for section_name, payload in intake_sections.items()
+            if isinstance(payload, dict) and str(payload.get('status') or '').strip().lower() != 'complete'
+        ]
+        graph_focus_areas = []
+        if int(packet_summary.get('unsupported_element_count') or 0) > 0:
+            graph_focus_areas.append('unsupported_claim_elements')
+        if int(alignment_summary.get('temporal_gap_task_count') or 0) > 0:
+            graph_focus_areas.append('temporal_support_gaps')
+        if int(alignment_summary.get('count') or 0) > 0:
+            graph_focus_areas.append('alignment_evidence_tasks')
+
+        current_phase = str(state.get('current_phase') or '').strip().lower()
+        document_status = 'ready'
+        if current_phase in {'intake', 'evidence'}:
+            document_status = 'warning'
+
+        cross_phase_findings: List[str] = []
+        if intake_focus_areas and graph_focus_areas:
+            cross_phase_findings.append(
+                'Unresolved intake gaps are still limiting graph-supported claim development in this session.'
+            )
+        if current_phase == 'evidence' and graph_focus_areas:
+            cross_phase_findings.append(
+                'Evidence alignment gaps remain open, so the complaint is not yet ready for final drafting.'
+            )
+
+        if not any((intake_focus_areas, graph_focus_areas, cross_phase_findings, question_summary)):
+            return {}
+
+        return {
+            'phase_scorecards': {
+                'intake_questioning': {
+                    'status': 'warning' if intake_focus_areas else 'ready',
+                    'focus_areas': intake_focus_areas,
+                    'question_candidate_count': int(question_summary.get('count') or 0),
+                },
+                'graph_analysis': {
+                    'status': 'warning' if graph_focus_areas else 'ready',
+                    'focus_areas': graph_focus_areas,
+                    'unsupported_element_count': int(packet_summary.get('unsupported_element_count') or 0),
+                    'alignment_task_count': int(alignment_summary.get('count') or 0),
+                },
+                'document_generation': {
+                    'status': document_status,
+                    'focus_areas': ['await_phase_completion'] if document_status != 'ready' else [],
+                    'current_phase': current_phase,
+                },
+            },
+            'cross_phase_findings': cross_phase_findings,
+        }
+
+    @staticmethod
     def _is_contradiction_resolution_question(question: Any) -> bool:
         objective = AdversarialSession._extract_question_objective(question)
         question_type = AdversarialSession._extract_question_type(question)
@@ -3784,6 +3845,13 @@ class AdversarialSession:
             
             # Step 4: Get final state
             final_state = self.mediator.get_three_phase_status()
+            if isinstance(final_state, dict):
+                runtime_workflow_guidance = self._build_runtime_workflow_guidance(final_state)
+                if runtime_workflow_guidance:
+                    final_state = {
+                        **final_state,
+                        'workflow_optimization_guidance': runtime_workflow_guidance,
+                    }
             
             # Get graph summaries if available
             kg_summary = None

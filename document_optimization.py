@@ -114,6 +114,127 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except Exception:
         return int(default)
+def _build_workflow_targeting_summary(
+    *,
+    existing_summary: Any,
+    document_evidence_targeting_summary: Any,
+) -> Dict[str, Any]:
+    existing = existing_summary if isinstance(existing_summary, dict) else {}
+    document = (
+        document_evidence_targeting_summary
+        if isinstance(document_evidence_targeting_summary, dict)
+        else {}
+    )
+    phase_summaries = {
+        "intake_questioning": dict((existing.get("phase_summaries") or {}).get("intake_questioning") or {}),
+        "graph_analysis": dict((existing.get("phase_summaries") or {}).get("graph_analysis") or {}),
+        "document_generation": dict(document),
+    }
+    phase_counts = {
+        phase_name: int((payload or {}).get("count") or 0)
+        for phase_name, payload in phase_summaries.items()
+    }
+    total_target_count = sum(phase_counts.values())
+    prioritized_phases = [
+        phase_name
+        for phase_name, count in sorted(
+            phase_counts.items(),
+            key=lambda item: (-int(item[1] or 0), item[0]),
+        )
+        if int(count or 0) > 0
+    ]
+
+    shared_claim_element_counts: Dict[str, int] = {}
+    shared_focus_area_counts: Dict[str, int] = {}
+    for payload in phase_summaries.values():
+        for claim_element_id, count in dict(payload.get("claim_element_counts") or {}).items():
+            normalized = str(claim_element_id or "").strip()
+            if not normalized:
+                continue
+            shared_claim_element_counts[normalized] = (
+                shared_claim_element_counts.get(normalized, 0) + int(count or 0)
+            )
+        focus_counts = {}
+        if "focus_area_counts" in payload:
+            focus_counts = dict(payload.get("focus_area_counts") or {})
+        elif "objective_counts" in payload:
+            focus_counts = dict(payload.get("objective_counts") or {})
+        elif "focus_section_counts" in payload:
+            focus_counts = dict(payload.get("focus_section_counts") or {})
+        for focus_area, count in focus_counts.items():
+            normalized = str(focus_area or "").strip()
+            if not normalized:
+                continue
+            shared_focus_area_counts[normalized] = (
+                shared_focus_area_counts.get(normalized, 0) + int(count or 0)
+            )
+
+    return {
+        "count": total_target_count,
+        "phase_counts": phase_counts,
+        "prioritized_phases": prioritized_phases,
+        "shared_claim_element_counts": shared_claim_element_counts,
+        "shared_focus_area_counts": shared_focus_area_counts,
+        "phase_summaries": phase_summaries,
+    }
+
+
+def _build_document_execution_drift_summary(
+    *,
+    workflow_targeting_summary: Any,
+    document_workflow_execution_summary: Any,
+) -> Dict[str, Any]:
+    targeting = workflow_targeting_summary if isinstance(workflow_targeting_summary, dict) else {}
+    execution = (
+        document_workflow_execution_summary
+        if isinstance(document_workflow_execution_summary, dict)
+        else {}
+    )
+    targeted_counts = (
+        targeting.get("shared_claim_element_counts")
+        if isinstance(targeting.get("shared_claim_element_counts"), dict)
+        else {}
+    )
+    top_targeted_element = ""
+    top_targeted_count = 0
+    if targeted_counts:
+        top_targeted_element, top_targeted_count = sorted(
+            (
+                (str(name or "").strip(), int(count or 0))
+                for name, count in targeted_counts.items()
+                if str(name or "").strip()
+            ),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+    first_executed_element = str(execution.get("first_targeted_claim_element") or "").strip()
+    first_focus_section = str(execution.get("first_focus_section") or "").strip()
+    first_support_kind = str(execution.get("first_preferred_support_kind") or "").strip()
+    drift_flag = bool(
+        top_targeted_element
+        and first_executed_element
+        and top_targeted_element != first_executed_element
+    )
+    return {
+        "drift_flag": drift_flag,
+        "top_targeted_claim_element": top_targeted_element,
+        "top_targeted_claim_element_count": top_targeted_count,
+        "first_executed_claim_element": first_executed_element,
+        "first_focus_section": first_focus_section,
+        "first_preferred_support_kind": first_support_kind,
+        "iteration_count": int(execution.get("iteration_count") or 0),
+        "accepted_iteration_count": int(execution.get("accepted_iteration_count") or 0),
+    }
+
+
+def _sorted_count_items(values: Any) -> List[Tuple[str, int]]:
+    return [
+        (str(name), int(count or 0))
+        for name, count in sorted(
+            dict(values or {}).items(),
+            key=lambda item: (-int(item[1] or 0), str(item[0])),
+        )
+        if str(name)
+    ]
 
 
 _DATE_ANCHOR_PATTERN = re.compile(
@@ -932,6 +1053,26 @@ class AgenticDocumentOptimizer:
             intake_summary_handoff = dict(intake_status["intake_summary_handoff"])
         elif isinstance(intake_case_summary.get("intake_summary_handoff"), dict) and intake_case_summary.get("intake_summary_handoff"):
             intake_summary_handoff = dict(intake_case_summary["intake_summary_handoff"])
+        document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(iterations)
+        document_workflow_execution_summary = self._build_document_workflow_execution_summary(iterations)
+        workflow_targeting_summary = _build_workflow_targeting_summary(
+            existing_summary=intake_case_summary.get("workflow_targeting_summary"),
+            document_evidence_targeting_summary=document_evidence_targeting_summary,
+        )
+        document_execution_drift_summary = _build_document_execution_drift_summary(
+            workflow_targeting_summary=workflow_targeting_summary,
+            document_workflow_execution_summary=document_workflow_execution_summary,
+        )
+        if workflow_targeting_summary:
+            workflow_optimization_guidance["workflow_targeting_summary"] = dict(workflow_targeting_summary)
+        if document_workflow_execution_summary:
+            workflow_optimization_guidance["document_workflow_execution_summary"] = dict(
+                document_workflow_execution_summary
+            )
+        if document_execution_drift_summary:
+            workflow_optimization_guidance["document_execution_drift_summary"] = dict(
+                document_execution_drift_summary
+            )
         trace_storage = self._store_trace(
             {
                 "user_id": user_id or "",
@@ -952,6 +1093,9 @@ class AgenticDocumentOptimizer:
                 "claim_support_temporal_handoff": claim_support_temporal_handoff,
                 "claim_reasoning_review": claim_reasoning_review,
                 "workflow_optimization_guidance": workflow_optimization_guidance,
+                "workflow_targeting_summary": workflow_targeting_summary,
+                "document_workflow_execution_summary": document_workflow_execution_summary,
+                "document_execution_drift_summary": document_execution_drift_summary,
                 "support_context": support_context,
                 "drafting_readiness": readiness_for_critic,
                 "initial_review": initial_review,
@@ -1046,6 +1190,16 @@ class AgenticDocumentOptimizer:
             if isinstance(intake_case_summary.get("proof_lead_summary"), dict)
             else {}
         )
+        evidence_workflow_action_queue = (
+            intake_case_summary.get("evidence_workflow_action_queue")
+            if isinstance(intake_case_summary.get("evidence_workflow_action_queue"), list)
+            else []
+        )
+        evidence_workflow_action_summary = (
+            intake_case_summary.get("evidence_workflow_action_summary")
+            if isinstance(intake_case_summary.get("evidence_workflow_action_summary"), dict)
+            else {}
+        )
         evidence_rows = support_context.get("evidence") if isinstance(support_context.get("evidence"), list) else []
         evidence_modalities = _unique_preserving_order(
             str((row or {}).get("type") or "").strip() for row in evidence_rows if isinstance(row, dict)
@@ -1095,6 +1249,11 @@ class AgenticDocumentOptimizer:
                     str(item)
                     for item in (claim_support_temporal_handoff.get("temporal_proof_objectives") or [])
                     if str(item).strip()
+                ],
+                *[
+                    str((action or {}).get("claim_element_label") or (action or {}).get("claim_element_id") or "").strip()
+                    for action in evidence_workflow_action_queue
+                    if isinstance(action, dict)
                 ],
             ]
         )
@@ -1146,6 +1305,7 @@ class AgenticDocumentOptimizer:
                     "evidence_modalities": evidence_modalities,
                     "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
                     "resolved_temporal_issue_count": resolved_temporal_issue_count,
+                    "evidence_workflow_action_count": int(evidence_workflow_action_summary.get("count") or 0),
                 },
                 "document_generation": {
                     "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
@@ -1154,6 +1314,35 @@ class AgenticDocumentOptimizer:
                 },
             },
             "cross_phase_findings": cross_phase_findings,
+            "workflow_action_queue": [
+                *[
+                    {
+                        "rank": int(action.get("rank") or index + 1),
+                        "phase_name": str(action.get("phase_name") or "graph_analysis").strip() or "graph_analysis",
+                        "status": str(action.get("status") or "warning").strip().lower() or "warning",
+                        "action": str(action.get("action") or "").strip(),
+                        "focus_areas": list(action.get("focus_areas") or [])[:3],
+                        "claim_type": str(action.get("claim_type") or "").strip(),
+                        "claim_element_id": str(action.get("claim_element_id") or "").strip(),
+                    }
+                    for index, action in enumerate(evidence_workflow_action_queue[:2])
+                    if isinstance(action, dict) and str(action.get("action") or "").strip()
+                ],
+                {
+                    "rank": 100,
+                    "phase_name": "graph_analysis",
+                    "status": "warning" if graph_focus_areas else "ready",
+                    "action": "Close graph and claim-support gaps before final drafting.",
+                    "focus_areas": graph_focus_areas[:3],
+                },
+                {
+                    "rank": 101,
+                    "phase_name": "document_generation",
+                    "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
+                    "action": "Revise complaint sections still flagged by drafting readiness.",
+                    "focus_areas": document_focus_areas[:3],
+                },
+            ],
             "complaint_type_generalization_summary": {
                 "complaint_types": claim_types,
                 "complaint_type_count": len(claim_types),
@@ -1162,6 +1351,8 @@ class AgenticDocumentOptimizer:
                 "evidence_modalities": evidence_modalities,
                 "evidence_modality_count": len(evidence_modalities),
             },
+            "evidence_workflow_action_queue": list(evidence_workflow_action_queue),
+            "evidence_workflow_action_summary": dict(evidence_workflow_action_summary),
             "document_handoff_summary": {
                 "ready_for_document_optimization": str(drafting_readiness.get("status") or "").strip().lower() == "ready",
                 "drafting_status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
@@ -1173,6 +1364,139 @@ class AgenticDocumentOptimizer:
             },
             "claim_reasoning_review": dict(claim_reasoning_review or {}),
         }
+
+    @staticmethod
+    def _build_document_evidence_targeting_summary(iterations: Any) -> Dict[str, Any]:
+        summary = {
+            "count": 0,
+            "focus_section_counts": {},
+            "claim_type_counts": {},
+            "claim_element_counts": {},
+            "support_kind_counts": {},
+            "targets": [],
+        }
+
+        for entry in iterations if isinstance(iterations, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            focus_section = str(entry.get("focus_section") or "").strip()
+            selected_support_context = (
+                entry.get("selected_support_context")
+                if isinstance(entry.get("selected_support_context"), dict)
+                else {}
+            )
+            top_support = selected_support_context.get("top_support")
+            for row in top_support if isinstance(top_support, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                kind = str(row.get("kind") or "").strip().lower()
+                if kind not in {"evidence_workflow_action", "workflow_action"}:
+                    continue
+
+                claim_type = str(row.get("claim_type") or "").strip()
+                claim_element_id = str(row.get("claim_element_id") or "").strip()
+                preferred_support_kind = str(row.get("preferred_support_kind") or "").strip()
+                text = str(row.get("text") or "").strip()
+
+                summary["count"] += 1
+                if focus_section:
+                    summary["focus_section_counts"][focus_section] = (
+                        summary["focus_section_counts"].get(focus_section, 0) + 1
+                    )
+                if claim_type:
+                    summary["claim_type_counts"][claim_type] = (
+                        summary["claim_type_counts"].get(claim_type, 0) + 1
+                    )
+                if claim_element_id:
+                    summary["claim_element_counts"][claim_element_id] = (
+                        summary["claim_element_counts"].get(claim_element_id, 0) + 1
+                    )
+                if preferred_support_kind:
+                    summary["support_kind_counts"][preferred_support_kind] = (
+                        summary["support_kind_counts"].get(preferred_support_kind, 0) + 1
+                    )
+                summary["targets"].append(
+                    {
+                        "focus_section": focus_section,
+                        "claim_type": claim_type,
+                        "claim_element_id": claim_element_id,
+                        "preferred_support_kind": preferred_support_kind,
+                        "kind": kind,
+                        "text": text,
+                    }
+                )
+
+        return summary
+
+    @staticmethod
+    def _build_document_workflow_execution_summary(iterations: Any) -> Dict[str, Any]:
+        summary = {
+            "iteration_count": 0,
+            "accepted_iteration_count": 0,
+            "focus_section_counts": {},
+            "top_support_kind_counts": {},
+            "targeted_claim_element_counts": {},
+            "preferred_support_kind_counts": {},
+            "first_focus_section": "",
+            "first_top_support_kind": "",
+            "first_targeted_claim_element": "",
+            "first_preferred_support_kind": "",
+        }
+
+        first_focus_section = ""
+        first_top_support_kind = ""
+        first_targeted_claim_element = ""
+        first_preferred_support_kind = ""
+
+        for entry in iterations if isinstance(iterations, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            summary["iteration_count"] += 1
+            if bool(entry.get("accepted")):
+                summary["accepted_iteration_count"] += 1
+            focus_section = str(entry.get("focus_section") or "").strip()
+            if focus_section:
+                summary["focus_section_counts"][focus_section] = (
+                    summary["focus_section_counts"].get(focus_section, 0) + 1
+                )
+                if not first_focus_section:
+                    first_focus_section = focus_section
+            selected_support_context = (
+                entry.get("selected_support_context")
+                if isinstance(entry.get("selected_support_context"), dict)
+                else {}
+            )
+            top_support = selected_support_context.get("top_support")
+            top_row = top_support[0] if isinstance(top_support, list) and top_support else {}
+            if not isinstance(top_row, dict):
+                top_row = {}
+            support_kind = str(top_row.get("kind") or "").strip()
+            if support_kind:
+                summary["top_support_kind_counts"][support_kind] = (
+                    summary["top_support_kind_counts"].get(support_kind, 0) + 1
+                )
+                if not first_top_support_kind:
+                    first_top_support_kind = support_kind
+            claim_element_id = str(top_row.get("claim_element_id") or "").strip()
+            if claim_element_id:
+                summary["targeted_claim_element_counts"][claim_element_id] = (
+                    summary["targeted_claim_element_counts"].get(claim_element_id, 0) + 1
+                )
+                if not first_targeted_claim_element:
+                    first_targeted_claim_element = claim_element_id
+            preferred_support_kind = str(top_row.get("preferred_support_kind") or "").strip()
+            if preferred_support_kind:
+                summary["preferred_support_kind_counts"][preferred_support_kind] = (
+                    summary["preferred_support_kind_counts"].get(preferred_support_kind, 0) + 1
+                )
+                if not first_preferred_support_kind:
+                    first_preferred_support_kind = preferred_support_kind
+
+        summary["first_focus_section"] = first_focus_section
+        summary["first_top_support_kind"] = first_top_support_kind
+        summary["first_targeted_claim_element"] = first_targeted_claim_element
+        summary["first_preferred_support_kind"] = first_preferred_support_kind
+        return summary
 
     def _reset_runtime_state(self) -> None:
         self._embeddings_router = None
@@ -1341,6 +1665,21 @@ class AgenticDocumentOptimizer:
                 )
 
         intake_status = build_intake_status_summary(self.mediator)
+        workflow_guidance = (
+            drafting_readiness.get("workflow_optimization_guidance")
+            if isinstance(drafting_readiness.get("workflow_optimization_guidance"), dict)
+            else {}
+        )
+        document_drafting_next_action = (
+            workflow_guidance.get("document_drafting_next_action")
+            if isinstance(workflow_guidance.get("document_drafting_next_action"), dict)
+            else intake_status.get("document_drafting_next_action")
+        )
+        document_drafting_next_action = (
+            dict(document_drafting_next_action)
+            if isinstance(document_drafting_next_action, dict)
+            else {}
+        )
         intake_handoff = intake_status.get("intake_summary_handoff") if isinstance(intake_status, dict) else {}
         intake_handoff = intake_handoff if isinstance(intake_handoff, dict) else {}
         blocker_follow_up_summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
@@ -1749,6 +2088,27 @@ class AgenticDocumentOptimizer:
                 "recommended_actions": recommended_actions,
                 "priority": actor_critic_priority,
             },
+            "workflow_targeting_summary": dict(
+                (workflow_guidance.get("workflow_targeting_summary") or {})
+                if isinstance(workflow_guidance, dict)
+                else {}
+            ),
+            "evidence_workflow_action_queue": list(
+                (workflow_guidance.get("evidence_workflow_action_queue") or [])
+                if isinstance(workflow_guidance, dict)
+                else []
+            ),
+            "evidence_workflow_action_summary": dict(
+                (workflow_guidance.get("evidence_workflow_action_summary") or {})
+                if isinstance(workflow_guidance, dict)
+                else {}
+            ),
+            "workflow_action_queue": list(
+                (workflow_guidance.get("workflow_action_queue") or [])
+                if isinstance(workflow_guidance, dict)
+                else []
+            ),
+            "document_drafting_next_action": document_drafting_next_action,
             "intake_priorities": {
                 "covered_objectives": covered_objectives,
                 "uncovered_objectives": uncovered_objectives,
@@ -2979,6 +3339,17 @@ class AgenticDocumentOptimizer:
         drafting_readiness: Dict[str, Any],
         support_context: Dict[str, Any],
     ) -> str:
+        document_drafting_next_action = (
+            support_context.get("document_drafting_next_action")
+            if isinstance(support_context.get("document_drafting_next_action"), dict)
+            else {}
+        )
+        drafting_focus_section = str(document_drafting_next_action.get("focus_section") or "").strip()
+        if (
+            str(document_drafting_next_action.get("action") or "").strip().lower() == "realign_document_drafting"
+            and drafting_focus_section in self.VALID_FOCUS_SECTIONS
+        ):
+            return drafting_focus_section
         workflow_phase_order = [
             str(value)
             for value in list(current_review.get("workflow_phase_order") or [])
@@ -2989,6 +3360,14 @@ class AgenticDocumentOptimizer:
             target_section = str(phase_target_sections.get(phase_name) or "").strip()
             if target_section in self.VALID_FOCUS_SECTIONS:
                 return target_section
+        workflow_targeting_summary = (
+            support_context.get("workflow_targeting_summary")
+            if isinstance(support_context.get("workflow_targeting_summary"), dict)
+            else {}
+        )
+        targeting_section = self._choose_focus_section_from_workflow_targeting(workflow_targeting_summary)
+        if targeting_section in self.VALID_FOCUS_SECTIONS:
+            return targeting_section
         recommended_focus = str(current_review.get("recommended_focus") or "").strip()
         if recommended_focus in self.VALID_FOCUS_SECTIONS:
             return recommended_focus
@@ -3043,6 +3422,113 @@ class AgenticDocumentOptimizer:
                         "kind": "blocker_reason",
                     }
                 )
+        evidence_workflow_action_queue = (
+            support_context.get("evidence_workflow_action_queue")
+            if isinstance(support_context.get("evidence_workflow_action_queue"), list)
+            else []
+        )
+        for action_entry in evidence_workflow_action_queue:
+            if not isinstance(action_entry, dict):
+                continue
+            action_text = str(action_entry.get("action") or "").strip()
+            if not action_text:
+                continue
+            claim_element_label = str(
+                action_entry.get("claim_element_label")
+                or action_entry.get("claim_element_id")
+                or ""
+            ).strip()
+            preferred_support_kind = str(action_entry.get("preferred_support_kind") or "").strip()
+            evidence_focus = " ".join(
+                part for part in [
+                    action_text,
+                    claim_element_label,
+                    preferred_support_kind,
+                ]
+                if part
+            ).strip()
+            candidate_rows.append(
+                {
+                    "claim_type": str(action_entry.get("claim_type") or action_entry.get("phase_name") or "graph_analysis").strip(),
+                    "text": evidence_focus or action_text,
+                    "kind": "evidence_workflow_action",
+                    "status": str(action_entry.get("status") or "").strip(),
+                    "claim_element_id": str(action_entry.get("claim_element_id") or "").strip(),
+                    "preferred_support_kind": preferred_support_kind,
+                }
+            )
+        workflow_action_queue = support_context.get("workflow_action_queue") if isinstance(support_context.get("workflow_action_queue"), list) else []
+        for action_entry in workflow_action_queue:
+            if not isinstance(action_entry, dict):
+                continue
+            action_text = str(action_entry.get("action") or "").strip()
+            if not action_text:
+                continue
+            candidate_rows.append(
+                {
+                    "claim_type": str(action_entry.get("phase_name") or "workflow").strip(),
+                    "text": action_text,
+                    "kind": "workflow_action",
+                    "status": str(action_entry.get("status") or "").strip(),
+                }
+            )
+        document_drafting_next_action = (
+            support_context.get("document_drafting_next_action")
+            if isinstance(support_context.get("document_drafting_next_action"), dict)
+            else {}
+        )
+        if str(document_drafting_next_action.get("action") or "").strip().lower() == "realign_document_drafting":
+            target_claim_element = str(document_drafting_next_action.get("claim_element_id") or "").strip()
+            executed_claim_element = str(document_drafting_next_action.get("executed_claim_element_id") or "").strip()
+            preferred_support_kind = str(document_drafting_next_action.get("preferred_support_kind") or "").strip()
+            focus_section_hint = str(document_drafting_next_action.get("focus_section") or "").strip()
+            candidate_rows.append(
+                {
+                    "claim_type": "document_generation",
+                    "text": (
+                        f"Realign drafting toward {target_claim_element.replace('_', ' ')}"
+                        + (
+                            f" instead of {executed_claim_element.replace('_', ' ')}."
+                            if executed_claim_element
+                            else "."
+                        )
+                    ),
+                    "kind": "document_drafting_next_action",
+                    "claim_element_id": target_claim_element,
+                    "executed_claim_element_id": executed_claim_element,
+                    "preferred_support_kind": preferred_support_kind,
+                    "focus_section": focus_section_hint,
+                }
+            )
+        workflow_targeting_summary = (
+            support_context.get("workflow_targeting_summary")
+            if isinstance(support_context.get("workflow_targeting_summary"), dict)
+            else {}
+        )
+        for claim_element_id, count in _sorted_count_items(
+            workflow_targeting_summary.get("shared_claim_element_counts") or {}
+        )[:4]:
+            candidate_rows.append(
+                {
+                    "claim_type": "workflow_targeting",
+                    "text": f"Strengthen complaint support for {claim_element_id.replace('_', ' ')}.",
+                    "kind": "workflow_targeting_claim_element",
+                    "claim_element_id": claim_element_id,
+                    "target_count": count,
+                }
+            )
+        for focus_area, count in _sorted_count_items(
+            workflow_targeting_summary.get("shared_focus_area_counts") or {}
+        )[:4]:
+            candidate_rows.append(
+                {
+                    "claim_type": "workflow_targeting",
+                    "text": f"Strengthen drafting around {focus_area.replace('_', ' ')}.",
+                    "kind": "workflow_targeting_focus_area",
+                    "target_focus_area": focus_area,
+                    "target_count": count,
+                }
+            )
 
         ranked_rows = self._rank_candidates(query=query, candidates=candidate_rows)
         return {
@@ -3050,6 +3536,33 @@ class AgenticDocumentOptimizer:
             "query": query,
             "top_support": ranked_rows[:6],
         }
+
+    def _choose_focus_section_from_workflow_targeting(self, workflow_targeting_summary: Dict[str, Any]) -> str:
+        summary = workflow_targeting_summary if isinstance(workflow_targeting_summary, dict) else {}
+        prioritized_phases = [
+            str(value)
+            for value in list(summary.get("prioritized_phases") or [])
+            if str(value)
+        ]
+        phase_summaries = summary.get("phase_summaries") if isinstance(summary.get("phase_summaries"), dict) else {}
+        document_summary = (
+            phase_summaries.get("document_generation")
+            if isinstance(phase_summaries.get("document_generation"), dict)
+            else {}
+        )
+        for section_name, _count in _sorted_count_items(document_summary.get("focus_section_counts") or {}):
+            if section_name in self.VALID_FOCUS_SECTIONS:
+                return section_name
+        highest_phase = str(prioritized_phases[0] if prioritized_phases else "").strip()
+        shared_focus_areas = dict(summary.get("shared_focus_area_counts") or {})
+        shared_claim_elements = dict(summary.get("shared_claim_element_counts") or {})
+        if highest_phase == "document_generation":
+            return "claims_for_relief"
+        if highest_phase == "graph_analysis" and shared_claim_elements:
+            return "claims_for_relief"
+        if highest_phase == "intake_questioning" and shared_focus_areas:
+            return "factual_allegations"
+        return ""
 
     def _build_fallback_actor_payload(
         self,
@@ -3383,6 +3896,11 @@ class AgenticDocumentOptimizer:
         }
 
     def _build_upstream_optimizer_metadata(self, *, phase_focus_order: Optional[List[str]] = None) -> Dict[str, Any]:
+        workflow_phase_order = [
+            str(value).strip()
+            for value in list((current_review or {}).get("workflow_phase_order") or [])
+            if str(value).strip()
+        ]
         metadata = {
             "available": bool(UPSTREAM_AGENTIC_AVAILABLE),
             "selected_provider": "",
