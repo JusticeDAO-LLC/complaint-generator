@@ -11,6 +11,7 @@ from intake_status import (
     build_intake_case_review_summary,
     build_intake_status_summary,
     build_intake_warning_entries,
+    summarize_temporal_issue_registry,
 )
 from complaint_phases import ComplaintPhase
 from claim_support_review import summarize_claim_reasoning_review
@@ -906,7 +907,9 @@ class AgenticDocumentOptimizer:
                 if focus_section not in optimized_sections:
                     optimized_sections.append(focus_section)
 
-        upstream_optimizer = self._build_upstream_optimizer_metadata()
+        upstream_optimizer = self._build_upstream_optimizer_metadata(
+            phase_focus_order=current_review.get("workflow_phase_order") if isinstance(current_review, dict) else None
+        )
         intake_status = build_intake_status_summary(self.mediator)
         intake_constraints = build_intake_warning_entries(intake_status)
         intake_case_summary = build_intake_case_review_summary(self.mediator)
@@ -1047,6 +1050,11 @@ class AgenticDocumentOptimizer:
         evidence_modalities = _unique_preserving_order(
             str((row or {}).get("type") or "").strip() for row in evidence_rows if isinstance(row, dict)
         )
+        temporal_issue_registry_summary = summarize_temporal_issue_registry(
+            intake_case_summary.get("temporal_issue_registry_summary")
+        )
+        unresolved_temporal_issue_count = int(temporal_issue_registry_summary.get("unresolved_count") or 0)
+        resolved_temporal_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
         claim_types = _unique_preserving_order(
             [
                 *[
@@ -1118,6 +1126,10 @@ class AgenticDocumentOptimizer:
             cross_phase_findings.append(
                 "Temporal support gaps remain unresolved and may weaken both causation analysis and chronology-driven complaint allegations."
             )
+        elif resolved_temporal_issue_count > 0:
+            cross_phase_findings.append(
+                "Resolved chronology history is retained and should still be preserved in factual allegations and claim support to maintain the causation sequence."
+            )
 
         return {
             "phase_scorecards": {
@@ -1132,6 +1144,8 @@ class AgenticDocumentOptimizer:
                     "focus_areas": graph_focus_areas,
                     "claim_types": claim_types,
                     "evidence_modalities": evidence_modalities,
+                    "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+                    "resolved_temporal_issue_count": resolved_temporal_issue_count,
                 },
                 "document_generation": {
                     "status": str(drafting_readiness.get("status") or "ready").strip().lower() or "ready",
@@ -1251,6 +1265,21 @@ class AgenticDocumentOptimizer:
             except Exception:
                 intake_case_file = {}
         intake_case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+        intake_case_summary = build_intake_case_review_summary(self.mediator)
+        intake_case_summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
+        fallback_temporal_issue_registry_summary = summarize_temporal_issue_registry(
+            intake_case_summary.get("temporal_issue_registry_summary")
+        )
+        fallback_packet_summary = (
+            intake_case_summary.get("claim_support_packet_summary")
+            if isinstance(intake_case_summary.get("claim_support_packet_summary"), dict)
+            else {}
+        )
+        fallback_alignment_task_summary = (
+            intake_case_summary.get("alignment_task_summary")
+            if isinstance(intake_case_summary.get("alignment_task_summary"), dict)
+            else {}
+        )
 
         claim_contexts = []
         claim_temporal_gap_summary = []
@@ -1384,6 +1413,33 @@ class AgenticDocumentOptimizer:
         )
         anchored_chronology_summary = _build_anchored_chronology_summary(intake_case_file)
         temporal_issue_registry = intake_case_file.get("temporal_issue_registry") if isinstance(intake_case_file.get("temporal_issue_registry"), list) else []
+        case_file_temporal_issue_registry_summary = summarize_temporal_issue_registry(
+            {
+                "count": len(temporal_issue_registry),
+                "issues": temporal_issue_registry,
+            }
+        )
+        temporal_issue_status_counts = dict(fallback_temporal_issue_registry_summary.get("status_counts") or {})
+        for status_name, count in dict(case_file_temporal_issue_registry_summary.get("status_counts") or {}).items():
+            temporal_issue_status_counts[str(status_name)] = max(
+                int(temporal_issue_status_counts.get(str(status_name)) or 0),
+                int(count or 0),
+            )
+        unresolved_temporal_issue_count = max(
+            int(case_file_temporal_issue_registry_summary.get("unresolved_count") or 0),
+            int(fallback_temporal_issue_registry_summary.get("unresolved_count") or 0),
+            int(fallback_packet_summary.get("claim_support_unresolved_temporal_issue_count") or 0),
+        )
+        resolved_temporal_issue_count = max(
+            int(case_file_temporal_issue_registry_summary.get("resolved_count") or 0),
+            int(fallback_temporal_issue_registry_summary.get("resolved_count") or 0),
+        )
+        temporal_issue_count = max(
+            len(temporal_issue_registry),
+            int(case_file_temporal_issue_registry_summary.get("count") or 0),
+            int(fallback_temporal_issue_registry_summary.get("count") or 0),
+            unresolved_temporal_issue_count + resolved_temporal_issue_count,
+        )
 
         metric_aliases = {
             "empathy_avg": "empathy",
@@ -1707,11 +1763,17 @@ class AgenticDocumentOptimizer:
                 "blocker_workflow_phases": blocker_workflow_phases,
                 "blocker_issue_families": blocker_issue_families,
                 "anchored_chronology_summary": anchored_chronology_summary,
-                "temporal_issue_count": len(temporal_issue_registry),
-                "claim_temporal_gap_count": sum(
+                "temporal_issue_count": temporal_issue_count,
+                "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+                "resolved_temporal_issue_count": resolved_temporal_issue_count,
+                "temporal_issue_status_counts": temporal_issue_status_counts,
+                "claim_temporal_gap_count": max(
+                    sum(
                     int(item.get("gap_count") or 0)
                     for item in claim_temporal_gap_summary
                     if isinstance(item, dict)
+                    ),
+                    int(fallback_alignment_task_summary.get("temporal_gap_task_count") or 0),
                 ),
                 "claim_temporal_gap_summary": claim_temporal_gap_summary,
                 "recommended_follow_up_prompts": [
@@ -2652,11 +2714,17 @@ class AgenticDocumentOptimizer:
             score += 0.06
         if any(token in lowered_allegations for token in ("name and title", "names and titles", "name or title", "staff names", "staff titles")):
             score += 0.05
+        unresolved_temporal_issue_count = int(
+            priorities.get("unresolved_temporal_issue_count", priorities.get("temporal_issue_count", 0)) or 0
+        )
+        resolved_temporal_issue_count = int(priorities.get("resolved_temporal_issue_count") or 0)
         if priorities.get("anchored_chronology_summary"):
             score += 0.08
-            if int(priorities.get("temporal_issue_count") or 0) <= 0:
+            if unresolved_temporal_issue_count <= 0:
                 score += 0.03
-        elif int(priorities.get("temporal_issue_count") or 0) > 0:
+                if resolved_temporal_issue_count > 0:
+                    score += 0.02
+        elif unresolved_temporal_issue_count > 0:
             score -= 0.05
         if covered:
             score += min(len(covered), 4) * 0.03
@@ -2702,6 +2770,14 @@ class AgenticDocumentOptimizer:
             if str(item).strip()
         }
         blocker_count = int(priorities.get("blocker_count") or 0)
+        chronology_context_active = any(
+            (
+                bool(priorities.get("anchored_chronology_summary")),
+                int(priorities.get("claim_temporal_gap_count") or 0) > 0,
+                int(priorities.get("unresolved_temporal_issue_count", priorities.get("temporal_issue_count", 0)) or 0) > 0,
+                int(priorities.get("resolved_temporal_issue_count") or 0) > 0,
+            )
+        )
         graph_blockers = unresolved_objectives.intersection(
             {
                 "exact_dates",
@@ -2785,6 +2861,7 @@ class AgenticDocumentOptimizer:
                 phase_name=phase_name,
                 section_scores=section_scores,
                 unresolved_objectives=unresolved_objectives,
+                chronology_context_active=chronology_context_active,
             )
             for phase_name in phase_focus_order
         }
@@ -2800,6 +2877,7 @@ class AgenticDocumentOptimizer:
         phase_name: str,
         section_scores: Dict[str, float],
         unresolved_objectives: set[str],
+        chronology_context_active: bool = False,
     ) -> str:
         candidates = [
             section_name
@@ -2821,7 +2899,11 @@ class AgenticDocumentOptimizer:
             }
         ):
             return "factual_allegations"
+        if phase_name == "graph_analysis" and chronology_context_active:
+            return "factual_allegations"
         if phase_name == "intake_questioning" and unresolved_objectives:
+            return "factual_allegations"
+        if phase_name == "intake_questioning" and chronology_context_active:
             return "factual_allegations"
         return min(candidates, key=lambda section_name: float(section_scores.get(section_name) or 0.0))
 
@@ -3300,12 +3382,12 @@ class AgenticDocumentOptimizer:
             },
         }
 
-    def _build_upstream_optimizer_metadata(self) -> Dict[str, Any]:
+    def _build_upstream_optimizer_metadata(self, *, phase_focus_order: Optional[List[str]] = None) -> Dict[str, Any]:
         metadata = {
             "available": bool(UPSTREAM_AGENTIC_AVAILABLE),
             "selected_provider": "",
             "selected_method": "",
-            "phase_focus_order": list(current_review.get("workflow_phase_order") or self.WORKFLOW_PHASE_FOCUS_ORDER),
+            "phase_focus_order": list(phase_focus_order or self.WORKFLOW_PHASE_FOCUS_ORDER),
             "control_loop": {},
         }
         if not UPSTREAM_AGENTIC_AVAILABLE:

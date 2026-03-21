@@ -2220,6 +2220,87 @@ def _merge_drafting_readiness_signals(seed: Dict[str, Any], grounding_bundle: Di
     }
 
 
+def _promote_structured_handoff_from_seed(seed: Dict[str, Any], limit: int = 4) -> Dict[str, Any]:
+    key_facts = dict(seed.get("key_facts") or {})
+    summary_lines: List[str] = []
+    factual_lines: List[str] = []
+    claim_shared_lines: List[str] = []
+    exhibit_lines: List[str] = []
+    claim_support_by_type: Dict[str, List[str]] = {}
+
+    for passage in list(key_facts.get("anchor_passages") or [])[:limit]:
+        if not isinstance(passage, dict):
+            continue
+        title = str(passage.get("title") or "Anchor evidence").strip()
+        section_labels = [str(item).strip() for item in list(passage.get("section_labels") or []) if str(item).strip()]
+        section_phrase = f" ({', '.join(section_labels)})" if section_labels else ""
+        source_path = str(passage.get("source_path") or "").strip()
+        source_label = Path(source_path).name if source_path else ""
+        source_phrase = f" [source: {source_label}]" if source_label else ""
+        excerpt = _summarize_policy_excerpt(passage.get("snippet") or "")
+        if not excerpt:
+            continue
+        summary_line = f"Anchor-backed summary line from {title}{section_phrase}{source_phrase}: {excerpt}"
+        factual_line = f"Anchor-backed factual handoff from {title}{section_phrase}{source_phrase}: {excerpt}"
+        claim_line = f"Anchor-backed claim support from {title}{section_phrase}{source_phrase}: {excerpt}"
+        exhibit_line = f"Exhibit reference for {title}{source_phrase}: {excerpt}"
+        for line, target in (
+            (summary_line, summary_lines),
+            (factual_line, factual_lines),
+            (claim_line, claim_shared_lines),
+            (exhibit_line, exhibit_lines),
+        ):
+            normalized = _to_sentence(line)
+            if normalized and normalized not in target:
+                target.append(normalized)
+        for section in section_labels:
+            key = str(section).strip().lower()
+            if not key:
+                continue
+            claim_support_by_type.setdefault(key, [])
+            claim_line_for_type = _to_sentence(
+                f"Claim-support anchor for {section.replace('_', ' ')} from {title}{source_phrase}: {excerpt}"
+            )
+            if claim_line_for_type and claim_line_for_type not in claim_support_by_type[key]:
+                claim_support_by_type[key].append(claim_line_for_type)
+
+    for item in list(seed.get("hacc_evidence") or [])[:limit]:
+        if not isinstance(item, dict):
+            continue
+        source_path = str(item.get("source_path") or "").strip()
+        if not source_path:
+            continue
+        title = str(item.get("title") or "File evidence").strip()
+        source_label = Path(source_path).name
+        excerpt = _summarize_policy_excerpt(item.get("snippet") or "")
+        if not excerpt:
+            continue
+        line = _to_sentence(f"File evidence reference ({title}; {source_label}) linked at drafting handoff: {excerpt}")
+        if line and line not in exhibit_lines:
+            exhibit_lines.append(line)
+        if line and line not in claim_shared_lines:
+            claim_shared_lines.append(line)
+
+    return {
+        "summary_of_facts_lines": summary_lines[:8],
+        "factual_allegation_lines": factual_lines[:8],
+        "claim_support_lines_shared": claim_shared_lines[:8],
+        "exhibit_description_lines": exhibit_lines[:8],
+        "claim_support_lines_by_type": {key: values[:6] for key, values in claim_support_by_type.items() if values},
+    }
+
+
+def _merge_promoted_lines(base: List[str], promoted: List[str], limit: int) -> List[str]:
+    merged: List[str] = []
+    for value in list(promoted) + list(base):
+        text = _to_sentence(value)
+        if text and text not in merged:
+            merged.append(text)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
 def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str, Any]) -> Dict[str, Any]:
     merged = _refresh_seed_source_snippets(dict(seed or {}))
     if not grounding_bundle:
@@ -2400,6 +2481,38 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 unresolved_objectives.append(objective)
             blocker_items.append(dict(item))
 
+    promoted_handoff = _promote_structured_handoff_from_seed(merged)
+    summary_of_facts_lines = _merge_promoted_lines(
+        summary_of_facts_lines,
+        list(promoted_handoff.get("summary_of_facts_lines") or []),
+        limit=12,
+    )
+    factual_handoff_lines = _merge_promoted_lines(
+        factual_handoff_lines,
+        list(promoted_handoff.get("factual_allegation_lines") or []),
+        limit=12,
+    )
+    claim_support_shared_lines = _merge_promoted_lines(
+        claim_support_shared_lines,
+        list(promoted_handoff.get("claim_support_lines_shared") or []),
+        limit=10,
+    )
+    exhibit_description_lines = _merge_promoted_lines(
+        exhibit_description_lines,
+        list(promoted_handoff.get("exhibit_description_lines") or []),
+        limit=8,
+    )
+    promoted_by_type = dict(promoted_handoff.get("claim_support_lines_by_type") or {})
+    for claim_type, values in promoted_by_type.items():
+        claim_key = str(claim_type or "").strip().lower()
+        if not claim_key:
+            continue
+        claim_support_by_type.setdefault(claim_key, [])
+        for value in list(values or []):
+            text = _to_sentence(value)
+            if text and text not in claim_support_by_type[claim_key]:
+                claim_support_by_type[claim_key].append(text)
+
     blocker_handoff_objective_lines: List[str] = []
     blocker_handoff_raw_answers: List[str] = []
     blocker_handoff_raw_answers.extend(blocker_handoff_answers)
@@ -2507,6 +2620,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         graph_signals.get("status")
         or graph_signals.get("phase_status")
         or graph_signals.get("graph_phase_status")
+        or document_signals.get("graph_dependency_status")
         or ""
     ).strip().lower()
     graph_completeness = max(
@@ -2527,6 +2641,9 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         graph_signals.get("gate_on_graph_completeness")
         or document_signals.get("gate_on_graph_completeness")
     )
+    ready_for_document_optimization = document_signals.get("ready_for_document_optimization")
+    if ready_for_document_optimization is False:
+        graph_gate_active = True
     graph_ready = (
         not graph_status
         or graph_status == "ready"
@@ -2550,7 +2667,10 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         blockers.append("graph_analysis_not_ready")
 
     document_phase_status = _normalize_readiness_status(
-        document_signals.get("phase_status") or document_signals.get("status") or ""
+        document_signals.get("phase_status")
+        or document_signals.get("document_generation_status")
+        or document_signals.get("status")
+        or ""
     )
     document_coverage = max(
         _safe_float(readiness.get("coverage"), 0.0),
@@ -2569,6 +2689,10 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         text = " ".join(str(item).split()).strip()
         if text and text not in legal_gaps:
             legal_gaps.append(text)
+    for objective in list(document_signals.get("unresolved_intake_objectives") or []) + list(document_signals.get("uncovered_intake_objectives") or []):
+        normalized = _normalize_intake_objective(objective)
+        if normalized and normalized not in unresolved_objectives:
+            unresolved_objectives.append(normalized)
 
     if "policy_document" in weak_modalities:
         policy_gap = "policy_document evidence is thin and should be reinforced before formalization"
@@ -2596,6 +2720,12 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         )
         if document_gap_line not in factual_gaps:
             factual_gaps.append(document_gap_line)
+    if ready_for_document_optimization is False:
+        if "document_generation_not_ready" not in blockers:
+            blockers.append("document_generation_not_ready")
+        blocked_line = "Document generation handoff reports ready_for_document_optimization=false; unresolved factual/legal blockers must be closed before formalization."
+        if blocked_line not in factual_gaps:
+            factual_gaps.append(blocked_line)
 
     if unresolved_objectives and "uncovered_intake_objectives" not in blockers:
         blockers.append("uncovered_intake_objectives")
@@ -2759,6 +2889,9 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     handoff_fact_lines = [str(item) for item in list(handoff.get("factual_allegation_lines") or []) if str(item)]
     handoff_summary_lines = [str(item) for item in list(handoff.get("summary_of_facts_lines") or []) if str(item)]
     handoff_exhibit_lines = [str(item) for item in list(handoff.get("exhibit_description_lines") or []) if str(item)]
+    handoff_summary_lines.extend([str(item) for item in list(key_facts.get("summary_of_facts_handoff") or []) if str(item)])
+    handoff_fact_lines.extend([str(item) for item in list(key_facts.get("factual_allegation_handoff") or []) if str(item)])
+    handoff_exhibit_lines.extend([str(item) for item in list(key_facts.get("exhibit_description_handoff") or []) if str(item)])
     handoff_blocker_lines = [str(item) for item in list(handoff.get("blocker_closing_handoff_lines") or []) if str(item)]
     handoff_blocker_answers = [str(item) for item in list(handoff.get("blocker_closing_answers") or []) if str(item)]
     unresolved_objectives = [
@@ -2797,6 +2930,16 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
             + ", ".join(_intake_objective_label(item) for item in list(dict.fromkeys(unresolved_objectives))[:3])
             + "); allegations should stay provisional until these objectives are closed."
         )
+    anchor_passages = [dict(item) for item in list(key_facts.get("anchor_passages") or []) if isinstance(item, dict)]
+    for passage in anchor_passages[:2]:
+        title = str(passage.get("title") or "anchor evidence").strip()
+        section_labels = [str(item) for item in list(passage.get("section_labels") or []) if str(item)]
+        section_phrase = f" ({', '.join(section_labels)})" if section_labels else ""
+        anchor_summary = _summarize_policy_excerpt(passage.get("snippet") or "")
+        if anchor_summary:
+            allegations.append(
+                f"Structured anchor evidence for summary-of-facts and allegations from {title}{section_phrase}: {anchor_summary}"
+            )
     blocker_answers = _blocker_closing_intake_answers(session, limit=3)
     carried_blocker_answers: List[Dict[str, str]] = list(blocker_answers)
     for item in handoff_blocker_answers:
@@ -2901,7 +3044,17 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
     graph_gap_count = int(_safe_float(graph_signals.get("remaining_gap_count"), 0))
     graph_completeness = _safe_float(graph_signals.get("graph_completeness"), 0.0)
     shared_claim_support = [str(item) for item in list(handoff.get("claim_support_lines_shared") or []) if str(item)]
+    shared_claim_support.extend([str(item) for item in list(key_facts.get("claim_support_handoff_shared") or []) if str(item)])
     claim_support_by_type = dict(handoff.get("claim_support_lines_by_type") or {})
+    for claim_type, values in dict(key_facts.get("claim_support_handoff_by_type") or {}).items():
+        key = str(claim_type or "").strip().lower()
+        if not key:
+            continue
+        claim_support_by_type.setdefault(key, [])
+        for value in list(values or []):
+            text = str(value).strip()
+            if text and text not in claim_support_by_type[key]:
+                claim_support_by_type[key].append(text)
     exhibit_handoff_lines = [str(item) for item in list(handoff.get("exhibit_description_lines") or []) if str(item)]
     blocker_handoff_lines = [str(item) for item in list(handoff.get("blocker_closing_handoff_lines") or []) if str(item)]
     claims: List[str] = []
@@ -2921,6 +3074,17 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         claims.append(
             "Unresolved factual gaps are still blocking final legal framing, including "
             + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:2])
+        )
+    unresolved_objectives = [
+        _normalize_intake_objective(item)
+        for item in list(readiness.get("unresolved_objectives") or []) + list(handoff.get("unresolved_objectives") or [])
+        if _normalize_intake_objective(item)
+    ]
+    if unresolved_objectives:
+        claims.append(
+            "Claim formalization is still gated by uncovered intake objectives ("
+            + ", ".join(_intake_objective_label(item) for item in list(dict.fromkeys(unresolved_objectives))[:3])
+            + "); each claim element should remain provisional until those objectives are closed."
         )
     weak_modalities = [str(item) for item in list(readiness.get("weak_evidence_modalities") or []) if str(item)]
     if weak_modalities:
@@ -2999,6 +3163,14 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         claims.append(f"Exhibit-backed claim support handoff: {_short_intake_answer(line)}")
     for line in blocker_handoff_lines[:1]:
         claims.append(f"Structured blocker-closing claim handoff: {_short_intake_answer(line)}")
+    anchor_passages = [dict(item) for item in list(key_facts.get("anchor_passages") or []) if isinstance(item, dict)]
+    for passage in anchor_passages[:1]:
+        title = str(passage.get("title") or "anchor evidence").strip()
+        section_labels = [str(item) for item in list(passage.get("section_labels") or []) if str(item)]
+        section_phrase = f" ({', '.join(section_labels)})" if section_labels else ""
+        anchor_summary = _summarize_policy_excerpt(passage.get("snippet") or "")
+        if anchor_summary:
+            claims.append(f"Anchor evidence promoted into claim support from {title}{section_phrase}: {anchor_summary}")
 
     if "proxy_discrimination" in theory_labels:
         claims.append("The current evidence suggests a proxy or criteria-based discrimination theory requiring closer review of how HACC framed and applied its policies")

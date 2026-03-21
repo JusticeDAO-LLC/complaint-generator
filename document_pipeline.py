@@ -720,6 +720,39 @@ class FormalComplaintDocumentBuilder:
             user_id=resolved_user_id,
             draft=draft,
         )
+        intake_summary_handoff = self._build_intake_summary_handoff(document_optimization)
+        if intake_summary_handoff:
+            drafting_readiness["intake_summary_handoff"] = dict(intake_summary_handoff)
+            handoff_payload = (
+                dict(drafting_readiness.get("drafting_handoff") or {})
+                if isinstance(drafting_readiness.get("drafting_handoff"), dict)
+                else {}
+            )
+            handoff_payload["intake_summary_handoff_available"] = True
+            handoff_payload["intake_summary_handoff_keys"] = sorted(
+                str(key)
+                for key in intake_summary_handoff.keys()
+                if str(key).strip()
+            )
+            confirmation = (
+                intake_summary_handoff.get("complainant_summary_confirmation")
+                if isinstance(intake_summary_handoff.get("complainant_summary_confirmation"), dict)
+                else {}
+            )
+            confirmation_snapshot = (
+                confirmation.get("confirmed_summary_snapshot")
+                if isinstance(confirmation.get("confirmed_summary_snapshot"), dict)
+                else {}
+            )
+            priority_summary = (
+                confirmation_snapshot.get("adversarial_intake_priority_summary")
+                if isinstance(confirmation_snapshot.get("adversarial_intake_priority_summary"), dict)
+                else {}
+            )
+            handoff_payload["uncovered_intake_objectives"] = _dedupe_text_values(
+                priority_summary.get("uncovered_objectives") or []
+            )
+            drafting_readiness["drafting_handoff"] = handoff_payload
         workflow_phase_plan = self._build_runtime_workflow_phase_plan(
             drafting_readiness=drafting_readiness,
             document_optimization=document_optimization,
@@ -779,7 +812,6 @@ class FormalComplaintDocumentBuilder:
             output_dir=output_dir,
             output_formats=formats,
         )
-        intake_summary_handoff = self._build_intake_summary_handoff(document_optimization)
         package_payload = {
             "draft": draft,
             "drafting_readiness": drafting_readiness,
@@ -4004,6 +4036,22 @@ class FormalComplaintDocumentBuilder:
             for item in list(drafting_readiness.get("unresolved_legal_gaps") or [])
             if str(item).strip()
         ]
+        uncovered_intake_objectives = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("uncovered_intake_objectives") or [])
+            if str(item).strip()
+        ]
+        missing_required_intake_objectives = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("missing_required_intake_objectives") or [])
+            if str(item).strip()
+        ]
+        structured_handoff_signals = (
+            dict(drafting_readiness.get("structured_intake_handoff_signals") or {})
+            if isinstance(drafting_readiness.get("structured_intake_handoff_signals"), dict)
+            else {}
+        )
+        structured_handoff_gap_count = int(structured_handoff_signals.get("gap_count", 0) or 0)
         weak_complaint_types = [
             str(item).strip()
             for item in list(drafting_readiness.get("weak_complaint_types") or [])
@@ -4069,6 +4117,15 @@ class FormalComplaintDocumentBuilder:
                         "Close unresolved legal gaps before formalization: "
                         + "; ".join(unresolved_legal_gaps[:3])
                     )
+                if uncovered_intake_objectives or missing_required_intake_objectives:
+                    actions.append(
+                        "Resolve uncovered intake objectives before formalization: "
+                        + ", ".join((missing_required_intake_objectives or uncovered_intake_objectives)[:4])
+                    )
+                if structured_handoff_gap_count > 0:
+                    actions.append(
+                        "Promote structured intake facts, date/actor anchors, and evidence references directly into summary-of-facts and claim-support paragraphs before document optimization runs."
+                    )
                 if targeted_weak_complaint_types:
                     actions.append(
                         "Generalize drafting quality for weak complaint types before formalization: "
@@ -4103,6 +4160,10 @@ class FormalComplaintDocumentBuilder:
             signals["drafting_coverage"] = _safe_float(drafting_readiness.get("coverage"), 0.0)
             signals["unresolved_factual_gap_count"] = len(unresolved_factual_gaps)
             signals["unresolved_legal_gap_count"] = len(unresolved_legal_gaps)
+            signals["uncovered_intake_objective_count"] = len(uncovered_intake_objectives)
+            signals["missing_required_intake_objective_count"] = len(missing_required_intake_objectives)
+            signals["structured_intake_handoff_gap_count"] = int(structured_handoff_gap_count)
+            signals["uncovered_intake_objectives"] = uncovered_intake_objectives[:8]
             signals["unresolved_factual_gaps"] = unresolved_factual_gaps[:6]
             signals["unresolved_legal_gaps"] = unresolved_legal_gaps[:6]
             signals["weak_complaint_types"] = weak_complaint_types
@@ -4113,6 +4174,9 @@ class FormalComplaintDocumentBuilder:
                 graph_gate_active
                 or unresolved_factual_gaps
                 or unresolved_legal_gaps
+                or uncovered_intake_objectives
+                or missing_required_intake_objectives
+                or structured_handoff_gap_count > 0
                 or targeted_weak_complaint_types
                 or targeted_weak_evidence_modalities
             )
@@ -4912,8 +4976,152 @@ class FormalComplaintDocumentBuilder:
             sections=sections,
             graph_signals=graph_signals,
         )
+        intake_status = build_intake_status_summary(self.mediator)
+        intake_handoff = (
+            intake_status.get("intake_summary_handoff")
+            if isinstance(intake_status, dict) and isinstance(intake_status.get("intake_summary_handoff"), dict)
+            else {}
+        )
+        confirmation = (
+            intake_handoff.get("complainant_summary_confirmation")
+            if isinstance(intake_handoff.get("complainant_summary_confirmation"), dict)
+            else {}
+        )
+        confirmation_snapshot = (
+            confirmation.get("confirmed_summary_snapshot")
+            if isinstance(confirmation.get("confirmed_summary_snapshot"), dict)
+            else {}
+        )
+        intake_priority_summary = (
+            confirmation_snapshot.get("adversarial_intake_priority_summary")
+            if isinstance(confirmation_snapshot.get("adversarial_intake_priority_summary"), dict)
+            else {}
+        )
+        objective_aliases = {
+            "staff_names": "staff_names_titles",
+            "staff_titles": "staff_names_titles",
+            "hearing_timing": "hearing_request_timing",
+            "response_timing": "response_dates",
+            "causation": "causation_link",
+            "adverse_action": "anchor_adverse_action",
+            "appeal_rights": "anchor_appeal_rights",
+        }
+
+        def _normalize_objective(value: Any) -> str:
+            objective_text = str(value or "").strip().lower()
+            if not objective_text:
+                return ""
+            return objective_aliases.get(objective_text, objective_text)
+
+        uncovered_intake_objectives = _dedupe_text_values(
+            _normalize_objective(item)
+            for item in list(intake_priority_summary.get("uncovered_objectives") or [])
+            if _normalize_objective(item)
+        )
+        objective_question_counts = {
+            _normalize_objective(key): int(value or 0)
+            for key, value in dict(intake_priority_summary.get("objective_question_counts") or {}).items()
+            if _normalize_objective(key)
+        }
+        required_intake_objectives = (
+            "timeline",
+            "actors",
+            "staff_names_titles",
+            "causation_link",
+            "anchor_adverse_action",
+            "anchor_appeal_rights",
+            "hearing_request_timing",
+            "response_dates",
+        )
+        missing_required_intake_objectives = [
+            objective
+            for objective in required_intake_objectives
+            if objective in uncovered_intake_objectives or int(objective_question_counts.get(objective, 0)) <= 0
+        ]
+
+        summary_fact_lines = self._normalize_text_lines(draft.get("summary_of_facts", []))
+        claim_support_lines = [
+            line
+            for claim in _coerce_list(draft.get("claims_for_relief"))
+            if isinstance(claim, dict)
+            for line in self._normalize_text_lines(claim.get("supporting_facts", []))
+        ]
+
+        def _has_date_anchor(text: str) -> bool:
+            candidate = str(text or "").strip().lower()
+            if not candidate:
+                return False
+            return bool(
+                re.search(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b", candidate)
+                or re.search(r"\b\d{4}-\d{2}-\d{2}\b", candidate)
+                or re.search(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b", candidate)
+            )
+
+        def _has_actor_anchor(text: str) -> bool:
+            candidate = str(text or "").strip().lower()
+            if not candidate:
+                return False
+            return bool(
+                re.search(r"\b(manager|director|coordinator|officer|supervisor|caseworker|staff|agent|representative|administrator)\b", candidate)
+                or re.search(r"\b(hacc|housing authority)\b", candidate)
+            )
+
+        def _has_evidence_anchor(text: str) -> bool:
+            candidate = str(text or "").strip().lower()
+            if not candidate:
+                return False
+            return bool(
+                re.search(r"\b(exhibit|policy|document|notice|letter|email|record|file|pdf|attachment|cid|http)\b", candidate)
+            )
+
+        summary_date_anchor_count = sum(1 for line in summary_fact_lines if _has_date_anchor(line))
+        summary_actor_anchor_count = sum(1 for line in summary_fact_lines if _has_actor_anchor(line))
+        summary_evidence_anchor_count = sum(1 for line in summary_fact_lines if _has_evidence_anchor(line))
+        claim_support_date_anchor_count = sum(1 for line in claim_support_lines if _has_date_anchor(line))
+        claim_support_actor_anchor_count = sum(1 for line in claim_support_lines if _has_actor_anchor(line))
+        claim_support_evidence_anchor_count = sum(1 for line in claim_support_lines if _has_evidence_anchor(line))
+        structured_handoff_gaps: List[str] = []
+        if summary_fact_lines and summary_date_anchor_count <= 0:
+            structured_handoff_gaps.append("summary_of_facts_missing_date_anchors")
+        if summary_fact_lines and summary_actor_anchor_count <= 0:
+            structured_handoff_gaps.append("summary_of_facts_missing_actor_anchors")
+        if summary_fact_lines and summary_evidence_anchor_count <= 0:
+            structured_handoff_gaps.append("summary_of_facts_missing_evidence_anchors")
+        if claim_support_lines and claim_support_date_anchor_count <= 0:
+            structured_handoff_gaps.append("claim_support_missing_date_anchors")
+        if claim_support_lines and claim_support_actor_anchor_count <= 0:
+            structured_handoff_gaps.append("claim_support_missing_actor_anchors")
+        if claim_support_lines and claim_support_evidence_anchor_count <= 0:
+            structured_handoff_gaps.append("claim_support_missing_evidence_anchors")
+        structured_handoff_signals = {
+            "summary_fact_count": len(summary_fact_lines),
+            "claim_support_fact_count": len(claim_support_lines),
+            "summary_date_anchor_count": int(summary_date_anchor_count),
+            "summary_actor_anchor_count": int(summary_actor_anchor_count),
+            "summary_evidence_anchor_count": int(summary_evidence_anchor_count),
+            "claim_support_date_anchor_count": int(claim_support_date_anchor_count),
+            "claim_support_actor_anchor_count": int(claim_support_actor_anchor_count),
+            "claim_support_evidence_anchor_count": int(claim_support_evidence_anchor_count),
+            "gap_codes": _dedupe_text_values(structured_handoff_gaps),
+            "gap_count": len(_dedupe_text_values(structured_handoff_gaps)),
+        }
         unresolved_factual_gaps = list(gap_signals.get("factual_gaps") or [])
         unresolved_legal_gaps = list(gap_signals.get("legal_gaps") or [])
+        if uncovered_intake_objectives:
+            unresolved_factual_gaps.insert(
+                0,
+                "Intake coverage remains incomplete for one or more required objectives; chronology/actor/notice details should be closed before formalization.",
+            )
+        if missing_required_intake_objectives:
+            unresolved_factual_gaps.insert(
+                0,
+                "Required intake objectives remain uncovered: " + ", ".join(missing_required_intake_objectives[:5]),
+            )
+        if int(structured_handoff_signals.get("gap_count", 0) or 0) > 0:
+            unresolved_factual_gaps.append(
+                "Structured drafting handoff is incomplete; promote intake facts, date/actor anchors, and evidence references into summary-of-facts and claim-support before optimization."
+            )
+        unresolved_factual_gaps = _dedupe_text_values(unresolved_factual_gaps)[:6]
         evidence_modality_signals = self._collect_evidence_modality_signals(
             draft=draft,
             claim_readiness=claim_readiness,
@@ -4979,6 +5187,7 @@ class FormalComplaintDocumentBuilder:
             coverage < 0.98
             or unresolved_factual_gaps
             or unresolved_legal_gaps
+            or missing_required_intake_objectives
             or targeted_weak_evidence_modalities
             or weak_complaint_types
         ):
@@ -5002,6 +5211,10 @@ class FormalComplaintDocumentBuilder:
             blockers.append("unresolved_factual_gaps_not_closed")
         if unresolved_legal_gaps:
             blockers.append("unresolved_legal_gaps_not_closed")
+        if uncovered_intake_objectives or missing_required_intake_objectives:
+            blockers.append("uncovered_intake_objectives")
+        if int(structured_handoff_signals.get("gap_count", 0) or 0) > 0:
+            blockers.append("structured_intake_handoff_incomplete")
         if weak_complaint_types:
             blockers.append("weak_complaint_type_generalization_needed")
         if targeted_weak_evidence_modalities:
@@ -5019,6 +5232,10 @@ class FormalComplaintDocumentBuilder:
             "blockers": blockers,
             "unresolved_factual_gaps": unresolved_factual_gaps,
             "unresolved_legal_gaps": unresolved_legal_gaps,
+            "uncovered_intake_objectives": uncovered_intake_objectives,
+            "missing_required_intake_objectives": missing_required_intake_objectives,
+            "objective_question_counts": objective_question_counts,
+            "structured_intake_handoff_signals": structured_handoff_signals,
             "weak_complaint_types": weak_complaint_types,
             "evidence_modalities": dict(evidence_modality_signals.get("modalities") or {}),
             "weak_evidence_modalities": weak_evidence_modalities,
@@ -5030,10 +5247,13 @@ class FormalComplaintDocumentBuilder:
                 "coverage": float(coverage),
                 "ready_for_formalization": phase_status == "ready" and not blockers,
                 "blockers": list(blockers),
+                "uncovered_intake_objectives": uncovered_intake_objectives[:8],
+                "missing_required_intake_objectives": missing_required_intake_objectives[:8],
                 "unresolved_factual_gaps": unresolved_factual_gaps[:6],
                 "unresolved_legal_gaps": unresolved_legal_gaps[:6],
                 "targeted_weak_complaint_types": weak_complaint_types[:4],
                 "targeted_weak_evidence_modalities": targeted_weak_evidence_modalities[:4],
+                "structured_intake_handoff_signals": structured_handoff_signals,
             },
         }
         workflow_phase_plan = self._build_runtime_workflow_phase_plan(
@@ -5077,6 +5297,28 @@ class FormalComplaintDocumentBuilder:
                     "severity": "warning",
                     "message": "Target complaint types still need stronger drafting generalization before formalization.",
                     "claim_types": weak_complaint_types[:4],
+                }
+            )
+        if uncovered_intake_objectives or missing_required_intake_objectives:
+            gap_warnings.append(
+                {
+                    "code": "uncovered_intake_objectives",
+                    "severity": "warning",
+                    "message": "Intake objectives remain uncovered and should be resolved before formalization.",
+                    "uncovered_objectives": uncovered_intake_objectives[:8],
+                    "missing_required_objectives": missing_required_intake_objectives[:8],
+                }
+            )
+        if int(structured_handoff_signals.get("gap_count", 0) or 0) > 0:
+            gap_warnings.append(
+                {
+                    "code": "structured_intake_handoff_incomplete",
+                    "severity": "warning",
+                    "message": (
+                        "Structured intake handoff is incomplete; promote facts, date/actor anchors, and evidence references "
+                        "into summary-of-facts and claim-support generation before document optimization."
+                    ),
+                    "gap_codes": list(structured_handoff_signals.get("gap_codes") or [])[:8],
                 }
             )
         if targeted_weak_evidence_modalities:

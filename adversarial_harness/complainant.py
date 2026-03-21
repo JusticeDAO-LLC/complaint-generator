@@ -587,6 +587,7 @@ class Complainant:
         ]
         weak_complaint_types = set()
         weak_evidence_modalities = set()
+        unresolved_intake_objectives = set()
         question_quality_signal = None
         empathy_signal = None
         efficiency_signal = None
@@ -603,6 +604,14 @@ class Complainant:
             for key in ("weak_evidence_modalities", "evidence_modality_targets"):
                 for value in _as_string_list(payload.get(key)):
                     weak_evidence_modalities.add(value.lower())
+            for key in (
+                "unresolved_intake_objectives",
+                "weakest_unresolved_intake_objectives",
+                "intake_objective_gaps",
+                "priority_unresolved_intake_objectives",
+            ):
+                for value in _as_string_list(payload.get(key)):
+                    unresolved_intake_objectives.add(value.lower())
             for key in ("question_quality_avg", "question_quality"):
                 value = payload.get(key)
                 if isinstance(value, (int, float)):
@@ -643,6 +652,13 @@ class Complainant:
                         efficiency_signal = float(value)
                 if bool(phase_signals.get("no_successful_sessions")):
                     no_successful_sessions_hint = True
+                for key in (
+                    "unresolved_intake_objectives",
+                    "weakest_unresolved_intake_objectives",
+                    "intake_objective_gaps",
+                ):
+                    for value in _as_string_list(phase_signals.get(key)):
+                        unresolved_intake_objectives.add(value.lower())
                 for key in ("num_sessions_analyzed", "sessions_analyzed"):
                     value = phase_signals.get(key)
                     if isinstance(value, (int, float)):
@@ -715,6 +731,15 @@ class Complainant:
         weak_policy_or_file_evidence = bool(
             weak_evidence_modalities.intersection({"policy_document", "file_evidence"})
         )
+        should_frontload_anchor_grievance_hearing = bool(
+            is_housing_discrimination
+            or is_hacc_research_seed
+            or "anchor_grievance_hearing" in unresolved_intake_objectives
+        )
+        should_frontload_anchor_selection = bool(
+            weak_policy_or_file_evidence
+            or "anchor_selection_criteria" in unresolved_intake_objectives
+        )
         needs_intake_boost = (
             is_housing_discrimination
             or is_hacc_research_seed
@@ -729,6 +754,10 @@ class Complainant:
         key_facts["blocker_objectives"] = _unique_strings(_as_string_list(key_facts.get("blocker_objectives")))
         key_facts["extraction_targets"] = _unique_strings(_as_string_list(key_facts.get("extraction_targets")))
         key_facts["workflow_phase_priorities"] = _unique_strings(_as_string_list(key_facts.get("workflow_phase_priorities")))
+        key_facts["unresolved_intake_objectives"] = _unique_strings(
+            _as_string_list(key_facts.get("unresolved_intake_objectives"))
+            + list(unresolved_intake_objectives)
+        )
         key_facts["complainant_story_facts"] = list(story_facts)
         key_facts["hacc_evidence"] = list(evidence_items)
         has_seed_intake_prompts = bool(
@@ -767,7 +796,20 @@ class Complainant:
                 "What notices, emails, texts, letters, or other files support your account, and what does each one show?",
                 "What remedy are you asking for right now?",
             ]
+            anchor_fallbacks: List[str] = []
+            if should_frontload_anchor_grievance_hearing:
+                anchor_fallbacks.append(
+                    "For the unresolved grievance-hearing gap, what date did you request a hearing/review, how did you submit it (portal/email/form/phone/in person), when did HACC respond, and which request record plus response notice date is your strongest evidence anchor?"
+                )
+            if should_frontload_anchor_selection:
+                anchor_fallbacks.append(
+                    "For the unresolved selection-criteria gap, what exact criterion or threshold was applied to you, where is it written (policy section), and which file/notice is the strongest evidence anchor showing that application in your case?"
+                )
             synthetic_prompts["intake_questions"] = _unique_strings(existing_questions + stability_questions)[:8]
+            if anchor_fallbacks:
+                synthetic_prompts["intake_questions"] = _unique_strings(
+                    anchor_fallbacks + list(synthetic_prompts.get("intake_questions") or [])
+                )[:10]
             key_facts["workflow_phase_priorities"] = _ordered_workflow_phases(
                 list(key_facts.get("workflow_phase_priorities") or [])
                 + ["intake_questioning", "graph_analysis", "document_generation"],
@@ -786,7 +828,7 @@ class Complainant:
                 "adverse_action",
                 "selection_criteria",
             ]
-            if is_housing_discrimination or is_hacc_research_seed:
+            if should_frontload_anchor_grievance_hearing:
                 anchor_sections.extend(
                     [
                         "grievance_hearing",
@@ -841,28 +883,40 @@ class Complainant:
             )
 
             existing_intake_questions = _as_string_list(synthetic_prompts.get("intake_questions"))
-            boosted_questions = [
-                "Walk me through the event timeline with an exact date anchor for each step, or at least month and year when exact dates are unknown.",
-                "Who made or communicated each housing decision, and what were their roles, titles, or job positions?",
-                "What exact adverse action occurred, when did you first learn about it, and what reason was given in writing or verbally?",
-                "Which policy/procedure document was cited, what section was applied, and how did staff describe that rule?",
-                "List each supporting document or file (notice, email, text, letter, screenshot, upload) with date, sender, file name, and what fact it proves.",
-                "When did you request any grievance, hearing, appeal, or review, and what response date or deadline were you given?",
-                "What protected activity, accommodation request, or complaint happened before the adverse action, and what happened first and after?",
-                "What selection criteria, policy factors, or screening rules were applied to you versus similarly situated people?",
+            anchor_specific_fallbacks: List[str] = []
+            if should_frontload_anchor_grievance_hearing:
+                anchor_specific_fallbacks.append(
+                    "For the unresolved grievance-hearing process, what rights were explained to you, what exact date did you request a hearing/review, how did you submit it, when did HACC respond, and what request record plus response notice date are your strongest evidence anchors?"
+                )
+            if should_frontload_anchor_selection:
+                anchor_specific_fallbacks.append(
+                    "For the unresolved selection-criteria basis, what exact screening factor or threshold was used, where is it written (policy section), and what notice/file is your strongest evidence anchor showing how staff applied it to your case?"
+                )
+            targeted_questions = [
+                "For the unresolved chronology gap, walk through each event in order with the strongest available date anchor (exact date, or month/year if approximate).",
+                "For the unresolved decision-maker gap, identify who made or communicated each decision, each person's role/title, and the strongest notice/email anchor naming them.",
+                "For the unresolved adverse-action gap, state the exact action, the first date you learned it, the stated reason, and the strongest supporting notice or communication anchor.",
+                "For the unresolved policy-application gap, name the specific policy/procedure section cited and the strongest document anchor showing how it was applied.",
+                "For the unresolved documentary-evidence gap, list each supporting file (notice/email/text/letter/upload) with date, sender/source, filename or ID, and the fact it proves.",
+                "For the unresolved hearing-timing gap, when did you request a grievance/hearing/appeal, how did you request it, when did HACC respond, and what record anchors each date?",
+                "For the unresolved causation gap, sequence protected activity -> staff awareness -> adverse action, and cite the strongest dated record for each step.",
+            ]
+            catch_all_questions = [
                 "What harm did this cause and what remedy are you asking for right now?",
             ]
             if empathy_recovery_mode:
-                boosted_questions.insert(
+                targeted_questions.insert(
                     0,
                     "Before details, what impact has this had on your housing stability, finances, health, or family?",
                 )
-            synthetic_prompts["intake_questions"] = _unique_strings(existing_intake_questions + boosted_questions)[:12]
+            synthetic_prompts["intake_questions"] = _unique_strings(
+                anchor_specific_fallbacks + targeted_questions + existing_intake_questions + catch_all_questions
+            )[:14]
 
             intake_prompt_seed = str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip()
             boost_clause = (
-                "Prioritize unresolved factual blockers (dates, decision-makers, adverse action details), "
-                "policy/file evidence precision, and remedy anchors before draft-ready synthesis."
+                "Ask one unresolved factual gap at a time and tie each question to the strongest available evidence anchor "
+                "(policy section, notice/email/text, or file artifact) before moving to generic follow-ups."
             )
             if not intake_prompt_seed:
                 synthetic_prompts["intake_questionnaire_prompt"] = boost_clause
@@ -922,13 +976,23 @@ class Complainant:
                 "Prioritize missing chronology, decision-maker identity, and documentary anchors before drafting."
             )
         if blocker_objectives and not intake_questions:
+            synthesized_anchor_fallbacks: List[str] = []
+            if should_frontload_anchor_grievance_hearing:
+                synthesized_anchor_fallbacks.append(
+                    "For the unresolved grievance-hearing process, what date did you request a hearing/review, how did you submit it, when did HACC respond, and what request record plus response notice date is your strongest evidence anchor?"
+                )
+            if should_frontload_anchor_selection:
+                synthesized_anchor_fallbacks.append(
+                    "For the unresolved selection-criteria basis, what exact criterion was applied, where is it written, and what policy section plus case file/notice is your strongest evidence anchor?"
+                )
             synthesized_questions = [
                 prompt
                 for prompt in (_objective_follow_up_prompt(objective) for objective in blocker_objectives)
                 if prompt
             ]
+            synthesized_questions = synthesized_anchor_fallbacks + synthesized_questions
             if synthesized_questions:
-                synthetic_prompts["intake_questions"] = synthesized_questions[:6]
+                synthetic_prompts["intake_questions"] = _unique_strings(synthesized_questions)[:8]
 
         evidence_summary = str(
             key_facts.get("evidence_summary")

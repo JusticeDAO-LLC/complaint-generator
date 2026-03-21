@@ -44,6 +44,7 @@ from intake_status import (
     build_intake_case_review_summary,
     build_intake_status_summary,
     summarize_intake_contradictions,
+    summarize_temporal_issue_registry,
 )
 from workflow_phase_guidance import (
     build_graph_analysis_phase_guidance,
@@ -276,6 +277,9 @@ def _build_claim_support_temporal_handoff_metadata(
         if isinstance(claim_support_packet_summary, dict)
         else {}
     )
+    temporal_issue_registry_summary = summarize_temporal_issue_registry(
+        raw_status.get("temporal_issue_registry_summary")
+    )
     alignment_evidence_tasks = raw_status.get("alignment_evidence_tasks")
     alignment_evidence_tasks = (
         alignment_evidence_tasks
@@ -298,14 +302,29 @@ def _build_claim_support_temporal_handoff_metadata(
         )
     ]
 
+    unresolved_temporal_issue_count = max(
+        int(claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0),
+        int(temporal_issue_registry_summary.get("unresolved_count") or 0),
+    )
+
     temporal_handoff: Dict[str, Any] = {
-        "unresolved_temporal_issue_count": int(
-            claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
-        ),
+        "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
         "unresolved_temporal_issue_ids": _dedupe_handoff_ids(
             claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_ids")
         ),
     }
+    resolved_temporal_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
+    if resolved_temporal_issue_count > 0:
+        temporal_handoff["resolved_temporal_issue_count"] = resolved_temporal_issue_count
+
+    status_counts = dict(temporal_issue_registry_summary.get("status_counts") or {})
+    if status_counts:
+        temporal_handoff["temporal_issue_status_counts"] = status_counts
+
+    total_temporal_issue_count = int(temporal_issue_registry_summary.get("count") or 0)
+    if total_temporal_issue_count > 0:
+        temporal_handoff["temporal_issue_count"] = total_temporal_issue_count
+
     if claim_type:
         temporal_handoff["claim_type"] = claim_type
     if claim_element_id:
@@ -335,6 +354,68 @@ def _build_claim_support_temporal_handoff_metadata(
         return {}
 
     return {"claim_support_temporal_handoff": temporal_handoff}
+
+
+def _build_claim_temporal_registry_summary(
+    intake_case_summary: Dict[str, Any],
+    *,
+    claim_type: Optional[str],
+) -> Dict[str, Any]:
+    normalized_claim_type = _normalize_handoff_identity(claim_type)
+    if not normalized_claim_type:
+        return {}
+
+    temporal_issue_registry_summary = summarize_temporal_issue_registry(
+        intake_case_summary.get("temporal_issue_registry_summary")
+    )
+    issues = temporal_issue_registry_summary.get("issues") or []
+    matching_issues = [
+        issue for issue in issues
+        if isinstance(issue, dict)
+        and normalized_claim_type in {
+            _normalize_handoff_identity(item)
+            for item in list(issue.get("claim_types") or []) + [issue.get("claim_type")]
+            if _normalize_handoff_identity(item)
+        }
+    ]
+    if not matching_issues:
+        return {}
+
+    return summarize_temporal_issue_registry(
+        {
+            "count": len(matching_issues),
+            "issues": matching_issues,
+        }
+    )
+
+
+def _merge_claim_temporal_registry_into_reasoning_review(
+    review: Dict[str, Any],
+    *,
+    intake_case_summary: Dict[str, Any],
+    claim_type: Optional[str],
+) -> Dict[str, Any]:
+    merged_review = dict(review or {})
+    claim_temporal_registry_summary = _build_claim_temporal_registry_summary(
+        intake_case_summary,
+        claim_type=claim_type,
+    )
+    if not claim_temporal_registry_summary:
+        return merged_review
+
+    merged_review["claim_temporal_issue_count"] = int(
+        claim_temporal_registry_summary.get("count") or 0
+    )
+    merged_review["claim_unresolved_temporal_issue_count"] = int(
+        claim_temporal_registry_summary.get("unresolved_count") or 0
+    )
+    merged_review["claim_resolved_temporal_issue_count"] = int(
+        claim_temporal_registry_summary.get("resolved_count") or 0
+    )
+    merged_review["claim_temporal_issue_status_counts"] = dict(
+        claim_temporal_registry_summary.get("status_counts") or {}
+    )
+    return merged_review
 
 
 def _merge_intake_summary_handoff_metadata(
@@ -3772,8 +3853,12 @@ def build_claim_support_review_payload(
             for claim_name in coverage_claims.keys()
         },
         "claim_reasoning_review": {
-            claim_name: summarize_claim_reasoning_review(
-                validation_claims.get(claim_name, {})
+            claim_name: _merge_claim_temporal_registry_into_reasoning_review(
+                summarize_claim_reasoning_review(
+                    validation_claims.get(claim_name, {})
+                ),
+                intake_case_summary=intake_case_summary,
+                claim_type=claim_name,
             )
             for claim_name in coverage_claims.keys()
         },

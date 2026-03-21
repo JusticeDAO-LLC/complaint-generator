@@ -1512,6 +1512,134 @@ class AdversarialSession:
             weight += 0.20
         return weight
 
+    @staticmethod
+    def _intake_objective_gap_label(objective: str) -> str:
+        labels = {
+            'anchor_grievance_hearing': 'the unresolved grievance hearing process',
+            'anchor_selection_criteria': 'the unresolved selection criteria basis',
+            'hearing_request_timing': 'the unresolved hearing-request timing',
+            'adverse_action_details': 'the unresolved adverse-action fact pattern',
+            'exact_dates': 'the unresolved chronology detail',
+            'response_dates': 'the unresolved response-date detail',
+            'staff_names_titles': 'the unresolved decision-maker identification',
+            'causation_sequence': 'the unresolved causation sequence',
+            'documents': 'the unresolved documentary evidence gap',
+        }
+        return labels.get(objective, f"the unresolved {objective.replace('_', ' ')}")
+
+    @staticmethod
+    def _strongest_evidence_anchor_for_objective(
+        objective: str,
+        weak_evidence_modalities: Set[str],
+    ) -> str:
+        weak_policy = 'policy_document' in weak_evidence_modalities
+        weak_file = 'file_evidence' in weak_evidence_modalities
+        if objective == 'anchor_selection_criteria':
+            if weak_policy and weak_file:
+                return "the written screening policy section and the exact case file or notice showing how that criterion was applied"
+            if weak_policy:
+                return "the written screening policy section that governed your selection outcome"
+            if weak_file:
+                return "the exact notice, email, or file record showing which criterion was applied to your case"
+            return "the written screening criteria source and the specific case record applying that criterion"
+        if objective in {'anchor_grievance_hearing', 'hearing_request_timing'}:
+            return "the hearing-request record (portal/email/form/phone log) plus the response notice date"
+        if objective in {'exact_dates', 'response_dates', 'causation_sequence'}:
+            return "dated records such as notices, emails, texts, and uploads tied to each event"
+        if objective in {'adverse_action_details', 'staff_names_titles'}:
+            return "the decision notice or communication that names the actor, role, and stated reason"
+        if objective == 'documents':
+            if weak_policy and weak_file:
+                return "a policy citation and a supporting case file with date, sender/source, and the fact proved"
+            if weak_policy:
+                return "a policy citation with the exact section used in your case"
+            if weak_file:
+                return "a supporting case file with date, sender/source, and the fact it proves"
+        if weak_policy and weak_file:
+            return "the strongest available policy citation and supporting case file"
+        if weak_policy:
+            return "the strongest available policy citation"
+        if weak_file:
+            return "the strongest available supporting case file"
+        return "the strongest available documentary record"
+
+    @staticmethod
+    def _question_mentions_evidence_anchor(question_text: str, objective: str) -> bool:
+        text = " ".join((question_text or '').lower().split())
+        if not text:
+            return False
+        objective_terms = {
+            'anchor_grievance_hearing': ('hearing', 'grievance', 'request', 'response', 'notice', 'portal', 'email', 'form'),
+            'anchor_selection_criteria': ('selection', 'screening', 'criteria', 'threshold', 'policy', 'section', 'file', 'document', 'notice'),
+            'hearing_request_timing': ('hearing', 'request', 'date', 'respond', 'notice', 'portal', 'email', 'form'),
+            'exact_dates': ('date', 'dated', 'timeline', 'before', 'after', 'sequence'),
+            'response_dates': ('response', 'date', 'notice', 'email', 'letter'),
+            'staff_names_titles': ('name', 'title', 'role', 'who'),
+            'causation_sequence': ('before', 'after', 'sequence', 'because', 'caus'),
+            'adverse_action_details': ('adverse action', 'reason', 'decision', 'notice', 'communicated'),
+            'documents': ('document', 'file', 'policy', 'email', 'text', 'letter', 'screenshot', 'upload', 'record'),
+        }
+        terms = objective_terms.get(objective, ())
+        if any(term in text for term in terms):
+            return True
+        generic_terms = ('document', 'file', 'policy', 'notice', 'email', 'text', 'record', 'upload', 'screenshot')
+        return any(term in text for term in generic_terms)
+
+    @classmethod
+    def _tighten_intake_question_text(
+        cls,
+        question_text: str,
+        objective: str,
+        evidence_anchor: str,
+    ) -> str:
+        text = str(question_text or '').strip()
+        if not text:
+            return text
+        tightened = text
+        normalized = " ".join(text.lower().split())
+        gap_hint = cls._intake_objective_gap_label(objective)
+        if objective and objective.replace('_', ' ') not in normalized:
+            tightened = f"For {gap_hint}, {tightened}"
+        if tightened and tightened[-1] not in {'?', '.', '!'}:
+            tightened += "?"
+        if evidence_anchor and not cls._question_mentions_evidence_anchor(tightened, objective):
+            tightened += f" Please anchor your answer to {evidence_anchor}."
+        return tightened
+
+    @classmethod
+    def _tighten_intake_candidate_for_objective(
+        cls,
+        candidate: Any,
+        objective: str,
+        evidence_anchor: str,
+    ) -> Any:
+        question_text = cls._extract_question_text(candidate)
+        tightened_text = cls._tighten_intake_question_text(question_text, objective, evidence_anchor)
+        if tightened_text == question_text:
+            return candidate
+        if isinstance(candidate, dict):
+            updated = dict(candidate)
+            if isinstance(updated.get('question'), str):
+                updated['question'] = tightened_text
+            elif isinstance(updated.get('text'), str):
+                updated['text'] = tightened_text
+            elif isinstance(updated.get('prompt'), str):
+                updated['prompt'] = tightened_text
+            elif isinstance(updated.get('content'), str):
+                updated['content'] = tightened_text
+            else:
+                updated['question'] = tightened_text
+            selector_signals = dict(updated.get('selector_signals', {}) if isinstance(updated.get('selector_signals'), dict) else {})
+            selector_signals['tightened_intake_objective'] = objective
+            selector_signals['tightened_evidence_anchor'] = evidence_anchor
+            updated['selector_signals'] = selector_signals
+            explanation = dict(updated.get('ranking_explanation', {}) if isinstance(updated.get('ranking_explanation'), dict) else {})
+            explanation['tightened_intake_objective'] = objective
+            explanation['tightened_evidence_anchor'] = evidence_anchor
+            updated['ranking_explanation'] = explanation
+            return updated
+        return tightened_text
+
     @classmethod
     def _questions_substantially_overlap(cls, question_a: Any, question_b: Any) -> bool:
         text_a = cls._extract_question_text(question_a)
@@ -1668,21 +1796,21 @@ class AdversarialSession:
         if should_frontload_anchor_grievance_hearing:
             seed_boosted_probes.append(
                 (
-                    "What grievance hearing rights were explained to you, when did you request a hearing, and what response or scheduling result did you get?",
+                    "What grievance hearing rights were explained to you, when did you request a hearing, and what response or scheduling result did you get, including the request record and response notice date?",
                     "anchor_grievance_hearing",
                 )
             )
             # Dedicated fallback that stays specific to the grievance-hearing anchor.
             seed_boosted_probes.append(
                 (
-                    "For the grievance hearing process, on what date did you request a hearing or review, how did you request it (portal/email/form/phone/in person), and when did HACC respond?",
+                    "For the grievance hearing process, on what date did you request a hearing or review, how did you request it (portal/email/form/phone/in person), when did HACC respond, and what record or file verifies each step?",
                     "anchor_grievance_hearing",
                 )
             )
         if should_frontload_anchor_selection:
             seed_boosted_probes.append(
                 (
-                    "What exact screening, selection, or evaluation criteria were used in your case, where are those criteria written, and how were they applied to you?",
+                    "What exact screening, selection, or evaluation criteria were used in your case, where are those criteria written, and how were they applied to you in the case file or notice?",
                     "anchor_selection_criteria",
                 )
             )
@@ -1895,6 +2023,13 @@ class AdversarialSession:
             if probe_type == 'intake_follow_up':
                 # Keep generic catch-all prompts behind unresolved anchor/timing objectives.
                 weight -= 0.40
+                if (
+                    should_frontload_anchor_grievance_hearing
+                    or should_frontload_anchor_selection
+                    or 'anchor_grievance_hearing' in unresolved_intake_objectives
+                    or 'anchor_selection_criteria' in unresolved_intake_objectives
+                ):
+                    weight -= 0.75
             group = cls._intake_objective_group(probe_type)
             if group in group_targets:
                 remaining = max(0, group_targets[group] - objective_group_coverage.get(group, 0))
@@ -1934,8 +2069,23 @@ class AdversarialSession:
             key = cls._question_dedupe_key(probe_text)
             if key and (key in seen or key in skipped):
                 continue
+            evidence_anchor = cls._strongest_evidence_anchor_for_objective(
+                probe_type,
+                weak_evidence_modalities,
+            )
+            tightened_probe_text = probe_text
+            if (
+                probe_type in unresolved_intake_objectives
+                or probe_type in forced_objectives
+                or probe_type in {'anchor_grievance_hearing', 'anchor_selection_criteria'}
+            ):
+                tightened_probe_text = cls._tighten_intake_question_text(
+                    probe_text,
+                    probe_type,
+                    evidence_anchor,
+                )
             synthetic_question = {
-                "question": probe_text,
+                "question": tightened_probe_text,
                 "type": probe_type,
                 "question_objective": probe_type,
                 "question_reason": "Structured intake prompt imported from the grounding bundle.",
@@ -1976,8 +2126,17 @@ class AdversarialSession:
                         continue
                     if key and (key in seen or key in skipped):
                         continue
+                    evidence_anchor = cls._strongest_evidence_anchor_for_objective(
+                        probe_type,
+                        weak_evidence_modalities,
+                    )
+                    tightened_probe_text = cls._tighten_intake_question_text(
+                        probe_text,
+                        probe_type,
+                        evidence_anchor,
+                    )
                     synthetic_question = {
-                        "question": probe_text,
+                        "question": tightened_probe_text,
                         "type": probe_type,
                         "question_objective": probe_type,
                         "question_reason": "Structured intake prompt imported from the grounding bundle.",
@@ -2144,9 +2303,9 @@ class AdversarialSession:
         if should_frontload_anchor_appeal_rights and 'anchor_appeal_rights' in objective_priority:
             objective_priority['anchor_appeal_rights'] = min(-5, objective_priority['anchor_appeal_rights'])
         if should_frontload_anchor_grievance_hearing and 'anchor_grievance_hearing' in objective_priority:
-            objective_priority['anchor_grievance_hearing'] = min(-4, objective_priority['anchor_grievance_hearing'])
+            objective_priority['anchor_grievance_hearing'] = min(-6, objective_priority['anchor_grievance_hearing'])
         if should_frontload_anchor_selection and 'anchor_selection_criteria' in objective_priority:
-            objective_priority['anchor_selection_criteria'] = min(-3, objective_priority['anchor_selection_criteria'])
+            objective_priority['anchor_selection_criteria'] = min(-5, objective_priority['anchor_selection_criteria'])
         if should_frontload_hearing_request_timing and 'hearing_request_timing' in objective_priority:
             objective_priority['hearing_request_timing'] = min(-3, objective_priority['hearing_request_timing'])
         if should_frontload_causation_sequence and 'causation_sequence' in objective_priority:
@@ -2167,8 +2326,10 @@ class AdversarialSession:
                 should_frontload_anchor_grievance_hearing
                 or should_frontload_anchor_selection
                 or should_frontload_hearing_request_timing
+                or 'anchor_grievance_hearing' in unresolved_intake_objectives
+                or 'anchor_selection_criteria' in unresolved_intake_objectives
             ):
-                objective_priority[objective] = min(99, objective_priority[objective] + 8)
+                objective_priority[objective] = min(99, objective_priority[objective] + 12)
 
         ranked: List[tuple[tuple[Any, ...], Any, List[str]]] = []
         for index, candidate in enumerate(list(candidates or [])):
@@ -2198,6 +2359,21 @@ class AdversarialSession:
             selector_score_normalized = cls._normalized_selector_score(candidate)
             question_text = cls._extract_question_text(candidate)
             quality_score = cls._question_quality_score(candidate, question_text)
+            unresolved_anchor_alignment = 0.0
+            unresolved_specificity = 0.0
+            if matched_objectives:
+                unresolved_ranked = sorted(
+                    [objective for objective in matched_objectives if objective in unresolved_intake_objectives],
+                    key=lambda item: objective_priority.get(item, 999),
+                )
+                if unresolved_ranked:
+                    unresolved_target = unresolved_ranked[0]
+                    mentions_anchor = cls._question_mentions_evidence_anchor(question_text, unresolved_target)
+                    unresolved_anchor_alignment = 0.35 if mentions_anchor else -0.18
+                    precision = cls._question_precision_score(question_text)
+                    unresolved_specificity = 0.22 if precision >= 0.35 else -0.12
+                    adjusted_priority = best_priority - unresolved_anchor_alignment - unresolved_specificity
+                    best_priority = max(0.0, adjusted_priority)
             blocker_match_count = 0
             for objective in matched_objectives:
                 if objective in {
@@ -2256,6 +2432,8 @@ class AdversarialSession:
                 selector_signals['forced_objective_matches'] = forced_objective_matches
                 selector_signals['intake_group_priority'] = group_priority
                 selector_signals['question_quality_score'] = quality_score
+                selector_signals['unresolved_anchor_alignment'] = unresolved_anchor_alignment
+                selector_signals['unresolved_specificity'] = unresolved_specificity
                 annotated_candidate['selector_signals'] = selector_signals
                 explanation['intake_priority_match'] = annotated_priority_match
                 explanation['intake_priority_rank'] = None if not matched_objectives else best_priority
@@ -2268,6 +2446,8 @@ class AdversarialSession:
                 explanation['forced_objective_matches'] = forced_objective_matches
                 explanation['intake_group_priority'] = group_priority
                 explanation['question_quality_score'] = quality_score
+                explanation['unresolved_anchor_alignment'] = unresolved_anchor_alignment
+                explanation['unresolved_specificity'] = unresolved_specificity
                 annotated_candidate['ranking_explanation'] = explanation
 
             ranked.append(
@@ -2302,12 +2482,31 @@ class AdversarialSession:
             # Preserve mediator ordering during recovery and avoid aggressive
             # objective-forcing while signals are uninformative.
             selected: List[Any] = []
-            for candidate in ranked_candidates:
+            for rank_index, candidate in enumerate(ranked_candidates):
                 if len(selected) >= max_questions:
                     break
                 if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
                     continue
-                selected.append(candidate)
+                matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+                unresolved_ranked = sorted(
+                    [objective for objective in matched if objective in unresolved_intake_objectives],
+                    key=lambda item: objective_priority.get(item, 999),
+                )
+                tightened_candidate = candidate
+                for objective in unresolved_ranked:
+                    if cls._intake_objective_group(objective) not in {'factual', 'anchor'}:
+                        continue
+                    evidence_anchor = cls._strongest_evidence_anchor_for_objective(
+                        objective,
+                        weak_evidence_modalities,
+                    )
+                    tightened_candidate = cls._tighten_intake_candidate_for_objective(
+                        candidate,
+                        objective,
+                        evidence_anchor,
+                    )
+                    break
+                selected.append(tightened_candidate)
             return selected[:max_questions]
 
         selected: List[Any] = []
@@ -2323,6 +2522,25 @@ class AdversarialSession:
         if should_frontload_anchor_appeal_rights or should_frontload_anchor_grievance_hearing:
             group_targets['anchor'] = max(group_targets['anchor'], 2)
 
+        def tighten_selected_candidate(candidate: Any, matched: List[str]) -> Any:
+            unresolved_ranked = sorted(
+                [objective for objective in matched if objective in unresolved_intake_objectives],
+                key=lambda item: objective_priority.get(item, 999),
+            )
+            for objective in unresolved_ranked:
+                if cls._intake_objective_group(objective) not in {'factual', 'anchor'}:
+                    continue
+                evidence_anchor = cls._strongest_evidence_anchor_for_objective(
+                    objective,
+                    weak_evidence_modalities,
+                )
+                return cls._tighten_intake_candidate_for_objective(
+                    candidate,
+                    objective,
+                    evidence_anchor,
+                )
+            return candidate
+
         for objective in sorted(forced_objectives, key=lambda item: objective_priority.get(item, 99)):
             for rank_index, candidate in enumerate(ranked_candidates):
                 if rank_index in selected_indexes:
@@ -2332,7 +2550,7 @@ class AdversarialSession:
                     continue
                 if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
                     continue
-                selected.append(candidate)
+                selected.append(tighten_selected_candidate(candidate, matched))
                 selected_indexes.add(rank_index)
                 selected_objectives.update(matched)
                 for matched_objective in matched:
@@ -2354,7 +2572,7 @@ class AdversarialSession:
                         continue
                     if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
                         continue
-                    selected.append(candidate)
+                    selected.append(tighten_selected_candidate(candidate, matched))
                     selected_indexes.add(rank_index)
                     selected_objectives.update(matched)
                     for matched_objective in matched:
@@ -2377,7 +2595,7 @@ class AdversarialSession:
                     continue
                 if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
                     continue
-                selected.append(candidate)
+                selected.append(tighten_selected_candidate(candidate, matched))
                 selected_indexes.add(rank_index)
                 selected_objectives.update(matched)
                 for matched_objective in matched:
@@ -2399,7 +2617,7 @@ class AdversarialSession:
                 cls._questions_substantially_overlap(candidate, existing) for existing in selected
             ):
                 continue
-            selected.append(candidate)
+            selected.append(tighten_selected_candidate(candidate, matched))
             selected_indexes.add(rank_index)
             selected_objectives.update(matched)
             for matched_objective in matched:
@@ -2515,6 +2733,18 @@ class AdversarialSession:
             if objective not in expected_objectives:
                 expected_objectives.append(objective)
 
+        # Keep unresolved anchor objectives ahead of generic catch-all prompts.
+        def _objective_sort_key(item: str) -> tuple[int, int]:
+            if item == 'anchor_grievance_hearing':
+                return (0, 0)
+            if item == 'anchor_selection_criteria':
+                return (0, 1)
+            if item == 'intake_follow_up':
+                return (9, 9)
+            return (1, expected_objectives.index(item))
+
+        expected_objectives = sorted(dict.fromkeys(expected_objectives), key=_objective_sort_key)
+
         # When an anchor-specific adverse-action objective is present, treat it as the
         # preferred intake target unless factual adverse-action detail coverage is explicitly forced.
         if (
@@ -2605,6 +2835,10 @@ class AdversarialSession:
             priority_uncovered.append('hearing_request_timing')
         if should_frontload_causation_sequence and coverage_counts.get('causation_sequence', 0) <= 0:
             priority_uncovered.append('causation_sequence')
+        priority_uncovered_evidence_anchors = {
+            objective: cls._strongest_evidence_anchor_for_objective(objective, weak_evidence_modalities)
+            for objective in priority_uncovered
+        }
         recovery_actions: List[str] = []
         if stability_recovery_mode:
             recovery_actions = [
@@ -2636,6 +2870,12 @@ class AdversarialSession:
             "forced_objectives": sorted(forced_objectives),
             "forced_uncovered_objectives": forced_uncovered,
             "priority_uncovered_objectives": priority_uncovered,
+            "priority_uncovered_evidence_anchors": priority_uncovered_evidence_anchors,
+            "anchor_first_objective_ordering": [
+                objective
+                for objective in expected_objectives
+                if objective in {'anchor_grievance_hearing', 'anchor_selection_criteria', 'intake_follow_up'}
+            ],
             "weighted_coverage_score": weighted_coverage,
             "weighted_expected_total": expected_weight,
             "weighted_covered_total": covered_weight,

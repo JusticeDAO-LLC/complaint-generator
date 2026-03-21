@@ -630,7 +630,7 @@ def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch
         lambda **kwargs: [{'field': 'factual_allegations', 'before_count': 1, 'after_count': 1}],
     )
     monkeypatch.setattr(optimizer, '_select_support_context', lambda **kwargs: {'focus_section': 'factual_allegations'})
-    monkeypatch.setattr(optimizer, '_build_upstream_optimizer_metadata', lambda: {'selected_provider': 'test-provider'})
+    monkeypatch.setattr(optimizer, '_build_upstream_optimizer_metadata', lambda **kwargs: {'selected_provider': 'test-provider'})
     monkeypatch.setattr(optimizer, '_router_status', lambda: {'available': False})
     monkeypatch.setattr(optimizer, '_router_usage_summary', lambda: {'llm_calls': 0})
     monkeypatch.setattr(
@@ -815,6 +815,185 @@ def test_build_support_context_projects_claim_temporal_gap_hints():
                 'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.',
             ],
         }
+    ]
+
+
+def test_build_support_context_preserves_resolved_temporal_history_without_open_gap_penalty():
+    mediator = _build_seeded_mediator()
+    intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})
+    intake_case_file['temporal_issue_registry'] = [
+        {
+            'issue_id': 'timeline-gap-resolved-001',
+            'summary': 'Protected activity and adverse action were previously missing exact chronology anchors.',
+            'status': 'resolved',
+            'current_resolution_status': 'resolved',
+            'claim_types': ['retaliation'],
+            'element_tags': ['causation'],
+        }
+    ]
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=mediator)
+
+    support_context = optimizer._build_support_context(
+        user_id='Jane Doe',
+        draft={
+            'claims_for_relief': [{'claim_type': 'retaliation', 'support_summary': {}}],
+        },
+        drafting_readiness={'status': 'warning', 'claims': [], 'sections': {}},
+    )
+
+    priorities = support_context['intake_priorities']
+    assert priorities['temporal_issue_count'] == 1
+    assert priorities['unresolved_temporal_issue_count'] == 0
+    assert priorities['resolved_temporal_issue_count'] == 1
+    assert priorities['temporal_issue_status_counts'] == {'resolved': 1}
+
+
+def test_score_intake_questioning_treats_resolved_temporal_history_as_context_not_open_gap():
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=_build_seeded_mediator())
+    factual_allegations = [
+        'On January 5, 2026, Plaintiff reported repeated sexual harassment to management.',
+        'On January 20, 2026, Defendant terminated Plaintiff after she made the report.',
+    ]
+
+    resolved_history_score = optimizer._score_intake_questioning(
+        factual_allegations=factual_allegations,
+        support_context={
+            'intake_priorities': {
+                'covered_objectives': [],
+                'uncovered_objectives': [],
+                'unresolved_objectives': [],
+                'objective_question_counts': {},
+                'anchored_chronology_summary': ['Protected activity on January 5, 2026 preceded adverse action on January 20, 2026.'],
+                'temporal_issue_count': 1,
+                'unresolved_temporal_issue_count': 0,
+                'resolved_temporal_issue_count': 1,
+            }
+        },
+    )
+    open_gap_score = optimizer._score_intake_questioning(
+        factual_allegations=factual_allegations,
+        support_context={
+            'intake_priorities': {
+                'covered_objectives': [],
+                'uncovered_objectives': [],
+                'unresolved_objectives': [],
+                'objective_question_counts': {},
+                'anchored_chronology_summary': [],
+                'temporal_issue_count': 1,
+                'unresolved_temporal_issue_count': 1,
+                'resolved_temporal_issue_count': 0,
+            }
+        },
+    )
+
+    assert resolved_history_score > open_gap_score
+
+
+def test_workflow_optimization_guidance_surfaces_resolved_chronology_history():
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=_build_seeded_mediator())
+
+    guidance = optimizer._build_workflow_optimization_guidance(
+        drafting_readiness={'status': 'ready', 'warnings': [], 'sections': {}},
+        support_context={
+            'claims': [{'claim_type': 'retaliation', 'missing_elements': [], 'partially_supported_elements': []}],
+            'evidence': [{'type': 'document'}],
+            'intake_priorities': {'uncovered_objectives': []},
+        },
+        intake_status={'phase': ComplaintPhase.FORMALIZATION.value, 'ready_to_advance': True},
+        intake_case_summary={
+            'candidate_claims': [{'claim_type': 'retaliation'}],
+            'intake_sections': {},
+            'question_candidate_summary': {},
+            'proof_lead_summary': {},
+            'temporal_issue_registry_summary': {
+                'count': 1,
+                'issues': [
+                    {
+                        'issue_id': 'timeline-gap-resolved-001',
+                        'status': 'resolved',
+                        'current_resolution_status': 'resolved',
+                    }
+                ],
+                'status_counts': {'resolved': 1},
+                'resolved_count': 1,
+                'unresolved_count': 0,
+            },
+        },
+        claim_reasoning_review={},
+        claim_support_temporal_handoff={},
+    )
+
+    assert guidance['phase_scorecards']['graph_analysis']['unresolved_temporal_issue_count'] == 0
+    assert guidance['phase_scorecards']['graph_analysis']['resolved_temporal_issue_count'] == 1
+    assert guidance['cross_phase_findings'] == [
+        'Resolved chronology history is retained and should still be preserved in factual allegations and claim support to maintain the causation sequence.'
+    ]
+
+
+def test_document_review_workflow_phase_priority_surfaces_resolved_chronology_history():
+    mediator = _build_seeded_mediator()
+    intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})
+    intake_case_file['temporal_issue_registry'] = [
+        {
+            'issue_id': 'timeline-gap-open-001',
+            'summary': 'Adverse action chronology still needs tighter anchoring.',
+            'status': 'open',
+            'claim_types': ['retaliation'],
+        },
+        {
+            'issue_id': 'timeline-gap-resolved-001',
+            'summary': 'Protected activity chronology was resolved from newly submitted records.',
+            'status': 'resolved',
+            'current_resolution_status': 'resolved',
+            'claim_types': ['retaliation'],
+        },
+    ]
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+
+    payload = _annotate_review_links(
+        {
+            'draft': {
+                'title': 'Jane Doe v. Acme Corporation',
+                'claims_for_relief': [{'claim_type': 'retaliation', 'count_title': 'Count I - Retaliation'}],
+                'drafting_readiness': {
+                    'status': 'warning',
+                    'sections': {'claims_for_relief': {'status': 'warning', 'title': 'Claims For Relief'}},
+                    'claims': [{'claim_type': 'retaliation', 'status': 'warning'}],
+                },
+            },
+            'drafting_readiness': {
+                'status': 'warning',
+                'workflow_phase_plan': {
+                    'recommended_order': ['graph_analysis', 'document_generation'],
+                    'phases': {
+                        'graph_analysis': {
+                            'status': 'warning',
+                            'summary': 'Graph analysis still shows 0 unresolved gap(s) or unprojected evidence updates.',
+                            'recommended_actions': [
+                                'Resolve remaining intake graph gaps and refresh graph projections before filing.',
+                            ],
+                        },
+                        'document_generation': {
+                            'status': 'warning',
+                            'summary': 'Document generation should wait until evidence review and packet blockers are reduced further.',
+                            'recommended_actions': [],
+                        },
+                    },
+                },
+                'sections': {'claims_for_relief': {'status': 'warning', 'title': 'Claims For Relief'}},
+                'claims': [{'claim_type': 'retaliation', 'status': 'warning'}],
+            },
+        },
+        mediator=mediator,
+        user_id='Jane Doe',
+    )
+
+    assert payload['review_links']['workflow_phase_priority']['chip_labels'] == [
+        'workflow phase: Graph Analysis',
+        'phase status: Warning',
+        'recommended action: Resolve remaining intake graph gaps and refresh graph projections before filing.',
+        'resolved chronology issues: 1',
     ]
 
 

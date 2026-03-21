@@ -264,6 +264,7 @@ def _build_document_review_workflow_phase_priority(
     default_claim_type: Optional[str],
     dashboard_url: str,
     section_review_map: Dict[str, Dict[str, Any]],
+    intake_case_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     prioritized_phase_context = resolve_prioritized_workflow_phase(workflow_phase_plan)
     prioritized_phase_name = str(prioritized_phase_context.get("phase_name") or "").strip()
@@ -320,6 +321,20 @@ def _build_document_review_workflow_phase_priority(
     else:
         return {}
 
+    temporal_issue_registry_summary = (
+        intake_case_summary.get("temporal_issue_registry_summary")
+        if isinstance(intake_case_summary, dict) and isinstance(intake_case_summary.get("temporal_issue_registry_summary"), dict)
+        else {}
+    )
+    resolved_temporal_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
+    chip_labels = [
+        f"workflow phase: {humanize_workflow_priority_label(prioritized_phase_name)}",
+        f"phase status: {humanize_workflow_priority_label(prioritized_status)}",
+        *([f"recommended action: {primary_recommended_action}"] if primary_recommended_action else []),
+    ]
+    if resolved_temporal_issue_count > 0:
+        chip_labels.append(f"resolved chronology issues: {resolved_temporal_issue_count}")
+
     return {
         "phase_name": prioritized_phase_name,
         "status": prioritized_status,
@@ -331,11 +346,7 @@ def _build_document_review_workflow_phase_priority(
         "action_kind": "link",
         "dashboard_url": dashboard_url,
         "recommended_actions": recommended_actions,
-        "chip_labels": [
-            f"workflow phase: {humanize_workflow_priority_label(prioritized_phase_name)}",
-            f"phase status: {humanize_workflow_priority_label(prioritized_status)}",
-            *([f"recommended action: {primary_recommended_action}"] if primary_recommended_action else []),
-        ],
+        "chip_labels": chip_labels,
     }
 
 
@@ -362,6 +373,7 @@ def _build_document_review_workflow_priority(
             default_claim_type=default_claim_type,
             dashboard_url=dashboard_url,
             section_review_map=section_review_map,
+            intake_case_summary=intake_case_summary,
         )
 
     claim_type = str(next_action.get("claim_type") or default_claim_type or "").strip()
@@ -916,6 +928,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         default_claim_type=preferred_claim_type,
         dashboard_url=dashboard_url,
         section_review_map=section_review_map,
+        intake_case_summary=intake_case_summary,
     )
     workflow_priority = _build_document_review_workflow_priority(
         intake_status=intake_status,

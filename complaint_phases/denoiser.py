@@ -2970,6 +2970,69 @@ class ComplaintDenoiser:
             '', 'n/a', 'na', 'none', 'unknown', 'not sure', 'unsure', 'no idea', 'i do not know', "i don't know",
         }
         gap_type = str(context.get('gap_type') or '').strip().lower()
+        answer_contract = context.get('answer_contract') if isinstance(context.get('answer_contract'), dict) else {}
+        contract_required_fields = [
+            str(field).strip().lower()
+            for field in (
+                answer_contract.get('required_fields')
+                or context.get('required_fields')
+                or []
+            )
+            if str(field).strip()
+        ]
+        contract_required_fields = list(dict.fromkeys(contract_required_fields))
+        contract_missing_required_fields = {
+            str(field).strip().lower()
+            for field in (
+                answer_contract.get('missing_required_fields')
+                or context.get('missing_required_fields')
+                or []
+            )
+            if str(field).strip()
+        }
+        contract_requirement_updates = {
+            str(field).strip().lower()
+            for field in (
+                answer_contract.get('requirement_updates')
+                or context.get('requirement_updates')
+                or []
+            )
+            if str(field).strip()
+        }
+        contract_entity_updates = {
+            str(field).strip().lower()
+            for field in (
+                answer_contract.get('entity_updates')
+                or context.get('entity_updates')
+                or []
+            )
+            if str(field).strip()
+        }
+        contract_relationship_updates = {
+            str(field).strip().lower()
+            for field in (
+                answer_contract.get('relationship_updates')
+                or context.get('relationship_updates')
+                or []
+            )
+            if str(field).strip()
+        }
+        contract_single_turn_closable = bool(
+            answer_contract.get('single_turn_closable')
+            or context.get('single_turn_closable')
+        )
+        contract_single_field_closable = bool(
+            answer_contract.get('single_field_closable')
+            or context.get('single_field_closable')
+        )
+        contract_deterministically_closable = bool(
+            answer_contract.get('deterministically_closable')
+            or context.get('deterministically_closable')
+        )
+        deterministic_requirement_tokens_updated: Set[str] = set()
+        deterministic_relationship_tokens_updated: Set[str] = set()
+        deterministic_entity_tokens_updated: Set[str] = set()
+        deterministic_plan_fields_captured: Set[str] = set()
         expected_modalities = {
             str(item).strip().lower()
             for item in (context.get('expected_evidence_modalities') or [])
@@ -3103,6 +3166,11 @@ class ComplaintDenoiser:
 
         extracted_file_refs = _extract_file_references(answer_text)
         extracted_policy_refs = _extract_policy_references(answer_text)
+        contract_missing_field_plan = [
+            plan
+            for plan in (answer_contract.get('missing_field_update_plan') or context.get('missing_field_update_plan') or [])
+            if isinstance(plan, dict)
+        ]
         policy_signal = any(token in answer_lower for token in ('policy', 'handbook', 'rule', 'criteria', 'section', 'guideline')) or bool(extracted_policy_refs)
         file_signal = bool(extracted_file_refs) or bool(document_mentions) or any(token in answer_lower for token in ('file', 'upload', 'attachment', 'exhibit', 'pdf', 'screenshot', 'scan'))
         staff_signal = bool(named_role_people or named_title_people or generic_roles)
@@ -3183,7 +3251,11 @@ class ComplaintDenoiser:
                 'missing_claim_element': ['supporting_fact'],
                 'missing_proof_leads': ['supporting_fact'],
             }
-            return list(mapping.get(str(current_gap_type or '').strip().lower(), []))
+            fields: List[str] = list(mapping.get(str(current_gap_type or '').strip().lower(), []))
+            for contract_field in contract_required_fields:
+                if contract_field not in fields:
+                    fields.append(contract_field)
+            return fields
 
         def _store_required_field_value(claim_entity: Optional[Entity], field_name: str, value: str) -> None:
             nonlocal updates
@@ -3219,6 +3291,113 @@ class ComplaintDenoiser:
             )
             if rel_created:
                 updates['relationships_added'] += 1
+
+        def _required_field_has_value(claim_entity: Optional[Entity], field_name: str) -> bool:
+            if not claim_entity or not field_name:
+                return False
+            attrs = claim_entity.attributes if isinstance(claim_entity.attributes, dict) else {}
+            field_values = attrs.get('required_field_values')
+            field_values = field_values if isinstance(field_values, dict) else {}
+            value = field_values.get(str(field_name or '').strip().lower())
+            if isinstance(value, list):
+                return any(str(item).strip() for item in value)
+            return bool(str(value or '').strip())
+
+        def _candidate_value_for_required_field(field_name: str) -> str:
+            normalized = str(field_name or '').strip().lower()
+            if not normalized:
+                return ''
+            if normalized in {'event_date', 'hearing_request_date', 'response_date', 'adverse_action_date', 'decision_date', 'protected_activity_date', 'document_date'}:
+                if normalized == 'hearing_request_date' and contextual_dates.get('hearing_request_dates'):
+                    return str((contextual_dates.get('hearing_request_dates') or [''])[0]).strip()
+                if normalized == 'response_date' and contextual_dates.get('response_dates'):
+                    return str((contextual_dates.get('response_dates') or [''])[0]).strip()
+                if normalized == 'adverse_action_date' and contextual_dates.get('adverse_action_dates'):
+                    return str((contextual_dates.get('adverse_action_dates') or [''])[0]).strip()
+                if normalized == 'decision_date' and contextual_dates.get('decision_dates'):
+                    return str((contextual_dates.get('decision_dates') or [''])[0]).strip()
+                if normalized == 'protected_activity_date' and contextual_dates.get('protected_activity_dates'):
+                    return str((contextual_dates.get('protected_activity_dates') or [''])[0]).strip()
+                if normalized == 'document_date' and contextual_dates.get('document_dates'):
+                    return str((contextual_dates.get('document_dates') or [''])[0]).strip()
+                return str((extracted_dates or [''])[0]).strip()
+            if normalized in {'staff_name', 'decision_actor', 'response_actor', 'hearing_request_actor', 'issuing_actor'}:
+                if named_role_people:
+                    name, role = named_role_people[0]
+                    if normalized == 'staff_name':
+                        return str(name or '').strip()
+                    return f"{name} ({role})".strip()
+                if named_title_people:
+                    name, role = named_title_people[0]
+                    if normalized == 'staff_name':
+                        return str(name or '').strip()
+                    return f"{name} ({role})".strip()
+                return str((org_candidates or [''])[0]).strip()
+            if normalized in {'staff_role', 'staff_title'}:
+                if named_role_people:
+                    return str(named_role_people[0][1] or '').strip()
+                if named_title_people:
+                    return str(named_title_people[0][1] or '').strip()
+                return str((generic_roles or [''])[0]).strip()
+            if normalized == 'document_name':
+                if document_mentions:
+                    return str(document_mentions[0]).strip()
+                if extracted_file_refs:
+                    return str(extracted_file_refs[0]).strip()
+                if extracted_policy_refs:
+                    return str(extracted_policy_refs[0]).strip()
+                return ''
+            if normalized == 'protected_activity' and has_causation_signal:
+                return self._short_description(answer_text, 160)
+            if normalized == 'adverse_action' and (has_adverse_action_signal or has_causation_signal):
+                return self._short_description(answer_text, 160)
+            if normalized == 'causation_link' and has_causation_signal:
+                return self._short_description(answer_text, 160)
+            if normalized == 'supporting_fact' and _has_structured_signal():
+                return self._short_description(answer_text, 180)
+            return ''
+
+        def _apply_contract_gap_updates(claim_entity: Optional[Entity]) -> None:
+            if not claim_entity or not _answer_is_substantive(answer_text):
+                return
+
+            # Force deterministic closure attempts for contract-identified missing fields.
+            for field_name in contract_required_fields:
+                if field_name in deterministic_fields_updated:
+                    continue
+                if field_name in contract_missing_required_fields or not _required_field_has_value(claim_entity, field_name):
+                    candidate_value = _candidate_value_for_required_field(field_name)
+                    if candidate_value:
+                        _store_required_field_value(claim_entity, field_name, candidate_value)
+
+            for plan in contract_missing_field_plan:
+                field_name = str(plan.get('field_name') or '').strip().lower()
+                if not field_name:
+                    continue
+                # Only execute deterministic field-level updates when this turn captured the field.
+                if field_name not in deterministic_fields_updated:
+                    continue
+                deterministic_plan_fields_captured.add(field_name)
+                for req_key in plan.get('requirement_updates') or []:
+                    normalized_req = str(req_key or '').strip().lower()
+                    if not normalized_req:
+                        continue
+                    deterministic_requirement_tokens_updated.add(normalized_req)
+                    _append_claim_signal(claim_entity, 'satisfied_requirements', normalized_req)
+                for rel_key in plan.get('relationship_updates') or []:
+                    normalized_rel = str(rel_key or '').strip().lower()
+                    if normalized_rel:
+                        deterministic_relationship_tokens_updated.add(normalized_rel)
+                for entity_key in plan.get('entity_updates') or []:
+                    normalized_entity = str(entity_key or '').strip().lower()
+                    if normalized_entity:
+                        deterministic_entity_tokens_updated.add(normalized_entity)
+
+            captured_contract_fields = deterministic_fields_updated.intersection(contract_missing_required_fields)
+            if captured_contract_fields or (not contract_missing_required_fields and deterministic_fields_updated):
+                deterministic_requirement_tokens_updated.update(contract_requirement_updates)
+                deterministic_relationship_tokens_updated.update(contract_relationship_updates)
+                deterministic_entity_tokens_updated.update(contract_entity_updates)
 
         def _deterministic_gap_field_updates(claim_entity: Optional[Entity]) -> None:
             if not claim_entity or not _answer_is_substantive(answer_text):
@@ -3483,7 +3662,19 @@ class ComplaintDenoiser:
             if not dependency_graph or not _answer_is_substantive(answer_text):
                 return
             required_fields = _required_fields_for_gap(gap_type)
-            if required_fields and not deterministic_fields_updated.intersection(set(required_fields)):
+            captured_missing_required = deterministic_fields_updated.intersection(contract_missing_required_fields)
+            if (
+                required_fields
+                and not deterministic_fields_updated.intersection(set(required_fields))
+                and not deterministic_requirement_tokens_updated
+            ):
+                return
+            if (
+                workflow_phase == 'graph_analysis'
+                and contract_missing_required_fields
+                and not captured_missing_required
+                and not deterministic_plan_fields_captured
+            ):
                 return
             candidate_ids = {
                 str(context.get('requirement_id') or '').strip(),
@@ -3492,6 +3683,15 @@ class ComplaintDenoiser:
             }
             requirement_name = str(context.get('requirement_name') or context.get('node_name') or '').strip().lower()
             requirement_key = str(context.get('requirement_key') or context.get('target_element_id') or '').strip().lower()
+            requirement_aliases = {
+                token
+                for token in (
+                    [requirement_key]
+                    + list(deterministic_requirement_tokens_updated)
+                    + list(contract_requirement_updates)
+                )
+                if str(token or '').strip()
+            }
 
             matched_nodes = []
             for node_id in [item for item in candidate_ids if item]:
@@ -3505,7 +3705,7 @@ class ComplaintDenoiser:
                     node_requirement_key = str(attrs.get('requirement_key') or '').strip().lower()
                     if requirement_name and node_name == requirement_name:
                         matched_nodes.append(node)
-                    elif requirement_key and node_requirement_key and node_requirement_key == requirement_key:
+                    elif requirement_aliases and node_requirement_key and node_requirement_key in requirement_aliases:
                         matched_nodes.append(node)
 
             seen_node_ids: Set[str] = set()
@@ -3529,6 +3729,17 @@ class ComplaintDenoiser:
         def _mark_dependency_gap_satisfied() -> None:
             nonlocal updates
             if not dependency_graph or not _answer_is_substantive(answer_text):
+                return
+            required_fields = _required_fields_for_gap(gap_type)
+            relevant_required = set(contract_missing_required_fields or required_fields)
+            captured_required = deterministic_fields_updated.intersection(relevant_required)
+            if (
+                workflow_phase == 'graph_analysis'
+                and relevant_required
+                and not captured_required
+                and not deterministic_requirement_tokens_updated
+                and not deterministic_plan_fields_captured
+            ):
                 return
             gap_id = str(context.get('gap_id') or '').strip().lower()
             deterministic_key = str(context.get('deterministic_update_key') or '').strip().lower()
@@ -3797,6 +4008,113 @@ class ComplaintDenoiser:
                     updates['entities_updated'] += 1
                 _link_claim_to_entity(claim_entity, sequence_fact, 'has_causation_detail', 0.67)
 
+        def _apply_contract_entity_relationship_updates(claim_entity: Optional[Entity]) -> None:
+            nonlocal updates
+            if not claim_entity or not _answer_is_substantive(answer_text):
+                return
+            claim_id = claim_entity.id
+
+            if (
+                'staff_actor' in deterministic_entity_tokens_updated
+                or 'link_staff_to_action' in deterministic_relationship_tokens_updated
+            ) and (named_title_people or named_role_people or org_candidates):
+                people = list(named_title_people) + list(named_role_people)
+                if not people and org_candidates:
+                    org_entity, created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'organization',
+                        org_candidates[0],
+                        {'role': 'respondent', 'source': 'answer_contract'},
+                        0.76,
+                    )
+                    if created:
+                        updates['entities_updated'] += 1
+                    _link_claim_to_entity(claim_entity, org_entity, 'involves', 0.67)
+                for name, title in people[:4]:
+                    person, created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'person',
+                        name,
+                        {'role': title, 'title': title, 'source': 'answer_contract'},
+                        0.78,
+                    )
+                    if created:
+                        updates['entities_updated'] += 1
+                    _link_claim_to_entity(claim_entity, person, 'involves', 0.67)
+                    _link_claim_to_entity(claim_entity, person, 'has_decision_maker', 0.66)
+
+            if (
+                'document_evidence' in deterministic_entity_tokens_updated
+                or 'link_document_to_claim' in deterministic_relationship_tokens_updated
+            ):
+                if policy_signal or extracted_policy_refs:
+                    _upsert_structured_evidence(
+                        claim_entity,
+                        claim_id,
+                        'policy_document',
+                        0.72,
+                        {
+                            'policy_refs': list(extracted_policy_refs[:4]),
+                            'document_mentions': list(document_mentions[:4]),
+                            'source': 'answer_contract',
+                        },
+                    )
+                if file_signal or extracted_file_refs:
+                    _upsert_structured_evidence(
+                        claim_entity,
+                        claim_id,
+                        'file_evidence',
+                        0.72,
+                        {
+                            'file_refs': list(extracted_file_refs[:4]),
+                            'document_mentions': list(document_mentions[:4]),
+                            'source': 'answer_contract',
+                        },
+                    )
+
+            if (
+                'timeline_fact' in deterministic_entity_tokens_updated
+                or 'link_event_sequence' in deterministic_relationship_tokens_updated
+                or 'validate_temporal_order' in deterministic_relationship_tokens_updated
+                or 'link_response_to_hearing_or_action' in deterministic_relationship_tokens_updated
+            ) and (extracted_dates or response_timing_phrases or has_sequence_signal):
+                timeline_fact, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Timeline contract detail: {self._short_description(answer_text, 72)}",
+                    {
+                        'fact_type': 'timeline_contract_detail',
+                        'captured_dates': list(extracted_dates[:4]),
+                        'response_timing': list(response_timing_phrases[:4]),
+                        'has_sequence_signal': bool(has_sequence_signal),
+                        'gap_type': gap_type,
+                    },
+                    0.73,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, timeline_fact, 'has_timeline_detail', 0.66)
+
+            if (
+                'claim_fact' in deterministic_entity_tokens_updated
+                or 'link_causation_chain' in deterministic_relationship_tokens_updated
+            ) and _has_structured_signal():
+                fact_entity, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Structured gap fact: {self._short_description(answer_text, 72)}",
+                    {
+                        'fact_type': 'structured_gap_fact',
+                        'gap_type': gap_type,
+                        'description': self._short_description(answer_text, 180),
+                        'source': 'answer_contract',
+                    },
+                    0.72,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, fact_entity, 'has_requirement_fact', 0.65)
+
         def _actor_critic_gap_confidence() -> float:
             if not _answer_is_substantive(answer_text):
                 return 0.0
@@ -3832,15 +4150,30 @@ class ComplaintDenoiser:
             if requested_targets:
                 hits = sum(1 for target in requested_targets if target_checks.get(target, False))
                 actor_score = hits / max(len(requested_targets), 1)
+            elif contract_required_fields:
+                contract_hits = sum(
+                    1
+                    for field_name in contract_required_fields
+                    if field_name in deterministic_fields_updated
+                )
+                actor_score = contract_hits / max(len(contract_required_fields), 1)
             else:
                 actor_score = 1.0 if _has_structured_signal() else 0.35
+            contract_capture_ratio = (
+                len(deterministic_fields_updated.intersection(contract_missing_required_fields))
+                / max(len(contract_missing_required_fields), 1)
+                if contract_missing_required_fields
+                else 1.0
+            )
             critic_components = [
                 1.0 if _has_structured_signal() else 0.0,
                 1.0 if (policy_signal or file_signal) else 0.0,
                 1.0 if (has_sequence_signal or has_causation_signal) else 0.0,
                 1.0 if (extracted_dates or response_timing_phrases) else 0.0,
                 1.0 if deterministic_fields_updated else 0.0,
+                1.0 if deterministic_requirement_tokens_updated else 0.0,
                 1.0 if (contextual_dates.get('response_dates') or contextual_dates.get('hearing_request_dates')) else 0.0,
+                contract_capture_ratio,
             ]
             critic_score = sum(critic_components) / float(len(critic_components))
             weighted = (
@@ -3891,6 +4224,15 @@ class ComplaintDenoiser:
                 }
                 if gap_type in strict_gaps:
                     return coverage >= 1.0 and newly_captured_required
+                if workflow_phase == 'graph_analysis' and contract_missing_required_fields:
+                    captured_missing = deterministic_fields_updated.intersection(contract_missing_required_fields)
+                    captured_ratio = len(captured_missing) / max(len(contract_missing_required_fields), 1)
+                    if contract_single_field_closable:
+                        return bool(captured_missing)
+                    if contract_single_turn_closable:
+                        return bool(captured_missing) and coverage >= 1.0 and captured_ratio >= 1.0
+                    if contract_deterministically_closable:
+                        return bool(captured_missing) and captured_ratio >= 0.5 and coverage >= 0.67
                 # Require a concrete field capture in this turn before considering the gap closed.
                 return newly_captured_required and coverage >= 0.5
 
@@ -4205,7 +4547,10 @@ class ComplaintDenoiser:
 
         claim_entity_for_gap = _find_claim_entity_from_context()
         _deterministic_gap_field_updates(claim_entity_for_gap)
+        _apply_contract_gap_updates(claim_entity_for_gap)
         _add_structured_graph_analysis_updates(claim_entity_for_gap)
+        _apply_contract_entity_relationship_updates(claim_entity_for_gap)
+        _mark_dependency_requirement_satisfied()
 
         if _context_gap_is_closed():
             _record_gap_resolution(claim_entity_for_gap)
