@@ -740,6 +740,11 @@ class Complainant:
             weak_policy_or_file_evidence
             or "anchor_selection_criteria" in unresolved_intake_objectives
         )
+        selection_anchor_probe = (
+            "For the unresolved selection-criteria basis, what exact screening factor or threshold was used, "
+            "where is it written (policy title and section), and what is the strongest file/notice anchor "
+            "(filename or notice ID, date, and sender) showing how staff applied it to your case?"
+        )
         needs_intake_boost = (
             is_housing_discrimination
             or is_hacc_research_seed
@@ -797,13 +802,11 @@ class Complainant:
                 "What remedy are you asking for right now?",
             ]
             anchor_fallbacks: List[str] = []
+            if should_frontload_anchor_selection:
+                anchor_fallbacks.append(selection_anchor_probe)
             if should_frontload_anchor_grievance_hearing:
                 anchor_fallbacks.append(
                     "For the unresolved grievance-hearing gap, what date did you request a hearing/review, how did you submit it (portal/email/form/phone/in person), when did HACC respond, and which request record plus response notice date is your strongest evidence anchor?"
-                )
-            if should_frontload_anchor_selection:
-                anchor_fallbacks.append(
-                    "For the unresolved selection-criteria gap, what exact criterion or threshold was applied to you, where is it written (policy section), and which file/notice is the strongest evidence anchor showing that application in your case?"
                 )
             synthetic_prompts["intake_questions"] = _unique_strings(existing_questions + stability_questions)[:8]
             if anchor_fallbacks:
@@ -884,13 +887,11 @@ class Complainant:
 
             existing_intake_questions = _as_string_list(synthetic_prompts.get("intake_questions"))
             anchor_specific_fallbacks: List[str] = []
+            if should_frontload_anchor_selection:
+                anchor_specific_fallbacks.append(selection_anchor_probe)
             if should_frontload_anchor_grievance_hearing:
                 anchor_specific_fallbacks.append(
                     "For the unresolved grievance-hearing process, what rights were explained to you, what exact date did you request a hearing/review, how did you submit it, when did HACC respond, and what request record plus response notice date are your strongest evidence anchors?"
-                )
-            if should_frontload_anchor_selection:
-                anchor_specific_fallbacks.append(
-                    "For the unresolved selection-criteria basis, what exact screening factor or threshold was used, where is it written (policy section), and what notice/file is your strongest evidence anchor showing how staff applied it to your case?"
                 )
             targeted_questions = [
                 "For the unresolved chronology gap, walk through each event in order with the strongest available date anchor (exact date, or month/year if approximate).",
@@ -915,8 +916,9 @@ class Complainant:
 
             intake_prompt_seed = str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip()
             boost_clause = (
-                "Ask one unresolved factual gap at a time and tie each question to the strongest available evidence anchor "
-                "(policy section, notice/email/text, or file artifact) before moving to generic follow-ups."
+                "Ask one unresolved factual gap at a time, make each question specific to that gap, and require the strongest available "
+                "evidence anchor in the same turn (policy title/section, notice/email/text metadata, or file artifact with filename/ID and date). "
+                "Resolve anchor-selection criteria evidence before generic catch-all prompts."
             )
             if not intake_prompt_seed:
                 synthetic_prompts["intake_questionnaire_prompt"] = boost_clause
@@ -973,17 +975,15 @@ class Complainant:
             ]
         if blocker_objectives and not intake_prompt_text:
             synthetic_prompts["intake_questionnaire_prompt"] = (
-                "Prioritize missing chronology, decision-maker identity, and documentary anchors before drafting."
+                "Prioritize one unresolved factual gap per question, and request the strongest available evidence anchor for that same gap before drafting."
             )
         if blocker_objectives and not intake_questions:
             synthesized_anchor_fallbacks: List[str] = []
+            if should_frontload_anchor_selection:
+                synthesized_anchor_fallbacks.append(selection_anchor_probe)
             if should_frontload_anchor_grievance_hearing:
                 synthesized_anchor_fallbacks.append(
                     "For the unresolved grievance-hearing process, what date did you request a hearing/review, how did you submit it, when did HACC respond, and what request record plus response notice date is your strongest evidence anchor?"
-                )
-            if should_frontload_anchor_selection:
-                synthesized_anchor_fallbacks.append(
-                    "For the unresolved selection-criteria basis, what exact criterion was applied, where is it written, and what policy section plus case file/notice is your strongest evidence anchor?"
                 )
             synthesized_questions = [
                 prompt

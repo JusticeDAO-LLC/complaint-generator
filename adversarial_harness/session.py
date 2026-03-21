@@ -1864,6 +1864,17 @@ class AdversarialSession:
             )
 
         prioritized_prompts = seed_boosted_probes + cls._extract_intake_prompt_candidates(seed_complaint)
+        # Keep anchor-selection probes ahead of generic catch-all prompts when unresolved.
+        prompt_priority_tier: Dict[int, int] = {}
+        for prompt_index, (probe_text, probe_type) in enumerate(prioritized_prompts):
+            if probe_type == 'anchor_selection_criteria':
+                prompt_priority_tier[prompt_index] = 0
+            elif probe_type in {'anchor_grievance_hearing', 'anchor_appeal_rights', 'hearing_request_timing'}:
+                prompt_priority_tier[prompt_index] = 1
+            elif probe_type == 'intake_follow_up':
+                prompt_priority_tier[prompt_index] = 9
+            else:
+                prompt_priority_tier[prompt_index] = 3
         objective_priority: Dict[str, int] = {}
         for _, objective in prioritized_prompts:
             objective_priority.setdefault(objective, len(objective_priority))
@@ -2005,7 +2016,7 @@ class AdversarialSession:
             if unmet_group_targets > 0:
                 injection_budget = max(injection_budget, min(12, unmet_group_targets + 4))
 
-        weighted_prompts: List[tuple[float, int, str, str]] = []
+        weighted_prompts: List[tuple[int, float, int, str, str]] = []
         for index, (probe_text, probe_type) in enumerate(prioritized_prompts):
             weight = cls._intake_objective_weight(probe_type, optimizer_context)
             if probe_type in forced_objectives:
@@ -2037,11 +2048,21 @@ class AdversarialSession:
                     weight += min(0.9, remaining * 0.35)
             if probe_type in missing_objectives:
                 weight += 0.25
-            weighted_prompts.append((weight, index, probe_text, probe_type))
-        weighted_prompts.sort(key=lambda item: (-item[0], item[1]))
+            tier = prompt_priority_tier.get(index, 3)
+            if probe_type == 'anchor_selection_criteria' and should_frontload_anchor_selection:
+                tier = 0
+            if probe_type == 'intake_follow_up':
+                tier = max(tier, 9)
+            weighted_prompts.append((tier, weight, index, probe_text, probe_type))
+        weighted_prompts.sort(key=lambda item: (item[0], -item[1], item[2]))
 
         injected = 0
         injected_questions: List[Any] = []
+        injected_objective_counts: Dict[str, int] = {}
+        max_per_objective: Dict[str, int] = {}
+        if should_frontload_anchor_selection and 'anchor_selection_criteria' in missing_objectives:
+            # Allow one dedicated fallback on top of the primary selection-criteria probe.
+            max_per_objective['anchor_selection_criteria'] = 2
         strict_recovery_objectives = {
             'timeline',
             'actors',
@@ -2055,10 +2076,12 @@ class AdversarialSession:
             'exact_dates',
             'staff_names_titles',
         }
-        for _weight, _index, probe_text, probe_type in weighted_prompts:
+        for _tier, _weight, _index, probe_text, probe_type in weighted_prompts:
             if injected >= injection_budget:
                 break
-            if probe_type in injected_objectives:
+            current_count = injected_objective_counts.get(probe_type, 0)
+            per_objective_limit = max_per_objective.get(probe_type, 1)
+            if current_count >= per_objective_limit:
                 continue
             if missing_objectives and probe_type not in missing_objectives:
                 continue
@@ -2101,6 +2124,7 @@ class AdversarialSession:
             if key and key not in seen:
                 seen.add(key)
                 injected_objectives.add(probe_type)
+                injected_objective_counts[probe_type] = injected_objective_counts.get(probe_type, 0) + 1
                 injected_questions.append(synthetic_question)
                 objective_group = cls._intake_objective_group(probe_type)
                 if objective_group in objective_group_coverage:
@@ -2118,11 +2142,13 @@ class AdversarialSession:
             for group in unmet_groups:
                 if injected >= injection_budget:
                     break
-                for _weight, _index, probe_text, probe_type in weighted_prompts:
+                for _tier, _weight, _index, probe_text, probe_type in weighted_prompts:
                     if cls._intake_objective_group(probe_type) != group:
                         continue
+                    current_count = injected_objective_counts.get(probe_type, 0)
+                    per_objective_limit = max_per_objective.get(probe_type, 1)
                     key = cls._question_dedupe_key(probe_text)
-                    if probe_type in injected_objectives:
+                    if current_count >= per_objective_limit:
                         continue
                     if key and (key in seen or key in skipped):
                         continue
@@ -2152,6 +2178,7 @@ class AdversarialSession:
                     if key:
                         seen.add(key)
                     injected_objectives.add(probe_type)
+                    injected_objective_counts[probe_type] = injected_objective_counts.get(probe_type, 0) + 1
                     injected_questions.append(synthetic_question)
                     objective_group_coverage[group] = objective_group_coverage.get(group, 0) + 1
                     injected += 1
@@ -2305,7 +2332,7 @@ class AdversarialSession:
         if should_frontload_anchor_grievance_hearing and 'anchor_grievance_hearing' in objective_priority:
             objective_priority['anchor_grievance_hearing'] = min(-6, objective_priority['anchor_grievance_hearing'])
         if should_frontload_anchor_selection and 'anchor_selection_criteria' in objective_priority:
-            objective_priority['anchor_selection_criteria'] = min(-5, objective_priority['anchor_selection_criteria'])
+            objective_priority['anchor_selection_criteria'] = min(-7, objective_priority['anchor_selection_criteria'])
         if should_frontload_hearing_request_timing and 'hearing_request_timing' in objective_priority:
             objective_priority['hearing_request_timing'] = min(-3, objective_priority['hearing_request_timing'])
         if should_frontload_causation_sequence and 'causation_sequence' in objective_priority:
@@ -2527,6 +2554,26 @@ class AdversarialSession:
                 [objective for objective in matched if objective in unresolved_intake_objectives],
                 key=lambda item: objective_priority.get(item, 999),
             )
+            unresolved_priority_order = [
+                'anchor_selection_criteria',
+                'anchor_grievance_hearing',
+                'hearing_request_timing',
+                'causation_sequence',
+                'adverse_action_details',
+                'exact_dates',
+                'response_dates',
+                'staff_names_titles',
+                'documents',
+            ]
+            unresolved_ranked = sorted(
+                unresolved_ranked,
+                key=lambda item: (
+                    unresolved_priority_order.index(item)
+                    if item in unresolved_priority_order
+                    else len(unresolved_priority_order),
+                    objective_priority.get(item, 999),
+                ),
+            )
             for objective in unresolved_ranked:
                 if cls._intake_objective_group(objective) not in {'factual', 'anchor'}:
                     continue
@@ -2534,11 +2581,39 @@ class AdversarialSession:
                     objective,
                     weak_evidence_modalities,
                 )
-                return cls._tighten_intake_candidate_for_objective(
-                    candidate,
-                    objective,
-                    evidence_anchor,
-                )
+                tightened = cls._tighten_intake_candidate_for_objective(candidate, objective, evidence_anchor)
+                if not isinstance(tightened, dict):
+                    return tightened
+                question_text = cls._extract_question_text(tightened)
+                objective_specific_suffix = {
+                    'anchor_selection_criteria': " Please ask for the exact criterion/threshold, where it appears in policy, and the matching case-file or notice citation.",
+                    'anchor_grievance_hearing': " Keep this question limited to request date, method, response date, and the record that verifies each step.",
+                    'hearing_request_timing': " Ask for exact request/response dates and the record that proves each date.",
+                    'causation_sequence': " Tie the sequence to dated records for each event.",
+                    'adverse_action_details': " Require who made the decision, the stated reason, communication channel, and exact date.",
+                    'exact_dates': " Request exact dates (not rough ranges) with matching records.",
+                    'response_dates': " Require the response date, sender, and source record.",
+                    'staff_names_titles': " Ask for full name, title, and how they were identified in records.",
+                }.get(objective, "")
+                if objective_specific_suffix and objective_specific_suffix.strip() not in question_text:
+                    updated = dict(tightened)
+                    updated['question'] = f"{question_text}{objective_specific_suffix}"
+                    selector_signals = dict(
+                        updated.get('selector_signals', {})
+                        if isinstance(updated.get('selector_signals'), dict)
+                        else {}
+                    )
+                    selector_signals['tightened_specific_gap'] = objective
+                    updated['selector_signals'] = selector_signals
+                    explanation = dict(
+                        updated.get('ranking_explanation', {})
+                        if isinstance(updated.get('ranking_explanation'), dict)
+                        else {}
+                    )
+                    explanation['tightened_specific_gap'] = objective
+                    updated['ranking_explanation'] = explanation
+                    return updated
+                return tightened
             return candidate
 
         for objective in sorted(forced_objectives, key=lambda item: objective_priority.get(item, 99)):
@@ -2735,9 +2810,9 @@ class AdversarialSession:
 
         # Keep unresolved anchor objectives ahead of generic catch-all prompts.
         def _objective_sort_key(item: str) -> tuple[int, int]:
-            if item == 'anchor_grievance_hearing':
-                return (0, 0)
             if item == 'anchor_selection_criteria':
+                return (0, 0)
+            if item == 'anchor_grievance_hearing':
                 return (0, 1)
             if item == 'intake_follow_up':
                 return (9, 9)
