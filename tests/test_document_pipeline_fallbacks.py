@@ -994,9 +994,12 @@ def test_rendered_draft_uses_compact_count_paragraphs():
     claims_section = draft_text[draft_text.index("CLAIMS FOR RELIEF"):draft_text.index("REQUESTED RELIEF")]
     assert "Legal Standard:" not in draft_text
     assert "Claim-Specific Support:" not in draft_text
-    assert "Defendant was required, before enforcing a final adverse housing decision" in claims_section
+    assert "Before enforcing a final adverse housing decision, Defendant was required to" in claims_section
+    assert "Defendant denied, limited, or otherwise interfered with Plaintiff's housing assistance or related housing rights" in claims_section
     assert "Plaintiff alleges that Plaintiff alleges that" not in claims_section
-    assert "defendant failed to provide those required procedural protections" in claims_section
-    assert "This count is further supported by on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
-    assert "Informal review for denial of assistance requires written notice" in claims_section
+    assert "Defendant failed to provide those required procedural protections" in claims_section
+    assert " and the requested relief addresses " not in claims_section
+    assert "The requested relief addresses" in claims_section
+    assert "The record further shows that on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
+    assert "Authority for this count includes the informal-review requirements reflected in 24 C.F.R. 982.555" in claims_section
     assert "hACC" not in claims_section

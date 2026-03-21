@@ -2780,33 +2780,92 @@ class FormalComplaintDocumentBuilder:
 
         standard_lead_in = "Plaintiff alleges that"
         if claim_type == "due_process_failure":
-            standard_lead_in = "Defendant was required, before enforcing a final adverse housing decision,"
-        elif claim_type == "housing_discrimination":
-            standard_lead_in = "Plaintiff alleges that"
-
-        standard_paragraph = self._compose_count_paragraph(
-            legal_standards[:3],
-            lead_in=standard_lead_in,
-        )
+            standard_lead_in = "Before enforcing a final adverse housing decision, Defendant was required to"
+        if claim_type == "housing_discrimination":
+            standard_paragraph = self._compose_housing_standard_paragraph(legal_standards[:3])
+        else:
+            standard_paragraph = self._compose_count_paragraph(
+                legal_standards[:3],
+                lead_in=standard_lead_in,
+                mode="sentences",
+            )
         if standard_paragraph:
             rendered.append(standard_paragraph)
 
-        authority_paragraph = self._compose_count_paragraph(
+        authority_paragraph = self._compose_authority_paragraph(
             legal_standards[3:],
-            lead_in="Authority for this count includes",
+            claim_type=claim_type,
         )
         if authority_paragraph:
             rendered.append(authority_paragraph)
 
         support_paragraph = self._compose_count_paragraph(
             supporting_facts,
-            lead_in="This count is further supported by",
+            lead_in="The record further shows that",
+            mode="sentences",
         )
         if support_paragraph:
             rendered.append(support_paragraph)
         return rendered
 
-    def _compose_count_paragraph(self, lines: List[str], *, lead_in: str) -> str:
+    def _compose_authority_paragraph(self, lines: List[str], *, claim_type: str) -> str:
+        normalized = [str(line or "").strip().rstrip(".") for line in lines if str(line or "").strip()]
+        if not normalized:
+            return ""
+        text = " ".join(normalized)
+        if claim_type == "due_process_failure":
+            citation_match = re.search(r"(24\s+C\.F\.R\.\s*982\.555)", text)
+            citation = citation_match.group(1) if citation_match else "24 C.F.R. 982.555"
+            return (
+                f"Authority for this count includes the informal-review requirements reflected in {citation}, "
+                "which require written notice and an opportunity for informal review before a final adverse housing decision is enforced."
+            )
+        return self._compose_count_paragraph(normalized, lead_in="Authority for this count includes")
+
+    def _compose_housing_standard_paragraph(self, lines: List[str]) -> str:
+        normalized = [str(line or "").strip().rstrip(".") for line in lines if str(line or "").strip()]
+        if not normalized:
+            return ""
+        cleaned = [
+            self._normalize_count_paragraph_fragment(
+                line,
+                index=index,
+                lead_in="Plaintiff alleges that",
+            )
+            for index, line in enumerate(normalized)
+        ]
+        cleaned = [line for line in cleaned if line]
+        if not cleaned:
+            return ""
+        sentences: List[str] = []
+        first = self._normalize_housing_standard_fragment(cleaned[0], first=True)
+        if first:
+            sentences.append(f"{first}.")
+        for fragment in cleaned[1:]:
+            promoted = self._normalize_housing_standard_fragment(fragment, first=False)
+            if promoted:
+                sentences.append(f"{promoted}.")
+        return " ".join(sentences)
+
+    def _normalize_housing_standard_fragment(self, fragment: str, *, first: bool) -> str:
+        text = str(fragment or "").strip()
+        if not text:
+            return ""
+        lowered = text.lower()
+        if lowered.startswith("defendant denied, limited, or otherwise interfered with housing assistance"):
+            return (
+                "Defendant denied, limited, or otherwise interfered with Plaintiff's housing assistance "
+                "or related housing rights"
+            )
+        if lowered.startswith("the challenged housing action was unlawful because"):
+            return "That housing action was unlawful because" + text[len("the challenged housing action was unlawful because"):]
+        if lowered.startswith("the requested relief addresses the resulting denial of housing opportunity"):
+            return "Plaintiff seeks relief for the resulting denial of housing opportunity" + text[len("the requested relief addresses the resulting denial of housing opportunity"):]
+        if first:
+            return self._promote_count_sentence_fragment(text)
+        return self._promote_count_sentence_fragment(text)
+
+    def _compose_count_paragraph(self, lines: List[str], *, lead_in: str, mode: str = "joined") -> str:
         normalized = [str(line or "").strip().rstrip(".") for line in lines if str(line or "").strip()]
         if not normalized:
             return ""
@@ -2818,8 +2877,42 @@ class FormalComplaintDocumentBuilder:
                 lead_in=lead_in,
             )
             cleaned.append(line)
+        if mode == "sentences":
+            return self._compose_count_sentence_paragraph(cleaned, lead_in=lead_in)
         joined = _join_chronology_segments(cleaned)
         return f"{lead_in} {joined}." if joined else ""
+
+    def _compose_count_sentence_paragraph(self, lines: List[str], *, lead_in: str) -> str:
+        fragments = [self._trim_count_sentence_connector(line) for line in lines if str(line or "").strip()]
+        fragments = [fragment for fragment in fragments if fragment]
+        if not fragments:
+            return ""
+        sentences = [f"{lead_in} {fragments[0]}."]
+        for fragment in fragments[1:]:
+            promoted = self._promote_count_sentence_fragment(fragment)
+            if promoted:
+                sentences.append(f"{promoted}.")
+        return " ".join(sentences)
+
+    def _trim_count_sentence_connector(self, fragment: str) -> str:
+        text = str(fragment or "").strip()
+        return re.sub(r"^(?:and|but)\s+", "", text, flags=re.IGNORECASE)
+
+    def _promote_count_sentence_fragment(self, fragment: str) -> str:
+        text = str(fragment or "").strip()
+        if not text:
+            return ""
+        promotions = (
+            ("plaintiff ", "Plaintiff "),
+            ("defendant ", "Defendant "),
+            ("the ", "The "),
+            ("on ", "On "),
+        )
+        lowered = text.lower()
+        for prefix, replacement in promotions:
+            if lowered.startswith(prefix):
+                return replacement + text[len(prefix):]
+        return text[0].upper() + text[1:] if text[:1].islower() else text
 
     def _normalize_count_paragraph_fragment(
         self,
@@ -2844,14 +2937,6 @@ class FormalComplaintDocumentBuilder:
             prefix = "Before enforcing a final adverse housing decision,"
             fragment = fragment[len(prefix):].strip() if fragment.startswith(prefix) else fragment
             lowered_fragment = fragment.lower()
-        if index == 0 and lead_in.startswith("Defendant was required,"):
-            if lowered_fragment.startswith("defendant was required to provide "):
-                fragment = "provide " + fragment[len("Defendant was required to provide "):].strip()
-                lowered_fragment = fragment.lower()
-            elif lowered_fragment.startswith("before enforcing a final adverse housing decision,"):
-                prefix = "Before enforcing a final adverse housing decision,"
-                fragment = fragment[len(prefix):].strip() if fragment.startswith(prefix) else fragment
-                lowered_fragment = fragment.lower()
 
         prefix_replacements = (
             ("plaintiff alleges that ", ""),
@@ -2879,7 +2964,10 @@ class FormalComplaintDocumentBuilder:
                 fragment = "on " + fragment[len("On "):]
             elif fragment and fragment[0].isupper():
                 fragment = fragment[0].lower() + fragment[1:]
-        elif index == 0 and fragment.startswith("On ") and lead_in.startswith("This count is further supported by"):
+        elif index == 0 and fragment.startswith("On ") and (
+            lead_in.startswith("The chronology and governing policy further show that")
+            or lead_in.startswith("The record further shows that")
+        ):
             fragment = "on " + fragment[len("On "):]
 
         if ": " in fragment and lead_in.startswith("Authority for this count includes"):

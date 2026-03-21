@@ -5961,6 +5961,18 @@ class Mediator:
 				fact['event_support_refs'] = event_support_refs
 		timeline_relations = intake_case_file_module.build_timeline_relations(canonical_facts)
 		temporal_fact_registry = intake_case_file_module.build_temporal_fact_registry(canonical_facts, timeline_anchors)
+		previous_temporal_issue_registry = (
+			intake_case_file.get('temporal_issue_registry')
+			if isinstance(intake_case_file.get('temporal_issue_registry'), list)
+			else []
+		)
+		temporal_issue_registry = intake_case_file_module.merge_preserved_temporal_issue_registry(
+			intake_case_file_module.build_temporal_issue_registry(
+				canonical_facts,
+				intake_case_file.get('contradiction_queue') if isinstance(intake_case_file.get('contradiction_queue'), list) else [],
+			),
+			previous_temporal_issue_registry,
+		)
 		intake_case_file['timeline_anchors'] = timeline_anchors
 		intake_case_file['timeline_relations'] = timeline_relations
 		intake_case_file['temporal_fact_registry'] = temporal_fact_registry
@@ -5969,6 +5981,7 @@ class Mediator:
 			canonical_facts,
 			timeline_relations,
 		)
+		intake_case_file['temporal_issue_registry'] = temporal_issue_registry
 
 	def _apply_intake_answer_to_case_file(
 		self,
@@ -7402,6 +7415,24 @@ class Mediator:
 			for lead in proof_leads
 			if isinstance(lead, dict) and str(lead.get('lead_id') or '').strip()
 		}
+		relation_ids_by_claim_element: Dict[tuple[str, str], List[str]] = {}
+		for relation in intake_case.get('temporal_relation_registry', []) if isinstance(intake_case.get('temporal_relation_registry'), list) else []:
+			if not isinstance(relation, dict):
+				continue
+			relation_id = str(relation.get('relation_id') or '').strip()
+			if not relation_id:
+				continue
+			for claim_type_value in (relation.get('claim_types') or []):
+				normalized_claim_type = str(claim_type_value or '').strip().lower()
+				if not normalized_claim_type:
+					continue
+				for element_tag in (relation.get('element_tags') or []):
+					normalized_element_tag = str(element_tag or '').strip().lower()
+					if not normalized_element_tag:
+						continue
+					relation_ids_by_claim_element.setdefault((normalized_claim_type, normalized_element_tag), [])
+					if relation_id not in relation_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)]:
+						relation_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)].append(relation_id)
 		event_ids_by_claim_element: Dict[tuple[str, str], List[str]] = {}
 		for event in event_ledger:
 			if not isinstance(event, dict):
@@ -7421,12 +7452,14 @@ class Mediator:
 					if event_id not in event_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)]:
 						event_ids_by_claim_element[(normalized_claim_type, normalized_element_tag)].append(event_id)
 		issue_ids_by_claim_element: Dict[tuple[str, str], List[str]] = {}
+		issue_records_by_id: Dict[str, Dict[str, Any]] = {}
 		for issue in temporal_issue_registry:
 			if not isinstance(issue, dict):
 				continue
 			issue_id = str(issue.get('issue_id') or '').strip()
 			if not issue_id:
 				continue
+			issue_records_by_id[issue_id] = dict(issue)
 			for claim_type_value in (issue.get('claim_types') or []):
 				normalized_claim_type = str(claim_type_value or '').strip().lower()
 				if not normalized_claim_type:
@@ -7506,6 +7539,10 @@ class Mediator:
 					for item in (temporal_proof_bundle.get('temporal_relation_ids') or [])
 					if str(item).strip()
 				]
+				if not temporal_relation_ids:
+					temporal_relation_ids = list(
+						relation_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), [])
+					)
 				temporal_issue_ids = [
 					str(item).strip()
 					for item in (temporal_proof_bundle.get('temporal_issue_ids') or [])
@@ -7534,6 +7571,43 @@ class Mediator:
 					for item in (theorem_export_metadata.get('temporal_proof_objectives') or [])
 					if str(item).strip()
 				]
+				matching_issue_records = [
+					issue_records_by_id.get(issue_id)
+					for issue_id in temporal_issue_ids
+					if isinstance(issue_records_by_id.get(issue_id), dict)
+				]
+				fallback_temporal_rule_blocking_reasons = [
+					str(issue.get('summary') or '').strip()
+					for issue in matching_issue_records
+					if str(issue.get('summary') or '').strip()
+				]
+				fallback_temporal_rule_follow_ups = [
+					{
+						'lane': str(issue.get('recommended_resolution_lane') or '').strip(),
+						'reason': str(issue.get('summary') or '').strip(),
+					}
+					for issue in matching_issue_records
+					if str(issue.get('recommended_resolution_lane') or '').strip() and str(issue.get('summary') or '').strip()
+				]
+				if not temporal_proof_objectives:
+					temporal_proof_objectives = list(dict.fromkeys(
+						[
+							f"resolve_{str(issue.get('issue_type') or 'chronology').strip().lower()}"
+							for issue in matching_issue_records
+							if str(issue.get('issue_type') or '').strip()
+						]
+					))
+					if not temporal_proof_objectives and temporal_issue_ids:
+						temporal_proof_objectives = [f'resolve_{element_id.lower()}_chronology']
+				temporal_rule_status = str(packet_element.get('temporal_rule_status') or '').strip()
+				if not temporal_rule_status and temporal_issue_ids:
+					temporal_rule_status = 'partial'
+				temporal_rule_blocking_reasons = list(packet_element.get('temporal_rule_blocking_reasons', []) or [])
+				if not temporal_rule_blocking_reasons:
+					temporal_rule_blocking_reasons = fallback_temporal_rule_blocking_reasons
+				temporal_rule_follow_ups = list(packet_element.get('temporal_rule_follow_ups', []) or [])
+				if not temporal_rule_follow_ups:
+					temporal_rule_follow_ups = fallback_temporal_rule_follow_ups
 				matching_open_item_ids = [
 					str(item.get('open_item_id') or '')
 					for item in open_items
@@ -7587,9 +7661,9 @@ class Mediator:
 						'temporal_theorem_formulas': temporal_theorem_formulas,
 						'temporal_proof_objectives': temporal_proof_objectives,
 						'temporal_rule_profile_id': str(packet_element.get('temporal_rule_profile_id') or ''),
-						'temporal_rule_status': str(packet_element.get('temporal_rule_status') or ''),
-						'temporal_rule_blocking_reasons': list(packet_element.get('temporal_rule_blocking_reasons', []) or []),
-						'temporal_rule_follow_ups': list(packet_element.get('temporal_rule_follow_ups', []) or []),
+						'temporal_rule_status': temporal_rule_status,
+						'temporal_rule_blocking_reasons': temporal_rule_blocking_reasons,
+						'temporal_rule_follow_ups': temporal_rule_follow_ups,
 						'recommended_next_step': str(packet_element.get('recommended_next_step') or '').strip(),
 						'intake_open_item_ids': [item_id for item_id in matching_open_item_ids if item_id],
 						'intake_proof_lead_ids': [lead_id for lead_id in matching_proof_lead_ids if lead_id],
