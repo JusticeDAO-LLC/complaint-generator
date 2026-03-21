@@ -1294,6 +1294,13 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "target_element_id_counts": {"retaliation:3": 1},
                 },
                 "timeline_anchor_summary": {"count": 1, "anchors": [{"anchor_id": "timeline_anchor_001"}]},
+                "temporal_issue_registry_summary": {
+                    "count": 2,
+                    "unresolved_count": 1,
+                    "resolved_count": 1,
+                    "status_counts": {"open": 1, "resolved": 1},
+                    "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+                },
                 "harm_profile": {"count": 1, "categories": ["economic"]},
                 "remedy_profile": {"count": 1, "categories": ["monetary"]},
                 "question_candidate_summary": {
@@ -1532,6 +1539,11 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Alignment chronology status: Partial=1" in preview_text
             assert "Alignment chronology blockers: Retaliation chronology still needs documentary sequencing for the proof lead bundle.=1" in preview_text
             assert "Alignment chronology handoffs: Awaiting Complainant Record=1" in preview_text
+            assert "Chronology history issues: 2" in preview_text
+            assert "Chronology history unresolved: 1" in preview_text
+            assert "Chronology history resolved: 1" in preview_text
+            assert "Chronology history statuses: Open=1, Resolved=1" in preview_text
+            assert "Chronology history issue ids: timeline-gap-001, timeline-gap-closed-001" in preview_text
             assert "Packet chronology tasks: 1" in preview_text
             assert "Packet chronology targeted: 1" in preview_text
             assert "Packet chronology status: Partial=1" in preview_text

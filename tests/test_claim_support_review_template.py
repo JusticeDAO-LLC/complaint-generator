@@ -574,6 +574,11 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Alignment chronology status:" in content
     assert "Alignment chronology blockers:" in content
     assert "Alignment chronology handoffs:" in content
+    assert "Chronology history issues:" in content
+    assert "Chronology history unresolved:" in content
+    assert "Chronology history resolved:" in content
+    assert "Chronology history statuses:" in content
+    assert "Chronology history issue ids:" in content
     assert "Packet chronology tasks:" in content
     assert "Packet chronology targeted:" in content
     assert "Packet chronology status:" in content

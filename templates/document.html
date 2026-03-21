@@ -3241,6 +3241,9 @@
                     : (Array.isArray(task && task.temporal_issue_ids) ? task.temporal_issue_ids : []);
                 return total + issueIds.filter((item) => String(item || '').trim()).length;
             }, 0);
+            const temporalIssueRegistrySummary = intakeCaseSummary.temporal_issue_registry_summary && typeof intakeCaseSummary.temporal_issue_registry_summary === 'object'
+                ? intakeCaseSummary.temporal_issue_registry_summary
+                : {};
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
             const questionSourceCounts = questionCandidateSummary.source_counts && typeof questionCandidateSummary.source_counts === 'object' ? questionCandidateSummary.source_counts : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
@@ -3525,6 +3528,21 @@
                     : '',
                 formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts)
                     ? `Alignment chronology handoffs: ${formatSummaryCountLine(alignmentTaskSummary.temporal_resolution_status_counts)}`
+                    : '',
+                temporalIssueRegistrySummary.count != null
+                    ? `Chronology history issues: ${Number(temporalIssueRegistrySummary.count || 0)}`
+                    : '',
+                temporalIssueRegistrySummary.unresolved_count != null
+                    ? `Chronology history unresolved: ${Number(temporalIssueRegistrySummary.unresolved_count || 0)}`
+                    : '',
+                temporalIssueRegistrySummary.resolved_count != null
+                    ? `Chronology history resolved: ${Number(temporalIssueRegistrySummary.resolved_count || 0)}`
+                    : '',
+                formatSummaryCountLine(temporalIssueRegistrySummary.status_counts)
+                    ? `Chronology history statuses: ${formatSummaryCountLine(temporalIssueRegistrySummary.status_counts)}`
+                    : '',
+                Array.isArray(temporalIssueRegistrySummary.issue_ids) && temporalIssueRegistrySummary.issue_ids.length
+                    ? `Chronology history issue ids: ${temporalIssueRegistrySummary.issue_ids.join(', ')}`
                     : '',
                 claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                 claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
