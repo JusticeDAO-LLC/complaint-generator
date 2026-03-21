@@ -4589,8 +4589,14 @@ class ComplaintDenoiser:
         # Calculate knowledge graph confidence
         kg_confidence = 0.0
         if knowledge_graph.entities:
-            total_confidence = sum(e.confidence for e in knowledge_graph.entities.values())
-            kg_confidence = total_confidence / len(knowledge_graph.entities)
+            confidence_entities = [
+                entity for entity in knowledge_graph.entities.values()
+                if str(entity.type or '').strip().lower() != 'evidence'
+            ]
+            if not confidence_entities:
+                confidence_entities = list(knowledge_graph.entities.values())
+            total_confidence = sum(entity.confidence for entity in confidence_entities)
+            kg_confidence = total_confidence / len(confidence_entities)
         
         # Calculate dependency satisfaction
         readiness = dependency_graph.get_claim_readiness()

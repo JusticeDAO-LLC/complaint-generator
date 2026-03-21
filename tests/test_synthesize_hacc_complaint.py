@@ -9,6 +9,19 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 
+def test_existing_optional_path_returns_none_for_missing_file(tmp_path):
+    missing = tmp_path / "grounding_bundle.json"
+
+    assert MODULE._existing_optional_path(missing) is None
+
+
+def test_existing_optional_path_returns_path_for_existing_file(tmp_path):
+    artifact = tmp_path / "grounding_bundle.json"
+    artifact.write_text("{}", encoding="utf-8")
+
+    assert MODULE._existing_optional_path(artifact) == artifact
+
+
 def test_clean_policy_text_removes_generic_prefixes():
     text = "The strongest supporting material is 'ADMINISTRATIVE PLAN'. HACC Policy Written notice is required."
 

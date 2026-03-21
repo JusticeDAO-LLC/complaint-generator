@@ -264,6 +264,12 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
     assert "target_symbols" in intake_task.constraints
     assert any(path.endswith("session.py") for path in intake_task.constraints["target_symbols"])
+    session_symbols = next(
+        symbols
+        for path, symbols in intake_task.constraints["target_symbols"].items()
+        if path.endswith("session.py")
+    )
+    assert session_symbols == ["_inject_intake_prompt_questions"]
     assert "workflow_capabilities" in intake_task.metadata
     assert "complainant_prompting" in intake_task.metadata["workflow_capabilities"]
     assert "target_symbols" in graph_task.constraints
@@ -283,7 +289,9 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "phase_signal_context" in graph_task.metadata
     assert "dg_avg_satisfaction_rate" in graph_task.metadata["phase_signal_context"]
     assert any(
-        path.endswith("document_pipeline.py") or path.endswith("synthesize_hacc_complaint.py")
+        path.endswith("document_pipeline.py")
+        or path.endswith("synthesize_hacc_complaint.py")
+        or path.endswith("document_optimization.py")
         for path in document_task.constraints["target_symbols"]
     )
     document_optimization_symbols = [
@@ -292,9 +300,9 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
         if path.endswith("document_optimization.py")
     ]
     if document_optimization_symbols:
-        assert document_optimization_symbols[0] == ["optimize_draft"]
+        assert document_optimization_symbols[0] == ["_build_workflow_phase_targeting"]
     assert len(document_task.target_files) == 1
-    assert document_task.target_files[0].name in {"synthesize_hacc_complaint.py", "document_optimization.py"}
+    assert document_task.target_files[0].name == "document_optimization.py"
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 
@@ -375,7 +383,14 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
     assert phase_names == report.workflow_phase_plan["recommended_order"]
     assert [task["phase_name"] for task in payload["phase_tasks"]] == report.workflow_phase_plan["recommended_order"]
     assert any(
-        "scripts/synthesize_hacc_complaint.py" in task["target_files"]
+        any(
+            candidate in task["target_files"]
+            for candidate in (
+                "scripts/synthesize_hacc_complaint.py",
+                "document_optimization.py",
+                "document_pipeline.py",
+            )
+        )
         for task in payload["phase_tasks"]
         if task["metadata"]["workflow_phase"] == "document_generation"
     )
@@ -632,10 +647,17 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
     assert "Draft loop evidence targets" in document_task.description
     assert "Preferred support lanes" in document_task.description
+<<<<<<< Updated upstream
     assert any(path.name == "document_optimization.py" for path in document_task.target_files)
     assert any(path.name in {"synthesize_hacc_complaint.py", "document_optimization.py"} for path in document_task.target_files)
     assert "document_optimization.py" in document_task.constraints["target_symbols"]
     assert document_task.constraints["target_symbols"]["document_optimization.py"]
+=======
+    assert len(document_task.target_files) == 1
+    assert document_task.target_files[0].name in {"document_optimization.py", "synthesize_hacc_complaint.py"}
+    target_symbol_path = next(iter(document_task.constraints["target_symbols"]))
+    assert target_symbol_path.endswith(document_task.target_files[0].name)
+>>>>>>> Stashed changes
     assert document_task.metadata["document_evidence_targeting_summary"]["count"] == 1
     assert document_task.metadata["document_provenance_summary"]["low_grounding_flag"] is True
     assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
@@ -761,10 +783,17 @@ def test_analyze_and_phase_tasks_carry_graph_element_targeting_summary():
     graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
     assert "Graph evidence targets" in graph_task.description
     assert "Graph focus areas" in graph_task.description
+<<<<<<< Updated upstream
     assert any(path.name == "denoiser.py" for path in graph_task.target_files)
     assert any(path.name in {"dependency_graph.py", "denoiser.py"} for path in graph_task.target_files)
     assert "complaint_phases/denoiser.py" in graph_task.constraints["target_symbols"]
     assert graph_task.constraints["target_symbols"]["complaint_phases/denoiser.py"]
+=======
+    assert len(graph_task.target_files) == 1
+    assert graph_task.target_files[0].name in {"dependency_graph.py", "denoiser.py"}
+    target_symbol_path = next(iter(graph_task.constraints["target_symbols"]))
+    assert target_symbol_path.endswith(graph_task.target_files[0].name)
+>>>>>>> Stashed changes
     assert graph_task.metadata["graph_element_targeting_summary"]["count"] == 2
     assert graph_task.metadata["report_summary"]["graph_element_targeting_summary"]["claim_element_counts"] == {
         "causation": 1,
@@ -839,11 +868,20 @@ def test_analyze_and_phase_tasks_carry_intake_targeting_summary():
     intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
     assert "Intake targets" in intake_task.description
     assert "Legal elements to probe" in intake_task.description
+<<<<<<< Updated upstream
     assert any(path.name in {"mediator.py", "session.py"} for path in intake_task.target_files)
     assert any(
         path in intake_task.constraints["target_symbols"]
         for path in ("mediator/mediator.py", "adversarial_harness/session.py")
     )
+=======
+    assert len(intake_task.target_files) == 1
+    assert intake_task.target_files[0].name == "session.py"
+    assert "adversarial_harness/session.py" in intake_task.constraints["target_symbols"]
+    assert intake_task.constraints["target_symbols"]["adversarial_harness/session.py"] == [
+        "_inject_intake_prompt_questions"
+    ]
+>>>>>>> Stashed changes
     assert intake_task.metadata["intake_targeting_summary"]["claim_element_counts"]["causation"] == 1
     assert intake_task.metadata["report_summary"]["intake_targeting_summary"]["objective_counts"]["timeline"] >= 1
 

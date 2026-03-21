@@ -839,23 +839,11 @@ class Optimizer:
                 if path.name == "session.py":
                     target_map[key] = [
                         "_inject_intake_prompt_questions",
-                        "_reprioritize_candidates_for_intake_objectives",
-                        "_summarize_intake_priority_coverage",
                     ]
-                    if {"timeline", "chronology", "proof_leads"} & intake_focus_areas:
-                        target_map[key].append("_build_fallback_probe")
                 elif path.name == "mediator.py":
                     target_map[key] = [
-                        "select_intake_question_candidates",
                         "build_inquiry_gap_context",
                     ]
-                    if intake_targeted_elements:
-                        target_map[key].extend(
-                            [
-                                "_build_intake_workflow_action_queue",
-                                "_build_question_workflow_action_matches",
-                            ]
-                        )
                 elif path.name == "complainant.py":
                     target_map[key] = [
                         "build_default_context",
@@ -907,7 +895,7 @@ class Optimizer:
                         target_map[key].append("_build_runtime_workflow_optimization_guidance")
                 elif path.name == "document_optimization.py":
                     target_map[key] = [
-                        "optimize_draft",
+                        "_build_workflow_phase_targeting",
                     ]
                     if targeted_support_kinds:
                         target_map[key].extend(
@@ -1024,9 +1012,9 @@ class Optimizer:
             else:
                 priorities.extend(
                     [
+                        "document_optimization.py",
                         "synthesize_hacc_complaint.py",
                         "document_pipeline.py",
-                        "document_optimization.py",
                         "formal_document.py",
                     ]
                 )

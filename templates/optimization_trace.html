@@ -512,6 +512,78 @@
                 .join(', ');
         }
 
+        function normalizeTheoremExportMetadata(value) {
+            const metadata = value && typeof value === 'object' ? value : {};
+            const unresolvedIssueIds = Array.isArray(metadata.unresolved_temporal_issue_ids)
+                ? metadata.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const issueIds = Array.isArray(metadata.temporal_issue_ids)
+                ? metadata.temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofBundleIds = Array.isArray(metadata.temporal_proof_bundle_ids)
+                ? metadata.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofObjectives = Array.isArray(metadata.temporal_proof_objectives)
+                ? metadata.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const unresolvedCount = Number.isFinite(Number(metadata.unresolved_temporal_issue_count))
+                ? Number(metadata.unresolved_temporal_issue_count || 0)
+                : unresolvedIssueIds.length;
+            const issueCount = Number.isFinite(Number(metadata.temporal_issue_count))
+                ? Number(metadata.temporal_issue_count || 0)
+                : (issueIds.length || unresolvedCount);
+            const resolvedCount = Math.max(
+                0,
+                Number.isFinite(Number(metadata.resolved_temporal_issue_count))
+                    ? Number(metadata.resolved_temporal_issue_count || 0)
+                    : (issueCount - unresolvedCount)
+            );
+            const chronologyTaskCount = Number(metadata.chronology_task_count || 0);
+            const blocked = Boolean(metadata.chronology_blocked || unresolvedCount > 0 || chronologyTaskCount > 0);
+            return {
+                blocked,
+                chronologyTaskCount,
+                unresolvedCount,
+                resolvedCount,
+                issueIds,
+                unresolvedIssueIds,
+                proofBundleIds,
+                proofObjectives,
+                hasSignal: blocked || issueCount > 0 || proofBundleIds.length > 0 || proofObjectives.length > 0,
+            };
+        }
+
+        function buildTheoremExportSummaryLines(metadata, claimReviewData = {}) {
+            const normalized = normalizeTheoremExportMetadata(metadata);
+            const claimResolvedCount = Number(claimReviewData.claim_resolved_temporal_issue_count || 0);
+            if (!normalized.hasSignal && claimResolvedCount <= 0) {
+                return [];
+            }
+            const lines = [`Theorem export chronology: ${normalized.blocked ? 'blocked' : 'aligned'}`];
+            if (normalized.unresolvedCount > 0) {
+                lines.push(`Unresolved theorem chronology issues: ${normalized.unresolvedCount}`);
+            }
+            if (normalized.resolvedCount > 0) {
+                lines.push(`Resolved theorem chronology history: ${normalized.resolvedCount} issue(s).`);
+            } else if (claimResolvedCount > 0) {
+                lines.push(`Claim chronology history retained: ${claimResolvedCount} resolved issue(s).`);
+            }
+            if (normalized.chronologyTaskCount > 0) {
+                lines.push(`Theorem chronology tasks: ${normalized.chronologyTaskCount}`);
+            }
+            const issueIds = normalized.unresolvedIssueIds.length ? normalized.unresolvedIssueIds : normalized.issueIds;
+            if (issueIds.length) {
+                lines.push(`Theorem chronology issue ids: ${issueIds.join(', ')}`);
+            }
+            if (normalized.proofBundleIds.length) {
+                lines.push(`Theorem proof bundles: ${normalized.proofBundleIds.join(', ')}`);
+            }
+            if (normalized.proofObjectives.length) {
+                lines.push(`Theorem objectives: ${normalized.proofObjectives.join(', ')}`);
+            }
+            return lines;
+        }
+
         const FOLLOW_UP_HANDOFF_STATUSES = new Set([
             'awaiting_complainant_record',
             'awaiting_third_party_record',
@@ -1232,6 +1304,7 @@
                                 : '',
                             element.proof_artifact_sentence ? `Sentence: ${String(element.proof_artifact_sentence).trim()}` : '',
                             element.proof_artifact_explanation_text ? `Explanation: ${String(element.proof_artifact_explanation_text).trim()}` : '',
+                            ...buildTheoremExportSummaryLines(element.theorem_export_metadata, review),
                         ].filter(Boolean);
                         const actionButtons = [
                             element.proof_artifact_proof_id

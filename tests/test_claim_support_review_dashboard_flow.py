@@ -325,6 +325,10 @@ def _build_dashboard_mediator() -> Mock:
                         },
                     },
                 },
+                "claim_temporal_issue_count": 2,
+                "claim_unresolved_temporal_issue_count": 1,
+                "claim_resolved_temporal_issue_count": 1,
+                "claim_temporal_issue_status_counts": {"open": 1, "resolved": 1},
                 "elements": [
                     {
                         "element_id": "retaliation:1",
@@ -428,6 +432,23 @@ def _build_dashboard_mediator() -> Mock:
                                         "Happens(fact_001,t_2026_03_10)",
                                         "Happens(fact_termination,t_2026_03_24)",
                                     ],
+                                    "theorem_export_metadata": {
+                                        "contract_version": "claim_support_temporal_handoff_v1",
+                                        "claim_type": "retaliation",
+                                        "claim_element_id": "retaliation:1",
+                                        "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                        "rule_frame_id": "retaliation_temporal_frame",
+                                        "chronology_blocked": True,
+                                        "chronology_task_count": 1,
+                                        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                                        "event_ids": ["fact_001", "fact_termination"],
+                                        "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                        "temporal_relation_ids": ["timeline_relation_001"],
+                                        "timeline_issue_ids": ["temporal_issue_001"],
+                                        "temporal_issue_ids": ["temporal_issue_001"],
+                                        "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+                                        "temporal_proof_objectives": ["retaliation_temporal_frame"],
+                                    },
                                 },
                             },
                         },
@@ -1166,6 +1187,12 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_rule_profile_failed_element_count"] == 0
     assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_proof_bundle_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["temporal_proof_bundle_status_counts"] == {"partial": 1}
+    assert review_payload["claim_reasoning_review"]["retaliation"]["claim_temporal_issue_count"] == 2
+    assert review_payload["claim_reasoning_review"]["retaliation"]["claim_unresolved_temporal_issue_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["claim_resolved_temporal_issue_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["claim_temporal_issue_status_counts"] == {"open": 1, "resolved": 1}
+    assert review_payload["claim_reasoning_review"]["retaliation"]["theorem_export_blocked_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["theorem_export_chronology_task_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_bridge_available"] is True
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_tdfol_formula_preview"] == [
         "Before(fact_1,fact_2)",
@@ -1219,6 +1246,23 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         "Happens(fact_001,t_2026_03_10)",
         "Happens(fact_termination,t_2026_03_24)",
     ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["theorem_export_metadata"] == {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:1",
+        "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+        "rule_frame_id": "retaliation_temporal_frame",
+        "chronology_blocked": True,
+        "chronology_task_count": 1,
+        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        "event_ids": ["fact_001", "fact_termination"],
+        "temporal_fact_ids": ["fact_001", "fact_termination"],
+        "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_issue_ids": ["temporal_issue_001"],
+        "temporal_issue_ids": ["temporal_issue_001"],
+        "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+        "temporal_proof_objectives": ["retaliation_temporal_frame"],
+    }
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["validation_status"] == "supported"
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_packet_count"] == 2
     assert review_payload["claim_coverage_matrix"]["retaliation"]["elements"][0]["support_fact_status_counts"] == {

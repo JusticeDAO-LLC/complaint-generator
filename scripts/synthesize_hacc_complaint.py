@@ -1794,6 +1794,12 @@ def _auto_discover_grounded_artifacts(results_path: Path) -> Dict[str, Path]:
     return discovered
 
 
+def _existing_optional_path(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    return path if path.exists() else None
+
+
 def _grounded_supporting_evidence(
     grounding_bundle: Dict[str, Any],
     upload_report: Dict[str, Any],
@@ -2349,12 +2355,29 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
 
     key_facts = dict(merged.get("key_facts") or {})
     existing_handoff = dict(key_facts.get("document_generation_handoff") or {})
+
+    def _append_unique_text(target: List[str], seen: set[str], value: Any) -> None:
+        text = _to_sentence(value)
+        if not text:
+            return
+        normalized = text.strip().lower()
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        target.append(text)
+
+    def _append_unique_objective(target: List[str], seen: set[str], value: Any) -> None:
+        normalized = _normalize_intake_objective(value)
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        target.append(normalized)
+
     grounding_evidence = _filter_grounding_evidence_for_seed(
         merged,
         _grounding_results_to_seed_evidence(grounding_bundle),
     )
     current_summary = str(key_facts.get("evidence_summary") or merged.get("summary") or "").strip()
-
     if _is_probably_toc_text(current_summary):
         for item in grounding_evidence:
             candidate_summary = str(item.get("snippet") or "").strip()
@@ -2363,9 +2386,9 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 merged["summary"] = candidate_summary
                 break
 
-    existing_evidence = list(merged.get("hacc_evidence") or [])
+    existing_evidence = [dict(item) for item in list(merged.get("hacc_evidence") or []) if isinstance(item, dict)]
     if grounding_evidence:
-        existing_by_key = {
+        existing_by_key: Dict[tuple[str, str], Dict[str, Any]] = {
             (
                 str(item.get("title") or "").strip().lower(),
                 str(item.get("source_path") or "").strip().lower(),
@@ -2373,7 +2396,10 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             for item in existing_evidence
         }
         for item in grounding_evidence:
-            key = (str(item.get("title") or "").strip().lower(), str(item.get("source_path") or "").strip().lower())
+            key = (
+                str(item.get("title") or "").strip().lower(),
+                str(item.get("source_path") or "").strip().lower(),
+            )
             current_item = existing_by_key.get(key)
             if current_item is None:
                 existing_by_key[key] = dict(item)
@@ -2385,46 +2411,50 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                     updated_item["matched_rules"] = list(item.get("matched_rules") or [])
                 existing_by_key[key] = updated_item
         merged["hacc_evidence"] = list(existing_by_key.values())
-        if merged["hacc_evidence"]:
-            refreshed_by_key = {
+
+    refreshed_evidence = [dict(item) for item in list(merged.get("hacc_evidence") or []) if isinstance(item, dict)]
+    if refreshed_evidence:
+        snippet_by_key = {
+            (
+                str(item.get("title") or "").strip().lower(),
+                str(item.get("source_path") or "").strip().lower(),
+            ): str(item.get("snippet") or "")
+            for item in refreshed_evidence
+        }
+        updated_passages: List[Dict[str, Any]] = []
+        for passage in list(key_facts.get("anchor_passages") or []):
+            if not isinstance(passage, dict):
+                continue
+            updated = dict(passage)
+            key = (
+                str(updated.get("title") or "").strip().lower(),
+                str(updated.get("source_path") or "").strip().lower(),
+            )
+            evidence_snippet = snippet_by_key.get(key, "")
+            if evidence_snippet and _should_promote_grounded_snippet(str(updated.get("snippet") or ""), evidence_snippet):
+                updated["snippet"] = evidence_snippet
+            updated_passages.append(updated)
+        if updated_passages:
+            key_facts["anchor_passages"] = updated_passages
+            passage_snippet_by_key = {
                 (
                     str(item.get("title") or "").strip().lower(),
                     str(item.get("source_path") or "").strip().lower(),
                 ): str(item.get("snippet") or "")
-                for item in merged["hacc_evidence"]
+                for item in updated_passages
             }
-            updated_passages: List[Dict[str, Any]] = []
-            for passage in list(key_facts.get("anchor_passages") or []):
-                updated = dict(passage)
+            synced_evidence: List[Dict[str, Any]] = []
+            for item in refreshed_evidence:
+                updated_item = dict(item)
                 key = (
-                    str(updated.get("title") or "").strip().lower(),
-                    str(updated.get("source_path") or "").strip().lower(),
+                    str(updated_item.get("title") or "").strip().lower(),
+                    str(updated_item.get("source_path") or "").strip().lower(),
                 )
-                evidence_snippet = refreshed_by_key.get(key, "")
-                if evidence_snippet and _should_promote_grounded_snippet(str(updated.get("snippet") or ""), evidence_snippet):
-                    updated["snippet"] = evidence_snippet
-                updated_passages.append(updated)
-            if updated_passages:
-                key_facts["anchor_passages"] = updated_passages
-                passage_by_key = {
-                    (
-                        str(item.get("title") or "").strip().lower(),
-                        str(item.get("source_path") or "").strip().lower(),
-                    ): str(item.get("snippet") or "")
-                    for item in updated_passages
-                }
-                synced_evidence: List[Dict[str, Any]] = []
-                for item in list(merged.get("hacc_evidence") or []):
-                    updated_item = dict(item)
-                    key = (
-                        str(updated_item.get("title") or "").strip().lower(),
-                        str(updated_item.get("source_path") or "").strip().lower(),
-                    )
-                    passage_snippet = passage_by_key.get(key, "")
-                    if passage_snippet and _should_promote_grounded_snippet(str(updated_item.get("snippet") or ""), passage_snippet):
-                        updated_item["snippet"] = passage_snippet
-                    synced_evidence.append(updated_item)
-                merged["hacc_evidence"] = synced_evidence
+                passage_snippet = passage_snippet_by_key.get(key, "")
+                if passage_snippet and _should_promote_grounded_snippet(str(updated_item.get("snippet") or ""), passage_snippet):
+                    updated_item["snippet"] = passage_snippet
+                synced_evidence.append(updated_item)
+            merged["hacc_evidence"] = synced_evidence
 
     handoff_candidates: List[Dict[str, Any]] = [existing_handoff]
     intake_priority_candidates: List[Dict[str, Any]] = []
@@ -2440,8 +2470,12 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             if isinstance(candidate, dict) and candidate:
                 bundle_blocks.append(dict(candidate))
         for block in bundle_blocks:
-            if isinstance(block.get("structured_handoff"), dict):
-                handoff_candidates.append(dict(block.get("structured_handoff") or {}))
+            structured = dict(block.get("structured_handoff") or {})
+            if structured:
+                handoff_candidates.append(structured)
+                nested_priorities = dict(structured.get("intake_priorities") or {})
+                if nested_priorities:
+                    intake_priority_candidates.append(nested_priorities)
             if isinstance(block.get("intake_priorities"), dict):
                 intake_priority_candidates.append(dict(block.get("intake_priorities") or {}))
             if any(
@@ -2455,11 +2489,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                     "exhibit_description_lines",
                 )
             ):
-                handoff_candidates.append(block)
-            if isinstance(block.get("structured_handoff"), dict):
-                nested = dict(block.get("structured_handoff") or {})
-                if isinstance(nested.get("intake_priorities"), dict):
-                    intake_priority_candidates.append(dict(nested.get("intake_priorities") or {}))
+                handoff_candidates.append(dict(block))
 
     summary_of_facts_lines: List[str] = []
     factual_handoff_lines: List[str] = []
@@ -2469,27 +2499,24 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
     claim_support_by_type: Dict[str, List[str]] = {}
     unresolved_objectives: List[str] = []
     blocker_items: List[Dict[str, Any]] = []
+    summary_seen: set[str] = set()
+    factual_seen: set[str] = set()
+    claim_seen: set[str] = set()
+    exhibit_seen: set[str] = set()
+    blocker_seen: set[str] = set()
+    unresolved_seen: set[str] = set()
+
     for handoff in handoff_candidates:
         for line in list(handoff.get("summary_of_facts_lines") or []):
-            text = _to_sentence(line)
-            if text and text not in summary_of_facts_lines:
-                summary_of_facts_lines.append(text)
+            _append_unique_text(summary_of_facts_lines, summary_seen, line)
         for line in list(handoff.get("factual_allegation_lines") or []):
-            text = _to_sentence(line)
-            if text and text not in factual_handoff_lines:
-                factual_handoff_lines.append(text)
+            _append_unique_text(factual_handoff_lines, factual_seen, line)
         for line in list(handoff.get("claim_support_lines_shared") or []):
-            text = _to_sentence(line)
-            if text and text not in claim_support_shared_lines:
-                claim_support_shared_lines.append(text)
+            _append_unique_text(claim_support_shared_lines, claim_seen, line)
         for line in list(handoff.get("exhibit_description_lines") or []):
-            text = _to_sentence(line)
-            if text and text not in exhibit_description_lines:
-                exhibit_description_lines.append(text)
+            _append_unique_text(exhibit_description_lines, exhibit_seen, line)
         for line in list(handoff.get("blocker_closing_answers") or []):
-            text = _to_sentence(line)
-            if text and text not in blocker_handoff_answers:
-                blocker_handoff_answers.append(text)
+            _append_unique_text(blocker_handoff_answers, blocker_seen, line)
         by_type = handoff.get("claim_support_lines_by_type")
         if isinstance(by_type, dict):
             for claim_type, values in by_type.items():
@@ -2497,42 +2524,39 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 if not claim_key:
                     continue
                 claim_support_by_type.setdefault(claim_key, [])
+                local_seen = {str(item).strip().lower() for item in claim_support_by_type[claim_key]}
                 for value in list(values or []):
                     text = _to_sentence(value)
-                    if text and text not in claim_support_by_type[claim_key]:
-                        claim_support_by_type[claim_key].append(text)
+                    if not text:
+                        continue
+                    normalized = text.strip().lower()
+                    if normalized in local_seen:
+                        continue
+                    local_seen.add(normalized)
+                    claim_support_by_type[claim_key].append(text)
         for item in list(handoff.get("unresolved_objectives") or []):
-            objective = _normalize_intake_objective(item)
-            if objective and objective not in unresolved_objectives:
-                unresolved_objectives.append(objective)
+            _append_unique_objective(unresolved_objectives, unresolved_seen, item)
 
     for priorities in intake_priority_candidates:
         for objective in list(priorities.get("unresolved_objectives") or []) + list(priorities.get("uncovered_objectives") or []):
-            normalized = _normalize_intake_objective(objective)
-            if normalized and normalized not in unresolved_objectives:
-                unresolved_objectives.append(normalized)
+            _append_unique_objective(unresolved_objectives, unresolved_seen, objective)
         for item in list(priorities.get("blocker_items") or []):
             if not isinstance(item, dict):
                 continue
             reason = _to_sentence(item.get("reason") or "")
-            if reason and reason not in blocker_handoff_answers:
-                blocker_handoff_answers.append(reason)
-            objective = _normalize_intake_objective(item.get("primary_objective") or item.get("objective") or "")
-            if objective and objective not in unresolved_objectives:
-                unresolved_objectives.append(objective)
+            if reason:
+                _append_unique_text(blocker_handoff_answers, blocker_seen, reason)
+            objective = item.get("primary_objective") or item.get("objective") or ""
+            _append_unique_objective(unresolved_objectives, unresolved_seen, objective)
             blocker_items.append(dict(item))
 
+    key_facts_readiness = dict(key_facts.get("drafting_readiness") or {})
+    for objective in list(key_facts_readiness.get("unresolved_objectives") or []):
+        _append_unique_objective(unresolved_objectives, unresolved_seen, objective)
+
     promoted_handoff = _promote_structured_handoff_from_seed(merged)
-    summary_of_facts_lines = _merge_promoted_lines(
-        summary_of_facts_lines,
-        list(promoted_handoff.get("summary_of_facts_lines") or []),
-        limit=12,
-    )
-    factual_handoff_lines = _merge_promoted_lines(
-        factual_handoff_lines,
-        list(promoted_handoff.get("factual_allegation_lines") or []),
-        limit=12,
-    )
+    summary_of_facts_lines = _merge_promoted_lines(summary_of_facts_lines, list(promoted_handoff.get("summary_of_facts_lines") or []), limit=12)
+    factual_handoff_lines = _merge_promoted_lines(factual_handoff_lines, list(promoted_handoff.get("factual_allegation_lines") or []), limit=12)
     claim_support_shared_lines = _merge_promoted_lines(
         claim_support_shared_lines,
         list(promoted_handoff.get("claim_support_lines_shared") or []),
@@ -2549,19 +2573,84 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         if not claim_key:
             continue
         claim_support_by_type.setdefault(claim_key, [])
+        local_seen = {str(item).strip().lower() for item in claim_support_by_type[claim_key]}
         for value in list(values or []):
             text = _to_sentence(value)
-            if text and text not in claim_support_by_type[claim_key]:
-                claim_support_by_type[claim_key].append(text)
+            if not text:
+                continue
+            normalized = text.strip().lower()
+            if normalized in local_seen:
+                continue
+            local_seen.add(normalized)
+            claim_support_by_type[claim_key].append(text)
+
+    # Promote structured evidence anchors directly into drafting handoff lines.
+    anchor_passages = [dict(item) for item in list(key_facts.get("anchor_passages") or []) if isinstance(item, dict)]
+    for passage in anchor_passages[:4]:
+        title = str(passage.get("title") or "anchor evidence").strip()
+        source_path = str(passage.get("source_path") or "").strip()
+        section_labels = [str(item).strip().lower() for item in list(passage.get("section_labels") or []) if str(item).strip()]
+        section_phrase = f" ({', '.join(section_labels)})" if section_labels else ""
+        anchor_summary = _summarize_policy_excerpt(str(passage.get("snippet") or ""))
+        if not anchor_summary:
+            continue
+        source_ref = f" from {source_path}" if source_path else ""
+        _append_unique_text(
+            summary_of_facts_lines,
+            summary_seen,
+            f"Structured intake anchor{source_ref}: {title}{section_phrase} states {anchor_summary}",
+        )
+        _append_unique_text(
+            factual_handoff_lines,
+            factual_seen,
+            f"Factual allegation support anchored to {title}{section_phrase}: {anchor_summary}",
+        )
+        _append_unique_text(
+            claim_support_shared_lines,
+            claim_seen,
+            f"Claim support anchor from {title}{section_phrase}: {anchor_summary}",
+        )
+        _append_unique_text(
+            exhibit_description_lines,
+            exhibit_seen,
+            f"Exhibit reference {title}{section_phrase} should quote: {anchor_summary}",
+        )
+        if "appeal_rights" in section_labels or "grievance_hearing" in section_labels:
+            _append_unique_text(
+                claim_support_shared_lines,
+                claim_seen,
+                f"Appeal/grievance protections from {title}{section_phrase} should be explicitly mapped to hearing request, notice, and review-decision facts.",
+            )
+
+    for evidence in [dict(item) for item in list(merged.get("hacc_evidence") or []) if isinstance(item, dict)][:6]:
+        title = str(evidence.get("title") or "evidence artifact").strip()
+        modality = str(evidence.get("evidence_type") or evidence.get("modality") or "").strip().lower()
+        snippet = _summarize_policy_excerpt(str(evidence.get("snippet") or ""))
+        source_path = str(evidence.get("source_path") or "").strip()
+        if not (title or snippet):
+            continue
+        modality_label = f"{modality} " if modality else ""
+        source_ref = f" ({source_path})" if source_path else ""
+        if snippet:
+            _append_unique_text(
+                exhibit_description_lines,
+                exhibit_seen,
+                f"Use {modality_label}exhibit {title}{source_ref} to support: {snippet}",
+            )
+            _append_unique_text(
+                claim_support_shared_lines,
+                claim_seen,
+                f"Claim-support evidence reference {title}{source_ref}: {snippet}",
+            )
 
     blocker_handoff_objective_lines: List[str] = []
-    blocker_handoff_raw_answers: List[str] = []
-    blocker_handoff_raw_answers.extend(blocker_handoff_answers)
+    blocker_handoff_raw_answers: List[str] = list(blocker_handoff_answers)
     for item in blocker_items:
         answer = _to_sentence(item.get("answer") or item.get("resolved_answer") or "")
-        if answer and answer not in blocker_handoff_raw_answers:
-            blocker_handoff_raw_answers.append(answer)
+        if answer:
+            _append_unique_text(blocker_handoff_raw_answers, set(text.strip().lower() for text in blocker_handoff_raw_answers), answer)
 
+    blocker_obj_seen: set[str] = set()
     for answer in blocker_handoff_raw_answers[:6]:
         objective = _normalize_intake_objective(_classify_intake_question_objective(answer))
         objective_label = _intake_objective_label(objective)
@@ -2574,17 +2663,37 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             line = f"Causation and adverse-action anchor from blocker-closing intake ({objective_label}): {condensed}"
         else:
             line = f"Blocker-closing intake handoff ({objective_label}): {condensed}"
-        if line not in blocker_handoff_objective_lines:
-            blocker_handoff_objective_lines.append(line)
+        normalized = line.strip().lower()
+        if normalized in blocker_obj_seen:
+            continue
+        blocker_obj_seen.add(normalized)
+        blocker_handoff_objective_lines.append(line)
 
     for line in blocker_handoff_objective_lines:
-        normalized = _to_sentence(line)
-        if normalized and normalized not in factual_handoff_lines:
-            factual_handoff_lines.append(normalized)
-        if normalized and normalized not in claim_support_shared_lines:
-            claim_support_shared_lines.append(normalized)
-        if normalized and normalized not in exhibit_description_lines:
-            exhibit_description_lines.append(normalized)
+        _append_unique_text(factual_handoff_lines, factual_seen, line)
+        _append_unique_text(claim_support_shared_lines, claim_seen, line)
+        _append_unique_text(exhibit_description_lines, exhibit_seen, line)
+
+    # Prioritize unresolved intake objectives directly into drafting handoff.
+    if unresolved_objectives:
+        objective_lines = []
+        for objective in unresolved_objectives[:4]:
+            label = _intake_objective_label(objective)
+            if objective == "anchor_appeal_rights":
+                objective_lines.append(
+                    "Unresolved intake objective (appeal-rights anchor): confirm grievance_hearing and appeal_rights facts, including hearing request date, written notice, and review decision."
+                )
+            elif objective in {"hearing_request_timing", "response_dates"}:
+                objective_lines.append(
+                    f"Unresolved intake objective ({label}): capture exact dates for hearing requests, notices, and decisions to stabilize chronology."
+                )
+            else:
+                objective_lines.append(
+                    f"Unresolved intake objective ({label}): integrate blocker-closing detail into allegations, claim support, and exhibit descriptions."
+                )
+        for line in objective_lines:
+            _append_unique_text(factual_handoff_lines, factual_seen, line)
+            _append_unique_text(claim_support_shared_lines, claim_seen, line)
 
     if summary_of_facts_lines:
         key_facts["summary_of_facts_handoff"] = summary_of_facts_lines[:12]
@@ -2676,11 +2785,9 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         if candidate:
             actor_critic_optimizer = candidate
             break
+
     actor_metrics = dict(actor_critic_optimizer.get("metrics") or {})
-    actor_coverage = _safe_float(
-        actor_metrics.get("coverage"),
-        _safe_float(actor_critic_optimizer.get("coverage"), 0.0),
-    )
+    actor_coverage = _safe_float(actor_metrics.get("coverage"), _safe_float(actor_critic_optimizer.get("coverage"), 0.0))
     phase_focus_order = [
         str(item).strip().lower()
         for item in list(actor_critic_optimizer.get("phase_focus_order") or [])
@@ -2714,25 +2821,22 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
     )
     graph_ready_threshold = 0.98
     document_ready_threshold = 0.92 if document_first_two else 0.88
-    graph_gate_active = bool(
-        graph_signals.get("gate_on_graph_completeness")
-        or document_signals.get("gate_on_graph_completeness")
-    )
+    graph_gate_active = bool(graph_signals.get("gate_on_graph_completeness") or document_signals.get("gate_on_graph_completeness"))
     ready_for_document_optimization = document_signals.get("ready_for_document_optimization")
     if ready_for_document_optimization is False:
         graph_gate_active = True
+
     graph_ready = (
-        not graph_status
-        or graph_status == "ready"
-    ) and graph_gap_count <= 0 and (graph_completeness <= 0.0 or graph_completeness >= graph_ready_threshold)
+        (not graph_status or graph_status == "ready")
+        and graph_gap_count <= 0
+        and (graph_completeness <= 0.0 or graph_completeness >= graph_ready_threshold)
+    )
     if not graph_ready or graph_gate_active:
         if "graph_analysis_not_ready" not in blockers:
             blockers.append("graph_analysis_not_ready")
         graph_gap_line = "Graph analysis remains incomplete at drafting handoff; unresolved chronology/entity links should be closed before formalization."
         if graph_completeness > 0.0:
-            graph_gap_line = (
-                f"{graph_gap_line.rstrip('.')} (graph_completeness={graph_completeness:.2f}, open_graph_gaps={graph_gap_count})."
-            )
+            graph_gap_line = f"{graph_gap_line.rstrip('.')} (graph_completeness={graph_completeness:.2f}, open_graph_gaps={graph_gap_count})."
         if graph_gap_line not in factual_gaps:
             factual_gaps.append(graph_gap_line)
         if graph_gate_active:
@@ -2756,6 +2860,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
     )
     if actor_coverage > 0.0:
         document_coverage = max(document_coverage, actor_coverage)
+
     for item in list(document_signals.get("blockers") or []) + list(document_signals.get("blocking_codes") or []):
         text = str(item).strip()
         if text and text not in blockers:
@@ -2769,9 +2874,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         if text and text not in legal_gaps:
             legal_gaps.append(text)
     for objective in list(document_signals.get("unresolved_intake_objectives") or []) + list(document_signals.get("uncovered_intake_objectives") or []):
-        normalized = _normalize_intake_objective(objective)
-        if normalized and normalized not in unresolved_objectives:
-            unresolved_objectives.append(normalized)
+        _append_unique_objective(unresolved_objectives, unresolved_seen, objective)
 
     if "policy_document" in weak_modalities:
         policy_gap = "policy_document evidence is thin and should be reinforced before formalization"
@@ -2781,11 +2884,8 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         file_gap = "file_evidence exhibits are thin and should be reinforced with case-specific records before formalization"
         if file_gap not in factual_gaps:
             factual_gaps.append(file_gap)
-
     if any(item in {"housing_discrimination", "hacc_research_engine"} for item in weak_complaint_types):
-        theory_gap = (
-            "Claim framing should be generalized for housing_discrimination and hacc_research_engine using matched policy text plus case-specific exhibits."
-        )
+        theory_gap = "Claim framing should be generalized for housing_discrimination and hacc_research_engine using matched policy text plus case-specific exhibits."
         if theory_gap not in legal_gaps:
             legal_gaps.append(theory_gap)
 
@@ -2809,16 +2909,15 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         if "document_generation_not_ready" not in blockers:
             blockers.append("document_generation_not_ready")
         low_coverage_line = (
-            f"Document generation coverage is below handoff threshold "
-            f"({document_coverage:.2f} < {document_ready_threshold:.2f}); "
+            f"Document generation coverage is below handoff threshold ({document_coverage:.2f} < {document_ready_threshold:.2f}); "
             "allegations and claim support should remain provisional until graph-linked facts, exhibits, and legal mapping are reinforced."
         )
         if low_coverage_line not in factual_gaps:
             factual_gaps.append(low_coverage_line)
     if actor_coverage > 0.0 and actor_coverage < document_ready_threshold and (graph_first_two or document_first_two):
         actor_gap_line = (
-            f"actor_critic coverage remains {actor_coverage:.2f} while phase focus prioritizes "
-            f"{', '.join(phase_focus_order[:2])}; keep formalization gated until document-generation blockers clear."
+            f"actor_critic coverage remains {actor_coverage:.2f} while phase focus prioritizes {', '.join(phase_focus_order[:2])}; "
+            "keep formalization gated until document-generation blockers clear."
         )
         if actor_gap_line not in factual_gaps:
             factual_gaps.append(actor_gap_line)
@@ -2829,6 +2928,10 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         intake_gap_line = "Uncovered intake objectives remain open; blocker-closing answers must be incorporated into allegations, claim support, and exhibit descriptions before formalization."
         if intake_gap_line not in factual_gaps:
             factual_gaps.append(intake_gap_line)
+        if "anchor_appeal_rights" in unresolved_objectives:
+            appeal_gap = "Appeal-rights and grievance-hearing details remain unresolved; confirm hearing request timing, notice language, and review outcome before formalization."
+            if appeal_gap not in factual_gaps:
+                factual_gaps.append(appeal_gap)
 
     if (factual_gaps or legal_gaps) and "document_generation_not_ready" not in blockers:
         blockers.append("document_generation_not_ready")
@@ -2849,9 +2952,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 "optimization_method": str(actor_critic_optimizer.get("optimization_method") or "actor_critic"),
                 "priority": int(_safe_float(actor_critic_optimizer.get("priority"), 70)),
                 "phase_focus_order": phase_focus_order[:3],
-                "metrics": {
-                    "coverage": max(0.0, min(1.0, actor_coverage)),
-                },
+                "metrics": {"coverage": max(0.0, min(1.0, actor_coverage))},
             },
             "graph_completeness_signals": {
                 "status": graph_status or str(document_signals.get("graph_phase_status") or ""),
@@ -4957,17 +5058,17 @@ def main(argv: List[str] | None = None) -> int:
     results_payload = _load_json(results_path)
     grounded_run_dir = Path(args.grounded_run_dir).resolve() if args.grounded_run_dir else None
     auto_discovered = _auto_discover_grounded_artifacts(results_path if grounded_run_dir is None else grounded_run_dir / "adversarial" / "adversarial_results.json")
-    grounding_bundle_path = (
+    grounding_bundle_path = _existing_optional_path(
         Path(args.grounding_bundle).resolve()
         if args.grounding_bundle
         else (grounded_run_dir / "grounding_bundle.json" if grounded_run_dir else auto_discovered.get("grounding_bundle"))
     )
-    grounding_overview_path = (
+    grounding_overview_path = _existing_optional_path(
         grounded_run_dir / "grounding_overview.json"
         if grounded_run_dir
         else auto_discovered.get("grounding_overview")
     )
-    evidence_upload_report_path = (
+    evidence_upload_report_path = _existing_optional_path(
         Path(args.evidence_upload_report).resolve()
         if args.evidence_upload_report
         else (grounded_run_dir / "evidence_upload_report.json" if grounded_run_dir else auto_discovered.get("evidence_upload_report"))

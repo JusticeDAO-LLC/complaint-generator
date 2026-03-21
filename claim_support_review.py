@@ -1363,6 +1363,20 @@ def summarize_claim_reasoning_review(
     elements = claim_validation.get("elements", [])
     if not isinstance(elements, list):
         elements = []
+    claim_temporal_issue_count = int(
+        claim_validation.get("claim_temporal_issue_count", 0) or 0
+    )
+    claim_unresolved_temporal_issue_count = int(
+        claim_validation.get("claim_unresolved_temporal_issue_count", 0) or 0
+    )
+    claim_resolved_temporal_issue_count = int(
+        claim_validation.get("claim_resolved_temporal_issue_count", 0) or 0
+    )
+    claim_temporal_issue_status_counts = (
+        dict(claim_validation.get("claim_temporal_issue_status_counts") or {})
+        if isinstance(claim_validation.get("claim_temporal_issue_status_counts"), dict)
+        else {}
+    )
 
     flagged_elements: List[Dict[str, Any]] = []
     fallback_ontology_element_count = 0
@@ -1788,6 +1802,10 @@ def summarize_claim_reasoning_review(
         "temporal_rule_profile_failed_element_count": temporal_rule_profile_failed_element_count,
         "temporal_proof_bundle_count": temporal_proof_bundle_count,
         "temporal_proof_bundle_status_counts": temporal_proof_bundle_status_counts,
+        "claim_temporal_issue_count": claim_temporal_issue_count,
+        "claim_unresolved_temporal_issue_count": claim_unresolved_temporal_issue_count,
+        "claim_resolved_temporal_issue_count": claim_resolved_temporal_issue_count,
+        "claim_temporal_issue_status_counts": claim_temporal_issue_status_counts,
         "theorem_export_blocked_element_count": theorem_export_blocked_element_count,
         "theorem_export_chronology_task_count": theorem_export_chronology_task_count,
         "proof_artifact_element_count": proof_artifact_element_count,

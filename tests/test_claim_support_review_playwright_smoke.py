@@ -619,6 +619,10 @@ def _build_hook_backed_browser_mediator(db_path: str):
                         "temporal_proof_bundle_count": 1,
                     },
                 },
+                "claim_temporal_issue_count": 2,
+                "claim_unresolved_temporal_issue_count": 1,
+                "claim_resolved_temporal_issue_count": 1,
+                "claim_temporal_issue_status_counts": {"open": 1, "resolved": 1},
                 "elements": [
                     {
                         "element_id": "retaliation:1",
@@ -722,6 +726,23 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                         "Happens(fact_001,t_2026_03_10)",
                                         "Happens(fact_termination,t_2026_03_24)",
                                     ],
+                                    "theorem_export_metadata": {
+                                        "contract_version": "claim_support_temporal_handoff_v1",
+                                        "claim_type": "retaliation",
+                                        "claim_element_id": "retaliation:1",
+                                        "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                        "rule_frame_id": "retaliation_temporal_frame",
+                                        "chronology_blocked": True,
+                                        "chronology_task_count": 1,
+                                        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                                        "event_ids": ["fact_001", "fact_termination"],
+                                        "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                        "temporal_relation_ids": ["timeline_relation_001"],
+                                        "timeline_issue_ids": ["temporal_issue_001"],
+                                        "temporal_issue_ids": ["temporal_issue_001"],
+                                        "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+                                        "temporal_proof_objectives": ["retaliation_temporal_frame"],
+                                    },
                                 },
                             },
                         },
@@ -2619,6 +2640,9 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "temporal rule Partial" in reasoning_flagged
                 assert "rule frame retaliation_temporal_frame" in reasoning_flagged
                 assert "proof bundle Partial" in reasoning_flagged
+                assert "theorem blocked" in reasoning_flagged
+                assert "theorem tasks 1" in reasoning_flagged
+                assert "theorem unresolved 1" in reasoning_flagged
                 assert "formalism tdfol_dcec_bridge_v1" in reasoning_flagged
                 assert "mode temporal_bridge" in reasoning_flagged
                 assert "TDFOL preview" in reasoning_flagged
@@ -2627,6 +2651,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "Temporal rule follow-ups" in reasoning_flagged
                 assert "Temporal proof bundle TDFOL preview" in reasoning_flagged
                 assert "Temporal proof bundle DCEC preview" in reasoning_flagged
+                assert "Theorem export chronology" in reasoning_flagged
+                assert "Proof artifact theorem export" in reasoning_flagged
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal relation preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal warnings").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="TDFOL preview").first.click()
@@ -2635,6 +2661,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal rule follow-ups").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal proof bundle TDFOL preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal proof bundle DCEC preview").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Theorem export chronology").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Proof artifact theorem export").first.click()
 
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("fact_001 before fact_termination").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text(
@@ -2654,6 +2682,16 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("ProtectedActivity(fact_001)").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("AdverseAction(fact_termination)").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Happens(fact_termination,t_2026_03_24)").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem export chronology: blocked").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Unresolved theorem chronology issues: 1").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Claim chronology history retained: 1 resolved issue(s).").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem chronology tasks: 1").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem chronology issue ids: temporal_issue_001").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text(
+                    "Theorem proof bundles: retaliation:retaliation_1:retaliation_temporal_profile_v1"
+                ).first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem objectives: retaliation_temporal_frame").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem export chronology: aligned").first.is_visible()
                 assert "Tasks: 2" in task_summary
                 assert "Chronology tasks: 1" in task_summary
                 assert "Chronology targeted: 1" in task_summary
@@ -5179,6 +5217,13 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                             "proof_artifact_proof_id": "proof-retaliation-001",
                             "proof_artifact_explanation_step_count": 1,
                             "proof_artifact_explanation_text": "Protected activity preceded termination.",
+                            "theorem_export_metadata": {
+                                "chronology_blocked": True,
+                                "chronology_task_count": 3,
+                                "unresolved_temporal_issue_ids": ["temporal-issue-001"],
+                                "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                                "temporal_proof_objectives": ["show protected activity preceded termination"],
+                            },
                         }
                     ],
                 }
@@ -5311,6 +5356,12 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "proof status: success" in proof_drilldown_text
             assert "explanation steps: 1" in proof_drilldown_text
             assert "explanation: protected activity preceded termination." in proof_drilldown_text
+            assert "theorem export chronology: blocked" in proof_drilldown_text
+            assert "unresolved theorem chronology issues: 1" in proof_drilldown_text
+            assert "claim chronology history retained: 1 resolved issue(s)." in proof_drilldown_text
+            assert "theorem chronology tasks: 3" in proof_drilldown_text
+            assert "theorem proof bundles: retaliation:causation:bundle_001" in proof_drilldown_text
+            assert "theorem objectives: show protected activity preceded termination" in proof_drilldown_text
 
             page.locator("#traceProofDrilldown .trace-proof-copy-id-button").click()
             page.wait_for_function(

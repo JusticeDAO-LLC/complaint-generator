@@ -152,6 +152,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Claim resolved chronology issues: ${claimResolvedTemporalIssueCount}" in content
     assert "Claim chronology ${humanizeQueryValue(status)}: ${Number(count || 0)}" in content
     assert "proof id ${escapeHtml(element.proof_artifact_proof_id)}" in content
+    assert "Theorem export chronology" in content
+    assert "Proof artifact theorem export" in content
+    assert "Theorem chronology tasks:" in content
+    assert "Claim chronology history retained:" in content
     assert "Copy proof ID" in content
     assert "Copy proof explanation" in content
     assert "Proof artifact sentence" in content
@@ -783,6 +787,9 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "proof preview:" in content
     assert "Proof ID:" in content
     assert "Explanation:" in content
+    assert "Theorem export chronology:" in content
+    assert "Unresolved theorem chronology issues:" in content
+    assert "Theorem proof bundles:" in content
     assert "Candidate claims:" in content
     assert "Candidate claim count:" in content
     assert "Candidate claim average confidence:" in content

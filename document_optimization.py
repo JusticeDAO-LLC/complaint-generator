@@ -760,14 +760,15 @@ class AgenticDocumentOptimizer:
         config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         self._reset_runtime_state()
-        self._apply_config(config or {})
-        working_draft = self._refresh_dependent_sections(deepcopy(draft))
+        config_payload = config if isinstance(config, dict) else {}
+        self._apply_config(config_payload)
+        working_draft = self._refresh_dependent_sections(deepcopy(draft if isinstance(draft, dict) else {}))
         readiness = dict(drafting_readiness) if isinstance(drafting_readiness, dict) else {}
         support_context = self._build_support_context(
             user_id=user_id,
             draft=working_draft,
             drafting_readiness=readiness,
-            config=config or {},
+            config=config_payload,
         )
         structured_handoff = (
             support_context.get("structured_handoff")
@@ -779,15 +780,88 @@ class AgenticDocumentOptimizer:
             if isinstance(support_context.get("document_generation_guardrail"), dict)
             else {}
         )
+        evidence_rows = (
+            support_context.get("evidence")
+            if isinstance(support_context.get("evidence"), list)
+            else []
+        )
+        evidence_type_counts: Dict[str, int] = {}
+        modality_handoff_candidates: List[str] = []
+        for row in evidence_rows:
+            if not isinstance(row, dict):
+                continue
+            evidence_type = str(row.get("type") or "").strip().lower()
+            if not evidence_type:
+                continue
+            evidence_type_counts[evidence_type] = evidence_type_counts.get(evidence_type, 0) + 1
+            evidence_text = str(row.get("text") or "").strip()
+            if evidence_text and evidence_type in {"policy_document", "file_evidence"}:
+                if evidence_type == "policy_document":
+                    modality_handoff_candidates.append(
+                        f"Policy-document evidence anchors formalization follow-up: {evidence_text}"
+                    )
+                else:
+                    modality_handoff_candidates.append(
+                        f"File evidence anchors formalization follow-up: {evidence_text}"
+                    )
+        modality_handoff_lines = self._normalize_lines(modality_handoff_candidates)
+        complaint_claim_types = _dedupe_text_values(
+            str((claim or {}).get("claim_type") or "").strip().lower()
+            for claim in list(working_draft.get("claims_for_relief") or [])
+            if isinstance(claim, dict)
+        )
+        weak_claim_type_targets = {"housing_discrimination", "hacc_research_engine"}
+        targeted_weak_claim_type_active = any(
+            claim_type in weak_claim_type_targets for claim_type in complaint_claim_types
+        )
+        unresolved_handoff_objectives = _dedupe_text_values(
+            [
+                *self._normalize_lines(list(structured_handoff.get("unresolved_objectives") or [])),
+                *self._normalize_lines(list(readiness.get("unresolved_objectives") or [])),
+                *self._normalize_lines(list(document_guardrail.get("unresolved_objectives") or [])),
+            ]
+        )
+        unresolved_factual_lines = self._normalize_lines(
+            list(readiness.get("unresolved_factual_gaps") or [])
+            + list(document_guardrail.get("unresolved_factual_gaps") or [])
+            + list(structured_handoff.get("unresolved_factual_gaps") or [])
+        )
+        unresolved_legal_lines = self._normalize_lines(
+            list(readiness.get("unresolved_legal_gaps") or [])
+            + list(document_guardrail.get("unresolved_legal_gaps") or [])
+            + list(structured_handoff.get("unresolved_legal_gaps") or [])
+        )
+        unresolved_gap_lines = self._normalize_lines(unresolved_factual_lines + unresolved_legal_lines)
+
+        def _contains_anchor(lines: Iterable[Any], tokens: Iterable[str]) -> bool:
+            lowered_lines = [str(line or "").strip().lower() for line in lines]
+            normalized_tokens = [str(token or "").strip().lower() for token in tokens if str(token or "").strip()]
+            for line in lowered_lines:
+                if not line:
+                    continue
+                if any(token in line for token in normalized_tokens):
+                    return True
+            return False
+
+        grievance_anchor_missing = _contains_anchor(
+            unresolved_handoff_objectives + unresolved_gap_lines,
+            ("grievance_hearing", "grievance hearing", "hearing request", "hearing"),
+        )
+        appeal_anchor_missing = _contains_anchor(
+            unresolved_handoff_objectives + unresolved_gap_lines,
+            ("appeal_rights", "appeal rights", "appeal deadline", "appeal"),
+        )
+        anchor_follow_up_lines = self._normalize_lines(
+            ([
+                "Follow-up needed on grievance_hearing: identify hearing request date, decision-maker, response date, and source record."
+            ] if grievance_anchor_missing else [])
+            + ([
+                "Follow-up needed on appeal_rights: identify written notice, appeal deadline, denial/approval date, and source record."
+            ] if appeal_anchor_missing else [])
+        )
         if structured_handoff:
             blocker_closing_lines = self._normalize_lines(
                 list(structured_handoff.get("blocker_closing_answers") or [])
-            )
-            unresolved_factual_lines = self._normalize_lines(
-                list(structured_handoff.get("unresolved_factual_gaps") or [])
-            )
-            unresolved_legal_lines = self._normalize_lines(
-                list(structured_handoff.get("unresolved_legal_gaps") or [])
             )
             chronology_anchor_lines = self._normalize_lines(
                 [
@@ -800,6 +874,8 @@ class AgenticDocumentOptimizer:
                 list(structured_handoff.get("factual_allegation_lines") or [])
                 + chronology_anchor_lines
                 + blocker_closing_lines
+                + modality_handoff_lines
+                + anchor_follow_up_lines
                 + [f"Unresolved factual gap requiring formalization follow-up: {line}" for line in unresolved_factual_lines]
                 + [f"Unresolved legal gap requiring formalization follow-up: {line}" for line in unresolved_legal_lines]
                 + list(working_draft.get("factual_allegations") or [])
@@ -809,6 +885,8 @@ class AgenticDocumentOptimizer:
 
             promoted_summary_lines = self._normalize_lines(
                 list(structured_handoff.get("summary_of_facts_lines") or [])
+                + anchor_follow_up_lines
+                + modality_handoff_lines
                 + list(working_draft.get("summary_of_facts") or [])
             )
             if promoted_summary_lines:
@@ -828,6 +906,8 @@ class AgenticDocumentOptimizer:
                 list(structured_handoff.get("claim_support_lines_shared") or [])
                 + chronology_anchor_lines
                 + blocker_closing_lines
+                + modality_handoff_lines
+                + anchor_follow_up_lines
                 + [f"Open factual gap for claim support: {line}" for line in unresolved_factual_lines]
             )
             claims_for_relief = (
@@ -855,6 +935,8 @@ class AgenticDocumentOptimizer:
                 list(structured_handoff.get("exhibit_description_lines") or [])
                 + chronology_anchor_lines
                 + blocker_closing_lines
+                + modality_handoff_lines
+                + anchor_follow_up_lines
                 + [f"Gap documented for follow-up evidence collection: {line}" for line in unresolved_factual_lines]
             )
             if exhibits and exhibit_lines:
@@ -871,24 +953,28 @@ class AgenticDocumentOptimizer:
                 working_draft["exhibits"] = [
                     {
                         "label": f"Exhibit {chr(65 + idx)}",
-                        "title": "Intake and evidence handoff",
+                        "title": (
+                            "Policy/file evidence and intake handoff"
+                            if modality_handoff_lines
+                            else "Intake and evidence handoff"
+                        ),
                         "summary": line,
                         "description": line,
                     }
                     for idx, line in enumerate(exhibit_lines[:4])
                 ]
-            support_context["packet_projection"] = self._build_packet_projection(working_draft)
+        support_context["packet_projection"] = self._build_packet_projection(working_draft)
         assessment_blocked = bool(document_guardrail.get("assessment_blocked"))
         guardrail_blockers = _dedupe_text_values(document_guardrail.get("blockers") or [])
-        readiness_unresolved_factual = self._normalize_lines(
-            list(readiness.get("unresolved_factual_gaps") or [])
-            + list(document_guardrail.get("unresolved_factual_gaps") or [])
-            + list(structured_handoff.get("unresolved_factual_gaps") or [])
-        )
-        readiness_unresolved_legal = self._normalize_lines(
-            list(readiness.get("unresolved_legal_gaps") or [])
-            + list(document_guardrail.get("unresolved_legal_gaps") or [])
-            + list(structured_handoff.get("unresolved_legal_gaps") or [])
+        readiness_unresolved_factual = unresolved_factual_lines
+        readiness_unresolved_legal = unresolved_legal_lines
+        explicit_anchor_warnings = self._normalize_lines(
+            ([
+                "Explicit grievance_hearing questioning remains required before formalization."
+            ] if grievance_anchor_missing else [])
+            + ([
+                "Explicit appeal_rights questioning remains required before formalization."
+            ] if appeal_anchor_missing else [])
         )
         readiness_warning_messages = _dedupe_text_values(
             [
@@ -897,6 +983,7 @@ class AgenticDocumentOptimizer:
                 if isinstance(warning, dict) and str((warning or {}).get("message") or "").strip()
             ]
             + ([str(document_guardrail.get("summary") or "").strip()] if str(document_guardrail.get("summary") or "").strip() else [])
+            + explicit_anchor_warnings
             + (
                 [
                     f"Formalization gate unresolved factual gap: {line}"
@@ -915,19 +1002,67 @@ class AgenticDocumentOptimizer:
             if isinstance(readiness.get("graph_completeness_signals"), dict)
             else {}
         )
-        graph_status = str(document_guardrail.get("graph_phase_status") or graph_signals.get("status") or "ready").strip().lower()
+        if isinstance(support_context.get("graph_completeness_signals"), dict):
+            graph_signals.update(dict(support_context.get("graph_completeness_signals") or {}))
+        if isinstance(document_guardrail.get("graph_completeness_signals"), dict):
+            graph_signals.update(dict(document_guardrail.get("graph_completeness_signals") or {}))
+        graph_status = str(
+            document_guardrail.get("graph_phase_status")
+            or graph_signals.get("status")
+            or readiness.get("graph_phase_status")
+            or "ready"
+        ).strip().lower()
         graph_remaining_gap_count = max(
             _safe_int(document_guardrail.get("graph_remaining_gap_count"), 0),
             _safe_int(graph_signals.get("remaining_gap_count"), 0),
             _safe_int(graph_signals.get("current_gap_count"), 0),
+            _safe_int(readiness.get("graph_remaining_gap_count"), 0),
+            len(readiness_unresolved_factual),
+            len(readiness_unresolved_legal),
         )
-        graph_gate_active = bool(document_guardrail.get("gate_on_graph_completeness")) or graph_status != "ready" or graph_remaining_gap_count > 0
+        graph_gate_requested = bool(document_guardrail.get("gate_on_graph_completeness")) or bool(
+            graph_signals.get("gate_on_graph_completeness")
+        )
+        graph_gate_active = graph_gate_requested or graph_status not in {"ready", "complete", "completed", "ok"} or graph_remaining_gap_count > 0
         if graph_gate_active:
             readiness_warning_messages = _dedupe_text_values(
                 readiness_warning_messages + [
                     f"Graph completeness gate remains active (status={graph_status}, remaining_gap_count={graph_remaining_gap_count})."
                 ]
             )
+        missing_policy_document = bool(
+            targeted_weak_claim_type_active and evidence_type_counts.get("policy_document", 0) <= 0
+        )
+        missing_file_evidence = bool(
+            targeted_weak_claim_type_active and evidence_type_counts.get("file_evidence", 0) <= 0
+        )
+        if targeted_weak_claim_type_active:
+            if missing_policy_document:
+                readiness_warning_messages = _dedupe_text_values(
+                    readiness_warning_messages
+                    + [
+                        "Housing-discrimination drafting requires at least one policy_document evidence anchor before formalization."
+                    ]
+                )
+            if missing_file_evidence:
+                readiness_warning_messages = _dedupe_text_values(
+                    readiness_warning_messages
+                    + [
+                        "Housing-discrimination drafting requires at least one file_evidence anchor before formalization."
+                    ]
+                )
+        formalization_gate_active = any(
+            (
+                assessment_blocked,
+                graph_gate_active,
+                bool(readiness_unresolved_factual),
+                bool(readiness_unresolved_legal),
+                grievance_anchor_missing,
+                appeal_anchor_missing,
+                missing_policy_document,
+                missing_file_evidence,
+            )
+        )
         readiness_blockers = _dedupe_text_values(
             list(readiness.get("blockers") or [])
             + guardrail_blockers
@@ -935,9 +1070,13 @@ class AgenticDocumentOptimizer:
             + (["document_generation_not_ready"] if assessment_blocked else [])
             + (["unresolved_factual_gaps"] if readiness_unresolved_factual else [])
             + (["unresolved_legal_gaps"] if readiness_unresolved_legal else [])
+            + (["missing_policy_document_evidence"] if missing_policy_document else [])
+            + (["missing_file_evidence"] if missing_file_evidence else [])
+            + (["grievance_hearing_follow_up_required"] if grievance_anchor_missing else [])
+            + (["appeal_rights_follow_up_required"] if appeal_anchor_missing else [])
         )
         readiness_status = str(readiness.get("status") or "ready").strip().lower()
-        if assessment_blocked or graph_gate_active or readiness_unresolved_factual or readiness_unresolved_legal:
+        if formalization_gate_active:
             readiness_status = "blocked"
         elif readiness_warning_messages or readiness_blockers:
             readiness_status = "warning"
@@ -952,6 +1091,25 @@ class AgenticDocumentOptimizer:
         readiness_for_critic["unresolved_legal_gaps"] = readiness_unresolved_legal
         readiness_for_critic["warnings"] = [{"message": message} for message in readiness_warning_messages]
         readiness_for_critic["warning_count"] = len(readiness_warning_messages)
+        readiness_for_critic["formalization_gate"] = {
+            "active": bool(formalization_gate_active),
+            "assessment_blocked": bool(assessment_blocked),
+            "graph_gate_active": bool(graph_gate_active),
+            "grievance_anchor_missing": bool(grievance_anchor_missing),
+            "appeal_anchor_missing": bool(appeal_anchor_missing),
+            "missing_policy_document_evidence": bool(missing_policy_document),
+            "missing_file_evidence": bool(missing_file_evidence),
+            "unresolved_factual_gap_count": len(readiness_unresolved_factual),
+            "unresolved_legal_gap_count": len(readiness_unresolved_legal),
+            "blocker_count": len(readiness_blockers),
+        }
+        readiness_for_critic["evidence_modality_signals"] = {
+            "policy_document_count": int(evidence_type_counts.get("policy_document") or 0),
+            "file_evidence_count": int(evidence_type_counts.get("file_evidence") or 0),
+            "targeted_weak_claim_type_active": bool(targeted_weak_claim_type_active),
+            "missing_policy_document_evidence": bool(missing_policy_document),
+            "missing_file_evidence": bool(missing_file_evidence),
+        }
         readiness_for_critic["graph_completeness_signals"] = {
             **graph_signals,
             "status": graph_status,
@@ -970,7 +1128,7 @@ class AgenticDocumentOptimizer:
         optimized_sections: List[str] = []
 
         for iteration in range(1, self.max_iterations + 1):
-            if assessment_blocked:
+            if formalization_gate_active:
                 break
             if float(current_review.get("overall_score") or 0.0) >= self.target_score:
                 break
@@ -1027,6 +1185,8 @@ class AgenticDocumentOptimizer:
                 accepted_iterations += 1
                 if focus_section not in optimized_sections:
                     optimized_sections.append(focus_section)
+                support_context["packet_projection"] = self._build_packet_projection(working_draft)
+        support_context["packet_projection"] = self._build_packet_projection(working_draft)
 
         upstream_optimizer = self._build_upstream_optimizer_metadata(
             phase_focus_order=current_review.get("workflow_phase_order") if isinstance(current_review, dict) else None
@@ -1103,8 +1263,9 @@ class AgenticDocumentOptimizer:
                 "iterations": iterations,
             }
         )
+        final_status = "blocked" if formalization_gate_active else ("optimized" if accepted_iterations else "completed")
         return {
-            "status": "blocked" if assessment_blocked else ("optimized" if accepted_iterations else "completed"),
+            "status": final_status,
             "method": "actor_mediator_critic_optimizer",
             "optimization_method": "actor_critic",
             "phase_focus_order": ["graph_analysis", "document_generation", "intake_questioning"],

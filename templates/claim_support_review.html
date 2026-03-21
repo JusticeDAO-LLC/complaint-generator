@@ -2028,6 +2028,78 @@
             `;
         }
 
+        function normalizeTheoremExportMetadata(value) {
+            const metadata = value && typeof value === 'object' ? value : {};
+            const unresolvedIssueIds = Array.isArray(metadata.unresolved_temporal_issue_ids)
+                ? metadata.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const issueIds = Array.isArray(metadata.temporal_issue_ids)
+                ? metadata.temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofBundleIds = Array.isArray(metadata.temporal_proof_bundle_ids)
+                ? metadata.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofObjectives = Array.isArray(metadata.temporal_proof_objectives)
+                ? metadata.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const unresolvedCount = Number.isFinite(Number(metadata.unresolved_temporal_issue_count))
+                ? Number(metadata.unresolved_temporal_issue_count || 0)
+                : unresolvedIssueIds.length;
+            const issueCount = Number.isFinite(Number(metadata.temporal_issue_count))
+                ? Number(metadata.temporal_issue_count || 0)
+                : (issueIds.length || unresolvedCount);
+            const resolvedCount = Math.max(
+                0,
+                Number.isFinite(Number(metadata.resolved_temporal_issue_count))
+                    ? Number(metadata.resolved_temporal_issue_count || 0)
+                    : (issueCount - unresolvedCount)
+            );
+            const chronologyTaskCount = Number(metadata.chronology_task_count || 0);
+            const blocked = Boolean(metadata.chronology_blocked || unresolvedCount > 0 || chronologyTaskCount > 0);
+            return {
+                blocked,
+                chronologyTaskCount,
+                unresolvedCount,
+                resolvedCount,
+                issueIds,
+                unresolvedIssueIds,
+                proofBundleIds,
+                proofObjectives,
+                hasSignal: blocked || issueCount > 0 || proofBundleIds.length > 0 || proofObjectives.length > 0,
+            };
+        }
+
+        function buildTheoremExportSummaryLines(metadata, claimReviewData = {}) {
+            const normalized = normalizeTheoremExportMetadata(metadata);
+            const claimResolvedCount = Number(claimReviewData.claim_resolved_temporal_issue_count || 0);
+            if (!normalized.hasSignal && claimResolvedCount <= 0) {
+                return [];
+            }
+            const lines = [`Theorem export chronology: ${normalized.blocked ? 'blocked' : 'aligned'}`];
+            if (normalized.unresolvedCount > 0) {
+                lines.push(`Unresolved theorem chronology issues: ${normalized.unresolvedCount}`);
+            }
+            if (normalized.resolvedCount > 0) {
+                lines.push(`Resolved theorem chronology history: ${normalized.resolvedCount} issue(s).`);
+            } else if (claimResolvedCount > 0) {
+                lines.push(`Claim chronology history retained: ${claimResolvedCount} resolved issue(s).`);
+            }
+            if (normalized.chronologyTaskCount > 0) {
+                lines.push(`Theorem chronology tasks: ${normalized.chronologyTaskCount}`);
+            }
+            const issueIds = normalized.unresolvedIssueIds.length ? normalized.unresolvedIssueIds : normalized.issueIds;
+            if (issueIds.length) {
+                lines.push(`Theorem chronology issue ids: ${issueIds.join(', ')}`);
+            }
+            if (normalized.proofBundleIds.length) {
+                lines.push(`Theorem proof bundles: ${normalized.proofBundleIds.join(', ')}`);
+            }
+            if (normalized.proofObjectives.length) {
+                lines.push(`Theorem objectives: ${normalized.proofObjectives.join(', ')}`);
+            }
+            return lines;
+        }
+
         function formatTemporalFollowUpItem(item) {
             if (!item) {
                 return '';
@@ -2301,6 +2373,7 @@
                         })
                         .filter(Boolean)
                     : [];
+                const theoremExportSummary = normalizeTheoremExportMetadata(element.theorem_export_metadata);
                 return `
                 <div class="task-card">
                     <div class="row-head">
@@ -2330,6 +2403,9 @@
                         ${element.temporal_rule_frame_id ? `<span class="chip">rule frame ${escapeHtml(element.temporal_rule_frame_id)}</span>` : ''}
                         ${element.temporal_proof_bundle_status ? `<span class="chip">proof bundle ${humanizeQueryValue(element.temporal_proof_bundle_status)}</span>` : ''}
                         ${element.temporal_proof_bundle_id ? `<span class="chip">bundle id ${escapeHtml(element.temporal_proof_bundle_id)}</span>` : ''}
+                        ${theoremExportSummary.hasSignal ? `<span class="chip">theorem ${theoremExportSummary.blocked ? 'blocked' : 'aligned'}</span>` : ''}
+                        ${theoremExportSummary.chronologyTaskCount ? `<span class="chip">theorem tasks ${theoremExportSummary.chronologyTaskCount}</span>` : ''}
+                        ${theoremExportSummary.unresolvedCount ? `<span class="chip">theorem unresolved ${theoremExportSummary.unresolvedCount}</span>` : ''}
                         ${Object.entries(element.temporal_relation_type_counts && typeof element.temporal_relation_type_counts === 'object' ? element.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
                         ${(element.unavailable_adapters || []).map((name) => `<span class="chip">unavailable ${escapeHtml(name)}</span>`).join('')}
                         ${(element.degraded_adapters || []).map((name) => `<span class="chip">degraded ${escapeHtml(name)}</span>`).join('')}
@@ -2364,6 +2440,8 @@
                     ${renderFormulaPreviewDetails('Temporal proof bundle issues', element.temporal_proof_bundle_issue_ids || [], 'No temporal proof bundle issues for this element.')}
                     ${renderFormulaPreviewDetails('Temporal proof bundle TDFOL preview', element.temporal_proof_bundle_tdfol_preview || [], 'No temporal proof bundle TDFOL preview for this element.')}
                     ${renderFormulaPreviewDetails('Temporal proof bundle DCEC preview', element.temporal_proof_bundle_dcec_preview || [], 'No temporal proof bundle DCEC preview for this element.')}
+                    ${renderFormulaPreviewDetails('Theorem export chronology', buildTheoremExportSummaryLines(element.theorem_export_metadata, reviewData), 'No theorem export chronology summary for this element.')}
+                    ${renderFormulaPreviewDetails('Proof artifact theorem export', buildTheoremExportSummaryLines(element.proof_artifact_theorem_export_metadata, reviewData), 'No proof artifact theorem export summary for this element.')}
                 </div>
             `;
             }).join('');
