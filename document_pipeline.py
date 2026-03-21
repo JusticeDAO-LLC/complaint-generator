@@ -769,6 +769,130 @@ class FormalComplaintDocumentBuilder:
                 drafting_readiness=drafting_readiness,
                 workflow_phase_plan=workflow_phase_plan,
             )
+            phase_entries = (
+                dict(workflow_phase_plan.get("phases") or {})
+                if isinstance(workflow_phase_plan.get("phases"), dict)
+                else {}
+            )
+            document_phase = (
+                dict(phase_entries.get("document_generation") or {})
+                if isinstance(phase_entries.get("document_generation"), dict)
+                else {}
+            )
+            document_phase_signals = (
+                dict(document_phase.get("signals") or {})
+                if isinstance(document_phase.get("signals"), dict)
+                else {}
+            )
+            if document_phase_signals:
+                derived_blockers: List[str] = []
+                if _coerce_bool(document_phase_signals.get("gate_on_graph_completeness"), default=False):
+                    derived_blockers.append("graph_analysis_not_ready")
+                if int(document_phase_signals.get("unresolved_factual_gap_count", 0) or 0) > 0:
+                    derived_blockers.append("unresolved_factual_gaps_not_closed")
+                if int(document_phase_signals.get("unresolved_legal_gap_count", 0) or 0) > 0:
+                    derived_blockers.append("unresolved_legal_gaps_not_closed")
+                if int(document_phase_signals.get("uncovered_intake_objective_count", 0) or 0) > 0 or int(
+                    document_phase_signals.get("missing_required_intake_objective_count", 0) or 0
+                ) > 0:
+                    derived_blockers.append("uncovered_intake_objectives")
+                if int(document_phase_signals.get("structured_intake_handoff_gap_count", 0) or 0) > 0:
+                    derived_blockers.append("structured_intake_handoff_incomplete")
+                if list(document_phase_signals.get("targeted_weak_complaint_types") or []):
+                    derived_blockers.append("weak_complaint_type_generalization_needed")
+                if list(document_phase_signals.get("targeted_weak_evidence_modalities") or []):
+                    derived_blockers.append("weak_evidence_modality_support_needed")
+                if not _coerce_bool(document_phase_signals.get("ready_for_formalization"), default=False):
+                    derived_blockers.append("document_generation_not_ready")
+
+                existing_blockers = [
+                    str(item).strip()
+                    for item in list(drafting_readiness.get("blockers") or [])
+                    if str(item).strip()
+                ]
+                drafting_readiness["blockers"] = _dedupe_text_values(existing_blockers + derived_blockers)
+                if _coerce_bool(document_phase_signals.get("gate_on_graph_completeness"), default=False):
+                    drafting_readiness["phase_status"] = _merge_status(
+                        str(drafting_readiness.get("phase_status") or "ready"),
+                        "blocked",
+                    )
+                elif not _coerce_bool(document_phase_signals.get("ready_for_formalization"), default=False):
+                    drafting_readiness["phase_status"] = _merge_status(
+                        str(drafting_readiness.get("phase_status") or "ready"),
+                        "warning",
+                    )
+                if list(document_phase_signals.get("unresolved_factual_gaps") or []) and not list(
+                    drafting_readiness.get("unresolved_factual_gaps") or []
+                ):
+                    drafting_readiness["unresolved_factual_gaps"] = list(document_phase_signals.get("unresolved_factual_gaps") or [])
+                if list(document_phase_signals.get("unresolved_legal_gaps") or []) and not list(
+                    drafting_readiness.get("unresolved_legal_gaps") or []
+                ):
+                    drafting_readiness["unresolved_legal_gaps"] = list(document_phase_signals.get("unresolved_legal_gaps") or [])
+                if list(document_phase_signals.get("uncovered_intake_objectives") or []) and not list(
+                    drafting_readiness.get("uncovered_intake_objectives") or []
+                ):
+                    drafting_readiness["uncovered_intake_objectives"] = list(document_phase_signals.get("uncovered_intake_objectives") or [])
+                if list(document_phase_signals.get("weak_complaint_types") or []) and not list(
+                    drafting_readiness.get("weak_complaint_types") or []
+                ):
+                    drafting_readiness["weak_complaint_types"] = list(document_phase_signals.get("weak_complaint_types") or [])
+                if list(document_phase_signals.get("weak_evidence_modalities") or []) and not list(
+                    drafting_readiness.get("weak_evidence_modalities") or []
+                ):
+                    drafting_readiness["weak_evidence_modalities"] = list(document_phase_signals.get("weak_evidence_modalities") or [])
+                drafting_handoff_payload = (
+                    dict(drafting_readiness.get("drafting_handoff") or {})
+                    if isinstance(drafting_readiness.get("drafting_handoff"), dict)
+                    else {}
+                )
+                drafting_handoff_payload["ready_for_formalization"] = _coerce_bool(
+                    document_phase_signals.get("ready_for_formalization"),
+                    default=False,
+                )
+                drafting_handoff_payload["gate_on_graph_completeness"] = _coerce_bool(
+                    document_phase_signals.get("gate_on_graph_completeness"),
+                    default=_coerce_bool(drafting_handoff_payload.get("gate_on_graph_completeness"), default=False),
+                )
+                drafting_handoff_payload["graph_phase_status"] = str(
+                    document_phase_signals.get("graph_phase_status")
+                    or drafting_handoff_payload.get("graph_phase_status")
+                    or "ready"
+                ).strip().lower() or "ready"
+                drafting_handoff_payload["graph_remaining_gap_count"] = int(
+                    document_phase_signals.get(
+                        "graph_remaining_gap_count",
+                        drafting_handoff_payload.get("graph_remaining_gap_count", 0),
+                    )
+                    or 0
+                )
+                drafting_handoff_payload["unresolved_factual_gaps"] = list(
+                    document_phase_signals.get("unresolved_factual_gaps")
+                    or drafting_handoff_payload.get("unresolved_factual_gaps")
+                    or []
+                )[:6]
+                drafting_handoff_payload["unresolved_legal_gaps"] = list(
+                    document_phase_signals.get("unresolved_legal_gaps")
+                    or drafting_handoff_payload.get("unresolved_legal_gaps")
+                    or []
+                )[:6]
+                drafting_handoff_payload["uncovered_intake_objectives"] = list(
+                    document_phase_signals.get("uncovered_intake_objectives")
+                    or drafting_handoff_payload.get("uncovered_intake_objectives")
+                    or []
+                )[:8]
+                drafting_handoff_payload["targeted_weak_complaint_types"] = list(
+                    document_phase_signals.get("targeted_weak_complaint_types")
+                    or drafting_handoff_payload.get("targeted_weak_complaint_types")
+                    or []
+                )[:4]
+                drafting_handoff_payload["targeted_weak_evidence_modalities"] = list(
+                    document_phase_signals.get("targeted_weak_evidence_modalities")
+                    or drafting_handoff_payload.get("targeted_weak_evidence_modalities")
+                    or []
+                )[:4]
+                drafting_handoff_payload["blockers"] = list(drafting_readiness.get("blockers") or [])
+                drafting_readiness["drafting_handoff"] = drafting_handoff_payload
         workflow_optimization_guidance = _build_runtime_workflow_optimization_guidance(
             mediator=self.mediator,
             drafting_readiness=drafting_readiness,
@@ -4092,6 +4216,16 @@ class FormalComplaintDocumentBuilder:
             )
         if document_phase:
             updated_document_phase = dict(document_phase)
+            actions = [str(item).strip() for item in list(updated_document_phase.get("recommended_actions") or []) if str(item).strip()]
+            handoff_gap_active = bool(
+                unresolved_factual_gaps
+                or unresolved_legal_gaps
+                or uncovered_intake_objectives
+                or missing_required_intake_objectives
+                or structured_handoff_gap_count > 0
+                or targeted_weak_complaint_types
+                or targeted_weak_evidence_modalities
+            )
             if graph_gate_active:
                 gate_status = "blocked"
                 updated_document_phase["status"] = _merge_status(
@@ -4103,40 +4237,48 @@ class FormalComplaintDocumentBuilder:
                     "Document generation is gated on graph completeness and should not be treated as final until graph blockers are resolved."
                 )
                 updated_document_phase["summary"] = f"{summary} {gate_summary}".strip()
-                actions = [str(item).strip() for item in list(updated_document_phase.get("recommended_actions") or []) if str(item).strip()]
                 actions.append(
                     "Resolve graph completeness blockers (knowledge/dependency graph availability and unresolved graph gaps) before formalization."
                 )
-                if unresolved_factual_gaps:
-                    actions.append(
-                        "Close unresolved factual gaps before formalization: "
-                        + "; ".join(unresolved_factual_gaps[:3])
-                    )
-                if unresolved_legal_gaps:
-                    actions.append(
-                        "Close unresolved legal gaps before formalization: "
-                        + "; ".join(unresolved_legal_gaps[:3])
-                    )
-                if uncovered_intake_objectives or missing_required_intake_objectives:
-                    actions.append(
-                        "Resolve uncovered intake objectives before formalization: "
-                        + ", ".join((missing_required_intake_objectives or uncovered_intake_objectives)[:4])
-                    )
-                if structured_handoff_gap_count > 0:
-                    actions.append(
-                        "Promote structured intake facts, date/actor anchors, and evidence references directly into summary-of-facts and claim-support paragraphs before document optimization runs."
-                    )
-                if targeted_weak_complaint_types:
-                    actions.append(
-                        "Generalize drafting quality for weak complaint types before formalization: "
-                        + ", ".join(targeted_weak_complaint_types)
-                    )
-                if targeted_weak_evidence_modalities:
-                    actions.append(
-                        "Strengthen allegation support for weak evidence modalities before formalization: "
-                        + ", ".join(targeted_weak_evidence_modalities)
-                    )
-                updated_document_phase["recommended_actions"] = _dedupe_text_values(actions)
+            if handoff_gap_active:
+                updated_document_phase["status"] = _merge_status(
+                    str(updated_document_phase.get("status") or "ready"),
+                    "warning",
+                )
+                summary = str(updated_document_phase.get("summary") or "").strip()
+                handoff_summary = (
+                    "Drafting handoff still has unresolved factual/legal/objective gaps that should be closed before formalization."
+                )
+                updated_document_phase["summary"] = f"{summary} {handoff_summary}".strip()
+            if unresolved_factual_gaps:
+                actions.append(
+                    "Close unresolved factual gaps before formalization: "
+                    + "; ".join(unresolved_factual_gaps[:3])
+                )
+            if unresolved_legal_gaps:
+                actions.append(
+                    "Close unresolved legal gaps before formalization: "
+                    + "; ".join(unresolved_legal_gaps[:3])
+                )
+            if uncovered_intake_objectives or missing_required_intake_objectives:
+                actions.append(
+                    "Resolve uncovered intake objectives before formalization: "
+                    + ", ".join((missing_required_intake_objectives or uncovered_intake_objectives)[:4])
+                )
+            if structured_handoff_gap_count > 0:
+                actions.append(
+                    "Promote structured intake facts, date/actor anchors, and evidence references directly into summary-of-facts and claim-support paragraphs before document optimization runs."
+                )
+            if targeted_weak_complaint_types:
+                actions.append(
+                    "Generalize drafting quality for weak complaint types before formalization: "
+                    + ", ".join(targeted_weak_complaint_types)
+                )
+            if targeted_weak_evidence_modalities:
+                actions.append(
+                    "Strengthen allegation support for weak evidence modalities before formalization: "
+                    + ", ".join(targeted_weak_evidence_modalities)
+                )
             if bool(adversarial_flow_signals.get("assessment_blocked")):
                 gate_status = "blocked" if str(drafting_readiness.get("phase_status") or "").strip().lower() == "critical" else "warning"
                 updated_document_phase["status"] = _merge_status(
@@ -4148,16 +4290,16 @@ class FormalComplaintDocumentBuilder:
                     "No successful adversarial sessions were available to assess drafting handoff quality."
                 )
                 updated_document_phase["summary"] = f"{summary} {session_summary}".strip()
-                actions = [str(item).strip() for item in list(updated_document_phase.get("recommended_actions") or []) if str(item).strip()]
                 actions.append(
                     "Restore a stable adversarial session flow before tuning document-generation handoffs."
                 )
-                updated_document_phase["recommended_actions"] = _dedupe_text_values(actions)
+            updated_document_phase["recommended_actions"] = _dedupe_text_values(actions)
             signals = dict(updated_document_phase.get("signals") or {})
             signals["gate_on_graph_completeness"] = bool(graph_gate_active)
             signals["graph_phase_status"] = graph_status
             signals["graph_remaining_gap_count"] = int(graph_remaining_gap_count)
             signals["drafting_coverage"] = _safe_float(drafting_readiness.get("coverage"), 0.0)
+            signals["drafting_phase_status"] = str(drafting_readiness.get("phase_status") or "ready").strip().lower() or "ready"
             signals["unresolved_factual_gap_count"] = len(unresolved_factual_gaps)
             signals["unresolved_legal_gap_count"] = len(unresolved_legal_gaps)
             signals["uncovered_intake_objective_count"] = len(uncovered_intake_objectives)
@@ -4170,6 +4312,16 @@ class FormalComplaintDocumentBuilder:
             signals["weak_evidence_modalities"] = weak_evidence_modalities
             signals["targeted_weak_complaint_types"] = targeted_weak_complaint_types
             signals["targeted_weak_evidence_modalities"] = targeted_weak_evidence_modalities
+            signals["drafting_handoff_gap_active"] = bool(handoff_gap_active)
+            signals["drafting_handoff_gap_count"] = (
+                len(unresolved_factual_gaps)
+                + len(unresolved_legal_gaps)
+                + len(uncovered_intake_objectives)
+                + len(missing_required_intake_objectives)
+                + int(structured_handoff_gap_count > 0)
+                + len(targeted_weak_complaint_types)
+                + len(targeted_weak_evidence_modalities)
+            )
             signals["ready_for_formalization"] = not bool(
                 graph_gate_active
                 or unresolved_factual_gaps
@@ -5137,6 +5289,12 @@ class FormalComplaintDocumentBuilder:
             for modality in weak_evidence_modalities
             if str(modality or "").strip().lower() in {"policy_document", "file_evidence"}
         ]
+        policy_document_count = int(
+            dict(evidence_modality_signals.get("modalities") or {}).get("policy_document", 0) or 0
+        )
+        file_evidence_count = int(
+            dict(evidence_modality_signals.get("modalities") or {}).get("file_evidence", 0) or 0
+        )
         total_elements = sum(int(entry.get("total_elements", 0) or 0) for entry in claim_readiness if isinstance(entry, dict))
         covered_elements = sum(int(entry.get("covered_elements", 0) or 0) for entry in claim_readiness if isinstance(entry, dict))
         claim_coverage = (
@@ -5247,6 +5405,11 @@ class FormalComplaintDocumentBuilder:
                 "coverage": float(coverage),
                 "ready_for_formalization": phase_status == "ready" and not blockers,
                 "blockers": list(blockers),
+                "summary_fact_count": len(summary_fact_lines),
+                "claim_support_fact_count": len(claim_support_lines),
+                "exhibit_count": len(exhibits),
+                "policy_document_count": int(policy_document_count),
+                "file_evidence_count": int(file_evidence_count),
                 "uncovered_intake_objectives": uncovered_intake_objectives[:8],
                 "missing_required_intake_objectives": missing_required_intake_objectives[:8],
                 "unresolved_factual_gaps": unresolved_factual_gaps[:6],
@@ -5254,6 +5417,19 @@ class FormalComplaintDocumentBuilder:
                 "targeted_weak_complaint_types": weak_complaint_types[:4],
                 "targeted_weak_evidence_modalities": targeted_weak_evidence_modalities[:4],
                 "structured_intake_handoff_signals": structured_handoff_signals,
+                "formalization_readiness_snapshot": {
+                    "phase_status": phase_status,
+                    "coverage": float(coverage),
+                    "graph_gate_active": bool(graph_gate_active),
+                    "unresolved_factual_gap_count": len(unresolved_factual_gaps),
+                    "unresolved_legal_gap_count": len(unresolved_legal_gaps),
+                    "uncovered_intake_objective_count": len(uncovered_intake_objectives),
+                    "missing_required_intake_objective_count": len(missing_required_intake_objectives),
+                    "structured_handoff_gap_count": int(structured_handoff_signals.get("gap_count", 0) or 0),
+                    "weak_complaint_type_count": len(weak_complaint_types),
+                    "weak_evidence_modality_count": len(targeted_weak_evidence_modalities),
+                    "ready_for_formalization": phase_status == "ready" and not blockers,
+                },
             },
         }
         workflow_phase_plan = self._build_runtime_workflow_phase_plan(

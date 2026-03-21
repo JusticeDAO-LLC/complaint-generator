@@ -124,6 +124,10 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "chronology relations: ${taskTemporalRelationIds.length}" in content
     assert "chronology issues: ${taskTimelineIssueIds.length}" in content
     assert "Proof artifacts: ${Number(reviewData.proof_artifact_element_count || 0)}" in content
+    assert "Claim chronology issues: ${claimTemporalIssueCount}" in content
+    assert "Claim unresolved chronology issues: ${claimUnresolvedTemporalIssueCount}" in content
+    assert "Claim resolved chronology issues: ${claimResolvedTemporalIssueCount}" in content
+    assert "Claim chronology ${humanizeQueryValue(status)}: ${Number(count || 0)}" in content
     assert "proof id ${escapeHtml(element.proof_artifact_proof_id)}" in content
     assert "Copy proof ID" in content
     assert "Copy proof explanation" in content
@@ -801,6 +805,10 @@ def test_optimization_trace_template_includes_export_and_diff_controls():
     assert "Packet chronology status:" in content
     assert "Packet chronology blockers:" in content
     assert "Packet chronology handoffs:" in content
+    assert "chronology registry:" in content
+    assert "chronology statuses:" in content
+    assert "Registry issues" in content
+    assert "Registry statuses" in content
     assert "Corroboration-required contradictions:" in content
     assert "Contradiction lanes:" in content
     assert "Affected elements" in content

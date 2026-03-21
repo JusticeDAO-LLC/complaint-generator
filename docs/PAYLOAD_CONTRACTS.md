@@ -1105,6 +1105,13 @@ Representative shape:
       "claim_type": "civil rights",
       "total_element_count": 2,
       "flagged_element_count": 1,
+      "claim_temporal_issue_count": 2,
+      "claim_unresolved_temporal_issue_count": 1,
+      "claim_resolved_temporal_issue_count": 1,
+      "claim_temporal_issue_status_counts": {
+        "open": 1,
+        "resolved": 1
+      },
       "fallback_ontology_element_count": 0,
       "unavailable_backend_element_count": 0,
       "degraded_adapter_element_count": 1,
@@ -2076,6 +2083,13 @@ Representative response shape:
       "claim_type": "retaliation",
       "total_element_count": 1,
       "flagged_element_count": 1,
+      "claim_temporal_issue_count": 2,
+      "claim_unresolved_temporal_issue_count": 1,
+      "claim_resolved_temporal_issue_count": 1,
+      "claim_temporal_issue_status_counts": {
+        "open": 1,
+        "resolved": 1
+      },
       "fallback_ontology_element_count": 1,
       "unavailable_backend_element_count": 1,
       "degraded_adapter_element_count": 1,

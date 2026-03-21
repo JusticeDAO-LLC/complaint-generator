@@ -2616,6 +2616,41 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         if str(item)
     ]
 
+    actor_critic_optimizer: Dict[str, Any] = {}
+    actor_candidates: List[Dict[str, Any]] = [
+        dict((merged.get("_meta") or {}).get("actor_critic_optimizer") or {}),
+        dict(readiness.get("actor_critic_optimizer") or {}),
+        dict(document_signals.get("actor_critic_optimizer") or {}),
+        dict(graph_signals.get("actor_critic_optimizer") or {}),
+    ]
+    if isinstance(grounding_bundle, dict):
+        actor_candidates.extend(
+            [
+                dict(grounding_bundle.get("actor_critic_optimizer") or {}),
+                dict((grounding_bundle.get("document_generation") or {}).get("actor_critic_optimizer") or {}),
+                dict((grounding_bundle.get("formalization_gate") or {}).get("actor_critic_optimizer") or {}),
+            ]
+        )
+    for candidate in actor_candidates:
+        if candidate:
+            actor_critic_optimizer = candidate
+            break
+    actor_metrics = dict(actor_critic_optimizer.get("metrics") or {})
+    actor_coverage = _safe_float(
+        actor_metrics.get("coverage"),
+        _safe_float(actor_critic_optimizer.get("coverage"), 0.0),
+    )
+    phase_focus_order = [
+        str(item).strip().lower()
+        for item in list(actor_critic_optimizer.get("phase_focus_order") or [])
+        if str(item).strip()
+    ] or list(ACTOR_CRITIC_PHASE_FOCUS_ORDER)
+    phase_rank = {name: idx for idx, name in enumerate(phase_focus_order)}
+    graph_focus_rank = phase_rank.get("graph_analysis", len(phase_focus_order))
+    document_focus_rank = phase_rank.get("document_generation", len(phase_focus_order))
+    graph_first_two = graph_focus_rank <= 1
+    document_first_two = document_focus_rank <= 1
+
     graph_status = str(
         graph_signals.get("status")
         or graph_signals.get("phase_status")
@@ -2637,6 +2672,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         int(_safe_float(document_signals.get("graph_remaining_gap_count"), 0)),
     )
     graph_ready_threshold = 0.98
+    document_ready_threshold = 0.92 if document_first_two else 0.88
     graph_gate_active = bool(
         graph_signals.get("gate_on_graph_completeness")
         or document_signals.get("gate_on_graph_completeness")
@@ -2677,6 +2713,8 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         _safe_float(document_signals.get("coverage"), 0.0),
         _safe_float(document_signals.get("document_generation_coverage"), 0.0),
     )
+    if actor_coverage > 0.0:
+        document_coverage = max(document_coverage, actor_coverage)
     for item in list(document_signals.get("blockers") or []) + list(document_signals.get("blocking_codes") or []):
         text = str(item).strip()
         if text and text not in blockers:
@@ -2726,6 +2764,23 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         blocked_line = "Document generation handoff reports ready_for_document_optimization=false; unresolved factual/legal blockers must be closed before formalization."
         if blocked_line not in factual_gaps:
             factual_gaps.append(blocked_line)
+    if document_coverage < document_ready_threshold:
+        if "document_generation_not_ready" not in blockers:
+            blockers.append("document_generation_not_ready")
+        low_coverage_line = (
+            f"Document generation coverage is below handoff threshold "
+            f"({document_coverage:.2f} < {document_ready_threshold:.2f}); "
+            "allegations and claim support should remain provisional until graph-linked facts, exhibits, and legal mapping are reinforced."
+        )
+        if low_coverage_line not in factual_gaps:
+            factual_gaps.append(low_coverage_line)
+    if actor_coverage > 0.0 and actor_coverage < document_ready_threshold and (graph_first_two or document_first_two):
+        actor_gap_line = (
+            f"actor_critic coverage remains {actor_coverage:.2f} while phase focus prioritizes "
+            f"{', '.join(phase_focus_order[:2])}; keep formalization gated until document-generation blockers clear."
+        )
+        if actor_gap_line not in factual_gaps:
+            factual_gaps.append(actor_gap_line)
 
     if unresolved_objectives and "uncovered_intake_objectives" not in blockers:
         blockers.append("uncovered_intake_objectives")
@@ -2749,6 +2804,14 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             "unresolved_legal_gaps": legal_gaps[:6],
             "weak_complaint_types": list(dict.fromkeys(weak_complaint_types))[:3],
             "unresolved_objectives": unresolved_objectives[:8],
+            "actor_critic_optimizer": {
+                "optimization_method": str(actor_critic_optimizer.get("optimization_method") or "actor_critic"),
+                "priority": int(_safe_float(actor_critic_optimizer.get("priority"), 70)),
+                "phase_focus_order": phase_focus_order[:3],
+                "metrics": {
+                    "coverage": max(0.0, min(1.0, actor_coverage)),
+                },
+            },
             "graph_completeness_signals": {
                 "status": graph_status or str(document_signals.get("graph_phase_status") or ""),
                 "graph_completeness": graph_completeness,
@@ -2759,6 +2822,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 "phase_status": document_phase_status or str(document_signals.get("status") or ""),
                 "coverage": document_coverage,
                 "summary": str(document_signals.get("summary") or "").strip(),
+                "blockers": [str(item) for item in list(document_signals.get("blockers") or []) if str(item)][:5],
             },
             "ready_for_formalization": phase_status == "ready" and not blockers,
         }
@@ -2885,6 +2949,20 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     key_facts = dict(seed.get("key_facts") or {})
     allegations: List[str] = []
     readiness = _drafting_readiness_for_formalization(seed, session)
+    key_facts_readiness = dict(key_facts.get("drafting_readiness") or {})
+    document_signals = dict(key_facts_readiness.get("document_generation_signals") or {})
+    stored_unresolved_objectives = [
+        _normalize_intake_objective(item)
+        for item in list(key_facts_readiness.get("unresolved_objectives") or [])
+        if _normalize_intake_objective(item)
+    ]
+    stored_factual_gaps = [str(item) for item in list(key_facts_readiness.get("unresolved_factual_gaps") or []) if str(item)]
+    stored_legal_gaps = [str(item) for item in list(key_facts_readiness.get("unresolved_legal_gaps") or []) if str(item)]
+    weak_types = [
+        str(item)
+        for item in list(readiness.get("weak_complaint_types") or []) + list(key_facts_readiness.get("weak_complaint_types") or [])
+        if str(item)
+    ]
     handoff = dict(key_facts.get("document_generation_handoff") or {})
     handoff_fact_lines = [str(item) for item in list(handoff.get("factual_allegation_lines") or []) if str(item)]
     handoff_summary_lines = [str(item) for item in list(handoff.get("summary_of_facts_lines") or []) if str(item)]
@@ -2896,7 +2974,7 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     handoff_blocker_answers = [str(item) for item in list(handoff.get("blocker_closing_answers") or []) if str(item)]
     unresolved_objectives = [
         _normalize_intake_objective(item)
-        for item in list(readiness.get("unresolved_objectives") or []) + list(handoff.get("unresolved_objectives") or [])
+        for item in list(readiness.get("unresolved_objectives") or []) + stored_unresolved_objectives + list(handoff.get("unresolved_objectives") or [])
         if _normalize_intake_objective(item)
     ]
     if readiness["phase_status"] != "ready":
@@ -2914,15 +2992,43 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegations.append(
             "Document generation remains gated at drafting handoff; unresolved factual and legal gaps must be surfaced and closed before formalization."
         )
+    document_phase = str(document_signals.get("phase_status") or "").strip().lower()
+    document_coverage = _safe_float(document_signals.get("coverage"), 0.0)
+    if document_phase in {"warning", "blocked"} or document_coverage > 0.0:
+        allegations.append(
+            f"Document-generation readiness signal: phase_status={document_phase or 'unknown'}, coverage={document_coverage:.2f}; "
+            "allegations should track exhibits and unresolved intake gaps before formalization."
+        )
+    document_blockers = [str(item) for item in list(document_signals.get("blockers") or []) if str(item)]
+    if document_blockers:
+        allegations.append(
+            "Document-generation blockers at handoff include "
+            + ", ".join(document_blockers[:3])
+            + "; each blocker should be addressed with chronology, actor, and exhibit-specific detail."
+        )
     if readiness.get("unresolved_factual_gaps"):
         allegations.append(
             "Unresolved factual gaps still require confirmation before formalization, including "
             + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:3])
         )
+    elif stored_factual_gaps:
+        allegations.append(
+            "Drafting readiness still reports unresolved factual gaps, including "
+            + ", ".join(stored_factual_gaps[:3])
+        )
     if readiness.get("unresolved_legal_gaps"):
         allegations.append(
             "Unresolved legal gaps are still open at drafting handoff, including "
             + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:2])
+        )
+    elif stored_legal_gaps:
+        allegations.append(
+            "Drafting readiness still reports unresolved legal gaps, including "
+            + ", ".join(stored_legal_gaps[:2])
+        )
+    if any(item in {"housing_discrimination", "hacc_research_engine"} for item in weak_types):
+        allegations.append(
+            "Factual framing should remain generalized across housing_discrimination and hacc_research_engine until chronology anchors, policy support, and file exhibits are complete."
         )
     if unresolved_objectives:
         allegations.append(
@@ -3033,6 +3139,12 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
 def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: str = "court", limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     readiness = _drafting_readiness_for_formalization(seed, session)
+    key_facts_readiness = dict(key_facts.get("drafting_readiness") or {})
+    document_signals = dict(key_facts_readiness.get("document_generation_signals") or {})
+    actor_critic_optimizer = dict(key_facts_readiness.get("actor_critic_optimizer") or {})
+    actor_metrics = dict(actor_critic_optimizer.get("metrics") or {})
+    actor_coverage = _safe_float(actor_metrics.get("coverage"), 0.0)
+    actor_focus_order = [str(item) for item in list(actor_critic_optimizer.get("phase_focus_order") or []) if str(item)]
     handoff = dict(key_facts.get("document_generation_handoff") or {})
     sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
     theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
@@ -3077,7 +3189,9 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         )
     unresolved_objectives = [
         _normalize_intake_objective(item)
-        for item in list(readiness.get("unresolved_objectives") or []) + list(handoff.get("unresolved_objectives") or [])
+        for item in list(readiness.get("unresolved_objectives") or [])
+        + list(key_facts_readiness.get("unresolved_objectives") or [])
+        + list(handoff.get("unresolved_objectives") or [])
         if _normalize_intake_objective(item)
     ]
     if unresolved_objectives:
@@ -3092,6 +3206,25 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
             "Evidence modality handoff remains incomplete ("
             + ", ".join(weak_modalities)
             + "); strengthen policy_document and file_evidence exhibits before locking legal theory."
+        )
+    document_phase = str(document_signals.get("phase_status") or "").strip().lower()
+    document_coverage = _safe_float(document_signals.get("coverage"), 0.0)
+    if document_phase in {"warning", "blocked"} or document_coverage > 0.0:
+        claims.append(
+            f"Document-generation legal-readiness signal remains {document_phase or 'unknown'} at coverage {document_coverage:.2f}; "
+            "claim elements should stay provisional pending closure of unresolved factual/legal gaps."
+        )
+    document_blockers = [str(item) for item in list(document_signals.get("blockers") or []) if str(item)]
+    if document_blockers:
+        claims.append(
+            "Document-generation blockers currently include "
+            + ", ".join(document_blockers[:3])
+            + "; maintain explicit element-by-element support mapping until those blockers clear."
+        )
+    if actor_focus_order and actor_coverage > 0.0:
+        claims.append(
+            f"actor_critic optimization focus ({', '.join(actor_focus_order[:3])}) reports coverage {actor_coverage:.2f}; "
+            "legal theory should remain tied to chronology anchors and exhibits until coverage reaches formalization quality."
         )
     blocker_answers = _blocker_closing_intake_answers(session, limit=3)
     handoff_blocker_answers = [str(item) for item in list(handoff.get("blocker_closing_answers") or []) if str(item)]
@@ -3138,7 +3271,6 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         claims.append(
             "This theory is framed to generalize across housing_discrimination and hacc_research_engine by tying each claim to both policy language and case-specific evidence artifacts."
         )
-    key_facts_readiness = dict(key_facts.get("drafting_readiness") or {})
     weak_types = [
         str(item)
         for item in list(readiness.get("weak_complaint_types") or []) + list(key_facts_readiness.get("weak_complaint_types") or [])

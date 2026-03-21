@@ -2170,6 +2170,13 @@
             const listContainer = document.getElementById('claim-reasoning-flagged-list');
             const reviewData = review && typeof review === 'object' ? review : {};
             const flaggedElements = Array.isArray(reviewData.flagged_elements) ? reviewData.flagged_elements : [];
+            const claimTemporalIssueCount = Number(reviewData.claim_temporal_issue_count || 0);
+            const claimUnresolvedTemporalIssueCount = Number(reviewData.claim_unresolved_temporal_issue_count || 0);
+            const claimResolvedTemporalIssueCount = Number(reviewData.claim_resolved_temporal_issue_count || 0);
+            const claimTemporalIssueStatusCounts = reviewData.claim_temporal_issue_status_counts
+                && typeof reviewData.claim_temporal_issue_status_counts === 'object'
+                ? reviewData.claim_temporal_issue_status_counts
+                : {};
 
             const summaryChips = [
                 `<span class="chip">Flagged elements: ${Number(reviewData.flagged_element_count || 0)}</span>`,
@@ -2186,6 +2193,14 @@
                 `<span class="chip">Temporal rule profiles: ${Number(reviewData.temporal_rule_profile_available_element_count || 0)}</span>`,
                 `<span class="chip">Temporal proof bundles: ${Number(reviewData.temporal_proof_bundle_count || 0)}</span>`,
             ];
+            if (claimTemporalIssueCount > 0 || claimUnresolvedTemporalIssueCount > 0 || claimResolvedTemporalIssueCount > 0) {
+                summaryChips.push(`<span class="chip">Claim chronology issues: ${claimTemporalIssueCount}</span>`);
+                summaryChips.push(`<span class="chip">Claim unresolved chronology issues: ${claimUnresolvedTemporalIssueCount}</span>`);
+                summaryChips.push(`<span class="chip">Claim resolved chronology issues: ${claimResolvedTemporalIssueCount}</span>`);
+            }
+            Object.entries(claimTemporalIssueStatusCounts).forEach(([status, count]) => {
+                summaryChips.push(`<span class="chip">Claim chronology ${humanizeQueryValue(status)}: ${Number(count || 0)}</span>`);
+            });
             if (reviewData.hybrid_formalism) {
                 summaryChips.push(`<span class="chip">Formalism: ${escapeHtml(reviewData.hybrid_formalism)}</span>`);
             }
@@ -2202,13 +2217,17 @@
                 || reviewData.temporal_warning_count
                 || reviewData.temporal_rule_profile_available_element_count
                 || reviewData.temporal_proof_bundle_count
+                || claimTemporalIssueCount
+                || claimUnresolvedTemporalIssueCount
+                || claimResolvedTemporalIssueCount
+                || Object.keys(claimTemporalIssueStatusCounts).length
                 || (Array.isArray(reviewData.temporal_relation_preview) && reviewData.temporal_relation_preview.length)
             ) ? `
                 <div class="task-card">
                     <div class="row-head">
                         <div>
                             <div class="row-title">Temporal proof handoff</div>
-                            <div class="meta">Claim-scoped timeline facts, relations, and proof-blocking temporal issues.</div>
+                            <div class="meta">Claim-scoped timeline facts, relations, proof-blocking temporal issues, and chronology registry history.</div>
                         </div>
                     </div>
                     <div class="chip-row">
@@ -2224,9 +2243,13 @@
                         <span class="chip">rule failed ${Number(reviewData.temporal_rule_profile_failed_element_count || 0)}</span>
                         <span class="chip">proof bundles ${Number(reviewData.temporal_proof_bundle_count || 0)}</span>
                         <span class="chip">proof explanations ${Number(reviewData.proof_artifact_explanation_element_count || 0)}</span>
+                        <span class="chip">registry issues ${claimTemporalIssueCount}</span>
+                        <span class="chip">registry unresolved ${claimUnresolvedTemporalIssueCount}</span>
+                        <span class="chip">registry resolved ${claimResolvedTemporalIssueCount}</span>
                         ${Object.entries(reviewData.temporal_relation_type_counts && typeof reviewData.temporal_relation_type_counts === 'object' ? reviewData.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
                         ${Object.entries(reviewData.temporal_proof_bundle_status_counts && typeof reviewData.temporal_proof_bundle_status_counts === 'object' ? reviewData.temporal_proof_bundle_status_counts : {}).map(([status, count]) => `<span class="chip">bundle ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                         ${Object.entries(reviewData.proof_artifact_status_counts && typeof reviewData.proof_artifact_status_counts === 'object' ? reviewData.proof_artifact_status_counts : {}).map(([status, count]) => `<span class="chip">proof ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
+                        ${Object.entries(claimTemporalIssueStatusCounts).map(([status, count]) => `<span class="chip">registry ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                     </div>
                     ${renderFormulaPreviewDetails('Temporal relation preview', reviewData.temporal_relation_preview || [], 'No temporal relation preview available.')}
                     ${renderFormulaPreviewDetails('Temporal warnings', reviewData.temporal_warning_preview || [], 'No temporal warnings surfaced.')}

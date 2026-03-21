@@ -1112,6 +1112,10 @@
                 const proofArtifactElementCount = Number(review.proof_artifact_element_count || 0);
                 const proofArtifactAvailableElementCount = Number(review.proof_artifact_available_element_count || 0);
                 const proofArtifactExplanationElementCount = Number(review.proof_artifact_explanation_element_count || 0);
+                const claimTemporalIssueCount = Number(review.claim_temporal_issue_count || 0);
+                const claimUnresolvedTemporalIssueCount = Number(review.claim_unresolved_temporal_issue_count || 0);
+                const claimResolvedTemporalIssueCount = Number(review.claim_resolved_temporal_issue_count || 0);
+                const claimTemporalIssueStatusCounts = formatSummaryCountLine(review.claim_temporal_issue_status_counts);
                 const proofArtifactPreview = Array.isArray(review.proof_artifact_preview)
                     ? review.proof_artifact_preview.filter((item) => String(item || '').trim()).slice(0, 3)
                     : [];
@@ -1131,6 +1135,14 @@
                 }
                 if (hybridBridgeElementCount > 0) {
                     lines.push(`${claimLabel} hybrid bridge elements: ${hybridBridgeElementCount}`);
+                }
+                if (claimTemporalIssueCount > 0 || claimUnresolvedTemporalIssueCount > 0 || claimResolvedTemporalIssueCount > 0) {
+                    lines.push(
+                        `${claimLabel} chronology registry: ${claimTemporalIssueCount} total, ${claimUnresolvedTemporalIssueCount} unresolved, ${claimResolvedTemporalIssueCount} resolved`
+                    );
+                }
+                if (claimTemporalIssueStatusCounts) {
+                    lines.push(`${claimLabel} chronology statuses: ${claimTemporalIssueStatusCounts}`);
                 }
             });
             return lines;
@@ -1195,6 +1207,10 @@
             const cards = entries.map(([claimType, review]) => {
                 const claimLabel = humanizeKey(claimType);
                 const statusCounts = formatSummaryCountLine(review.proof_artifact_status_counts);
+                const claimTemporalIssueCount = Number(review.claim_temporal_issue_count || 0);
+                const claimUnresolvedTemporalIssueCount = Number(review.claim_unresolved_temporal_issue_count || 0);
+                const claimResolvedTemporalIssueCount = Number(review.claim_resolved_temporal_issue_count || 0);
+                const claimTemporalIssueStatusCounts = formatSummaryCountLine(review.claim_temporal_issue_status_counts);
                 const flaggedElements = Array.isArray(review.flagged_elements)
                     ? review.flagged_elements.filter((element) => element && typeof element === 'object')
                     : [];
@@ -1241,7 +1257,11 @@
                             <span class="chip">Proof artifacts ${escapeHtml(String(Number(review.proof_artifact_element_count || 0)))}</span>
                             <span class="chip">Available ${escapeHtml(String(Number(review.proof_artifact_available_element_count || 0)))}</span>
                             <span class="chip">Explanations ${escapeHtml(String(Number(review.proof_artifact_explanation_element_count || 0)))}</span>
+                            <span class="chip">Registry issues ${escapeHtml(String(claimTemporalIssueCount))}</span>
+                            <span class="chip">Unresolved ${escapeHtml(String(claimUnresolvedTemporalIssueCount))}</span>
+                            <span class="chip">Resolved ${escapeHtml(String(claimResolvedTemporalIssueCount))}</span>
                             ${statusCounts ? `<span class="chip">Statuses ${escapeHtml(statusCounts)}</span>` : ''}
+                            ${claimTemporalIssueStatusCounts ? `<span class="chip">Registry statuses ${escapeHtml(claimTemporalIssueStatusCounts)}</span>` : ''}
                         </div>
                         <div class="proof-detail-grid">${elementCards || '<div class="muted">No flagged proof elements recorded.</div>'}</div>
                     </div>
