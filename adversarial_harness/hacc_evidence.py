@@ -87,24 +87,77 @@ def _repo_root() -> Path:
     return complaint_generator_root
 
 
+def _complaint_generator_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
 def _repository_grounding_paths() -> List[Path]:
-    repo_root = _repo_root()
+    complaint_generator_root = _complaint_generator_root()
+    engine_repo_root = _repo_root()
+    search_roots: List[Path] = []
+    for candidate in (complaint_generator_root, engine_repo_root):
+        if candidate not in search_roots:
+            search_roots.append(candidate)
+
     preferred_paths = [
-        repo_root / "docs" / "HACC_INTEGRATION.md",
-        repo_root / "docs" / "HACC_INTEGRATION_ARCHITECTURE.md",
-        repo_root / "docs" / "HACC_ANALYSIS_README.md",
-        repo_root / "docs" / "HACC_QUICK_REFERENCE.md",
-        repo_root / "docs" / "HACC_FILES_SUMMARY.md",
-        repo_root / "docs" / "INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md",
-        repo_root / "docs" / "DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md",
-        repo_root / "scripts" / "synthesize_hacc_complaint.py",
-        repo_root / "README.md",
+        relative_path
+        for root in search_roots
+        for relative_path in (
+            root / "scripts" / "synthesize_hacc_complaint.py",
+            root / "tests" / "test_synthesize_hacc_complaint.py",
+            root / "docs" / "HACC_INTEGRATION.md",
+            root / "docs" / "HACC_INTEGRATION_ARCHITECTURE.md",
+            root / "docs" / "HACC_ANALYSIS_README.md",
+            root / "docs" / "HACC_GROUNDING_REGRESSION.md",
+            root / "docs" / "HACC_QUICK_REFERENCE.md",
+            root / "docs" / "HACC_FILES_SUMMARY.md",
+            root / "docs" / "INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md",
+            root / "docs" / "DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md",
+            root / "README.md",
+        )
     ]
-    return [path for path in preferred_paths if path.exists()]
+    deduped: List[Path] = []
+    seen = set()
+    for path in preferred_paths:
+        if not path.exists():
+            continue
+        key = str(path.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
+def _safe_repository_relative_path(path: Path) -> str:
+    for root in (_complaint_generator_root(), _repo_root()):
+        try:
+            return str(path.relative_to(root))
+        except Exception:
+            continue
+    return path.name
 
 
 def _tokenize_search_text(value: str) -> List[str]:
     return [token for token in re.findall(r"[a-z0-9_]+", str(value or "").lower()) if len(token) > 2]
+
+
+def _repository_grounding_path_weight(path: Path) -> float:
+    normalized = str(path).replace("\\", "/").lower()
+    score = 0.0
+    if normalized.endswith("scripts/synthesize_hacc_complaint.py"):
+        score += 6.0
+    if normalized.endswith("tests/test_synthesize_hacc_complaint.py"):
+        score += 4.5
+    if "hacc_grounding_regression" in normalized:
+        score += 2.0
+    if "/docs/" in normalized and "hacc_" in normalized:
+        score += 1.0
+    if normalized.endswith("/readme.md") or normalized.endswith("readme.md"):
+        score -= 6.0
+    if any(marker in normalized for marker in ("integration_architecture", "files_summary", "improvement_plan", "optimization_plan")):
+        score -= 2.5
+    return score
 
 
 def _score_repository_grounding_text(
@@ -112,6 +165,7 @@ def _score_repository_grounding_text(
     *,
     query: str,
     complaint_type: str,
+    source_path: Optional[Path] = None,
     anchor_terms: Optional[Sequence[str]] = None,
     theory_labels: Optional[Sequence[str]] = None,
     protected_bases: Optional[Sequence[str]] = None,
@@ -139,6 +193,8 @@ def _score_repository_grounding_text(
         normalized = str(value or "").strip().lower()
         if normalized and normalized in lowered:
             score += 1.25
+    if source_path is not None:
+        score += _repository_grounding_path_weight(source_path)
     return score
 
 
@@ -162,6 +218,7 @@ def _build_repository_grounding_hits(
             raw_text,
             query=query,
             complaint_type=complaint_type,
+            source_path=path,
             anchor_terms=anchor_terms,
             theory_labels=theory_labels,
             protected_bases=protected_bases,
@@ -172,6 +229,13 @@ def _build_repository_grounding_hits(
             source_path=str(path),
             anchor_terms=list(anchor_terms or []) or [query, complaint_type, description],
             fallback_snippet=raw_text[:520],
+        )
+        excerpt_quality = _score_excerpt_match(snippet, list(anchor_terms or []) or [query, complaint_type, description])
+        score += (
+            2.5 * excerpt_quality[0]
+            + 1.5 * excerpt_quality[1]
+            + 1.2 * excerpt_quality[2]
+            + min(2.0, excerpt_quality[3] / 240.0)
         )
         hits.append(
             {
@@ -184,7 +248,7 @@ def _build_repository_grounding_hits(
                 "matched_rules": list(anchor_terms or []),
                 "matched_entities": list(theory_labels or []),
                 "metadata": {
-                    "relative_path": str(path.relative_to(_repo_root())),
+                    "relative_path": _safe_repository_relative_path(path),
                     "grounding_mode": "repository_fallback",
                 },
             }
@@ -1039,6 +1103,13 @@ def _is_reasonable_accommodation_focused_text(text: str) -> bool:
 
 
 def _build_seed_packet_text(candidate: Dict[str, Any], resolved_text: str, *, max_chars: int = 6000) -> str:
+    source_type = str(candidate.get("source_type") or "").strip().lower()
+    metadata = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
+    grounding_mode = str(metadata.get("grounding_mode") or "").strip().lower()
+    relevant_excerpt = _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=1200)
+    if source_type == "repository_grounding" or grounding_mode == "repository_fallback":
+        if relevant_excerpt:
+            return relevant_excerpt
     cleaned = _normalize_match_text(resolved_text)
     if not cleaned:
         return _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=800)
@@ -1527,6 +1598,51 @@ def build_hacc_evidence_seed(
         "hacc_evidence": hits,
         "source": "hacc_research_engine",
     }
+
+
+def build_hacc_repository_grounded_seed(
+    *,
+    query: str,
+    complaint_type: str,
+    category: str,
+    description: str,
+    anchor_titles: Optional[Sequence[str]] = None,
+    anchor_source_paths: Optional[Sequence[str]] = None,
+    anchor_terms: Optional[Sequence[str]] = None,
+    theory_labels: Optional[Sequence[str]] = None,
+    protected_bases: Optional[Sequence[str]] = None,
+    authority_hints: Optional[Sequence[str]] = None,
+    top_k: int = 3,
+) -> Optional[Dict[str, Any]]:
+    grounding_bundle = _build_repository_grounding_bundle(
+        query=query,
+        complaint_type=complaint_type,
+        description=description,
+        category=category,
+        anchor_terms=anchor_terms,
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        authority_hints=authority_hints,
+        top_k=top_k,
+    )
+    payload = {
+        "results": list(grounding_bundle.get("upload_candidates") or []),
+        "search_summary": dict(grounding_bundle.get("search_summary") or {}),
+    }
+    return build_hacc_evidence_seed(
+        payload,
+        query=query,
+        complaint_type=complaint_type,
+        category=category,
+        description=description,
+        anchor_titles=anchor_titles,
+        anchor_source_paths=anchor_source_paths,
+        anchor_terms=anchor_terms,
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        authority_hints=authority_hints,
+        grounding_bundle=grounding_bundle,
+    )
 
 
 def build_hacc_evidence_seeds(

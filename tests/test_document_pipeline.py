@@ -812,7 +812,7 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
         "temporal_proof_objectives": [],
     }
 
-    assert document_optimization.build_claim_support_temporal_handoff_from_intake_case_summary(intake_case_summary) == expected
+    assert document_optimization._build_claim_support_temporal_handoff(intake_case_summary) == expected
 
     builder = FormalComplaintDocumentBuilder(_build_mediator())
     assert builder._build_claim_support_temporal_handoff({"intake_case_summary": intake_case_summary}) == expected

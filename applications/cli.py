@@ -311,6 +311,33 @@ class CLI:
 			if first_executed_claim_element:
 				drift_line += f" (executed {self._humanize_cli_label(first_executed_claim_element)} first)"
 			lines.append(drift_line)
+		document_grounding_improvement_summary = (
+			intake_status.get('document_grounding_improvement_summary')
+			if isinstance(intake_status.get('document_grounding_improvement_summary'), dict)
+			else {}
+		)
+		if document_grounding_improvement_summary:
+			delta = float(document_grounding_improvement_summary.get('fact_backed_ratio_delta') or 0.0)
+			status = (
+				'improved'
+				if bool(document_grounding_improvement_summary.get('improved_flag'))
+				else 'regressed'
+				if bool(document_grounding_improvement_summary.get('regressed_flag'))
+				else 'stalled'
+			)
+			initial_ratio = float(document_grounding_improvement_summary.get('initial_fact_backed_ratio') or 0.0)
+			final_ratio = float(document_grounding_improvement_summary.get('final_fact_backed_ratio') or 0.0)
+			grounding_line = (
+				f"  grounding_recovery: {status} "
+				f"delta={delta:+.2f} "
+				f"from={initial_ratio:.2f} to={final_ratio:.2f}"
+			)
+			targeted_claim_elements = document_grounding_improvement_summary.get('targeted_claim_elements')
+			if isinstance(targeted_claim_elements, list) and targeted_claim_elements:
+				grounding_line += (
+					f" target={self._humanize_cli_label(str(targeted_claim_elements[0] or ''))}"
+				)
+			lines.append(grounding_line)
 		return '\n'.join(lines)
 
 	def _format_claim_review_quality_summary(self, claim_coverage_summary):

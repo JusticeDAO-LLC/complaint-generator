@@ -156,3 +156,105 @@ def test_merge_synthetic_prompts_normalizes_engine_prompt_aliases():
 
     assert prompts["evidence_upload_prompt"] == "Upload the hearing request and denial notice first."
     assert prompts["mediator_evidence_review_prompt"] == "Evaluate each uploaded record for chronology and legal support."
+
+
+def test_build_seed_packet_text_uses_snippet_for_repository_grounding():
+    candidate = {
+        "title": "ADMINISTRATIVE PLAN",
+        "source_type": "repository_grounding",
+        "snippet": (
+            "Notice to the Applicant [24 CFR 982.554(a)] HACC must give an applicant prompt notice of a decision denying assistance. "
+            "Scheduling an Informal Review HACC Policy A request for an informal review must be made in writing."
+        ),
+        "metadata": {"grounding_mode": "repository_fallback"},
+    }
+
+    document_text = hacc_evidence_module._build_seed_packet_text(
+        candidate,
+        "import argparse\n\n" + ("x = 1\n" * 400),
+    )
+
+    assert document_text.startswith("Notice to the Applicant")
+    assert "import argparse" not in document_text
+
+
+def test_repository_grounding_scoring_prefers_curated_hacc_excerpt_sources(tmp_path, monkeypatch):
+    synth = tmp_path / "scripts" / "synthesize_hacc_complaint.py"
+    synth.parent.mkdir(parents=True)
+    synth.write_text(
+        "Scheduling an Informal Review HACC policy says a request for an informal review must be made in writing.",
+        encoding="utf-8",
+    )
+    docs = tmp_path / "docs" / "HACC_INTEGRATION_ARCHITECTURE.md"
+    docs.parent.mkdir(parents=True, exist_ok=True)
+    docs.write_text(
+        "Scheduling an Informal Review appears in the HACC workflow architecture discussion.",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [docs, synth])
+
+    hits = hacc_evidence_module._build_repository_grounding_hits(
+        query="Scheduling an Informal Review",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Scheduling an Informal Review", "written notice"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        top_k=2,
+    )
+
+    assert hits[0]["source_path"] == str(synth)
+
+
+def test_build_hacc_repository_grounded_seed_produces_curated_packets_without_engine(monkeypatch):
+    candidate = {
+        "title": "ADMINISTRATIVE PLAN",
+        "relative_path": "scripts/synthesize_hacc_complaint.py",
+        "source_path": "/tmp/admin-plan.txt",
+        "snippet": (
+            "Notice to the Applicant [24 CFR 982.554(a)] HACC must give an applicant prompt notice of a decision denying assistance. "
+            "Scheduling an Informal Review HACC Policy A request for an informal review must be made in writing."
+        ),
+        "score": 9.5,
+        "source_type": "repository_grounding",
+        "metadata": {"grounding_mode": "repository_fallback"},
+    }
+
+    monkeypatch.setattr(
+        hacc_evidence_module,
+        "_build_repository_grounding_bundle",
+        lambda **kwargs: {
+            "search_summary": {
+                "requested_search_mode": "repository_fallback",
+                "effective_search_mode": "repository_fallback",
+            },
+            "upload_candidates": [candidate],
+            "synthetic_prompts": {},
+            "mediator_evidence_packets": [
+                {
+                    "document_text": candidate["snippet"],
+                    "document_label": candidate["title"],
+                    "source_path": candidate["source_path"],
+                    "filename": "admin-plan.txt",
+                    "mime_type": "text/plain",
+                    "metadata": {"grounding_mode": "repository_fallback"},
+                }
+            ],
+        },
+    )
+
+    seed = hacc_evidence_module.build_hacc_repository_grounded_seed(
+        query="notice to the applicant informal review",
+        complaint_type="housing_discrimination",
+        category="housing",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Notice to the Applicant", "Scheduling an Informal Review"],
+        theory_labels=["due_process_failure"],
+        top_k=1,
+    )
+
+    assert seed is not None
+    assert seed["key_facts"]["search_summary"]["effective_search_mode"] == "repository_fallback"
+    assert seed["key_facts"]["repository_evidence_candidates"][0]["title"] == "ADMINISTRATIVE PLAN"
+    assert seed["key_facts"]["mediator_evidence_packets"][0]["document_text"].startswith("Notice to the Applicant")

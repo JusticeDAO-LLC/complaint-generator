@@ -3891,6 +3891,11 @@ def build_claim_support_review_payload(
             if isinstance(intake_case_summary.get("document_workflow_execution_summary"), dict)
             else {}
         ),
+        "document_grounding_improvement_summary": (
+            dict(intake_case_summary.get("document_grounding_improvement_summary") or {})
+            if isinstance(intake_case_summary.get("document_grounding_improvement_summary"), dict)
+            else {}
+        ),
         "document_drafting_next_action": (
             dict(intake_case_summary.get("document_drafting_next_action") or {})
             if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)

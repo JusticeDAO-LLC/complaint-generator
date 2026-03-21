@@ -1131,6 +1131,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
             else {}
         ),
+        "document_grounding_improvement_summary": (
+            dict(intake_case_summary.get("document_grounding_improvement_summary") or {})
+            if isinstance(intake_case_summary.get("document_grounding_improvement_summary"), dict)
+            else {}
+        ),
         "document_grounding_recovery_action": (
             dict(intake_case_summary.get("document_grounding_recovery_action") or {})
             if isinstance(intake_case_summary.get("document_grounding_recovery_action"), dict)

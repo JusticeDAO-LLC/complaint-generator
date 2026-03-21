@@ -70,12 +70,20 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "workflowTargetingSummary.count" in content
     assert "documentWorkflowExecutionSummary.iteration_count" in content
     assert "documentExecutionDriftSummary.top_targeted_claim_element" in content
+    assert "documentGroundingImprovementSummary.fact_backed_ratio_delta" in content
     assert "Workflow Targeting Summary" in content
     assert "workflow-targeting-summary-block" in content
     assert "workflow-targeting-summary-chips" in content
     assert "Document Workflow Execution Summary" in content
     assert "document-workflow-execution-summary-block" in content
     assert "document-workflow-execution-summary-chips" in content
+    assert "Document Grounding Improvement Summary" in content
+    assert "document-grounding-improvement-summary-block" in content
+    assert "document-grounding-improvement-summary-chips" in content
+    assert "grounding recovery: ${escapeHtml(groundingStatus)}" in content
+    assert "fact-backed ratio delta: ${groundingDelta.toFixed(2)}" in content
+    assert "Grounding recovery improved the draft's fact-backed ratio" in content
+    assert "Grounding recovery did not materially improve the draft's fact-backed ratio" in content
     assert "drafting priority: realign to ${humanizeQueryValue(resolvedTopTargetedElement)}" in content
     assert "execution drift: yes" in content
     assert "Realign drafting to ${humanizeQueryValue(resolvedTopTargetedElement)} before further revisions." in content

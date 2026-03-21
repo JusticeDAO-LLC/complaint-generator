@@ -2690,6 +2690,12 @@ def test_claim_support_review_payload_promotes_document_drafting_next_action_int
             "first_focus_section": "claims_for_relief",
             "first_preferred_support_kind": "testimony",
         },
+        "document_grounding_improvement_summary": {
+            "initial_fact_backed_ratio": 0.2,
+            "final_fact_backed_ratio": 0.45,
+            "fact_backed_ratio_delta": 0.25,
+            "improved_flag": True,
+        },
         "next_action": {"action": "complete_evidence"},
     }
     mediator.phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: None)
@@ -2717,6 +2723,12 @@ def test_claim_support_review_payload_promotes_document_drafting_next_action_int
         "executed_claim_element_id": "causation",
         "focus_section": "claims_for_relief",
         "preferred_support_kind": "testimony",
+    }
+    assert payload["document_grounding_improvement_summary"] == {
+        "initial_fact_backed_ratio": 0.2,
+        "final_fact_backed_ratio": 0.45,
+        "fact_backed_ratio_delta": 0.25,
+        "improved_flag": True,
     }
     assert payload["workflow_priority"] == {
         "status": "warning",

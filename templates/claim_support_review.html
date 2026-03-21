@@ -2894,6 +2894,9 @@
             const documentExecutionDriftSummary = intakeCaseSummary.document_execution_drift_summary && typeof intakeCaseSummary.document_execution_drift_summary === 'object'
                 ? intakeCaseSummary.document_execution_drift_summary
                 : {};
+            const documentGroundingImprovementSummary = intakeCaseSummary.document_grounding_improvement_summary && typeof intakeCaseSummary.document_grounding_improvement_summary === 'object'
+                ? intakeCaseSummary.document_grounding_improvement_summary
+                : {};
             const workflowPhasePlan = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_plan && typeof reviewRenderState.payload.workflow_phase_plan === 'object'
                 ? reviewRenderState.payload.workflow_phase_plan
                 : {};
@@ -3180,6 +3183,33 @@
                     : `Drafting execution is aligned with the current workflow targeting priorities${firstExecutionElement ? ` for ${humanizeQueryValue(firstExecutionElement)}` : ''}.`;
                 workflowPhaseGuidanceCard.hidden = false;
                 workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-workflow-execution-summary-block" style="margin-top: 10px;"><strong>Document Workflow Execution Summary</strong><div class="chip-row" id="document-workflow-execution-summary-chips" style="margin-top: 8px;">${executionChips.join('')}</div><div id="document-workflow-execution-summary-notes" style="margin-top: 8px;">${escapeHtml(executionNotes)}</div></div>`;
+            }
+            const groundingRecoveryAttempted = Boolean(documentGroundingImprovementSummary.recovery_attempted_flag);
+            const groundingInitialRatio = Number(documentGroundingImprovementSummary.initial_fact_backed_ratio || 0);
+            const groundingFinalRatio = Number(documentGroundingImprovementSummary.final_fact_backed_ratio || 0);
+            const groundingDelta = Number(documentGroundingImprovementSummary.fact_backed_ratio_delta || 0);
+            const groundingImproved = Boolean(documentGroundingImprovementSummary.improved_flag);
+            const groundingRegressed = Boolean(documentGroundingImprovementSummary.regressed_flag);
+            const groundingStalled = Boolean(documentGroundingImprovementSummary.stalled_flag || (!groundingImproved && !groundingRegressed && groundingRecoveryAttempted));
+            const groundingTargetLabels = Array.isArray(documentGroundingImprovementSummary.targeted_claim_elements)
+                ? documentGroundingImprovementSummary.targeted_claim_elements.filter(Boolean).slice(0, 2).map((value) => humanizeQueryValue(value))
+                : [];
+            if (groundingRecoveryAttempted || groundingInitialRatio || groundingFinalRatio || groundingDelta) {
+                const groundingStatus = groundingImproved ? 'improved' : groundingRegressed ? 'regressed' : groundingStalled ? 'stalled' : 'measured';
+                const groundingChips = [
+                    `<span class="chip">grounding recovery: ${escapeHtml(groundingStatus)}</span>`,
+                    `<span class="chip">fact-backed ratio delta: ${groundingDelta.toFixed(2)}</span>`,
+                    `<span class="chip">initial ratio: ${groundingInitialRatio.toFixed(2)}</span>`,
+                    `<span class="chip">final ratio: ${groundingFinalRatio.toFixed(2)}</span>`,
+                    groundingTargetLabels.length ? `<span class="chip">targeted elements: ${escapeHtml(groundingTargetLabels.join(', '))}</span>` : '',
+                ].filter(Boolean);
+                const groundingNotes = groundingImproved
+                    ? `Grounding recovery improved the draft's fact-backed ratio from ${groundingInitialRatio.toFixed(2)} to ${groundingFinalRatio.toFixed(2)}.`
+                    : groundingRegressed
+                    ? `Grounding recovery reduced the draft's fact-backed ratio from ${groundingInitialRatio.toFixed(2)} to ${groundingFinalRatio.toFixed(2)}.`
+                    : `Grounding recovery did not materially improve the draft's fact-backed ratio (${groundingInitialRatio.toFixed(2)} to ${groundingFinalRatio.toFixed(2)}).`;
+                workflowPhaseGuidanceCard.hidden = false;
+                workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-grounding-improvement-summary-block" style="margin-top: 10px;"><strong>Document Grounding Improvement Summary</strong><div class="chip-row" id="document-grounding-improvement-summary-chips" style="margin-top: 8px;">${groundingChips.join('')}</div><div id="document-grounding-improvement-summary-notes" style="margin-top: 8px;">${escapeHtml(groundingNotes)}</div></div>`;
             }
 
             if (recentValidationOutcome.claim_element_id || recentValidationOutcome.claim_type) {
