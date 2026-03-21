@@ -336,3 +336,29 @@ def test_factual_allegations_preserve_case_specific_bridge_when_claim_facts_are_
         in item
         for item in allegations
     )
+
+
+def test_factual_allegations_suppress_missing_detail_fallbacks_when_evidence_has_dates_and_official():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "On March 3, 2026, HACC sent Plaintiff a written denial notice signed by HACC hearing officer Maria Lopez.",
+            "On March 4, 2026, Plaintiff submitted a grievance request challenging the denial notice.",
+            "On March 8, 2026, HACC hearing officer Maria Lopez issued the review decision.",
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+            "Scheduling an Informal Review requires a written request for review.",
+        ],
+        claims_for_relief=[],
+    )
+
+    assert not any("hearing or review request remains to be confirmed" in item for item in allegations)
+    assert not any("exact dates of the notice, response, and final decision have not yet been confirmed" in item for item in allegations)
+    assert not any("does not yet identify by name the official" in item for item in allegations)
+    assert any("Maria Lopez" in item for item in allegations)
+    assert any(
+        "The chronology shows that on March 3, 2026, HACC sent Plaintiff a written denial notice signed by HACC hearing officer Maria Lopez, on March 4, 2026, Plaintiff submitted a grievance request challenging the denial notice, and on March 8, 2026, HACC hearing officer Maria Lopez issued the review decision."
+        in item
+        for item in allegations
+    )
+    assert not any("occurred in close sequence" in item for item in allegations)

@@ -382,21 +382,38 @@ def _contains_causation_marker(value: Any) -> bool:
 
 def _contains_hearing_timing_marker(value: Any) -> bool:
     lowered = str(value or "").lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "hearing request",
-            "requested a hearing",
-            "requested review",
-            "review request",
-            "informal hearing request",
-            "grievance request",
-        )
-    ) and any(marker in lowered for marker in ("date", "on ", "after", "before", "within", "days", "weeks"))
+    if not lowered:
+        return False
+    timing_markers = (
+        "hearing request",
+        "requested a hearing",
+        "requested review",
+        "review request",
+        "informal hearing request",
+        "informal review request",
+        "requested an informal review",
+        "requested a grievance hearing",
+        "requested an appeal",
+        "grievance request",
+        "grievance hearing",
+        "submitted a grievance",
+        "submitted a request for review",
+        "review was scheduled",
+        "hearing was scheduled",
+        "informal review was scheduled",
+        "hearing on ",
+        "review on ",
+    )
+    return any(marker in lowered for marker in timing_markers) and (
+        _contains_date_anchor(value)
+        or any(marker in lowered for marker in ("after", "before", "within", "days", "weeks"))
+    )
 
 
 def _contains_response_date_marker(value: Any) -> bool:
     lowered = str(value or "").lower()
+    if not lowered or not _contains_date_anchor(value):
+        return False
     return any(
         marker in lowered
         for marker in (
@@ -407,15 +424,45 @@ def _contains_response_date_marker(value: Any) -> bool:
             "hearing outcome",
             "notice date",
             "decision date",
+            "denial notice",
+            "written notice",
+            "sent plaintiff",
+            "issued",
+            "mailed",
+            "dated",
+            "decision denying assistance",
+            "final decision",
         )
-    ) and _contains_date_anchor(value)
+    )
 
 
 def _contains_staff_identity_marker(value: Any) -> bool:
-    lowered = str(value or "").lower()
-    return (
-        "hacc" in lowered
-        and any(marker in lowered for marker in ("name", "title", "staff", "caseworker", "manager", "officer", "specialist", "director"))
+    text = str(value or "").strip()
+    lowered = text.lower()
+    if not lowered:
+        return False
+    references_actor = "hacc" in lowered or "housing authority" in lowered
+    references_role = any(
+        marker in lowered
+        for marker in (
+            "staff",
+            "caseworker",
+            "manager",
+            "officer",
+            "specialist",
+            "director",
+            "coordinator",
+            "supervisor",
+            "hearing officer",
+        )
+    )
+    has_named_person = bool(
+        re.search(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text)
+    )
+    return references_actor and (
+        (references_role and has_named_person)
+        or ("signed by" in lowered and has_named_person)
+        or ("issued by" in lowered and has_named_person)
     )
 
 
@@ -433,6 +480,32 @@ def _contains_sequence_timing_marker(value: Any) -> bool:
             "in close sequence",
         )
     )
+
+
+def _extract_date_anchor_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    match = re.search(
+        r"\b(\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s+\d{2,4})?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _extract_dated_event_clause(value: Any) -> tuple[str, str]:
+    text = re.sub(r"\s+", " ", str(value or "")).strip().rstrip(".")
+    if not text:
+        return "", ""
+    match = re.match(
+        r"^(?:On\s+)?(\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:,\s+\d{2,4})?),?\s+(.*)$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+    return _extract_date_anchor_text(text), text
 
 
 def _contains_confirmation_placeholder(value: Any) -> bool:
@@ -3206,7 +3279,7 @@ class FormalComplaintDocumentBuilder:
         if len(text) > 360:
             return False
         if not re.search(
-            r"\b(was|were|is|are|reported|complained|terminated|fired|retaliated|denied|refused|told|informed|notified|requested|sought|experienced|suffered|lost|made|engaged|opposed|filed|sent|emailed|wrote|received|occurred|happened|subjected|demoted|suspended|disciplined|reduced|requires|required|must|states|describes|shows|reflects|discusses|provides)\b",
+            r"\b(was|were|is|are|reported|complained|terminated|fired|retaliated|denied|refused|told|informed|notified|requested|sought|experienced|suffered|lost|made|engaged|opposed|filed|submitted|sent|issued|signed|emailed|wrote|received|occurred|happened|subjected|demoted|suspended|disciplined|reduced|requires|required|must|states|describes|shows|reflects|discusses|provides)\b",
             lowered,
         ):
             return False
@@ -3446,12 +3519,18 @@ class FormalComplaintDocumentBuilder:
             candidate_tokens = _tokens(candidate)
             candidate_categories = _categories(candidate)
             candidate_features = _features(candidate)
+            candidate_is_chronology = candidate.lower().startswith("the chronology shows that ")
             skip = False
             for index, existing in enumerate(kept):
                 existing_tokens = _tokens(existing)
                 existing_categories = _categories(existing)
                 existing_features = _features(existing)
+                existing_is_chronology = existing.lower().startswith("the chronology shows that ")
                 if not candidate_tokens or not existing_tokens:
+                    continue
+                if candidate_is_chronology and not existing_is_chronology:
+                    continue
+                if existing_is_chronology and not candidate_is_chronology:
                     continue
                 if (
                     "without the notice and review protections described in the governing process" in candidate.lower()
@@ -3541,17 +3620,76 @@ class FormalComplaintDocumentBuilder:
             return f"{text}'"
         return f"{text}'s"
 
-    def _build_missing_detail_allegations(self, allegations: List[str]) -> List[str]:
+    def _build_concrete_sequence_allegation(self, allegations: List[str]) -> str:
         if not allegations:
+            return ""
+        dated_events: Dict[str, tuple[str, str]] = {}
+        for item in allegations:
+            text = str(item or "").strip()
+            lowered = text.lower()
+            if not text or not _contains_date_anchor(text):
+                continue
+            date_text, clause = _extract_dated_event_clause(text)
+            if not date_text or not clause:
+                continue
+            if any(
+                marker in lowered
+                for marker in (
+                    "grievance request",
+                    "requested a grievance hearing",
+                    "requested review",
+                    "review request",
+                    "submitted a grievance",
+                    "informal review request",
+                )
+            ):
+                dated_events.setdefault("review_request", (date_text, clause))
+                continue
+            if any(
+                marker in lowered
+                for marker in (
+                    "review decision",
+                    "hearing outcome",
+                    "final decision",
+                    "issued the review decision",
+                    "issued the decision",
+                )
+            ):
+                dated_events.setdefault("review_decision", (date_text, clause))
+                continue
+            if (
+                "denial notice" in lowered
+                or ("written notice" in lowered and "decision denying assistance" in lowered)
+                or ("sent plaintiff" in lowered and "notice" in lowered)
+            ):
+                dated_events.setdefault("notice", (date_text, clause))
+
+        ordered_segments = []
+        for key in ("notice", "review_request", "review_decision"):
+            if key not in dated_events:
+                continue
+            date_text, clause = dated_events[key]
+            ordered_segments.append(f"on {date_text}, {clause}")
+        if len(ordered_segments) < 2:
+            return ""
+        return f"The chronology shows that {_join_chronology_segments(ordered_segments)}."
+
+    def _build_missing_detail_allegations(
+        self,
+        allegations: List[str],
+        source_allegations: Optional[List[str]] = None,
+    ) -> List[str]:
+        source_pool = [str(item or "").strip() for item in (source_allegations or allegations) if str(item or "").strip()]
+        if not allegations and not source_pool:
             return []
-        combined = " ".join(str(item or "") for item in allegations)
+        combined = " ".join(source_pool or [str(item or "") for item in allegations])
         lowered = combined.lower()
         references_notice = "notice" in lowered
         references_review = any(token in lowered for token in ("informal review", "hearing", "grievance", "appeal"))
-        actor_label = self._infer_actor_label_from_allegations(allegations)
+        actor_label = self._infer_actor_label_from_allegations(source_pool or allegations)
 
         fallbacks: List[str] = []
-        if not any(_contains_hearing_timing_marker(line) for line in allegations):
+        if not any(_contains_hearing_timing_marker(line) for line in source_pool):
             if references_review:
                 fallbacks.append(
                     f"The present record indicates that Plaintiff sought review of the challenged action, but the exact date of {self._actor_possessive_label(actor_label)} hearing or review request remains to be confirmed."
@@ -3560,7 +3698,7 @@ class FormalComplaintDocumentBuilder:
                 fallbacks.append(
                     "The present record indicates that Plaintiff challenged the adverse action, but the exact date of that request for review remains to be confirmed."
                 )
-        if not any(_contains_response_date_marker(line) for line in allegations):
+        if not any(_contains_response_date_marker(line) for line in source_pool):
             if references_notice and references_review:
                 fallbacks.append(
                     f"The current record further indicates deficiencies in {actor_label}'s notice and review process, although the exact dates of the notice, response, and final decision have not yet been confirmed."
@@ -3569,7 +3707,7 @@ class FormalComplaintDocumentBuilder:
                 fallbacks.append(
                     f"The current record indicates that {actor_label} issued or should have issued written notice, but the exact notice and response dates have not yet been confirmed."
                 )
-        if not any(_contains_staff_identity_marker(line) for line in allegations):
+        if not any(_contains_staff_identity_marker(line) for line in source_pool):
             if references_notice or references_review:
                 fallbacks.append(
                     f"The present record does not yet identify by name the official at {actor_label} who issued the notice or handled Plaintiff's request for review."
@@ -3578,10 +3716,14 @@ class FormalComplaintDocumentBuilder:
                 fallbacks.append(
                     f"The present record does not yet identify by name the responsible {actor_label} decisionmaker."
                 )
-        if not any(_contains_sequence_timing_marker(line) for line in allegations):
-            fallbacks.append(
-                "The current chronology indicates that the protected activity, challenged notice, and resulting adverse treatment occurred in close sequence, although the precise intervals still require confirmation."
-            )
+        if not any(_contains_sequence_timing_marker(line) for line in source_pool):
+            concrete_sequence = self._build_concrete_sequence_allegation(source_pool)
+            if concrete_sequence:
+                fallbacks.append(concrete_sequence)
+            else:
+                fallbacks.append(
+                    "The current chronology indicates that the protected activity, challenged notice, and resulting adverse treatment occurred in close sequence, although the precise intervals still require confirmation."
+                )
         return fallbacks
 
     def _build_policy_process_allegations(
@@ -3700,7 +3842,7 @@ class FormalComplaintDocumentBuilder:
 
         pruned = self._prune_near_duplicate_allegations(allegations)
         pruned.extend(self._build_policy_process_allegations(pruned, base_allegations))
-        pruned.extend(self._build_missing_detail_allegations(pruned))
+        pruned.extend(self._build_missing_detail_allegations(pruned, base_allegations))
         pruned = self._prune_near_duplicate_allegations(pruned)
         return pruned[:24] or ["Additional factual development is required before filing."]
 

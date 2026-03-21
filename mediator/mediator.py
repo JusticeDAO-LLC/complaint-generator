@@ -3456,6 +3456,11 @@ class Mediator:
 		proof_decision_trace = element.get('proof_decision_trace', {}) if isinstance(element.get('proof_decision_trace'), dict) else {}
 		reasoning_diagnostics = element.get('reasoning_diagnostics', {}) if isinstance(element.get('reasoning_diagnostics'), dict) else {}
 		temporal_rule_profile = reasoning_diagnostics.get('temporal_rule_profile', {}) if isinstance(reasoning_diagnostics.get('temporal_rule_profile'), dict) else {}
+		temporal_proof_bundle = (
+			reasoning_diagnostics.get('temporal_proof_bundle')
+			if isinstance(reasoning_diagnostics.get('temporal_proof_bundle'), dict)
+			else {}
+		)
 		reasoning_gap_targeted = self._is_reasoning_gap_follow_up(proof_gap_types, proof_decision_trace)
 		temporal_gap_targeted = self._is_temporal_rule_gap_follow_up(
 			proof_gap_types,
@@ -3563,6 +3568,10 @@ class Mediator:
 			'temporal_rule_status': str(temporal_rule_profile.get('status') or ''),
 			'temporal_rule_blocking_reasons': list(temporal_rule_profile.get('blocking_reasons', []) or []),
 			'temporal_rule_follow_ups': list(temporal_rule_profile.get('recommended_follow_ups', []) or []),
+			'temporal_proof_bundle_id': str(temporal_proof_bundle.get('proof_bundle_id') or ''),
+			'temporal_fact_ids': list(temporal_proof_bundle.get('temporal_fact_ids', []) or []),
+			'temporal_relation_ids': list(temporal_proof_bundle.get('temporal_relation_ids', []) or []),
+			'temporal_issue_ids': list(temporal_proof_bundle.get('temporal_issue_ids', []) or []),
 			'execution_mode': execution_mode,
 			'requires_manual_review': execution_mode in {'manual_review', 'review_and_retrieve'},
 			'reasoning_backed': bool(((element.get('reasoning_diagnostics') or {}).get('backend_available_count', 0) or 0) > 0),
@@ -7272,6 +7281,8 @@ class Mediator:
 		open_items = intake_case.get('open_items', []) if isinstance(intake_case.get('open_items'), list) else []
 		event_ledger = intake_case.get('event_ledger', []) if isinstance(intake_case.get('event_ledger'), list) else []
 		temporal_issue_registry = intake_case.get('temporal_issue_registry', []) if isinstance(intake_case.get('temporal_issue_registry'), list) else []
+		timeline_anchor_ids_by_fact_id = self._build_timeline_anchor_ids_by_fact_id(intake_case)
+		temporal_relation_formulas_by_id = self._build_temporal_relation_formulas_by_id(intake_case)
 		proof_lead_map = {
 			str(lead.get('lead_id') or '').strip(): lead
 			for lead in proof_leads
@@ -7367,6 +7378,8 @@ class Mediator:
 				packet_element = packet_element_map.get(element_id, {}) if isinstance(packet_element_map.get(element_id), dict) else {}
 				reasoning_diagnostics = packet_element.get('reasoning_diagnostics', {}) if isinstance(packet_element.get('reasoning_diagnostics'), dict) else {}
 				temporal_proof_bundle = reasoning_diagnostics.get('temporal_proof_bundle', {}) if isinstance(reasoning_diagnostics.get('temporal_proof_bundle'), dict) else {}
+				theorem_exports = temporal_proof_bundle.get('theorem_exports', {}) if isinstance(temporal_proof_bundle.get('theorem_exports'), dict) else {}
+				theorem_export_metadata = theorem_exports.get('theorem_export_metadata', {}) if isinstance(theorem_exports.get('theorem_export_metadata'), dict) else {}
 				temporal_fact_ids = [
 					str(item).strip()
 					for item in (temporal_proof_bundle.get('temporal_fact_ids') or [])
@@ -7386,6 +7399,27 @@ class Mediator:
 				]
 				if not temporal_issue_ids:
 					temporal_issue_ids = list(issue_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), []))
+				timeline_anchor_ids: List[str] = []
+				for fact_id in temporal_fact_ids:
+					for anchor_id in timeline_anchor_ids_by_fact_id.get(str(fact_id).strip(), []):
+						if anchor_id not in timeline_anchor_ids:
+							timeline_anchor_ids.append(anchor_id)
+				temporal_relation_formulas = [
+					formula
+					for relation_id in temporal_relation_ids
+					for formula in [temporal_relation_formulas_by_id.get(str(relation_id).strip(), '')]
+					if formula
+				]
+				temporal_theorem_formulas = [
+					str(formula).strip()
+					for formula in ((theorem_exports.get('tdfol_formulas') or []) + (theorem_exports.get('dcec_formulas') or []))
+					if str(formula).strip()
+				]
+				temporal_proof_objectives = [
+					str(item).strip()
+					for item in (theorem_export_metadata.get('temporal_proof_objectives') or [])
+					if str(item).strip()
+				]
 				matching_open_item_ids = [
 					str(item.get('open_item_id') or '')
 					for item in open_items
@@ -7432,8 +7466,12 @@ class Mediator:
 						'missing_support_kinds': list(packet_element.get('missing_support_kinds', []) or []),
 						'temporal_proof_bundle_id': str(temporal_proof_bundle.get('proof_bundle_id') or '').strip(),
 						'temporal_fact_ids': temporal_fact_ids,
+						'timeline_anchor_ids': timeline_anchor_ids,
 						'temporal_relation_ids': temporal_relation_ids,
+						'temporal_relation_formulas': temporal_relation_formulas,
 						'temporal_issue_ids': temporal_issue_ids,
+						'temporal_theorem_formulas': temporal_theorem_formulas,
+						'temporal_proof_objectives': temporal_proof_objectives,
 						'temporal_rule_profile_id': str(packet_element.get('temporal_rule_profile_id') or ''),
 						'temporal_rule_status': str(packet_element.get('temporal_rule_status') or ''),
 						'temporal_rule_blocking_reasons': list(packet_element.get('temporal_rule_blocking_reasons', []) or []),
@@ -7467,6 +7505,141 @@ class Mediator:
 				'evidence_only_element_ids': evidence_only_element_ids,
 			}
 		return summary
+
+	def _build_timeline_anchor_ids_by_fact_id(self, intake_case_file: Dict[str, Any]) -> Dict[str, List[str]]:
+		anchor_ids_by_fact_id: Dict[str, List[str]] = {}
+		for anchor in intake_case_file.get('timeline_anchors', []) if isinstance(intake_case_file.get('timeline_anchors'), list) else []:
+			if not isinstance(anchor, dict):
+				continue
+			fact_id = str(anchor.get('fact_id') or '').strip()
+			anchor_id = str(anchor.get('anchor_id') or '').strip()
+			if not fact_id or not anchor_id:
+				continue
+			anchor_ids_by_fact_id.setdefault(fact_id, [])
+			if anchor_id not in anchor_ids_by_fact_id[fact_id]:
+				anchor_ids_by_fact_id[fact_id].append(anchor_id)
+		for event in intake_case_file.get('event_ledger', []) if isinstance(intake_case_file.get('event_ledger'), list) else []:
+			if not isinstance(event, dict):
+				continue
+			fact_id = str(event.get('event_id') or event.get('temporal_fact_id') or event.get('fact_id') or '').strip()
+			if not fact_id:
+				continue
+			anchor_ids_by_fact_id.setdefault(fact_id, [])
+			for anchor_id in (event.get('timeline_anchor_ids') or []):
+				normalized_anchor_id = str(anchor_id or '').strip()
+				if normalized_anchor_id and normalized_anchor_id not in anchor_ids_by_fact_id[fact_id]:
+					anchor_ids_by_fact_id[fact_id].append(normalized_anchor_id)
+		return anchor_ids_by_fact_id
+
+	def _build_temporal_relation_formulas_by_id(self, intake_case_file: Dict[str, Any]) -> Dict[str, str]:
+		relation_formula_map = {
+			'before': 'Before',
+			'after': 'After',
+			'same_time': 'SameTime',
+			'overlaps': 'Overlaps',
+			'during': 'During',
+			'meets': 'Meets',
+		}
+		formulas_by_id: Dict[str, str] = {}
+		relation_sources = []
+		if isinstance(intake_case_file.get('temporal_relation_registry'), list):
+			relation_sources.extend(intake_case_file.get('temporal_relation_registry', []))
+		if isinstance(intake_case_file.get('timeline_relations'), list):
+			relation_sources.extend(intake_case_file.get('timeline_relations', []))
+		for relation in relation_sources:
+			if not isinstance(relation, dict):
+				continue
+			relation_id = str(relation.get('relation_id') or '').strip()
+			relation_type = str(relation.get('relation_type') or '').strip().lower()
+			source_fact_id = str(relation.get('source_fact_id') or relation.get('source_temporal_fact_id') or '').strip()
+			target_fact_id = str(relation.get('target_fact_id') or relation.get('target_temporal_fact_id') or '').strip()
+			relation_predicate = relation_formula_map.get(relation_type)
+			if not relation_id or not relation_predicate or not source_fact_id or not target_fact_id:
+				continue
+			formulas_by_id[relation_id] = f'{relation_predicate}({source_fact_id},{target_fact_id})'
+		return formulas_by_id
+
+	def _derive_missing_temporal_predicates(
+		self,
+		*,
+		temporal_gap_targeted: bool,
+		temporal_relation_formulas: Any,
+		temporal_theorem_formulas: Any,
+		temporal_proof_objectives: Any,
+		temporal_fact_ids: Any = None,
+	) -> List[str]:
+		if not temporal_gap_targeted:
+			return []
+		relation_formulas = [
+			str(formula).strip()
+			for formula in (temporal_relation_formulas if isinstance(temporal_relation_formulas, list) else [])
+			if str(formula).strip()
+		]
+		if relation_formulas:
+			return list(dict.fromkeys(relation_formulas))[:6]
+		theorem_formulas = [
+			str(formula).strip()
+			for formula in (temporal_theorem_formulas if isinstance(temporal_theorem_formulas, list) else [])
+			if str(formula).strip()
+		]
+		if theorem_formulas:
+			prioritized = [
+				formula for formula in theorem_formulas
+				if formula.startswith(('Before(', 'After(', 'SameTime(', 'Overlaps(', 'During(', 'Meets('))
+			]
+			return list(dict.fromkeys(prioritized or theorem_formulas))[:6]
+		objectives = [
+			str(objective).strip()
+			for objective in (temporal_proof_objectives if isinstance(temporal_proof_objectives, list) else [])
+			if str(objective).strip()
+		]
+		if objectives:
+			return list(dict.fromkeys(objectives))[:4]
+		fact_ids = [
+			str(fact_id).strip()
+			for fact_id in (temporal_fact_ids if isinstance(temporal_fact_ids, list) else [])
+			if str(fact_id).strip()
+		]
+		if len(fact_ids) >= 2:
+			return [f'Before({fact_ids[0]},{fact_ids[-1]})']
+		return []
+
+	def _derive_required_provenance_kinds(
+		self,
+		*,
+		preferred_support_kind: str,
+		fallback_support_kinds: List[str],
+		temporal_follow_ups: List[Dict[str, Any]],
+	) -> List[str]:
+		kind_map = {
+			'testimony': 'testimony_record',
+			'evidence': 'document_artifact',
+			'authority': 'legal_authority',
+			'web_capture': 'web_capture',
+			'archived_web_capture': 'archived_web_capture',
+			'external_record': 'external_institutional_record',
+		}
+		lane_map = {
+			'clarify_with_complainant': 'testimony_record',
+			'capture_testimony': 'testimony_record',
+			'request_document': 'document_artifact',
+			'seek_external_record': 'external_institutional_record',
+			'manual_review': 'manual_review',
+		}
+		required_kinds: List[str] = []
+		for support_kind in [preferred_support_kind, *(fallback_support_kinds or [])]:
+			normalized_support_kind = str(support_kind or '').strip().lower()
+			mapped_kind = kind_map.get(normalized_support_kind)
+			if mapped_kind and mapped_kind not in required_kinds:
+				required_kinds.append(mapped_kind)
+		for follow_up in temporal_follow_ups:
+			if not isinstance(follow_up, dict):
+				continue
+			lane = str(follow_up.get('lane') or follow_up.get('action') or '').strip().lower()
+			mapped_lane = lane_map.get(lane)
+			if mapped_lane and mapped_lane not in required_kinds:
+				required_kinds.append(mapped_lane)
+		return required_kinds
 
 	def _build_alignment_evidence_tasks(self, alignment_summary: Any) -> List[Dict[str, Any]]:
 		tasks: List[Dict[str, Any]] = []
@@ -7513,6 +7686,19 @@ class Mediator:
 				)
 				fallback_support_kinds = self._resolve_task_fallback_support_kinds(preferred_support_kind, preferred_evidence_classes)
 				source_quality_target = 'credible_testimony' if preferred_support_kind == 'testimony' else 'high_quality_document'
+				temporal_proof_objectives = list(element.get('temporal_proof_objectives', []) or [])
+				missing_temporal_predicates = self._derive_missing_temporal_predicates(
+					temporal_gap_targeted=temporal_gap_targeted,
+					temporal_relation_formulas=element.get('temporal_relation_formulas', []),
+					temporal_theorem_formulas=element.get('temporal_theorem_formulas', []),
+					temporal_proof_objectives=temporal_proof_objectives,
+					temporal_fact_ids=element.get('temporal_fact_ids', []),
+				)
+				required_provenance_kinds = self._derive_required_provenance_kinds(
+					preferred_support_kind=preferred_support_kind,
+					fallback_support_kinds=fallback_support_kinds,
+					temporal_follow_ups=temporal_follow_ups,
+				)
 				task_priority = 'high' if support_status == 'contradicted' or bool(element.get('blocking', False)) else 'medium'
 				if temporal_gap_targeted:
 					task_priority = 'high'
@@ -7559,15 +7745,18 @@ class Mediator:
 						'missing_fact_bundle': missing_fact_bundle,
 						'satisfied_fact_bundle': satisfied_fact_bundle,
 						'temporal_proof_objective': (
-							'resolve_temporal_rule_profile'
-							if temporal_gap_targeted
-							else ''
+							temporal_proof_objectives[0]
+							if temporal_proof_objectives
+							else ('resolve_temporal_rule_profile' if temporal_gap_targeted else '')
 						),
 						'event_ids': list(element.get('temporal_fact_ids', []) or []),
 						'temporal_fact_ids': list(element.get('temporal_fact_ids', []) or []),
+						'anchor_ids': list(element.get('timeline_anchor_ids', []) or []),
 						'temporal_relation_ids': list(element.get('temporal_relation_ids', []) or []),
 						'timeline_issue_ids': list(element.get('temporal_issue_ids', []) or []),
 						'temporal_issue_ids': list(element.get('temporal_issue_ids', []) or []),
+						'missing_temporal_predicates': missing_temporal_predicates,
+						'required_provenance_kinds': required_provenance_kinds,
 						'temporal_proof_bundle_id': str(element.get('temporal_proof_bundle_id') or '').strip(),
 						'temporal_rule_profile_id': str(element.get('temporal_rule_profile_id') or ''),
 						'temporal_rule_status': temporal_rule_status,

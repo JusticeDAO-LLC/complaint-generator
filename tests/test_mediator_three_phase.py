@@ -1449,6 +1449,42 @@ class TestMediatorThreePhaseIntegration:
                     }
                 ],
                 'canonical_facts': [{'fact_id': 'fact_001'}],
+                'event_ledger': [
+                    {
+                        'event_id': 'fact_001',
+                        'temporal_fact_id': 'fact_001',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['causation'],
+                        'timeline_anchor_ids': ['anchor_001'],
+                    },
+                    {
+                        'event_id': 'fact_termination',
+                        'temporal_fact_id': 'fact_termination',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['causation'],
+                        'timeline_anchor_ids': ['anchor_termination'],
+                    },
+                ],
+                'timeline_anchors': [
+                    {
+                        'anchor_id': 'anchor_001',
+                        'fact_id': 'fact_001',
+                        'anchor_text': 'March 1, 2025',
+                    },
+                    {
+                        'anchor_id': 'anchor_termination',
+                        'fact_id': 'fact_termination',
+                        'anchor_text': 'March 20, 2025',
+                    },
+                ],
+                'temporal_relation_registry': [
+                    {
+                        'relation_id': 'timeline_relation_001',
+                        'source_fact_id': 'fact_001',
+                        'target_fact_id': 'fact_termination',
+                        'relation_type': 'before',
+                    }
+                ],
                 'proof_leads': [
                     {
                         'lead_id': 'lead_001',
@@ -1556,8 +1592,15 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['resolution_status'] == 'awaiting_testimony'
         assert result['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
         assert 'event_ids' in result['alignment_evidence_tasks'][0]
+        assert result['alignment_evidence_tasks'][0]['anchor_ids'] == ['anchor_001', 'anchor_termination']
         assert 'temporal_relation_ids' in result['alignment_evidence_tasks'][0]
         assert 'timeline_issue_ids' in result['alignment_evidence_tasks'][0]
+        assert result['alignment_evidence_tasks'][0]['missing_temporal_predicates'] == ['Before(fact_001,fact_termination)']
+        assert result['alignment_evidence_tasks'][0]['required_provenance_kinds'] == [
+            'testimony_record',
+            'document_artifact',
+            'legal_authority',
+        ]
         assert 'temporal_proof_bundle_id' in result['alignment_evidence_tasks'][0]
         assert any(
             'Establish chronology:' in item
@@ -1567,6 +1610,7 @@ class TestMediatorThreePhaseIntegration:
         status = mediator.get_three_phase_status()
 
         assert status['alignment_evidence_tasks'][0]['action'] == 'fill_temporal_chronology_gap'
+        assert status['alignment_evidence_tasks'][0]['anchor_ids'] == ['anchor_001', 'anchor_termination']
         assert status['alignment_task_summary'] == {
             'count': 1,
             'status_counts': {'partially_supported': 1},

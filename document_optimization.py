@@ -370,6 +370,16 @@ def _build_document_grounding_lane_outcome_summary(
     learned_support_lane_effective_flag = bool(
         learned_support_lane_attempted_flag and bool(improvement_summary.get("improved_flag"))
     )
+    recommended_future_claim_element = ""
+    if len(targeted_claim_elements) > 1:
+        recommended_future_claim_element = str(targeted_claim_elements[1] or "").strip()
+    first_targeted_claim_element = str(execution_summary.get("first_targeted_claim_element") or "").strip()
+    if (
+        not recommended_future_claim_element
+        and first_targeted_claim_element
+        and first_targeted_claim_element not in {"", str(targeted_claim_elements[0] if targeted_claim_elements else "")}
+    ):
+        recommended_future_claim_element = first_targeted_claim_element
     return {
         "attempted_support_kind": attempted_support_kind,
         "outcome_status": outcome_status,
@@ -383,6 +393,7 @@ def _build_document_grounding_lane_outcome_summary(
             if outcome_status == "improved"
             else (learned_support_kind if learned_support_kind and learned_support_kind != attempted_support_kind else "")
         ),
+        "recommended_future_claim_element": recommended_future_claim_element,
         "improved_flag": bool(improvement_summary.get("improved_flag")),
         "regressed_flag": bool(improvement_summary.get("regressed_flag")),
         "stalled_flag": bool(improvement_summary.get("stalled_flag")),

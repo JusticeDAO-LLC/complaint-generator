@@ -76,6 +76,58 @@ def _resolve_learned_support_kind(
     return best_support_kind
 
 
+def _resolve_learned_claim_element_id(
+    *,
+    current_claim_element_id: Any,
+    targeted_claim_elements: List[str],
+    lane_outcome_summary: Dict[str, Any],
+) -> str:
+    normalized_current = str(current_claim_element_id or "").strip()
+    recommended_future_claim_element = str(
+        lane_outcome_summary.get("recommended_future_claim_element") or ""
+    ).strip()
+    if recommended_future_claim_element and recommended_future_claim_element != normalized_current:
+        return recommended_future_claim_element
+
+    claim_element_stats = (
+        lane_outcome_summary.get("claim_element_stats")
+        if isinstance(lane_outcome_summary.get("claim_element_stats"), dict)
+        else {}
+    )
+    candidate_elements = [
+        str(item or "").strip()
+        for item in targeted_claim_elements
+        if str(item or "").strip() and str(item or "").strip() != normalized_current
+    ]
+    if not candidate_elements:
+        candidate_elements = [
+            str(item or "").strip()
+            for item in claim_element_stats.keys()
+            if str(item or "").strip() and str(item or "").strip() != normalized_current
+        ]
+
+    best_element_id = ""
+    best_score = float("-inf")
+    for element_id in candidate_elements:
+        stats = claim_element_stats.get(element_id)
+        if not isinstance(stats, dict):
+            continue
+        improved_count = int(stats.get("improved_count") or 0)
+        regressed_count = int(stats.get("regressed_count") or 0)
+        stalled_count = int(stats.get("stalled_count") or 0)
+        avg_ratio_delta = float(stats.get("avg_fact_backed_ratio_delta") or 0.0)
+        score = (
+            (improved_count * 3)
+            - (regressed_count * 3)
+            - stalled_count
+            + (avg_ratio_delta * 10.0)
+        )
+        if score > best_score and score > 0.0:
+            best_score = score
+            best_element_id = element_id
+    return best_element_id
+
+
 def _build_document_drafting_next_action(document_execution_drift_summary: Any) -> Dict[str, Any]:
     drift_summary = (
         document_execution_drift_summary
@@ -232,9 +284,15 @@ def _build_document_grounding_improvement_next_action(
         str(recovery_action.get("preferred_support_kind") or "").strip()
         or (preferred_support_kinds[0] if preferred_support_kinds else "")
     )
+    learned_claim_element_id = _resolve_learned_claim_element_id(
+        current_claim_element_id=claim_element_id,
+        targeted_claim_elements=[*targeted_claim_elements, *lane_targeted_claim_elements],
+        lane_outcome_summary=lane_outcome_summary,
+    )
     alternate_claim_element_ids = [
         item
         for item in [
+            learned_claim_element_id,
             *targeted_claim_elements,
             *lane_targeted_claim_elements,
         ]
