@@ -8776,6 +8776,16 @@ class Mediator:
 		
 		# If answer describes evidence, add it
 		question_context = question.get('context', {}) if isinstance(question.get('context'), dict) else {}
+		context_preferred_support_kind = str(question_context.get('preferred_support_kind') or '').strip().lower()
+		context_learned_support_kind = str(question_context.get('learned_support_kind') or '').strip().lower()
+		context_suggested_support_kind = str(question_context.get('suggested_support_kind') or '').strip().lower()
+		context_capture_support_kind = context_preferred_support_kind
+		if bool(question_context.get('document_grounding_strategy_refinement')):
+			context_capture_support_kind = (
+				context_learned_support_kind
+				or context_suggested_support_kind
+				or context_preferred_support_kind
+			)
 		evidence_refreshed = False
 		should_capture_grounding_answer = bool(
 			str(question_context.get('document_grounding_recovery') or '').strip()
@@ -8792,7 +8802,10 @@ class Mediator:
 				'confidence': 0.7,
 				'supports_claims': [question_context.get('claim_id') or question_context.get('claim_type')],
 				'claim_element_id': question_context.get('claim_element_id'),
-				'preferred_support_kind': question_context.get('preferred_support_kind'),
+				'preferred_support_kind': context_capture_support_kind or question_context.get('preferred_support_kind'),
+				'original_preferred_support_kind': context_preferred_support_kind,
+				'learned_support_kind': context_learned_support_kind,
+				'suggested_support_kind': context_suggested_support_kind,
 			}
 			self.add_evidence_to_graphs(evidence_data)
 			evidence_refreshed = True

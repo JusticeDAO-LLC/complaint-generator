@@ -865,6 +865,53 @@ class TestComplaintDenoiser:
         assert questions[0]['context']['document_grounding_strategy_refinement'] is True
         assert questions[0]['context']['suggested_support_kind'] == 'testimony'
         assert 'first-hand testimony' in questions[0]['question'].lower()
+
+    def test_generate_evidence_questions_prioritizes_learned_grounding_lane_refinement(self):
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+
+        questions = denoiser.generate_evidence_questions(
+            kg,
+            dg,
+            evidence_gaps=[],
+            alignment_evidence_tasks=[
+                {
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'claim_element_label': 'Causation',
+                    'preferred_support_kind': 'evidence',
+                }
+            ],
+            evidence_workflow_action_queue=[
+                {
+                    'rank': 1,
+                    'phase_name': 'document_generation',
+                    'status': 'warning',
+                    'action': 'refine document grounding strategy',
+                    'action_code': 'refine_document_grounding_strategy',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'preferred_support_kind': 'authority',
+                    'learned_support_kind': 'testimony',
+                    'suggested_support_kind': 'testimony',
+                    'alternate_support_kinds': ['testimony', 'evidence'],
+                    'learned_support_lane_priority': True,
+                    'focus_areas': ['protected_activity', 'testimony'],
+                }
+            ],
+            max_questions=2,
+        )
+
+        assert len(questions) == 2
+        assert questions[0]['context']['workflow_action'] is True
+        assert questions[0]['context']['learned_support_lane_priority'] is True
+        assert questions[0]['context']['learned_support_kind'] == 'testimony'
+        assert questions[0]['context']['claim_element_id'] == 'protected_activity'
+        assert questions[1]['context']['alignment_task'] is True
+        assert questions[1]['context']['claim_element_id'] == 'causation'
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

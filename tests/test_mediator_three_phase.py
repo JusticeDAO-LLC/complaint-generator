@@ -2064,11 +2064,20 @@ class TestMediatorThreePhaseIntegration:
                 'recovery_attempted_flag': True,
             },
         )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_lane_outcome_summary',
+            {
+                'recommended_future_support_kind': 'testimony',
+            },
+        )
 
         queue = mediator._build_evidence_workflow_action_queue([], [])
 
         assert queue[0]['action_code'] == 'refine_document_grounding_strategy'
         assert queue[0]['preferred_support_kind'] == 'authority'
+        assert queue[0]['learned_support_kind'] == 'testimony'
+        assert queue[0]['learned_support_lane_priority'] is True
         assert queue[0]['suggested_support_kind'] == 'testimony'
 
     def test_process_evidence_denoising_uses_suggested_support_lane_for_grounding_refinement(self):

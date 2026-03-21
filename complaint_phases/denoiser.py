@@ -4688,90 +4688,31 @@ class ComplaintDenoiser:
             if isinstance(evidence_workflow_action_queue, list)
             else []
         )
-
-        for task in prioritized_tasks[:max_questions]:
-            if not isinstance(task, dict):
-                continue
-            claim_type = str(task.get('claim_type') or 'this claim').strip()
-            claim_element_id = str(task.get('claim_element_id') or '').strip()
-            claim_element_label = str(
-                task.get('claim_element_label')
-                or claim_element_id
-                or 'this issue'
-            ).strip()
-            support_status = str(task.get('support_status') or '').strip().lower()
-            action = str(task.get('action') or 'fill_evidence_gaps').strip().lower()
-            preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
-            preferred_evidence_classes = [
-                str(item).strip().replace('_', ' ')
-                for item in (task.get('preferred_evidence_classes') or [])
-                if str(item).strip()
-            ]
-            missing_fact_bundle = [
-                str(item).strip()
-                for item in (task.get('missing_fact_bundle') or [])
-                if str(item).strip()
-            ]
-            recommended_queries = [
-                str(item).strip()
-                for item in (task.get('recommended_queries') or [])
-                if str(item).strip()
-            ]
-            evidence_hint = ''
-            if preferred_evidence_classes:
-                evidence_hint = f" such as {', '.join(preferred_evidence_classes[:3])}"
-            bundle_hint = f" I still need facts about {missing_fact_bundle[0]}." if missing_fact_bundle else ''
-            if support_status == 'contradicted' or action == 'resolve_support_conflicts':
-                question_text = (
-                    f"What evidence best resolves the conflict around {claim_element_label} "
-                    f"for {claim_type}?{bundle_hint}"
-                )
-                question_type = 'evidence_conflict'
-                priority = 'high'
-            else:
-                if preferred_support_kind == 'authority':
-                    question_text = (
-                        f"What legal authority or official policy material do you have to support "
-                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
-                    )
-                elif preferred_support_kind == 'testimony':
-                    question_text = (
-                        f"What first-hand testimony or witness account can support {claim_element_label} "
-                        f"for {claim_type}?{bundle_hint}"
-                    )
-                else:
-                    question_text = (
-                        f"What evidence{evidence_hint} do you have to support {claim_element_label} "
-                        f"for {claim_type}?{bundle_hint}"
-                    )
-                question_type = 'evidence_clarification'
-                priority = 'high' if bool(task.get('blocking')) else 'medium'
-            questions.append({
-                'type': question_type,
-                'question': question_text,
-                'context': {
-                    'claim_type': claim_type,
-                    'claim_element_id': claim_element_id,
-                    'claim_element_label': claim_element_label,
-                    'support_status': support_status,
-                    'alignment_task': True,
-                    'preferred_support_kind': preferred_support_kind,
-                    'preferred_evidence_classes': list(task.get('preferred_evidence_classes') or []),
-                    'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
-                    'success_criteria': list(task.get('success_criteria') or []),
-                    'recommended_queries': recommended_queries,
-                },
-                'priority': priority,
-            })
-
+        priority_workflow_actions = []
+        remaining_workflow_actions = []
         for action in workflow_actions:
-            if len(questions) >= max_questions:
-                break
             if not isinstance(action, dict):
                 continue
+            action_code = str(action.get('action_code') or '').strip().lower()
+            if (
+                action_code == 'refine_document_grounding_strategy'
+                and (
+                    bool(action.get('learned_support_lane_priority'))
+                    or str(action.get('learned_support_kind') or '').strip()
+                )
+            ):
+                priority_workflow_actions.append(action)
+            else:
+                remaining_workflow_actions.append(action)
+
+        ordered_workflow_actions = [*priority_workflow_actions, *remaining_workflow_actions]
+
+        def _append_workflow_action_question(action: Dict[str, Any]) -> None:
+            if len(questions) >= max_questions:
+                return
             phase_name = str(action.get('phase_name') or '').strip().lower()
             if phase_name not in {'graph_analysis', 'document_generation', 'evidence_collection', 'cross_phase'}:
-                continue
+                return
             action_code = str(action.get('action_code') or '').strip().lower()
             focus_areas = [
                 str(item).strip()
@@ -4780,7 +4721,7 @@ class ComplaintDenoiser:
             ]
             action_text = str(action.get('action') or '').strip()
             if not action_text:
-                continue
+                return
             claim_type = str(action.get('claim_type') or 'this claim').strip()
             claim_element_id = str(action.get('claim_element_id') or '').strip()
             claim_element_label = str(
@@ -4855,15 +4796,100 @@ class ComplaintDenoiser:
                     'claim_element_id': claim_element_id,
                     'claim_element_label': claim_element_label,
                     'preferred_support_kind': preferred_support_kind,
+                    'learned_support_kind': str(action.get('learned_support_kind') or '').strip().lower(),
                     'suggested_support_kind': str(action.get('suggested_support_kind') or '').strip().lower(),
                     'alternate_support_kinds': list(action.get('alternate_support_kinds') or []),
                     'missing_fact_bundle': missing_fact_bundle,
                     'document_grounding_recovery': action_code == 'recover_document_grounding',
                     'document_grounding_strategy_refinement': action_code == 'refine_document_grounding_strategy',
+                    'learned_support_lane_priority': bool(action.get('learned_support_lane_priority')),
                 },
                 'priority': 'high',
                 'proof_priority': 0,
             })
+
+        for action in priority_workflow_actions:
+            _append_workflow_action_question(action)
+
+        for task in prioritized_tasks[:max_questions]:
+            if len(questions) >= max_questions:
+                break
+            if not isinstance(task, dict):
+                continue
+            claim_type = str(task.get('claim_type') or 'this claim').strip()
+            claim_element_id = str(task.get('claim_element_id') or '').strip()
+            claim_element_label = str(
+                task.get('claim_element_label')
+                or claim_element_id
+                or 'this issue'
+            ).strip()
+            support_status = str(task.get('support_status') or '').strip().lower()
+            action = str(task.get('action') or 'fill_evidence_gaps').strip().lower()
+            preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
+            preferred_evidence_classes = [
+                str(item).strip().replace('_', ' ')
+                for item in (task.get('preferred_evidence_classes') or [])
+                if str(item).strip()
+            ]
+            missing_fact_bundle = [
+                str(item).strip()
+                for item in (task.get('missing_fact_bundle') or [])
+                if str(item).strip()
+            ]
+            recommended_queries = [
+                str(item).strip()
+                for item in (task.get('recommended_queries') or [])
+                if str(item).strip()
+            ]
+            evidence_hint = ''
+            if preferred_evidence_classes:
+                evidence_hint = f" such as {', '.join(preferred_evidence_classes[:3])}"
+            bundle_hint = f" I still need facts about {missing_fact_bundle[0]}." if missing_fact_bundle else ''
+            if support_status == 'contradicted' or action == 'resolve_support_conflicts':
+                question_text = (
+                    f"What evidence best resolves the conflict around {claim_element_label} "
+                    f"for {claim_type}?{bundle_hint}"
+                )
+                question_type = 'evidence_conflict'
+                priority = 'high'
+            else:
+                if preferred_support_kind == 'authority':
+                    question_text = (
+                        f"What legal authority or official policy material do you have to support "
+                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
+                    )
+                elif preferred_support_kind == 'testimony':
+                    question_text = (
+                        f"What first-hand testimony or witness account can support {claim_element_label} "
+                        f"for {claim_type}?{bundle_hint}"
+                    )
+                else:
+                    question_text = (
+                        f"What evidence{evidence_hint} do you have to support {claim_element_label} "
+                        f"for {claim_type}?{bundle_hint}"
+                    )
+                question_type = 'evidence_clarification'
+                priority = 'high' if bool(task.get('blocking')) else 'medium'
+            questions.append({
+                'type': question_type,
+                'question': question_text,
+                'context': {
+                    'claim_type': claim_type,
+                    'claim_element_id': claim_element_id,
+                    'claim_element_label': claim_element_label,
+                    'support_status': support_status,
+                    'alignment_task': True,
+                    'preferred_support_kind': preferred_support_kind,
+                    'preferred_evidence_classes': list(task.get('preferred_evidence_classes') or []),
+                    'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
+                    'success_criteria': list(task.get('success_criteria') or []),
+                    'recommended_queries': recommended_queries,
+                },
+                'priority': priority,
+            })
+
+        for action in remaining_workflow_actions:
+            _append_workflow_action_question(action)
 
         # Questions about missing evidence
         remaining_slots = max(0, max_questions - len(questions))
