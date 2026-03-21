@@ -303,6 +303,11 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
         assert document_optimization_symbols[0] == ["_build_workflow_phase_targeting"]
     assert len(document_task.target_files) == 1
     assert document_task.target_files[0].name == "document_optimization.py"
+    assert document_task.metadata["workflow_phase_secondary_target_files"]
+    assert "synthesize_hacc_complaint.py" in document_task.metadata["workflow_phase_secondary_target_files"][0]
+    secondary_constraints = document_task.metadata["workflow_phase_secondary_constraints"]
+    assert "target_symbols" in secondary_constraints
+    assert any(path.endswith("synthesize_hacc_complaint.py") for path in secondary_constraints["target_symbols"])
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 

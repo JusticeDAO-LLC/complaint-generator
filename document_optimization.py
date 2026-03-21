@@ -680,6 +680,77 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     return temporal_handoff
 
 
+def _build_claim_reasoning_theorem_export_metadata(
+    intake_case_summary: Any,
+    *,
+    claim_type: str,
+    claim_element_id: str,
+) -> Dict[str, Any]:
+    summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
+    packet_summary = summary.get("claim_support_packet_summary")
+    packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
+    alignment_tasks = summary.get("alignment_evidence_tasks")
+    alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+
+    normalized_claim_type = str(claim_type or "").strip()
+    normalized_claim_element_id = str(claim_element_id or "").strip()
+    matching_task: Dict[str, Any] = {}
+    fallback_task: Dict[str, Any] = {}
+
+    for task in alignment_tasks:
+        if not isinstance(task, dict):
+            continue
+        task_claim_type = str(task.get("claim_type") or "").strip()
+        task_claim_element_id = str(task.get("claim_element_id") or "").strip()
+        if normalized_claim_type and task_claim_type == normalized_claim_type and not fallback_task:
+            fallback_task = task
+        if (
+            normalized_claim_type
+            and normalized_claim_element_id
+            and task_claim_type == normalized_claim_type
+            and task_claim_element_id == normalized_claim_element_id
+        ):
+            matching_task = task
+            break
+
+    selected_task = matching_task or fallback_task
+    unresolved_temporal_issue_ids = _dedupe_text_values(
+        selected_task.get("temporal_issue_ids") or packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
+    )
+    proof_bundle_id = str(selected_task.get("temporal_proof_bundle_id") or "").strip()
+    proof_objective = str(selected_task.get("temporal_proof_objective") or "").strip()
+    chronology_task_count = int(packet_summary.get("temporal_gap_task_count", 0) or 0)
+
+    metadata_claim_element_id = str(
+        selected_task.get("claim_element_id") or normalized_claim_element_id
+    ).strip()
+
+    metadata = {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": normalized_claim_type,
+        "claim_element_id": metadata_claim_element_id,
+        "proof_bundle_id": proof_bundle_id,
+        "chronology_blocked": bool(unresolved_temporal_issue_ids or chronology_task_count),
+        "chronology_task_count": chronology_task_count,
+        "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
+        "temporal_proof_bundle_ids": [proof_bundle_id] if proof_bundle_id else [],
+        "temporal_proof_objectives": [proof_objective] if proof_objective else [],
+    }
+    if not any(
+        metadata[key]
+        for key in (
+            "claim_type",
+            "claim_element_id",
+            "proof_bundle_id",
+            "unresolved_temporal_issue_ids",
+            "temporal_proof_bundle_ids",
+            "temporal_proof_objectives",
+        )
+    ) and not metadata["chronology_task_count"]:
+        return {}
+    return metadata
+
+
 def _claim_temporal_gap_focus(claim_type: str, claim_name: str) -> Dict[str, set[str]]:
     combined = " ".join([str(claim_type or ""), str(claim_name or "")]).strip().lower()
     issue_families = {"timeline"}
@@ -2444,7 +2515,23 @@ class AgenticDocumentOptimizer:
             validation_claim = validation_claims.get(claim_type)
             if not isinstance(validation_claim, dict) or not validation_claim:
                 continue
-            review_by_claim[claim_type] = summarize_claim_reasoning_review(validation_claim)
+            claim_review = summarize_claim_reasoning_review(validation_claim)
+            flagged_elements = claim_review.get("flagged_elements")
+            if isinstance(flagged_elements, list):
+                for flagged_element in flagged_elements:
+                    if not isinstance(flagged_element, dict):
+                        continue
+                    theorem_export_metadata = flagged_element.get("proof_artifact_theorem_export_metadata")
+                    if isinstance(theorem_export_metadata, dict) and theorem_export_metadata:
+                        continue
+                    fallback_metadata = _build_claim_reasoning_theorem_export_metadata(
+                        intake_case_summary,
+                        claim_type=claim_type,
+                        claim_element_id=str(flagged_element.get("element_id") or ""),
+                    )
+                    if fallback_metadata:
+                        flagged_element["proof_artifact_theorem_export_metadata"] = fallback_metadata
+            review_by_claim[claim_type] = claim_review
         return review_by_claim
 
     def _run_critic(

@@ -14,7 +14,11 @@ from complaint_phases.intake_claim_registry import (
     normalize_claim_type,
     registry_element_for_claim_type,
 )
-from document_optimization import AgenticDocumentOptimizer
+from claim_support_review import summarize_claim_reasoning_review
+from document_optimization import (
+    AgenticDocumentOptimizer,
+    _build_claim_reasoning_theorem_export_metadata,
+)
 from intake_status import build_intake_case_review_summary, build_intake_status_summary
 from workflow_phase_guidance import (
     build_drafting_document_generation_phase_guidance,
@@ -1345,11 +1349,14 @@ class FormalComplaintDocumentBuilder:
         draft["filing_checklist"] = filing_checklist
         draft["affidavit"] = self._build_affidavit(draft)
         claim_support_temporal_handoff = self._build_claim_support_temporal_handoff(document_optimization)
+        claim_reasoning_review = self._build_claim_reasoning_review(document_optimization)
         formalization_gate = self._build_formalization_gate_payload(drafting_readiness)
         source_context = draft.get("source_context") if isinstance(draft.get("source_context"), dict) else {}
         enriched_source_context = dict(source_context)
         if claim_support_temporal_handoff:
             enriched_source_context["claim_support_temporal_handoff"] = claim_support_temporal_handoff
+        if claim_reasoning_review:
+            enriched_source_context["claim_reasoning_review"] = claim_reasoning_review
         if formalization_gate:
             enriched_source_context["formalization_gate"] = formalization_gate
         if enriched_source_context:
@@ -1397,6 +1404,8 @@ class FormalComplaintDocumentBuilder:
             package_payload["drafting_handoff"] = drafting_handoff
         if claim_support_temporal_handoff:
             package_payload["claim_support_temporal_handoff"] = claim_support_temporal_handoff
+        if claim_reasoning_review:
+            package_payload["claim_reasoning_review"] = claim_reasoning_review
         return package_payload
 
     def build_draft(
@@ -1795,10 +1804,18 @@ class FormalComplaintDocumentBuilder:
         )
         optimized_draft = report.get("draft") or dict(draft)
         optimized_draft["summary_of_facts"] = self._normalize_text_lines(optimized_draft.get("summary_of_facts", []))
+        optimized_draft["summary_of_fact_entries"] = self._align_entries_to_lines(
+            optimized_draft.get("summary_of_fact_entries"),
+            optimized_draft.get("summary_of_facts", []),
+        )
         optimized_draft["factual_allegations"] = self._expand_allegation_sources(
             optimized_draft.get("factual_allegations", []),
             limit=24,
         ) or self._expand_allegation_sources(draft.get("factual_allegations", []), limit=24)
+        optimized_draft["factual_allegation_entries"] = self._align_entries_to_lines(
+            optimized_draft.get("factual_allegation_entries"),
+            optimized_draft.get("factual_allegations", []),
+        )
         for claim in _coerce_list(optimized_draft.get("claims_for_relief")):
             if not isinstance(claim, dict):
                 continue
@@ -1953,6 +1970,78 @@ class FormalComplaintDocumentBuilder:
         ):
             return {}
         return temporal_handoff
+
+    def _build_claim_reasoning_review(self, document_optimization: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
+        optimization_review = optimization_report.get("claim_reasoning_review")
+        if isinstance(optimization_review, dict) and optimization_review:
+            return deepcopy(optimization_review)
+
+        intake_case_summary = optimization_report.get("intake_case_summary")
+        if not isinstance(intake_case_summary, dict) or not intake_case_summary:
+            intake_case_summary = build_intake_case_review_summary(self.mediator)
+        if not isinstance(intake_case_summary, dict) or not intake_case_summary:
+            return {}
+
+        existing_review = intake_case_summary.get("claim_reasoning_review")
+        if isinstance(existing_review, dict) and existing_review:
+            return deepcopy(existing_review)
+
+        validation_getter = getattr(self.mediator, "get_claim_support_validation", None)
+        if not callable(validation_getter):
+            return {}
+
+        claim_types = _unique_preserving_order(
+            [
+                *[
+                    str((claim or {}).get("claim_type") or "").strip()
+                    for claim in (intake_case_summary.get("candidate_claims") or [])
+                    if isinstance(claim, dict)
+                ],
+                *[
+                    str(item).strip()
+                    for item in (((getattr(self.mediator, "state", None) or object()).legal_classification or {}).get("claim_types") or [])
+                ],
+            ]
+        )
+        if not claim_types:
+            return {}
+
+        review_by_claim: Dict[str, Any] = {}
+        for claim_type in claim_types:
+            try:
+                validation_payload = validation_getter(claim_type=claim_type)
+            except Exception:
+                continue
+            if not isinstance(validation_payload, dict):
+                continue
+            validation_claims = validation_payload.get("claims")
+            validation_claims = validation_claims if isinstance(validation_claims, dict) else {}
+            validation_claim = validation_claims.get(claim_type)
+            if not isinstance(validation_claim, dict) or not validation_claim:
+                normalized_claim_type = normalize_claim_type(claim_type)
+                validation_claim = validation_claims.get(normalized_claim_type)
+            if not isinstance(validation_claim, dict) or not validation_claim:
+                continue
+            claim_review = summarize_claim_reasoning_review(validation_claim)
+            flagged_elements = claim_review.get("flagged_elements")
+            if isinstance(flagged_elements, list):
+                for flagged_element in flagged_elements:
+                    if not isinstance(flagged_element, dict):
+                        continue
+                    theorem_export_metadata = flagged_element.get("proof_artifact_theorem_export_metadata")
+                    if isinstance(theorem_export_metadata, dict) and theorem_export_metadata:
+                        continue
+                    fallback_metadata = _build_claim_reasoning_theorem_export_metadata(
+                        intake_case_summary,
+                        claim_type=claim_type,
+                        claim_element_id=str(flagged_element.get("element_id") or ""),
+                    )
+                    if fallback_metadata:
+                        flagged_element["proof_artifact_theorem_export_metadata"] = fallback_metadata
+            if claim_review:
+                review_by_claim[claim_type] = claim_review
+        return review_by_claim
 
     def _adapt_formal_complaint_to_package_draft(self, formal_complaint: Dict[str, Any]) -> Dict[str, Any]:
         caption = formal_complaint.get("caption", {}) if isinstance(formal_complaint.get("caption"), dict) else {}
@@ -4241,6 +4330,7 @@ class FormalComplaintDocumentBuilder:
             "court_header": draft.get("court_header"),
             "generated_at": source_context.get("generated_at") or _utcnow().isoformat(),
             "claim_support_temporal_handoff": dict(source_context.get("claim_support_temporal_handoff") or {}) if isinstance(source_context.get("claim_support_temporal_handoff"), dict) else {},
+            "claim_reasoning_review": deepcopy(source_context.get("claim_reasoning_review") or {}) if isinstance(source_context.get("claim_reasoning_review"), dict) else {},
             "source_context": source_context,
             "case_caption": {
                 "plaintiffs": case_caption.get("plaintiffs", []),
@@ -7389,7 +7479,7 @@ class FormalComplaintDocumentBuilder:
         relationship_count = int(graph_summary.get("relationship_count") or 0)
         if entity_count or relationship_count:
             parts.append(f"Graph extraction: {entity_count} entities, {relationship_count} relationships.")
-        return next((part for part in parts if part), "")
+        return " ".join(part for part in parts if part)
 
     def _build_exhibit_link(self, record: Dict[str, Any]) -> str:
         source_url = str(record.get("source_url") or "").strip()

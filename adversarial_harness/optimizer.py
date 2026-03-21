@@ -931,6 +931,8 @@ class Optimizer:
         phase_name: str,
         phase_payload: Dict[str, Any],
         report: OptimizationReport,
+        *,
+        max_targets: int = 1,
     ) -> List[Path]:
         target_paths = [Path(path) for path in list(phase_payload.get("target_files") or [])]
         if not target_paths:
@@ -986,9 +988,9 @@ class Optimizer:
                         seen.add(path.name)
                         selected.append(path)
                         break
-                if len(selected) >= 1:
+                if len(selected) >= max(1, int(max_targets or 1)):
                     break
-            return selected or target_paths[:1]
+            return selected or target_paths[: max(1, int(max_targets or 1))]
 
         if str(phase_name) == "document_generation":
             targeting_summary = dict(report.document_evidence_targeting_summary or {})
@@ -1028,9 +1030,9 @@ class Optimizer:
                         seen.add(path.name)
                         selected.append(path)
                         break
-                if len(selected) >= 1:
+                if len(selected) >= max(1, int(max_targets or 1)):
                     break
-            return selected or target_paths[:1]
+            return selected or target_paths[: max(1, int(max_targets or 1))]
 
         if str(phase_name) == "intake_questioning":
             if int(report.num_sessions_analyzed or 0) == 0:
@@ -1072,9 +1074,9 @@ class Optimizer:
                         seen.add(path.name)
                         selected.append(path)
                         break
-                if len(selected) >= 1:
+                if len(selected) >= max(1, int(max_targets or 1)):
                     break
-            return selected or target_paths[:1]
+            return selected or target_paths[: max(1, int(max_targets or 1))]
 
         return target_paths
 
@@ -2044,8 +2046,28 @@ class Optimizer:
             phase_payload = dict(phases.get(phase_name) or {})
             if not include_ready_phases and str(phase_payload.get("status") or "ready") == "ready":
                 continue
-            target_paths = self._select_workflow_phase_targets(phase_name, phase_payload, report)
+            target_paths = self._select_workflow_phase_targets(
+                phase_name,
+                phase_payload,
+                report,
+                max_targets=1,
+            )
+            expanded_target_paths = self._select_workflow_phase_targets(
+                phase_name,
+                phase_payload,
+                report,
+                max_targets=2,
+            )
+            secondary_target_paths = [
+                path for path in expanded_target_paths
+                if path not in target_paths
+            ]
             phase_constraints = self._workflow_phase_constraints(phase_name, target_paths)
+            secondary_phase_constraints = (
+                self._workflow_phase_constraints(phase_name, secondary_target_paths)
+                if secondary_target_paths
+                else {}
+            )
             if str(phase_name) == "intake_questioning" and int(report.num_sessions_analyzed or 0) == 0:
                 target_map = dict(phase_constraints.get("target_symbols") or {})
                 narrowed_target_map: Dict[str, List[str]] = {}
@@ -2158,6 +2180,8 @@ class Optimizer:
                         "workflow_phase_status": str(phase_payload.get("status") or "ready"),
                         "workflow_phase_summary": str(phase_payload.get("summary") or ""),
                         "workflow_phase_actions": phase_actions,
+                        "workflow_phase_secondary_target_files": [str(path) for path in secondary_target_paths],
+                        "workflow_phase_secondary_constraints": dict(secondary_phase_constraints or {}),
                         "workflow_capabilities": self._workflow_phase_capabilities(phase_name),
                         "weak_complaint_types": weak_complaint_types,
                         "weak_evidence_modalities": weak_evidence_modalities,

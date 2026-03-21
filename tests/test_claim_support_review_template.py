@@ -611,6 +611,17 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Packet chronology status:" in content
     assert "Packet chronology blockers:" in content
     assert "Packet chronology handoffs:" in content
+    assert "Claim Support Chronology Handoff" in content
+    assert "Claim support chronology handoff:" in content
+    assert "Claim support chronology tasks:" in content
+    assert "Claim support proof bundles:" in content
+    assert "Claim Reasoning Review" in content
+    assert "Claim reasoning reviews:" in content
+    assert "proof artifacts:" in content
+    assert "theorem chronology:" in content
+    assert "theorem proof bundles:" in content
+    assert "buildClaimSupportChronologyHandoffLines" in content
+    assert "buildClaimReasoningReviewLines" in content
     assert "renderTriageChipRow" in content
     assert "triage-chip" in content
     assert "Question Blocking Levels" in content

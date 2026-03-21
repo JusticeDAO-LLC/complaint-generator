@@ -2048,6 +2048,131 @@
                 .join(', ');
         }
 
+        function normalizeTheoremExportMetadata(value) {
+            const metadata = value && typeof value === 'object' ? value : {};
+            const unresolvedIssueIds = Array.isArray(metadata.unresolved_temporal_issue_ids)
+                ? metadata.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const issueIds = Array.isArray(metadata.temporal_issue_ids)
+                ? metadata.temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofBundleIds = Array.isArray(metadata.temporal_proof_bundle_ids)
+                ? metadata.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofObjectives = Array.isArray(metadata.temporal_proof_objectives)
+                ? metadata.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const unresolvedCount = Number.isFinite(Number(metadata.unresolved_temporal_issue_count))
+                ? Number(metadata.unresolved_temporal_issue_count || 0)
+                : unresolvedIssueIds.length;
+            const issueCount = Number.isFinite(Number(metadata.temporal_issue_count))
+                ? Number(metadata.temporal_issue_count || 0)
+                : (issueIds.length || unresolvedCount);
+            const chronologyTaskCount = Number(metadata.chronology_task_count || 0);
+            return {
+                blocked: Boolean(metadata.chronology_blocked || unresolvedCount > 0 || chronologyTaskCount > 0),
+                chronologyTaskCount,
+                unresolvedCount,
+                issueIds,
+                unresolvedIssueIds,
+                proofBundleIds,
+                proofObjectives,
+                hasSignal: Boolean(issueCount || chronologyTaskCount || proofBundleIds.length || proofObjectives.length || metadata.chronology_blocked),
+            };
+        }
+
+        function buildClaimSupportChronologyHandoffLines(handoff) {
+            const normalized = handoff && typeof handoff === 'object' ? handoff : {};
+            const unresolvedCount = Number(normalized.unresolved_temporal_issue_count || 0);
+            const chronologyTaskCount = Number(normalized.chronology_task_count || 0);
+            const issueIds = Array.isArray(normalized.unresolved_temporal_issue_ids)
+                ? normalized.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofBundleIds = Array.isArray(normalized.temporal_proof_bundle_ids)
+                ? normalized.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const proofObjectives = Array.isArray(normalized.temporal_proof_objectives)
+                ? normalized.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const eventIds = Array.isArray(normalized.event_ids)
+                ? normalized.event_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            if (!unresolvedCount && !chronologyTaskCount && !issueIds.length && !proofBundleIds.length && !proofObjectives.length && !eventIds.length) {
+                return [];
+            }
+            return [
+                `Claim support chronology handoff: ${unresolvedCount > 0 ? 'blocked' : 'ready'}`,
+                `Claim support unresolved chronology issues: ${unresolvedCount}`,
+                `Claim support chronology tasks: ${chronologyTaskCount}`,
+                issueIds.length ? `Claim support chronology issue ids: ${issueIds.join(', ')}` : '',
+                eventIds.length ? `Claim support chronology events: ${eventIds.join(', ')}` : '',
+                proofBundleIds.length ? `Claim support proof bundles: ${proofBundleIds.join(', ')}` : '',
+                proofObjectives.length ? `Claim support chronology objectives: ${proofObjectives.join(', ')}` : '',
+            ].filter(Boolean);
+        }
+
+        function buildClaimReasoningReviewLines(reviewByClaim) {
+            const normalized = reviewByClaim && typeof reviewByClaim === 'object' ? reviewByClaim : {};
+            const entries = Object.entries(normalized).filter(([, review]) => review && typeof review === 'object');
+            if (!entries.length) {
+                return [];
+            }
+            const lines = [`Claim reasoning reviews: ${entries.length}`];
+            entries.forEach(([claimType, review]) => {
+                const claimLabel = humanizeKey(claimType);
+                const proofArtifactElementCount = Number(review.proof_artifact_element_count || 0);
+                const proofArtifactAvailableElementCount = Number(review.proof_artifact_available_element_count || 0);
+                const proofArtifactExplanationElementCount = Number(review.proof_artifact_explanation_element_count || 0);
+                const proofArtifactStatusCounts = formatSummaryCountLine(review.proof_artifact_status_counts);
+                const proofArtifactPreview = Array.isArray(review.proof_artifact_preview)
+                    ? review.proof_artifact_preview.filter((item) => String(item || '').trim()).slice(0, 3)
+                    : [];
+                const claimTemporalIssueCount = Number(review.claim_temporal_issue_count || 0);
+                const claimUnresolvedTemporalIssueCount = Number(review.claim_unresolved_temporal_issue_count || 0);
+                const claimResolvedTemporalIssueCount = Number(review.claim_resolved_temporal_issue_count || 0);
+                const claimTemporalIssueStatusCounts = formatSummaryCountLine(review.claim_temporal_issue_status_counts);
+                if (proofArtifactElementCount > 0) {
+                    lines.push(`${claimLabel} proof artifacts: ${proofArtifactElementCount} total, ${proofArtifactAvailableElementCount} ready, explanations ${proofArtifactExplanationElementCount}`);
+                }
+                if (proofArtifactStatusCounts) {
+                    lines.push(`${claimLabel} proof statuses: ${proofArtifactStatusCounts}`);
+                }
+                if (proofArtifactPreview.length) {
+                    lines.push(`${claimLabel} proof preview: ${proofArtifactPreview.join(' | ')}`);
+                }
+                if (claimTemporalIssueCount > 0 || claimUnresolvedTemporalIssueCount > 0 || claimResolvedTemporalIssueCount > 0) {
+                    lines.push(`${claimLabel} chronology registry: ${claimTemporalIssueCount} total, ${claimUnresolvedTemporalIssueCount} unresolved, ${claimResolvedTemporalIssueCount} resolved`);
+                }
+                if (claimTemporalIssueStatusCounts) {
+                    lines.push(`${claimLabel} chronology statuses: ${claimTemporalIssueStatusCounts}`);
+                }
+                const flaggedElements = Array.isArray(review.flagged_elements)
+                    ? review.flagged_elements.filter((item) => item && typeof item === 'object')
+                    : [];
+                const theoremCarrier = flaggedElements.find((element) => normalizeTheoremExportMetadata(element.proof_artifact_theorem_export_metadata).hasSignal)
+                    || flaggedElements.find((element) => normalizeTheoremExportMetadata(element.theorem_export_metadata).hasSignal);
+                if (theoremCarrier) {
+                    const theoremMetadata = normalizeTheoremExportMetadata(
+                        theoremCarrier.proof_artifact_theorem_export_metadata && typeof theoremCarrier.proof_artifact_theorem_export_metadata === 'object'
+                            ? theoremCarrier.proof_artifact_theorem_export_metadata
+                            : theoremCarrier.theorem_export_metadata
+                    );
+                    const elementLabel = String(theoremCarrier.element_text || theoremCarrier.element_id || 'claim element').trim();
+                    lines.push(`${claimLabel} ${elementLabel} theorem chronology: ${theoremMetadata.blocked ? 'blocked' : 'aligned'}, unresolved ${theoremMetadata.unresolvedCount}, tasks ${theoremMetadata.chronologyTaskCount}`);
+                    if (theoremMetadata.unresolvedIssueIds.length || theoremMetadata.issueIds.length) {
+                        lines.push(`${claimLabel} theorem issue ids: ${(theoremMetadata.unresolvedIssueIds.length ? theoremMetadata.unresolvedIssueIds : theoremMetadata.issueIds).join(', ')}`);
+                    }
+                    if (theoremMetadata.proofBundleIds.length) {
+                        lines.push(`${claimLabel} theorem proof bundles: ${theoremMetadata.proofBundleIds.join(', ')}`);
+                    }
+                    if (theoremMetadata.proofObjectives.length) {
+                        lines.push(`${claimLabel} theorem objectives: ${theoremMetadata.proofObjectives.join(', ')}`);
+                    }
+                }
+            });
+            return lines;
+        }
+
         const FOLLOW_UP_HANDOFF_STATUSES = new Set([
             'awaiting_complainant_record',
             'awaiting_third_party_record',
@@ -3214,6 +3339,12 @@
             const intakeStatus = report.intake_status && typeof report.intake_status === 'object' ? report.intake_status : {};
             const intakeConstraints = Array.isArray(report.intake_constraints) ? report.intake_constraints : [];
             const intakeCaseSummary = report.intake_case_summary && typeof report.intake_case_summary === 'object' ? report.intake_case_summary : {};
+            const claimSupportTemporalHandoff = report.claim_support_temporal_handoff && typeof report.claim_support_temporal_handoff === 'object'
+                ? report.claim_support_temporal_handoff
+                : {};
+            const claimReasoningReview = report.claim_reasoning_review && typeof report.claim_reasoning_review === 'object'
+                ? report.claim_reasoning_review
+                : {};
             const intakeCandidateClaims = Array.isArray(intakeCaseSummary.candidate_claims) ? intakeCaseSummary.candidate_claims : [];
             const candidateClaimSummary = buildCandidateClaimSummary(
                 intakeCandidateClaims,
@@ -3354,6 +3485,8 @@
                 packetProjection.exhibit_count != null ? `Exhibit count: ${packetProjection.exhibit_count}` : '',
                 packetProjection.checklist_item_count != null ? `Checklist item count: ${packetProjection.checklist_item_count}` : '',
             ].filter(Boolean);
+            const claimSupportChronologyHandoffLines = buildClaimSupportChronologyHandoffLines(claimSupportTemporalHandoff);
+            const claimReasoningLines = buildClaimReasoningReviewLines(claimReasoningReview);
             const renderReviewSummary = (title, review) => {
                 if (!review || typeof review !== 'object') {
                     return '';
@@ -3827,6 +3960,8 @@
                         ${routerUsageLines.length ? `<div class="preview-meta"><strong>Router Usage</strong></div>${renderLines(routerUsageLines)}` : ''}
                         ${intakeConstraintLines.length ? `<div class="preview-meta"><strong>Intake Constraints</strong></div>${renderLines(intakeConstraintLines)}` : ''}
                         ${intakeEvidenceLines.length ? `<div class="preview-meta"><strong>Intake Evidence Snapshot</strong></div>${renderLines(intakeEvidenceLines)}${handoffSnapshot}${manualReviewSnapshot}${manualReviewLinkRow}${pendingReviewSnapshot}${pendingReviewLinkRow}${intakeEvidenceTriage}${questionSectionLinkRow}${intakeEvidenceLinks}` : ''}
+                        ${claimSupportChronologyHandoffLines.length ? `<div class="preview-meta"><strong>Claim Support Chronology Handoff</strong></div>${renderLines(claimSupportChronologyHandoffLines)}` : ''}
+                        ${claimReasoningLines.length ? `<div class="preview-meta"><strong>Claim Reasoning Review</strong></div>${renderLines(claimReasoningLines)}` : ''}
                         ${upstreamOptimizerLines.length ? `<div class="preview-meta"><strong>Upstream Optimizer</strong></div>${renderLines(upstreamOptimizerLines)}` : ''}
                         ${stageProviderLines.length ? `<div class="preview-meta"><strong>Stage Provider Selection</strong></div>${renderLines(stageProviderLines)}` : ''}
                         ${packetProjectionLines.length ? `<div class="preview-meta"><strong>Packet Projection</strong></div>${renderLines(packetProjectionLines)}` : ''}

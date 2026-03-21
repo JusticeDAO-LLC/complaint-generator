@@ -2768,6 +2768,17 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                                     'proof_artifact_proof_id': 'proof-retaliation-001',
                                     'proof_artifact_explanation_step_count': 1,
                                     'proof_artifact_explanation_text': 'Protected activity preceded termination.',
+                                    'proof_artifact_theorem_export_metadata': {
+                                        'contract_version': 'claim_support_temporal_handoff_v1',
+                                        'claim_type': 'retaliation',
+                                        'claim_element_id': 'causation',
+                                        'proof_bundle_id': 'retaliation:causation:bundle_001',
+                                        'chronology_blocked': True,
+                                        'chronology_task_count': 1,
+                                        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+                                        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+                                        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+                                    },
                                 }
                             ],
                         },
@@ -2847,6 +2858,17 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
     assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
     assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
     assert payload['trace']['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_proof_id'] == 'proof-retaliation-001'
+    assert payload['trace']['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_theorem_export_metadata'] == {
+        'contract_version': 'claim_support_temporal_handoff_v1',
+        'claim_type': 'retaliation',
+        'claim_element_id': 'causation',
+        'proof_bundle_id': 'retaliation:causation:bundle_001',
+        'chronology_blocked': True,
+        'chronology_task_count': 1,
+        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+    }
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['fallback_lanes'] == ['authority', 'testimony']
     assert payload['trace']['intake_case_summary']['claim_support_packet_summary']['proof_readiness_score'] == 0.47
     assert payload['trace']['intake_case_summary']['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
@@ -3049,6 +3071,12 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
         assert 'Persisted intake phase' in page_html
         assert 'Persisted intake contradictions' in page_html
         assert 'Router Usage' in page_html
+        assert 'Claim Support Chronology Handoff' in page_html
+        assert 'Claim support chronology handoff:' in page_html
+        assert 'Claim support chronology tasks:' in page_html
+        assert 'Claim Reasoning Review' in page_html
+        assert 'Claim reasoning reviews:' in page_html
+        assert 'theorem chronology:' in page_html
         assert 'Upstream Optimizer' in page_html
         assert 'Stage Provider Selection' in page_html
         assert 'Packet Projection' in page_html
@@ -3503,6 +3531,17 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
     assert report['claim_reasoning_review']['retaliation']['proof_artifact_status_counts'] == {'available': 1}
     assert report['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_proof_id'] == 'proof-retaliation-001'
     assert report['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_explanation_text'] == 'Protected activity preceded termination.'
+    assert report['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_theorem_export_metadata'] == {
+        'contract_version': 'claim_support_temporal_handoff_v1',
+        'claim_type': 'retaliation',
+        'claim_element_id': 'causation',
+        'proof_bundle_id': 'retaliation:causation:bundle_001',
+        'chronology_blocked': True,
+        'chronology_task_count': 1,
+        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+    }
     assert payload['claim_support_temporal_handoff'] == {
         'unresolved_temporal_issue_count': 1,
         'unresolved_temporal_issue_ids': ['temporal_issue_001'],

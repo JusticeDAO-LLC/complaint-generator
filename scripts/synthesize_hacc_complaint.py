@@ -2713,6 +2713,143 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             _append_unique_text(factual_handoff_lines, factual_seen, line)
             _append_unique_text(claim_support_shared_lines, claim_seen, line)
 
+    canonical_fact_ids: List[str] = []
+    support_trace_rows: List[Dict[str, Any]] = []
+    artifact_support_rows: List[Dict[str, Any]] = []
+    fact_id_seen: set[str] = set()
+    support_row_seen: set[tuple[str, str, str]] = set()
+
+    def _append_canonical_fact_id(value: Any) -> None:
+        text = str(value or "").strip()
+        if not text or text in fact_id_seen:
+            return
+        fact_id_seen.add(text)
+        canonical_fact_ids.append(text)
+
+    def _collect_fact_ids(payload: Any) -> List[str]:
+        ids: List[str] = []
+        if isinstance(payload, dict):
+            for key in ("canonical_fact_ids", "fact_ids", "source_fact_ids"):
+                for value in list(payload.get(key) or []):
+                    text = str(value or "").strip()
+                    if text:
+                        ids.append(text)
+            for key in ("canonical_fact_id", "fact_id", "source_fact_id", "target_fact_id"):
+                text = str(payload.get(key) or "").strip()
+                if text:
+                    ids.append(text)
+        elif isinstance(payload, list):
+            for value in payload:
+                text = str(value or "").strip()
+                if text:
+                    ids.append(text)
+        return list(dict.fromkeys(ids))
+
+    def _append_support_row(row: Dict[str, Any]) -> None:
+        if not isinstance(row, dict):
+            return
+        title = str(row.get("title") or row.get("artifact_title") or row.get("evidence_title") or "").strip()
+        source_path = str(row.get("source_path") or row.get("artifact_path") or row.get("path") or "").strip()
+        snippet = _to_sentence(
+            row.get("snippet")
+            or row.get("text")
+            or row.get("summary")
+            or row.get("support_line")
+            or row.get("line")
+            or ""
+        )
+        evidence_type = str(row.get("evidence_type") or row.get("type") or row.get("modality") or "").strip().lower()
+        claim_type = str(row.get("claim_type") or row.get("claim") or "").strip().lower()
+        objective = _normalize_intake_objective(row.get("objective") or row.get("intake_objective") or "")
+        fact_ids = _collect_fact_ids(row)
+        support_trace = [str(item).strip() for item in list(row.get("support_trace") or row.get("trace") or []) if str(item).strip()]
+        for fact_id in fact_ids:
+            _append_canonical_fact_id(fact_id)
+        key = (title.lower(), source_path.lower(), snippet.lower() if snippet else "")
+        if key in support_row_seen:
+            return
+        support_row_seen.add(key)
+        normalized_row = {
+            "title": title,
+            "source_path": source_path,
+            "snippet": snippet,
+            "evidence_type": evidence_type,
+            "claim_type": claim_type,
+            "objective": objective,
+            "canonical_fact_ids": fact_ids[:6],
+            "support_trace": support_trace[:6],
+        }
+        support_trace_rows.append(normalized_row)
+        is_artifact_backed = bool(source_path) or bool(title) or bool(
+            evidence_type in {"policy_document", "file_evidence"}
+        )
+        if is_artifact_backed:
+            artifact_support_rows.append(normalized_row)
+
+    for passage in [dict(item) for item in list(key_facts.get("anchor_passages") or []) if isinstance(item, dict)]:
+        _append_support_row(
+            {
+                "title": passage.get("title"),
+                "source_path": passage.get("source_path"),
+                "snippet": passage.get("snippet"),
+                "claim_type": str((passage.get("section_labels") or [""])[0] or ""),
+                "canonical_fact_ids": passage.get("canonical_fact_ids") or passage.get("fact_ids") or [],
+                "support_trace": passage.get("support_trace") or [],
+                "evidence_type": "policy_document" if str(passage.get("source_path") or "").strip() else "",
+            }
+        )
+    for evidence in [dict(item) for item in list(merged.get("hacc_evidence") or []) if isinstance(item, dict)]:
+        _append_support_row(evidence)
+
+    if isinstance(grounding_bundle, dict):
+        handoff_blocks = [
+            grounding_bundle,
+            grounding_bundle.get("document_handoff_summary"),
+            grounding_bundle.get("document_generation"),
+            grounding_bundle.get("formalization_gate"),
+            grounding_bundle.get("drafting_readiness"),
+        ]
+        for block in handoff_blocks:
+            if not isinstance(block, dict):
+                continue
+            for fact_id in _collect_fact_ids(block):
+                _append_canonical_fact_id(fact_id)
+            for key in (
+                "support_trace_rows",
+                "artifact_support_rows",
+                "claim_support_rows",
+                "support_traces",
+                "evidence_rows",
+                "evidence",
+            ):
+                for row in list(block.get(key) or []):
+                    if isinstance(row, dict):
+                        _append_support_row(row)
+
+    if support_trace_rows:
+        for row in support_trace_rows[:4]:
+            title = row.get("title") or "evidence artifact"
+            source_path = str(row.get("source_path") or "").strip()
+            snippet = str(row.get("snippet") or "").strip()
+            fact_ids = [str(item) for item in list(row.get("canonical_fact_ids") or []) if str(item)]
+            objective = _normalize_intake_objective(row.get("objective") or "")
+            trace_tokens = [str(item) for item in list(row.get("support_trace") or []) if str(item)]
+            source_phrase = f" ({source_path})" if source_path else ""
+            fact_phrase = f" [facts: {', '.join(fact_ids[:3])}]" if fact_ids else ""
+            trace_phrase = f" [trace: {', '.join(trace_tokens[:2])}]" if trace_tokens else ""
+            objective_phrase = f" [{_intake_objective_label(objective)}]" if objective else ""
+            if snippet:
+                grounded_line = (
+                    f"Traceable support row{objective_phrase} from {title}{source_phrase}{fact_phrase}{trace_phrase}: {snippet}"
+                )
+                _append_unique_text(factual_handoff_lines, factual_seen, grounded_line)
+                _append_unique_text(claim_support_shared_lines, claim_seen, grounded_line)
+            if source_path or title:
+                exhibit_line = f"Artifact-backed support row{objective_phrase} for {title}{source_phrase}{fact_phrase}{trace_phrase}"
+                if snippet:
+                    exhibit_line = exhibit_line + f": {snippet}"
+                _append_unique_text(exhibit_description_lines, exhibit_seen, exhibit_line)
+
     if summary_of_facts_lines:
         key_facts["summary_of_facts_handoff"] = summary_of_facts_lines[:12]
     if claim_support_shared_lines:
@@ -2731,6 +2868,12 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         key_facts["blocker_closing_handoff_answers"] = blocker_handoff_answers[:10]
     if blocker_handoff_objective_lines:
         key_facts["blocker_closing_handoff_lines"] = blocker_handoff_objective_lines[:8]
+    if canonical_fact_ids:
+        key_facts["canonical_fact_ids"] = canonical_fact_ids[:12]
+    if support_trace_rows:
+        key_facts["support_trace_rows"] = support_trace_rows[:12]
+    if artifact_support_rows:
+        key_facts["artifact_support_rows"] = artifact_support_rows[:10]
 
     key_facts["document_generation_handoff"] = {
         "summary_of_facts_lines": summary_of_facts_lines[:12],
@@ -2746,6 +2889,9 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         "blocker_closing_handoff_lines": blocker_handoff_objective_lines[:8],
         "unresolved_objectives": unresolved_objectives[:8],
         "blocker_items": blocker_items[:8],
+        "canonical_fact_ids": canonical_fact_ids[:12],
+        "support_trace_rows": support_trace_rows[:12],
+        "artifact_support_rows": artifact_support_rows[:10],
     }
 
     readiness = _merge_drafting_readiness_signals(merged, grounding_bundle)
@@ -2777,12 +2923,15 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
     blockers = [str(item) for item in list(readiness.get("blockers") or []) if str(item)]
     factual_gaps = [str(item) for item in list(readiness.get("unresolved_factual_gaps") or []) if str(item)]
     legal_gaps = [str(item) for item in list(readiness.get("unresolved_legal_gaps") or []) if str(item)]
-    weak_modalities = [str(item) for item in list(readiness.get("weak_evidence_modalities") or []) if str(item)]
+    weak_modalities = list(
+        dict.fromkeys(str(item).strip().lower() for item in list(readiness.get("weak_evidence_modalities") or []) if str(item).strip())
+    )
     weak_complaint_types = [
-        str(item)
+        str(item).strip().lower()
         for item in list(readiness.get("weak_complaint_types") or []) + list(document_signals.get("weak_complaint_types") or [])
-        if str(item)
+        if str(item).strip()
     ]
+    weak_complaint_types = list(dict.fromkeys(weak_complaint_types))
 
     actor_critic_optimizer: Dict[str, Any] = {}
     actor_candidates: List[Dict[str, Any]] = [
@@ -2849,7 +2998,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         and graph_gap_count <= 0
         and (graph_completeness <= 0.0 or graph_completeness >= graph_ready_threshold)
     )
-    if not graph_ready or graph_gate_active:
+    if not graph_ready:
         if "graph_analysis_not_ready" not in blockers:
             blockers.append("graph_analysis_not_ready")
         graph_gap_line = "Graph analysis remains incomplete at drafting handoff; unresolved chronology/entity links should be closed before formalization."
@@ -2857,10 +3006,10 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             graph_gap_line = f"{graph_gap_line.rstrip('.')} (graph_completeness={graph_completeness:.2f}, open_graph_gaps={graph_gap_count})."
         if graph_gap_line not in factual_gaps:
             factual_gaps.append(graph_gap_line)
-        if graph_gate_active:
-            graph_gate_line = "Document generation is gated on graph completeness signals; close unresolved chronology, actor mapping, and dependency links before formalization."
-            if graph_gate_line not in factual_gaps:
-                factual_gaps.append(graph_gate_line)
+    if graph_gate_active and not graph_ready:
+        graph_gate_line = "Document generation is gated on graph completeness signals; close unresolved chronology, actor mapping, and dependency links before formalization."
+        if graph_gate_line not in factual_gaps:
+            factual_gaps.append(graph_gate_line)
 
     if _safe_float(readiness.get("coverage"), 0.0) < graph_ready_threshold and "graph_analysis_not_ready" not in blockers:
         blockers.append("graph_analysis_not_ready")
@@ -2987,6 +3136,22 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             "ready_for_formalization": phase_status == "ready" and not blockers,
         }
     )
+    updated_handoff = dict(key_facts.get("document_generation_handoff") or {})
+    updated_handoff["unresolved_factual_gaps"] = factual_gaps[:6]
+    updated_handoff["unresolved_legal_gaps"] = legal_gaps[:6]
+    updated_handoff["graph_completeness_signals"] = dict(readiness.get("graph_completeness_signals") or {})
+    updated_handoff["document_generation_signals"] = dict(readiness.get("document_generation_signals") or {})
+    if "anchor_appeal_rights" in unresolved_objectives:
+        appeal_follow_up = (
+            "Follow-up needed on grievance_hearing/appeal_rights before formalization: confirm hearing request date, written notice language, "
+            "deadline, decision-maker, and review outcome from policy_document and file_evidence artifacts."
+        )
+        updated_handoff["follow_up_questioning"] = _merge_promoted_lines(
+            [str(item) for item in list(updated_handoff.get("follow_up_questioning") or []) if str(item)],
+            [appeal_follow_up],
+            limit=6,
+        )
+    key_facts["document_generation_handoff"] = updated_handoff
     key_facts["drafting_readiness"] = readiness
     merged["key_facts"] = key_facts
     return merged
@@ -3135,6 +3300,12 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     handoff_exhibit_lines.extend([str(item) for item in list(key_facts.get("exhibit_description_handoff") or []) if str(item)])
     handoff_blocker_lines = [str(item) for item in list(handoff.get("blocker_closing_handoff_lines") or []) if str(item)]
     handoff_blocker_answers = [str(item) for item in list(handoff.get("blocker_closing_answers") or []) if str(item)]
+    handoff_factual_gaps = [str(item) for item in list(handoff.get("unresolved_factual_gaps") or []) if str(item)]
+    handoff_legal_gaps = [str(item) for item in list(handoff.get("unresolved_legal_gaps") or []) if str(item)]
+    handoff_follow_up = [str(item) for item in list(handoff.get("follow_up_questioning") or []) if str(item)]
+    canonical_fact_ids = [str(item) for item in list(handoff.get("canonical_fact_ids") or key_facts.get("canonical_fact_ids") or []) if str(item)]
+    support_trace_rows = [dict(item) for item in list(handoff.get("support_trace_rows") or key_facts.get("support_trace_rows") or []) if isinstance(item, dict)]
+    artifact_support_rows = [dict(item) for item in list(handoff.get("artifact_support_rows") or key_facts.get("artifact_support_rows") or []) if isinstance(item, dict)]
     unresolved_objectives = [
         _normalize_intake_objective(item)
         for item in list(readiness.get("unresolved_objectives") or []) + stored_unresolved_objectives + list(handoff.get("unresolved_objectives") or [])
@@ -3155,6 +3326,31 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegations.append(
             "Document generation remains gated at drafting handoff; unresolved factual and legal gaps must be surfaced and closed before formalization."
         )
+    if canonical_fact_ids:
+        allegations.append(
+            "Canonical fact anchors carried into drafting handoff include "
+            + ", ".join(list(dict.fromkeys(canonical_fact_ids))[:3])
+            + "; factual allegations should stay tied to these fact ids and their evidence traces."
+        )
+    if support_trace_rows:
+        for row in support_trace_rows[:1]:
+            title = str(row.get("title") or "evidence artifact").strip()
+            snippet = _short_intake_answer(str(row.get("snippet") or row.get("text") or ""))
+            fact_ids = [str(item) for item in list(row.get("canonical_fact_ids") or []) if str(item)]
+            source_path = str(row.get("source_path") or "").strip()
+            source_phrase = f" ({source_path})" if source_path else ""
+            fact_phrase = f" [facts: {', '.join(fact_ids[:2])}]" if fact_ids else ""
+            allegations.append(
+                f"Traceable drafting support row from {title}{source_phrase}{fact_phrase}: {snippet}"
+            )
+    if artifact_support_rows:
+        for row in artifact_support_rows[:1]:
+            title = str(row.get("title") or "artifact evidence").strip()
+            evidence_type = str(row.get("evidence_type") or "").strip().lower() or "evidence"
+            snippet = _short_intake_answer(str(row.get("snippet") or row.get("text") or ""))
+            allegations.append(
+                f"Artifact-backed support row ({evidence_type}) for {title}: {snippet}"
+            )
     document_phase = str(document_signals.get("phase_status") or "").strip().lower()
     document_coverage = _safe_float(document_signals.get("coverage"), 0.0)
     if document_phase in {"warning", "blocked"} or document_coverage > 0.0:
@@ -3174,6 +3370,11 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
             "Unresolved factual gaps still require confirmation before formalization, including "
             + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:3])
         )
+    elif handoff_factual_gaps:
+        allegations.append(
+            "Document handoff still reports unresolved factual gaps, including "
+            + ", ".join(handoff_factual_gaps[:3])
+        )
     elif stored_factual_gaps:
         allegations.append(
             "Drafting readiness still reports unresolved factual gaps, including "
@@ -3183,6 +3384,11 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegations.append(
             "Unresolved legal gaps are still open at drafting handoff, including "
             + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:2])
+        )
+    elif handoff_legal_gaps:
+        allegations.append(
+            "Document handoff still reports unresolved legal gaps, including "
+            + ", ".join(handoff_legal_gaps[:2])
         )
     elif stored_legal_gaps:
         allegations.append(
@@ -3199,6 +3405,12 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
             + ", ".join(_intake_objective_label(item) for item in list(dict.fromkeys(unresolved_objectives))[:3])
             + "); allegations should stay provisional until these objectives are closed."
         )
+    if "anchor_appeal_rights" in unresolved_objectives:
+        allegations.append(
+            "Follow-up questioning remains explicit for grievance_hearing and appeal_rights: confirm hearing request timing, written notice language, appeal deadline, and review outcome before formalization."
+        )
+    for line in handoff_follow_up[:1]:
+        allegations.append(f"Drafting follow-up prompt carried from handoff: {_short_intake_answer(line)}")
     anchor_passages = [dict(item) for item in list(key_facts.get("anchor_passages") or []) if isinstance(item, dict)]
     for passage in anchor_passages[:2]:
         title = str(passage.get("title") or "anchor evidence").strip()
@@ -3259,6 +3471,14 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
             "Evidence modality coverage remains weak for "
             + ", ".join(weak_modalities[:2])
             + ", so document generation stays gated pending stronger exhibits."
+        )
+    if "policy_document" in weak_modalities:
+        allegations.append(
+            "Policy-document support remains thin; allegations should cite specific policy text tied to each contested decision step before formalization."
+        )
+    if "file_evidence" in weak_modalities:
+        allegations.append(
+            "File-evidence support remains thin; allegations should identify record-level artifacts (notice/email/letter/portal entries) for each timing and actor anchor."
         )
     description = _normalize_incident_summary(seed.get("description") or key_facts.get("incident_summary") or "")
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
@@ -3332,6 +3552,12 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
                 claim_support_by_type[key].append(text)
     exhibit_handoff_lines = [str(item) for item in list(handoff.get("exhibit_description_lines") or []) if str(item)]
     blocker_handoff_lines = [str(item) for item in list(handoff.get("blocker_closing_handoff_lines") or []) if str(item)]
+    canonical_fact_ids = [str(item) for item in list(handoff.get("canonical_fact_ids") or key_facts.get("canonical_fact_ids") or []) if str(item)]
+    support_trace_rows = [dict(item) for item in list(handoff.get("support_trace_rows") or key_facts.get("support_trace_rows") or []) if isinstance(item, dict)]
+    artifact_support_rows = [dict(item) for item in list(handoff.get("artifact_support_rows") or key_facts.get("artifact_support_rows") or []) if isinstance(item, dict)]
+    handoff_factual_gaps = [str(item) for item in list(handoff.get("unresolved_factual_gaps") or []) if str(item)]
+    handoff_legal_gaps = [str(item) for item in list(handoff.get("unresolved_legal_gaps") or []) if str(item)]
+    handoff_follow_up = [str(item) for item in list(handoff.get("follow_up_questioning") or []) if str(item)]
     claims: List[str] = []
     if readiness["phase_status"] != "ready":
         blockers = ", ".join(readiness.get("blockers") or [])
@@ -3345,10 +3571,20 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
             "Unresolved legal gaps still need closure before final formalization, including "
             + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:3])
         )
+    elif handoff_legal_gaps:
+        claims.append(
+            "Document handoff still reports unresolved legal gaps, including "
+            + ", ".join(handoff_legal_gaps[:3])
+        )
     if readiness.get("unresolved_factual_gaps"):
         claims.append(
             "Unresolved factual gaps are still blocking final legal framing, including "
             + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:2])
+        )
+    elif handoff_factual_gaps:
+        claims.append(
+            "Document handoff still reports unresolved factual gaps, including "
+            + ", ".join(handoff_factual_gaps[:2])
         )
     unresolved_objectives = [
         _normalize_intake_objective(item)
@@ -3363,6 +3599,33 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
             + ", ".join(_intake_objective_label(item) for item in list(dict.fromkeys(unresolved_objectives))[:3])
             + "); each claim element should remain provisional until those objectives are closed."
         )
+    if "anchor_appeal_rights" in unresolved_objectives:
+        claims.append(
+            "Appeal-rights claim elements remain provisional until grievance_hearing and appeal_rights follow-up confirms hearing request timing, notice language, and review outcome."
+        )
+    for line in handoff_follow_up[:1]:
+        claims.append(f"Structured legal follow-up prompt from handoff: {_short_intake_answer(line)}")
+    if canonical_fact_ids:
+        claims.append(
+            "Claim support is anchored to canonical fact ids "
+            + ", ".join(list(dict.fromkeys(canonical_fact_ids))[:3])
+            + "; preserve fact-id lineage for each legal element through formalization."
+        )
+    if support_trace_rows:
+        for row in support_trace_rows[:1]:
+            title = str(row.get("title") or "support artifact").strip()
+            source_path = str(row.get("source_path") or "").strip()
+            source_phrase = f" ({source_path})" if source_path else ""
+            snippet = _short_intake_answer(str(row.get("snippet") or row.get("text") or ""))
+            fact_ids = [str(item) for item in list(row.get("canonical_fact_ids") or []) if str(item)]
+            fact_phrase = f" [facts: {', '.join(fact_ids[:2])}]" if fact_ids else ""
+            claims.append(f"Traceable claim-support row from {title}{source_phrase}{fact_phrase}: {snippet}")
+    if artifact_support_rows:
+        for row in artifact_support_rows[:1]:
+            evidence_type = str(row.get("evidence_type") or "").strip().lower() or "evidence"
+            title = str(row.get("title") or "artifact").strip()
+            snippet = _short_intake_answer(str(row.get("snippet") or row.get("text") or ""))
+            claims.append(f"Artifact-backed claim support ({evidence_type}) from {title}: {snippet}")
     weak_modalities = [str(item) for item in list(readiness.get("weak_evidence_modalities") or []) if str(item)]
     if weak_modalities:
         claims.append(
