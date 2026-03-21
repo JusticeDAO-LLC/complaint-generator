@@ -1849,6 +1849,9 @@ class FormalComplaintDocumentBuilder:
         for claim in _coerce_list(formal_complaint.get("legal_claims")):
             if not isinstance(claim, dict):
                 continue
+            normalized_missing_elements = _unique_preserving_order(
+                _extract_text_candidates(claim.get("missing_requirements"))
+            )
             claims_for_relief.append(
                 {
                     "claim_type": claim.get("claim_type") or claim.get("claim_name") or claim.get("title") or "Claim",
@@ -1864,13 +1867,16 @@ class FormalComplaintDocumentBuilder:
                         ]
                     ),
                     "supporting_facts": _unique_preserving_order(_extract_text_candidates(claim.get("supporting_facts"))),
-                    "missing_elements": _unique_preserving_order(
-                        _extract_text_candidates(claim.get("missing_requirements"))
-                    ),
+                    "missing_elements": normalized_missing_elements,
                     "partially_supported_elements": [],
                     "support_summary": {
                         "elements_satisfied": claim.get("elements_satisfied", ""),
                         "authority_count": len(_coerce_list(claim.get("supporting_authorities"))),
+                        "temporal_gap_hint_count": sum(
+                            1
+                            for item in normalized_missing_elements
+                            if str(item or "").strip().lower().startswith("chronology gap")
+                        ),
                     },
                     "supporting_exhibits": [
                         {

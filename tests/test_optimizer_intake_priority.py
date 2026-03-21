@@ -647,17 +647,12 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
     assert "Draft loop evidence targets" in document_task.description
     assert "Preferred support lanes" in document_task.description
-<<<<<<< Updated upstream
-    assert any(path.name == "document_optimization.py" for path in document_task.target_files)
-    assert any(path.name in {"synthesize_hacc_complaint.py", "document_optimization.py"} for path in document_task.target_files)
-    assert "document_optimization.py" in document_task.constraints["target_symbols"]
-    assert document_task.constraints["target_symbols"]["document_optimization.py"]
-=======
     assert len(document_task.target_files) == 1
-    assert document_task.target_files[0].name in {"document_optimization.py", "synthesize_hacc_complaint.py"}
-    target_symbol_path = next(iter(document_task.constraints["target_symbols"]))
-    assert target_symbol_path.endswith(document_task.target_files[0].name)
->>>>>>> Stashed changes
+    assert document_task.target_files[0].name == "document_optimization.py"
+    assert "document_optimization.py" in document_task.constraints["target_symbols"]
+    assert document_task.constraints["target_symbols"]["document_optimization.py"] == [
+        "_build_workflow_phase_targeting"
+    ]
     assert document_task.metadata["document_evidence_targeting_summary"]["count"] == 1
     assert document_task.metadata["document_provenance_summary"]["low_grounding_flag"] is True
     assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
@@ -783,17 +778,10 @@ def test_analyze_and_phase_tasks_carry_graph_element_targeting_summary():
     graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
     assert "Graph evidence targets" in graph_task.description
     assert "Graph focus areas" in graph_task.description
-<<<<<<< Updated upstream
-    assert any(path.name == "denoiser.py" for path in graph_task.target_files)
-    assert any(path.name in {"dependency_graph.py", "denoiser.py"} for path in graph_task.target_files)
-    assert "complaint_phases/denoiser.py" in graph_task.constraints["target_symbols"]
-    assert graph_task.constraints["target_symbols"]["complaint_phases/denoiser.py"]
-=======
     assert len(graph_task.target_files) == 1
     assert graph_task.target_files[0].name in {"dependency_graph.py", "denoiser.py"}
     target_symbol_path = next(iter(graph_task.constraints["target_symbols"]))
     assert target_symbol_path.endswith(graph_task.target_files[0].name)
->>>>>>> Stashed changes
     assert graph_task.metadata["graph_element_targeting_summary"]["count"] == 2
     assert graph_task.metadata["report_summary"]["graph_element_targeting_summary"]["claim_element_counts"] == {
         "causation": 1,
@@ -868,20 +856,12 @@ def test_analyze_and_phase_tasks_carry_intake_targeting_summary():
     intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
     assert "Intake targets" in intake_task.description
     assert "Legal elements to probe" in intake_task.description
-<<<<<<< Updated upstream
-    assert any(path.name in {"mediator.py", "session.py"} for path in intake_task.target_files)
-    assert any(
-        path in intake_task.constraints["target_symbols"]
-        for path in ("mediator/mediator.py", "adversarial_harness/session.py")
-    )
-=======
     assert len(intake_task.target_files) == 1
     assert intake_task.target_files[0].name == "session.py"
     assert "adversarial_harness/session.py" in intake_task.constraints["target_symbols"]
     assert intake_task.constraints["target_symbols"]["adversarial_harness/session.py"] == [
         "_inject_intake_prompt_questions"
     ]
->>>>>>> Stashed changes
     assert intake_task.metadata["intake_targeting_summary"]["claim_element_counts"]["causation"] == 1
     assert intake_task.metadata["report_summary"]["intake_targeting_summary"]["objective_counts"]["timeline"] >= 1
 

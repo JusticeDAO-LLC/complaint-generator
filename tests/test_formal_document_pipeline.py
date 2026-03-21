@@ -1723,6 +1723,82 @@ def test_document_package_adds_claim_temporal_gap_hints(tmp_path):
     assert result['draft']['claims_for_relief'][0]['support_summary']['temporal_gap_hint_count'] == 2
 
 
+def test_document_package_uses_claim_reasoning_proof_artifact_chronology_fallback(tmp_path):
+    mediator = _build_seeded_mediator()
+    intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})
+    intake_case_file['canonical_facts'] = []
+    intake_case_file['timeline_relations'] = []
+    intake_case_file['temporal_issue_registry'] = []
+    intake_case_file['blocker_follow_up_summary'] = {'blocking_items': []}
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+    mediator.get_claim_support_facts = Mock(return_value=[])
+    mediator.get_claim_support_validation = Mock(return_value={
+        'claims': {
+            'retaliation': {
+                'claim_type': 'retaliation',
+                'elements': [
+                    {
+                        'element_id': 'retaliation:causation',
+                        'element_text': 'Causal connection',
+                        'reasoning_diagnostics': {
+                            'hybrid_reasoning': {
+                                'result': {
+                                    'proof_artifact': {
+                                        'available': True,
+                                        'status': 'available',
+                                        'proof_id': 'proof-retaliation-fallback-001',
+                                        'proof_status': 'success',
+                                        'sentence': 'Protected activity preceded termination',
+                                        'theorem_export_metadata': {
+                                            'chronology_blocked': True,
+                                            'chronology_task_count': 1,
+                                            'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+                                            'temporal_proof_objectives': ['causation_sequence'],
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        }
+    })
+    draft_builder = ComplaintDocumentBuilder(mediator)
+    draft = draft_builder.build(
+        district='New Mexico',
+        county='Santa Fe County',
+        plaintiff_names=['Jane Doe'],
+        defendant_names=['Acme Corporation'],
+    )
+
+    claim = draft['claims_for_relief'][0]
+    assert claim['supporting_facts'][0] == 'Protected activity preceded termination.'
+    assert any(
+        requirement == {
+            'name': 'Chronology gap',
+            'citation': '',
+            'suggested_action': 'Causal connection still carries 1 unresolved chronology issue(s) and 1 chronology task(s) in the proof handoff. Focus on causation sequence.',
+        }
+        for requirement in claim['missing_requirements']
+    )
+
+    package_builder = FormalComplaintDocumentBuilder(mediator)
+    result = package_builder.build_package(
+        district='New Mexico',
+        county='Santa Fe County',
+        plaintiff_names=['Jane Doe'],
+        defendant_names=['Acme Corporation'],
+        output_dir=str(tmp_path),
+        output_formats=['txt'],
+    )
+
+    package_claim = result['draft']['claims_for_relief'][0]
+    assert package_claim['supporting_facts'][0] == 'Protected activity preceded termination.'
+    assert 'Chronology gap' in package_claim['missing_elements']
+    assert package_claim['support_summary']['temporal_gap_hint_count'] == 1
+
+
 def test_legacy_claim_fact_collection_includes_chronology_support():
     mediator = _build_seeded_mediator()
     builder = FormalComplaintDocumentBuilder(mediator)

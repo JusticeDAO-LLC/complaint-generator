@@ -384,6 +384,37 @@ def _build_dashboard_mediator() -> Mock:
                                     "dcec_formulas": [
                                         "Happens(fact_1,t_2026_03_10)",
                                     ],
+                                    "proof_artifact": {
+                                        "available": True,
+                                        "status": "available",
+                                        "proof_id": "proof-retaliation-001",
+                                        "proof_status": "success",
+                                        "sentence": "Protected activity preceded termination.",
+                                        "violation_count": 0,
+                                        "theorem_export_metadata": {
+                                            "contract_version": "claim_support_temporal_handoff_v1",
+                                            "claim_type": "retaliation",
+                                            "claim_element_id": "retaliation:1",
+                                            "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                            "rule_frame_id": "retaliation_temporal_frame",
+                                            "chronology_blocked": True,
+                                            "chronology_task_count": 1,
+                                            "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                                            "event_ids": ["fact_001", "fact_termination"],
+                                            "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                            "temporal_relation_ids": ["timeline_relation_001"],
+                                            "timeline_issue_ids": ["temporal_issue_001"],
+                                            "temporal_issue_ids": ["temporal_issue_001"],
+                                            "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+                                            "temporal_proof_objectives": ["retaliation_temporal_frame"],
+                                        },
+                                        "explanation": {
+                                            "format": "json",
+                                            "proof_id": "proof-retaliation-001",
+                                            "text": "Protected activity preceded termination.",
+                                            "steps": [{"step_id": "proof-step-001"}],
+                                        },
+                                    },
                                 },
                             },
                             "temporal_summary": {
@@ -1193,6 +1224,14 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert review_payload["claim_reasoning_review"]["retaliation"]["claim_temporal_issue_status_counts"] == {"open": 1, "resolved": 1}
     assert review_payload["claim_reasoning_review"]["retaliation"]["theorem_export_blocked_element_count"] == 1
     assert review_payload["claim_reasoning_review"]["retaliation"]["theorem_export_chronology_task_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["proof_artifact_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["proof_artifact_available_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["proof_artifact_status_counts"] == {"available": 1}
+    assert review_payload["claim_reasoning_review"]["retaliation"]["proof_artifact_explanation_element_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["proof_artifact_preview"] == [
+        "proof-retaliation-001",
+        "Protected activity preceded termination.",
+    ]
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_bridge_available"] is True
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["hybrid_tdfol_formula_preview"] == [
         "Before(fact_1,fact_2)",
@@ -1246,7 +1285,32 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
         "Happens(fact_001,t_2026_03_10)",
         "Happens(fact_termination,t_2026_03_24)",
     ]
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_available"] is True
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_status"] == "available"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_proof_id"] == "proof-retaliation-001"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_proof_status"] == "success"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_sentence"] == "Protected activity preceded termination."
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_explanation_format"] == "json"
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_explanation_step_count"] == 1
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_explanation_text"] == "Protected activity preceded termination."
     assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["theorem_export_metadata"] == {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": "retaliation",
+        "claim_element_id": "retaliation:1",
+        "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+        "rule_frame_id": "retaliation_temporal_frame",
+        "chronology_blocked": True,
+        "chronology_task_count": 1,
+        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        "event_ids": ["fact_001", "fact_termination"],
+        "temporal_fact_ids": ["fact_001", "fact_termination"],
+        "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_issue_ids": ["temporal_issue_001"],
+        "temporal_issue_ids": ["temporal_issue_001"],
+        "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+        "temporal_proof_objectives": ["retaliation_temporal_frame"],
+    }
+    assert review_payload["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_theorem_export_metadata"] == {
         "contract_version": "claim_support_temporal_handoff_v1",
         "claim_type": "retaliation",
         "claim_element_id": "retaliation:1",

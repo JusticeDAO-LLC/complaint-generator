@@ -678,6 +678,37 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                     "dcec_formulas": [
                                         "Happens(fact_1,t_2026_03_10)",
                                     ],
+                                    "proof_artifact": {
+                                        "available": True,
+                                        "status": "available",
+                                        "proof_id": "proof-retaliation-001",
+                                        "proof_status": "success",
+                                        "sentence": "Protected activity preceded termination.",
+                                        "violation_count": 0,
+                                        "theorem_export_metadata": {
+                                            "contract_version": "claim_support_temporal_handoff_v1",
+                                            "claim_type": "retaliation",
+                                            "claim_element_id": "retaliation:1",
+                                            "proof_bundle_id": "retaliation:retaliation_1:retaliation_temporal_profile_v1",
+                                            "rule_frame_id": "retaliation_temporal_frame",
+                                            "chronology_blocked": True,
+                                            "chronology_task_count": 1,
+                                            "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                                            "event_ids": ["fact_001", "fact_termination"],
+                                            "temporal_fact_ids": ["fact_001", "fact_termination"],
+                                            "temporal_relation_ids": ["timeline_relation_001"],
+                                            "timeline_issue_ids": ["temporal_issue_001"],
+                                            "temporal_issue_ids": ["temporal_issue_001"],
+                                            "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
+                                            "temporal_proof_objectives": ["retaliation_temporal_frame"],
+                                        },
+                                        "explanation": {
+                                            "format": "json",
+                                            "proof_id": "proof-retaliation-001",
+                                            "text": "Protected activity preceded termination.",
+                                            "steps": [{"step_id": "proof-step-001"}],
+                                        },
+                                    },
                                 },
                             },
                             "temporal_summary": {
@@ -2663,6 +2694,8 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Temporal proof bundle DCEC preview").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Theorem export chronology").first.click()
                 page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Proof artifact theorem export").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Proof artifact sentence").first.click()
+                page.locator("#claim-reasoning-flagged-list summary").filter(has_text="Proof artifact notes").first.click()
 
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("fact_001 before fact_termination").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text(
@@ -2691,7 +2724,11 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                     "Theorem proof bundles: retaliation:retaliation_1:retaliation_temporal_profile_v1"
                 ).first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem objectives: retaliation_temporal_frame").first.is_visible()
-                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem export chronology: aligned").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Proof ID").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Copy proof ID").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Copy proof explanation").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Proof artifact sentence").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Proof artifact notes").first.is_visible()
                 assert "Tasks: 2" in task_summary
                 assert "Chronology tasks: 1" in task_summary
                 assert "Chronology targeted: 1" in task_summary

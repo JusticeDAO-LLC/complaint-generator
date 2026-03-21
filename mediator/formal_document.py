@@ -883,6 +883,164 @@ def _build_claim_temporal_gap_hints(
     return hints[:limit]
 
 
+def _normalize_claim_type_key(value: Any) -> str:
+    return str(value or "").strip().lower().replace("_", " ")
+
+
+def _extract_validation_claim_for_type(
+    validation_summary: Any,
+    claim_type: str,
+) -> Dict[str, Any]:
+    if not isinstance(validation_summary, dict):
+        return {}
+    claims = validation_summary.get("claims")
+    if not isinstance(claims, dict):
+        return {}
+    direct = claims.get(claim_type)
+    if isinstance(direct, dict):
+        return direct
+    normalized_claim_type = _normalize_claim_type_key(claim_type)
+    for key, value in claims.items():
+        if _normalize_claim_type_key(key) == normalized_claim_type and isinstance(value, dict):
+            return value
+    return {}
+
+
+def _normalize_theorem_export_metadata_for_drafting(value: Any) -> Dict[str, Any]:
+    metadata = value if isinstance(value, dict) else {}
+    unresolved_issue_ids = [
+        str(item).strip()
+        for item in _listify(metadata.get("unresolved_temporal_issue_ids"))
+        if str(item).strip()
+    ]
+    proof_objectives = [
+        str(item).strip()
+        for item in _listify(metadata.get("temporal_proof_objectives"))
+        if str(item).strip()
+    ]
+    unresolved_count = int(
+        metadata.get("unresolved_temporal_issue_count", len(unresolved_issue_ids)) or 0
+    )
+    chronology_task_count = int(metadata.get("chronology_task_count", 0) or 0)
+    return {
+        "unresolved_count": unresolved_count,
+        "chronology_task_count": chronology_task_count,
+        "unresolved_issue_ids": unresolved_issue_ids,
+        "proof_objectives": proof_objectives,
+        "has_signal": bool(
+            unresolved_count
+            or chronology_task_count
+            or unresolved_issue_ids
+            or proof_objectives
+            or metadata.get("chronology_blocked")
+        ),
+    }
+
+
+def _contains_temporal_sequence_marker(value: Any) -> bool:
+    text = str(value or "")
+    if not text:
+        return False
+    return bool(
+        _contains_date_anchor(text)
+        or re.search(
+            r"\b(before|after|preced(?:e|ed|es|ing)|follow(?:ed|ing|s)?|sequence|timeline|chronolog(?:y|ical))\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _build_claim_reasoning_temporal_fallbacks(
+    validation_claim: Any,
+    *,
+    claim_type: str,
+    claim_name: str,
+    limit: int = 2,
+) -> Tuple[List[str], List[Dict[str, str]]]:
+    claim_validation = validation_claim if isinstance(validation_claim, dict) else {}
+    elements = claim_validation.get("elements") if isinstance(claim_validation.get("elements"), list) else []
+    support_lines: List[str] = []
+    gap_hints: List[Dict[str, str]] = []
+    seen_support = set()
+    seen_hints = set()
+
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        reasoning = element.get("reasoning_diagnostics")
+        if not isinstance(reasoning, dict):
+            reasoning = {}
+        hybrid_reasoning = reasoning.get("hybrid_reasoning")
+        if not isinstance(hybrid_reasoning, dict):
+            hybrid_reasoning = {}
+        hybrid_result = hybrid_reasoning.get("result")
+        if not isinstance(hybrid_result, dict):
+            hybrid_result = {}
+        proof_artifact = hybrid_result.get("proof_artifact")
+        if not isinstance(proof_artifact, dict):
+            proof_artifact = {}
+        temporal_proof_bundle = reasoning.get("temporal_proof_bundle")
+        if not isinstance(temporal_proof_bundle, dict):
+            temporal_proof_bundle = {}
+        theorem_exports = temporal_proof_bundle.get("theorem_exports")
+        if not isinstance(theorem_exports, dict):
+            theorem_exports = {}
+
+        proof_metadata = _normalize_theorem_export_metadata_for_drafting(
+            proof_artifact.get("theorem_export_metadata")
+        )
+        bundle_metadata = _normalize_theorem_export_metadata_for_drafting(
+            theorem_exports.get("theorem_export_metadata")
+        )
+        active_metadata = proof_metadata if proof_metadata["has_signal"] else bundle_metadata
+
+        proof_sentence = _clean_sentence(proof_artifact.get("sentence") or "")
+        if (
+            proof_sentence
+            and active_metadata["has_signal"]
+            and _contains_temporal_sequence_marker(proof_sentence)
+        ):
+            marker = proof_sentence.lower()
+            if marker not in seen_support:
+                seen_support.add(marker)
+                support_lines.append(proof_sentence)
+
+        unresolved_count = int(active_metadata.get("unresolved_count", 0) or 0)
+        chronology_task_count = int(active_metadata.get("chronology_task_count", 0) or 0)
+        if unresolved_count <= 0 and chronology_task_count <= 0:
+            continue
+
+        element_label = _clean_text(
+            element.get("element_text") or element.get("element_id") or claim_name or claim_type
+        ) or "This claim element"
+        summary_parts: List[str] = []
+        if unresolved_count > 0:
+            summary_parts.append(f"{unresolved_count} unresolved chronology issue(s)")
+        if chronology_task_count > 0:
+            summary_parts.append(f"{chronology_task_count} chronology task(s)")
+        objective_text = ""
+        if active_metadata.get("proof_objectives"):
+            objective_text = f" Focus on {str(active_metadata['proof_objectives'][0]).replace('_', ' ')}."
+        summary = (
+            f"{element_label} still carries {' and '.join(summary_parts)} in the proof handoff."
+            f"{objective_text}"
+        ).strip()
+        marker = summary.lower()
+        if marker in seen_hints:
+            continue
+        seen_hints.add(marker)
+        gap_hints.append(
+            {
+                "name": "Chronology gap",
+                "citation": "",
+                "suggested_action": summary,
+            }
+        )
+
+    return support_lines[:limit], gap_hints[:limit]
+
+
 def _listify(value: Any) -> List[Any]:
     if value is None:
         return []
@@ -1779,9 +1937,27 @@ class ComplaintDocumentBuilder:
                 continue
             claim_name = _clean_text(claim.get("claim_name") or claim.get("title") or f"Claim {index}")
             claim_type = _clean_text(claim.get("claim_type") or claim_name).lower().replace(" ", "_")
+            validation_summary = self._safe_call(
+                "get_claim_support_validation",
+                claim_type=claim_type,
+                user_id=user_id,
+                default={},
+            )
+            validation_claim = _extract_validation_claim_for_type(validation_summary, claim_type)
+            reasoning_support_facts, reasoning_gap_hints = _build_claim_reasoning_temporal_fallbacks(
+                validation_claim,
+                claim_type=claim_type,
+                claim_name=claim_name,
+            )
             legal_requirements = legal_graph.get_requirements_for_claim_type(claim_type) if legal_graph is not None else []
             claim_authorities = self._filter_authorities(authority_records, claim_type)
-            supporting_facts = self._build_supporting_facts(claim_type, claim_name, factual_allegations, user_id)
+            supporting_facts = self._build_supporting_facts(
+                claim_type,
+                claim_name,
+                factual_allegations,
+                user_id,
+                reasoning_support_facts=reasoning_support_facts,
+            )
             supporting_exhibits = [exhibit for exhibit in exhibits if not exhibit.get("claim_type") or exhibit.get("claim_type") == claim_type]
             legal_standard_elements = []
             for requirement in legal_requirements:
@@ -1819,6 +1995,21 @@ class ComplaintDocumentBuilder:
                     claim_name=claim_name,
                 )
             )
+            missing_requirements.extend(reasoning_gap_hints)
+            deduped_missing_requirements = []
+            seen_missing_requirements = set()
+            for requirement in missing_requirements:
+                if not isinstance(requirement, dict):
+                    continue
+                marker = (
+                    _clean_text(requirement.get("name") or "").lower(),
+                    _clean_text(requirement.get("citation") or "").lower(),
+                    _clean_text(requirement.get("suggested_action") or "").lower(),
+                )
+                if marker in seen_missing_requirements:
+                    continue
+                seen_missing_requirements.add(marker)
+                deduped_missing_requirements.append(requirement)
             claim_entries.append(
                 {
                     "count": index,
@@ -1832,12 +2023,20 @@ class ComplaintDocumentBuilder:
                     "supporting_facts": supporting_facts,
                     "supporting_authorities": claim_authorities,
                     "supporting_exhibits": supporting_exhibits,
-                    "missing_requirements": missing_requirements,
+                    "missing_requirements": deduped_missing_requirements,
                 }
             )
         return claim_entries
 
-    def _build_supporting_facts(self, claim_type: str, claim_name: str, factual_allegations: List[str], user_id: str) -> List[str]:
+    def _build_supporting_facts(
+        self,
+        claim_type: str,
+        claim_name: str,
+        factual_allegations: List[str],
+        user_id: str,
+        *,
+        reasoning_support_facts: Optional[List[str]] = None,
+    ) -> List[str]:
         phase_manager = getattr(self.mediator, "phase_manager", None)
         intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
         chronology_support = _build_claim_chronology_support(
@@ -1845,6 +2044,11 @@ class ComplaintDocumentBuilder:
             claim_type=claim_type,
             claim_name=claim_name,
         )
+        reasoning_support = [
+            _clean_sentence(item)
+            for item in _listify(reasoning_support_facts)
+            if _clean_text(item)
+        ]
         facts = self._safe_call("get_claim_support_facts", claim_type, user_id, default=[])
         supporting_facts = []
         for fact in _listify(facts):
@@ -1854,13 +2058,13 @@ class ComplaintDocumentBuilder:
             if text:
                 supporting_facts.append(text)
         if supporting_facts:
-            return self._dedupe(chronology_support + supporting_facts)
+            return self._dedupe(chronology_support + reasoning_support + supporting_facts)
         lowered_claim_name = claim_name.lower()
         filtered = [
             allegation for allegation in factual_allegations
             if claim_type.replace("_", " ") in allegation.lower() or lowered_claim_name in allegation.lower()
         ]
-        return self._dedupe(chronology_support + (filtered or factual_allegations[:3]))
+        return self._dedupe(chronology_support + reasoning_support + (filtered or factual_allegations[:3]))
 
     def _filter_authorities(self, authority_records: Any, claim_type: str) -> List[Dict[str, Any]]:
         matched = []
