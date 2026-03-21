@@ -959,6 +959,10 @@ def test_build_package_uses_grounding_retarget_action_for_initial_focus():
     assert draft["document_grounding_improvement_next_action"]["action"] == "retarget_document_grounding"
     assert draft["document_drafting_focus_source"] == "document_grounding_improvement_next_action"
     assert draft["document_drafting_focus_claim_element_id"] == "causation"
+    assert draft["summary_of_fact_entries"][0]["document_focus"]["focus_source"] == "document_grounding_improvement_next_action"
+    assert draft["summary_of_fact_entries"][0]["document_focus"]["original_claim_element_id"] == "protected_activity"
+    assert draft["summary_of_fact_entries"][0]["document_focus"]["target_claim_element_id"] == "causation"
+    assert draft["factual_allegation_paragraphs"][0]["document_focus"]["focus_source"] == "document_grounding_improvement_next_action"
     assert draft["factual_allegations"][0] == (
         "Days after the complaint, Defendant terminated Plaintiff in retaliation."
     )
@@ -1277,6 +1281,8 @@ def test_build_package_adds_claim_support_provenance_and_document_provenance_sum
         "source_artifact_id_count": 1,
         "fact_backed_ratio": 1.0,
         "low_grounding_flag": False,
+        "focused_entry_count": 0,
+        "focus_source_counts": {},
         "claims": [
             {
                 "claim_type": "retaliation",

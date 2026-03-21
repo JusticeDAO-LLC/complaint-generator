@@ -444,6 +444,10 @@ def test_factual_allegations_suppress_missing_detail_fallbacks_when_evidence_has
         for item in allegations
     )
     assert not any("occurred in close sequence" in item for item in allegations)
+    assert not any(
+        "Notice to the Applicant requires prompt written notice of a decision denying assistance." in item
+        for item in allegations
+    )
 
 
 def test_build_draft_uses_claim_specific_titles_and_housing_process_relief():
@@ -515,3 +519,25 @@ def test_build_draft_uses_claim_specific_titles_and_housing_process_relief():
         "24 C.F.R. 982.555" in item
         for item in by_type["due_process_failure"]["legal_standards"]
     )
+
+
+def test_factual_allegation_entries_store_real_identifier_lists():
+    builder = FormalComplaintDocumentBuilder(_EvidenceFactMediator())
+
+    summary_entries = builder._build_summary_fact_entries(
+        user_id="evidence-user",
+        generated_complaint={},
+        classification={},
+        state=builder.mediator.state,
+    )
+    allegation_entries = builder._build_factual_allegation_entries(
+        summary_fact_entries=summary_entries,
+        claims_for_relief=[],
+    )
+
+    assert allegation_entries
+    for entry in allegation_entries:
+        assert isinstance(entry.get("fact_ids"), list)
+        assert isinstance(entry.get("source_artifact_ids"), list)
+        assert isinstance(entry.get("claim_types"), list)
+        assert all("generator object" not in str(value) for value in entry.get("fact_ids", []))

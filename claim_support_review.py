@@ -306,6 +306,7 @@ def _build_claim_support_temporal_handoff_metadata(
         int(claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0),
         int(temporal_issue_registry_summary.get("unresolved_count") or 0),
     )
+    chronology_task_count = int(claim_support_packet_summary.get("temporal_gap_task_count", 0) or 0)
 
     temporal_handoff: Dict[str, Any] = {
         "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
@@ -313,6 +314,8 @@ def _build_claim_support_temporal_handoff_metadata(
             claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_ids")
         ),
     }
+    if chronology_task_count > 0:
+        temporal_handoff["chronology_task_count"] = chronology_task_count
     resolved_temporal_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
     if resolved_temporal_issue_count > 0:
         temporal_handoff["resolved_temporal_issue_count"] = resolved_temporal_issue_count
@@ -336,12 +339,36 @@ def _build_claim_support_temporal_handoff_metadata(
         "temporal_relation_ids",
         "timeline_issue_ids",
         "temporal_issue_ids",
+        "missing_temporal_predicates",
+        "required_provenance_kinds",
     ):
         values: List[str] = []
         for task in matching_tasks:
             values.extend(_dedupe_handoff_ids(task.get(field_name)))
         if values:
             temporal_handoff[field_name] = _dedupe_handoff_ids(values)
+
+    timeline_anchor_values: List[str] = []
+    for task in matching_tasks:
+        timeline_anchor_values.extend(
+            _dedupe_handoff_ids(task.get("anchor_ids") or task.get("timeline_anchor_ids"))
+        )
+    if timeline_anchor_values:
+        temporal_handoff["timeline_anchor_ids"] = _dedupe_handoff_ids(timeline_anchor_values)
+
+    temporal_proof_bundle_ids: List[str] = []
+    temporal_proof_objectives: List[str] = []
+    for task in matching_tasks:
+        proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
+        if proof_bundle_id:
+            temporal_proof_bundle_ids.append(proof_bundle_id)
+        proof_objective = str(task.get("temporal_proof_objective") or "").strip()
+        if proof_objective:
+            temporal_proof_objectives.append(proof_objective)
+    if temporal_proof_bundle_ids:
+        temporal_handoff["temporal_proof_bundle_ids"] = _dedupe_handoff_ids(temporal_proof_bundle_ids)
+    if temporal_proof_objectives:
+        temporal_handoff["temporal_proof_objectives"] = _dedupe_handoff_ids(temporal_proof_objectives)
 
     for field_name in ("temporal_proof_bundle_id", "temporal_proof_objective"):
         for task in matching_tasks:

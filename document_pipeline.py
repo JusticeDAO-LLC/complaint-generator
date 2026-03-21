@@ -2044,8 +2044,11 @@ class FormalComplaintDocumentBuilder:
         event_ids: List[str] = []
         temporal_fact_ids: List[str] = []
         temporal_relation_ids: List[str] = []
+        timeline_anchor_ids: List[str] = []
         timeline_issue_ids: List[str] = []
         temporal_issue_ids: List[str] = []
+        missing_temporal_predicates: List[str] = []
+        required_provenance_kinds: List[str] = []
         temporal_proof_bundle_ids: List[str] = []
         temporal_proof_objectives: List[str] = []
 
@@ -2055,8 +2058,11 @@ class FormalComplaintDocumentBuilder:
             event_ids.extend(_dedupe_text_values(task.get("event_ids") or []))
             temporal_fact_ids.extend(_dedupe_text_values(task.get("temporal_fact_ids") or []))
             temporal_relation_ids.extend(_dedupe_text_values(task.get("temporal_relation_ids") or []))
+            timeline_anchor_ids.extend(_dedupe_text_values(task.get("anchor_ids") or task.get("timeline_anchor_ids") or []))
             timeline_issue_ids.extend(_dedupe_text_values(task.get("timeline_issue_ids") or []))
             temporal_issue_ids.extend(_dedupe_text_values(task.get("temporal_issue_ids") or []))
+            missing_temporal_predicates.extend(_dedupe_text_values(task.get("missing_temporal_predicates") or []))
+            required_provenance_kinds.extend(_dedupe_text_values(task.get("required_provenance_kinds") or []))
             proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
             if proof_bundle_id:
                 temporal_proof_bundle_ids.append(proof_bundle_id)
@@ -2098,6 +2104,11 @@ class FormalComplaintDocumentBuilder:
             "issue_id",
             "timeline_issue_id",
         )
+        raw_timeline_anchor_ids = _collect_temporal_registry_identifiers(
+            intake_case_summary.get("timeline_anchors"),
+            "anchor_id",
+            "timeline_anchor_id",
+        )
         raw_unresolved_temporal_issue_ids = _collect_unresolved_temporal_issue_identifiers(
             intake_case_summary.get("temporal_issue_registry")
         )
@@ -2122,15 +2133,27 @@ class FormalComplaintDocumentBuilder:
             "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
             "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
         }
+        normalized_timeline_anchor_ids = _dedupe_text_values(timeline_anchor_ids) or raw_timeline_anchor_ids
+        if normalized_timeline_anchor_ids:
+            temporal_handoff["timeline_anchor_ids"] = normalized_timeline_anchor_ids
+        normalized_missing_temporal_predicates = _dedupe_text_values(missing_temporal_predicates)
+        if normalized_missing_temporal_predicates:
+            temporal_handoff["missing_temporal_predicates"] = normalized_missing_temporal_predicates
+        normalized_required_provenance_kinds = _dedupe_text_values(required_provenance_kinds)
+        if normalized_required_provenance_kinds:
+            temporal_handoff["required_provenance_kinds"] = normalized_required_provenance_kinds
         if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
-            temporal_handoff[key]
+            temporal_handoff.get(key)
             for key in (
                 "unresolved_temporal_issue_ids",
                 "event_ids",
                 "temporal_fact_ids",
                 "temporal_relation_ids",
+                "timeline_anchor_ids",
                 "timeline_issue_ids",
                 "temporal_issue_ids",
+                "missing_temporal_predicates",
+                "required_provenance_kinds",
                 "temporal_proof_bundle_ids",
                 "temporal_proof_objectives",
             )
@@ -2795,6 +2818,18 @@ class FormalComplaintDocumentBuilder:
         claim_element_id = str(action.get("claim_element_id") or "").strip()
         preferred_support_kind = str(action.get("preferred_support_kind") or "").strip()
         executed_claim_element_id = str(action.get("executed_claim_element_id") or "").strip()
+        original_claim_element_id = str(
+            action.get("original_claim_element_id")
+            or document_grounding_improvement_next_action.get("claim_element_id")
+            or ""
+        ).strip()
+        focus_metadata = self._build_document_focus_metadata(
+            action=action,
+            focus_source=focus_source,
+            claim_element_id=claim_element_id,
+            preferred_support_kind=preferred_support_kind,
+            original_claim_element_id=original_claim_element_id,
+        )
 
         if focus_section in {"factual_allegations", "summary_of_facts"}:
             focus_claim_type = self._resolve_document_focus_claim_type(
@@ -2812,6 +2847,10 @@ class FormalComplaintDocumentBuilder:
                     claim_element_id=claim_element_id,
                     preferred_support_kind=preferred_support_kind,
                 )
+                summary_entries = self._annotate_document_focus_entries(
+                    summary_entries,
+                    focus_metadata=focus_metadata,
+                )
                 focused_draft["summary_of_fact_entries"] = summary_entries
                 focused_draft["summary_of_facts"] = [entry.get("text") for entry in summary_entries if entry.get("text")]
             if isinstance(focused_draft.get("factual_allegations"), list):
@@ -2823,6 +2862,10 @@ class FormalComplaintDocumentBuilder:
                     claim_type=focus_claim_type,
                     claim_element_id=claim_element_id,
                     preferred_support_kind=preferred_support_kind,
+                )
+                allegation_entries = self._annotate_document_focus_entries(
+                    allegation_entries,
+                    focus_metadata=focus_metadata,
                 )
                 focused_draft["factual_allegation_entries"] = allegation_entries
                 focused_draft["factual_allegations"] = [entry.get("text") for entry in allegation_entries if entry.get("text")]
@@ -2841,6 +2884,10 @@ class FormalComplaintDocumentBuilder:
                     claim_type=str(updated_claim.get("claim_type") or "").strip(),
                     claim_element_id=claim_element_id,
                     preferred_support_kind=preferred_support_kind,
+                )
+                supporting_fact_entries = self._annotate_document_focus_entries(
+                    supporting_fact_entries,
+                    focus_metadata=focus_metadata,
                 )
                 updated_claim["supporting_fact_entries"] = supporting_fact_entries
                 updated_claim["supporting_facts"] = [entry.get("text") for entry in supporting_fact_entries if entry.get("text")]
@@ -2865,6 +2912,44 @@ class FormalComplaintDocumentBuilder:
         if executed_claim_element_id:
             focused_draft["document_drafting_executed_claim_element_id"] = executed_claim_element_id
         return focused_draft
+
+    def _build_document_focus_metadata(
+        self,
+        *,
+        action: Dict[str, Any],
+        focus_source: str,
+        claim_element_id: str,
+        preferred_support_kind: str,
+        original_claim_element_id: str,
+    ) -> Dict[str, Any]:
+        action_code = str(action.get("action") or "").strip().lower()
+        metadata = {
+            "focus_source": focus_source,
+            "action": action_code,
+            "target_claim_element_id": claim_element_id,
+            "preferred_support_kind": preferred_support_kind,
+        }
+        if original_claim_element_id and original_claim_element_id != claim_element_id:
+            metadata["original_claim_element_id"] = original_claim_element_id
+        return metadata
+
+    def _annotate_document_focus_entries(
+        self,
+        entries: List[Dict[str, Any]],
+        *,
+        focus_metadata: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        annotated: List[Dict[str, Any]] = []
+        normalized_focus_metadata = dict(focus_metadata or {})
+        for index, entry in enumerate(entries, start=1):
+            if not isinstance(entry, dict):
+                continue
+            updated_entry = dict(entry)
+            if normalized_focus_metadata:
+                updated_entry["document_focus"] = dict(normalized_focus_metadata)
+                updated_entry["document_focus_priority_rank"] = index
+            annotated.append(updated_entry)
+        return annotated
 
     def _document_focus_claim_score(
         self,
@@ -3845,6 +3930,29 @@ class FormalComplaintDocumentBuilder:
                 )
         return synthesized
 
+    def _prune_redundant_policy_rule_allegations(self, allegations: List[str]) -> List[str]:
+        if not allegations:
+            return []
+        lowered_all = [str(item or "").lower() for item in allegations]
+        has_notice_process_allegation = any(
+            "without the notice and review protections described in the governing process" in item
+            or "failed to provide the informal review" in item
+            for item in lowered_all
+        )
+        has_chronology = any(item.startswith("the chronology shows that ") for item in lowered_all)
+        if not (has_notice_process_allegation and has_chronology):
+            return allegations
+
+        pruned: List[str] = []
+        for item in allegations:
+            lowered = str(item or "").lower()
+            if (
+                "notice to the applicant requires prompt written notice of a decision denying assistance" in lowered
+            ):
+                continue
+            pruned.append(item)
+        return pruned or allegations
+
     def _build_factual_allegations(
         self,
         *,
@@ -3887,6 +3995,7 @@ class FormalComplaintDocumentBuilder:
         pruned.extend(self._build_policy_process_allegations(pruned, base_allegations))
         pruned.extend(self._build_missing_detail_allegations(pruned, base_allegations))
         pruned = self._prune_near_duplicate_allegations(pruned)
+        pruned = self._prune_redundant_policy_rule_allegations(pruned)
         return pruned[:24] or ["Additional factual development is required before filing."]
 
     def _build_factual_allegation_entries(
@@ -3922,29 +4031,39 @@ class FormalComplaintDocumentBuilder:
                 {
                     "text": text,
                     "fact_ids": _normalize_identifier_list(
-                        fact_id
-                        for entry in matched_entries
-                        for fact_id in _coerce_list(entry.get("fact_ids"))
+                        [
+                            fact_id
+                            for entry in matched_entries
+                            for fact_id in _coerce_list(entry.get("fact_ids"))
+                        ]
                     ),
                     "source_artifact_ids": _normalize_identifier_list(
-                        artifact_id
-                        for entry in matched_entries
-                        for artifact_id in _coerce_list(entry.get("source_artifact_ids"))
+                        [
+                            artifact_id
+                            for entry in matched_entries
+                            for artifact_id in _coerce_list(entry.get("source_artifact_ids"))
+                        ]
                     ),
                     "claim_types": _normalize_identifier_list(
-                        claim_type
-                        for entry in matched_entries
-                        for claim_type in _coerce_list(entry.get("claim_types"))
+                        [
+                            claim_type
+                            for entry in matched_entries
+                            for claim_type in _coerce_list(entry.get("claim_types"))
+                        ]
                     ),
                     "claim_element_ids": _normalize_identifier_list(
-                        claim_element_id
-                        for entry in matched_entries
-                        for claim_element_id in _coerce_list(entry.get("claim_element_ids"))
+                        [
+                            claim_element_id
+                            for entry in matched_entries
+                            for claim_element_id in _coerce_list(entry.get("claim_element_ids"))
+                        ]
                     ),
                     "support_trace_ids": _normalize_identifier_list(
-                        trace_id
-                        for entry in matched_entries
-                        for trace_id in _coerce_list(entry.get("support_trace_ids"))
+                        [
+                            trace_id
+                            for entry in matched_entries
+                            for trace_id in _coerce_list(entry.get("support_trace_ids"))
+                        ]
                     ),
                     "source_kind": "factual_allegation",
                 }
@@ -3968,6 +4087,12 @@ class FormalComplaintDocumentBuilder:
                 "claim_types": allegation_entries[index - 1].get("claim_types", []),
                 "claim_element_ids": allegation_entries[index - 1].get("claim_element_ids", []),
                 "support_trace_ids": allegation_entries[index - 1].get("support_trace_ids", []),
+                "document_focus": (
+                    dict(allegation_entries[index - 1].get("document_focus") or {})
+                    if isinstance(allegation_entries[index - 1].get("document_focus"), dict)
+                    else {}
+                ),
+                "document_focus_priority_rank": allegation_entries[index - 1].get("document_focus_priority_rank"),
             }
             for index, text in enumerate(allegation_lines, start=1)
         ]
@@ -4044,6 +4169,12 @@ class FormalComplaintDocumentBuilder:
                     "support_trace_ids": _normalize_identifier_list(entry.get("support_trace_ids") or []),
                     "source_kind": str(entry.get("source_kind") or "").strip() or None,
                     "exhibit_label": str(entry.get("exhibit_label") or "").strip() or None,
+                    "document_focus": (
+                        dict(entry.get("document_focus") or {})
+                        if isinstance(entry.get("document_focus"), dict)
+                        else {}
+                    ),
+                    "document_focus_priority_rank": entry.get("document_focus_priority_rank"),
                 }
             )
         return provenance_rows
@@ -4062,6 +4193,8 @@ class FormalComplaintDocumentBuilder:
         claim_rows = []
         total_claim_support_rows = 0
         total_claim_support_fact_backed_rows = 0
+        focused_entry_count = 0
+        focus_source_counts: Dict[str, int] = {}
         all_fact_ids: List[str] = []
         all_artifact_ids: List[str] = []
         for claim in claims:
@@ -4077,6 +4210,11 @@ class FormalComplaintDocumentBuilder:
             for row in provenance_rows:
                 all_fact_ids.extend(_normalize_identifier_list(row.get("fact_ids") or []))
                 all_artifact_ids.extend(_normalize_identifier_list(row.get("source_artifact_ids") or []))
+                focus_metadata = row.get("document_focus") if isinstance(row.get("document_focus"), dict) else {}
+                focus_source = str(focus_metadata.get("focus_source") or "").strip()
+                if focus_source:
+                    focused_entry_count += 1
+                    focus_source_counts[focus_source] = focus_source_counts.get(focus_source, 0) + 1
             claim_rows.append(
                 {
                     "claim_type": str(claim.get("claim_type") or "").strip(),
@@ -4106,6 +4244,11 @@ class FormalComplaintDocumentBuilder:
         for paragraph in factual_paragraphs:
             all_fact_ids.extend(_normalize_identifier_list(paragraph.get("fact_ids") or []))
             all_artifact_ids.extend(_normalize_identifier_list(paragraph.get("source_artifact_ids") or []))
+            focus_metadata = paragraph.get("document_focus") if isinstance(paragraph.get("document_focus"), dict) else {}
+            focus_source = str(focus_metadata.get("focus_source") or "").strip()
+            if focus_source:
+                focused_entry_count += 1
+                focus_source_counts[focus_source] = focus_source_counts.get(focus_source, 0) + 1
 
         summary_entries = [
             entry for entry in _coerce_list(draft.get("summary_of_fact_entries")) if isinstance(entry, dict)
@@ -4114,6 +4257,11 @@ class FormalComplaintDocumentBuilder:
         for entry in summary_entries:
             all_fact_ids.extend(_normalize_identifier_list(entry.get("fact_ids") or []))
             all_artifact_ids.extend(_normalize_identifier_list(entry.get("source_artifact_ids") or []))
+            focus_metadata = entry.get("document_focus") if isinstance(entry.get("document_focus"), dict) else {}
+            focus_source = str(focus_metadata.get("focus_source") or "").strip()
+            if focus_source:
+                focused_entry_count += 1
+                focus_source_counts[focus_source] = focus_source_counts.get(focus_source, 0) + 1
 
         summary_fact_ratio = (float(summary_fact_backed_count) / float(len(summary_entries))) if summary_entries else 0.0
         allegation_ratio = (float(factual_fact_backed_count) / float(len(factual_paragraphs))) if factual_paragraphs else 0.0
@@ -4131,6 +4279,8 @@ class FormalComplaintDocumentBuilder:
             "source_artifact_id_count": len(_normalize_identifier_list(all_artifact_ids)),
             "fact_backed_ratio": round(fact_backed_ratio, 4),
             "low_grounding_flag": bool(fact_backed_ratio < 0.6),
+            "focused_entry_count": focused_entry_count,
+            "focus_source_counts": focus_source_counts,
             "claims": claim_rows,
         }
 
