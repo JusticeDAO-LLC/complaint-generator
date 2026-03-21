@@ -15,6 +15,7 @@ htmlcov/
 .tox/
 .cache/
 .venv/
+.venv*
 venv/
 env/
 ENV/

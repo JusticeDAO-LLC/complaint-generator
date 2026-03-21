@@ -3106,6 +3106,17 @@ def test_claim_support_review_payload_builds_explicit_workflow_priority_for_temp
             "current_summary_snapshot": {},
         },
         "question_candidate_summary": {},
+        "temporal_issue_registry_summary": {
+            "count": 3,
+            "issues": [
+                {"issue_id": "timeline-gap-001", "status": "open"},
+                {"issue_id": "timeline-gap-002", "status": "open"},
+                {"issue_id": "timeline-gap-003", "status": "resolved"},
+            ],
+            "status_counts": {"open": 2, "resolved": 1},
+            "resolved_count": 1,
+            "unresolved_count": 2,
+        },
         "next_action": {
             "action": "fill_temporal_chronology_gap",
             "claim_type": "retaliation",
