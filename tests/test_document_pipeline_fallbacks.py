@@ -241,10 +241,39 @@ def test_factual_allegations_synthesize_policy_violation_allegations_from_notice
     )
 
     assert any(
-        "without providing the prompt written notice required for a decision denying assistance" in item
+        "Notice to the Applicant requires prompt written notice of a decision denying assistance." in item
         for item in allegations
     )
     assert any(
         "failed to provide the informal review, grievance, or appeal process" in item
+        for item in allegations
+    )
+    assert any(("the Housing Authority" in item) or ("HACC" in item) for item in allegations)
+
+
+def test_factual_allegations_dedupe_raw_policy_restatement_when_violation_allegation_exists():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+        ],
+        claims_for_relief=[
+            {
+                "claim_type": "housing_discrimination",
+                "count_title": "Housing Discrimination",
+                "supporting_facts": [
+                    "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+                ],
+            }
+        ],
+    )
+
+    assert any(
+        "Notice to the Applicant requires prompt written notice of a decision denying assistance." in item
+        for item in allegations
+    )
+    assert not any(
+        item.startswith("As to Housing Discrimination, notice to the Applicant requires prompt written notice")
         for item in allegations
     )

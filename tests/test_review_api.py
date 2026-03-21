@@ -2628,6 +2628,7 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
         ],
         "notes": [
             "Document generation should wait until evidence review and packet blockers are reduced further.",
+            "Chronology blockers: 1 pending chronology gap task.",
             "Recommended actions: Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint. | Resolve outstanding chronology gap tasks and temporal issue blockers before generating a formal complaint.",
         ],
         "buttons": [

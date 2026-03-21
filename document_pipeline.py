@@ -3328,6 +3328,8 @@ class FormalComplaintDocumentBuilder:
                 flags.add("adverse")
             if re.search(r"\b(lost|suffered|experienced|benefits|wages|salary|income|opportunities)\b", lowered):
                 flags.add("harm")
+            if re.search(r"\b(notice|informal review|hearing|grievance|appeal|due process)\b", lowered):
+                flags.add("policy_process")
             return flags
 
         def _features(value: str) -> set[str]:
@@ -3359,6 +3361,12 @@ class FormalComplaintDocumentBuilder:
                 flags.add("economic_harm")
             if re.search(r"\b(career opportunities|future opportunities|opportunities)\b", lowered):
                 flags.add("opportunities")
+            if re.search(r"\bnotice to the applicant\b|\bwritten notice\b", lowered):
+                flags.add("notice")
+            if re.search(r"\binformal review\b|\bhearing\b|\bgrievance\b|\bappeal\b", lowered):
+                flags.add("review_process")
+            if re.search(r"\bwithout providing\b|\bfailed to provide\b|\bshould have accompanied\b", lowered):
+                flags.add("process_violation")
             return flags
 
         kept: List[str] = []
@@ -3367,7 +3375,7 @@ class FormalComplaintDocumentBuilder:
             candidate_categories = _categories(candidate)
             candidate_features = _features(candidate)
             skip = False
-            for existing in kept:
+            for index, existing in enumerate(kept):
                 existing_tokens = _tokens(existing)
                 existing_categories = _categories(existing)
                 existing_features = _features(existing)
@@ -3386,6 +3394,21 @@ class FormalComplaintDocumentBuilder:
                 if "report" in candidate_categories and "report" in existing_categories and "accommodation" in shared_features and len(shared_features) >= 2:
                     skip = True
                     break
+                if "policy_process" in candidate_categories and "policy_process" in existing_categories:
+                    if (
+                        "process_violation" in candidate_features
+                        and "process_violation" not in existing_features
+                        and len(shared_features & {"notice", "review_process"}) >= 1
+                    ):
+                        kept[index] = candidate
+                        skip = True
+                        break
+                    if "process_violation" in shared_features and len(shared_features & {"notice", "review_process", "process_violation"}) >= 2:
+                        skip = True
+                        break
+                    if overlap >= 0.55 and len(shared_features & {"notice", "review_process"}) >= 1:
+                        skip = True
+                        break
             if not skip:
                 kept.append(candidate)
         return kept
@@ -3396,6 +3419,34 @@ class FormalComplaintDocumentBuilder:
         pruned = self._prune_near_duplicate_allegations([*existing, candidate])
         return len(pruned) == len(existing)
 
+    def _infer_actor_label_from_allegations(self, allegations: List[str]) -> str:
+        combined = " ".join(str(item or "") for item in allegations)
+        lowered = combined.lower()
+        if "hacc" in lowered:
+            return "HACC"
+        if any(
+            token in lowered
+            for token in (
+                "housing authority",
+                "voucher",
+                "denying assistance",
+                "notice to the applicant",
+                "informal review",
+                "grievance",
+                "appeal rights",
+            )
+        ):
+            return "the Housing Authority"
+        return "Defendant"
+
+    def _actor_possessive_label(self, actor_label: str) -> str:
+        text = str(actor_label or "").strip()
+        if not text:
+            return "Defendant's"
+        if text.endswith("s"):
+            return f"{text}'"
+        return f"{text}'s"
+
     def _build_missing_detail_allegations(self, allegations: List[str]) -> List[str]:
         if not allegations:
             return []
@@ -3403,14 +3454,13 @@ class FormalComplaintDocumentBuilder:
         lowered = combined.lower()
         references_notice = "notice" in lowered
         references_review = any(token in lowered for token in ("informal review", "hearing", "grievance", "appeal"))
-        references_hacc = "hacc" in lowered
-        actor_label = "HACC" if references_hacc else "Defendant"
+        actor_label = self._infer_actor_label_from_allegations(allegations)
 
         fallbacks: List[str] = []
         if not any(_contains_hearing_timing_marker(line) for line in allegations):
             if references_review:
                 fallbacks.append(
-                    f"The present record indicates that Plaintiff sought review of the challenged action, but the exact date of the {actor_label} hearing or review request remains to be confirmed."
+                    f"The present record indicates that Plaintiff sought review of the challenged action, but the exact date of {self._actor_possessive_label(actor_label)} hearing or review request remains to be confirmed."
                 )
             else:
                 fallbacks.append(
@@ -3428,7 +3478,7 @@ class FormalComplaintDocumentBuilder:
         if not any(_contains_staff_identity_marker(line) for line in allegations):
             if references_notice or references_review:
                 fallbacks.append(
-                    f"The present record does not yet identify by name the {actor_label} official who issued the notice or handled Plaintiff's request for review."
+                    f"The present record does not yet identify by name the official at {actor_label} who issued the notice or handled Plaintiff's request for review."
                 )
             else:
                 fallbacks.append(
@@ -3447,8 +3497,7 @@ class FormalComplaintDocumentBuilder:
         lowered = combined.lower()
         references_notice = "written notice" in lowered or "notice to the applicant" in lowered or "notice" in lowered
         references_review = any(token in lowered for token in ("informal review", "grievance", "appeal", "hearing"))
-        references_hacc = "hacc" in lowered
-        actor_label = "HACC" if references_hacc else "Defendant"
+        actor_label = self._infer_actor_label_from_allegations(allegations)
 
         synthesized: List[str] = []
         if references_notice and not any(

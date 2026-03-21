@@ -603,6 +603,22 @@ def _build_review_workflow_priority_from_phase(
     button_id = str(workflow_phase_priority.get("button_id") or "").strip()
     action_label = str(workflow_phase_priority.get("action_label") or "Review workflow priority").strip()
     notes = [str(workflow_phase_priority.get("summary") or "").strip()]
+    signals = dict(workflow_phase_priority.get("signals") or {})
+    chronology_blocked = bool(signals.get("chronology_blocked"))
+    unresolved_temporal_issue_count = int(signals.get("unresolved_temporal_issue_count") or 0)
+    temporal_gap_task_count = int(signals.get("temporal_gap_task_count") or 0)
+    if chronology_blocked or unresolved_temporal_issue_count > 0 or temporal_gap_task_count > 0:
+        chronology_note_parts: List[str] = []
+        if temporal_gap_task_count > 0:
+            task_label = "task" if temporal_gap_task_count == 1 else "tasks"
+            chronology_note_parts.append(f"{temporal_gap_task_count} pending chronology gap {task_label}")
+        if unresolved_temporal_issue_count > 0:
+            issue_label = "issue ID" if unresolved_temporal_issue_count == 1 else "issue IDs"
+            chronology_note_parts.append(
+                f"{unresolved_temporal_issue_count} unresolved temporal {issue_label}"
+            )
+        if chronology_note_parts:
+            notes.append(f"Chronology blockers: {'; '.join(chronology_note_parts)}.")
     recommended_actions = [
         str(item).strip()
         for item in (workflow_phase_priority.get("recommended_actions") or [])
