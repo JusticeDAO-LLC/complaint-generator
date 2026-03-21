@@ -2776,24 +2776,31 @@ class FormalComplaintDocumentBuilder:
 
         legal_standards = self._normalize_text_lines(claim.get("legal_standards", []))
         supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+        claim_type = normalize_claim_type(claim.get("claim_type") or "")
+
+        standard_lead_in = "Plaintiff alleges that"
+        if claim_type == "due_process_failure":
+            standard_lead_in = "Defendant was required, before enforcing a final adverse housing decision,"
+        elif claim_type == "housing_discrimination":
+            standard_lead_in = "Plaintiff alleges that"
 
         standard_paragraph = self._compose_count_paragraph(
             legal_standards[:3],
-            lead_in="Plaintiff alleges that",
+            lead_in=standard_lead_in,
         )
         if standard_paragraph:
             rendered.append(standard_paragraph)
 
         authority_paragraph = self._compose_count_paragraph(
             legal_standards[3:],
-            lead_in="This claim is further supported by",
+            lead_in="Authority for this count includes",
         )
         if authority_paragraph:
             rendered.append(authority_paragraph)
 
         support_paragraph = self._compose_count_paragraph(
             supporting_facts,
-            lead_in="In support of this count, Plaintiff alleges that",
+            lead_in="This count is further supported by",
         )
         if support_paragraph:
             rendered.append(support_paragraph)
@@ -2829,6 +2836,22 @@ class FormalComplaintDocumentBuilder:
         if index == 0 and lowered_fragment.startswith(lowered_lead_in + " "):
             fragment = fragment[len(lead_in):].strip()
             lowered_fragment = fragment.lower()
+        if (
+            index == 0
+            and lead_in.endswith(",")
+            and lowered_fragment.startswith("before enforcing a final adverse housing decision,")
+        ):
+            prefix = "Before enforcing a final adverse housing decision,"
+            fragment = fragment[len(prefix):].strip() if fragment.startswith(prefix) else fragment
+            lowered_fragment = fragment.lower()
+        if index == 0 and lead_in.startswith("Defendant was required,"):
+            if lowered_fragment.startswith("defendant was required to provide "):
+                fragment = "provide " + fragment[len("Defendant was required to provide "):].strip()
+                lowered_fragment = fragment.lower()
+            elif lowered_fragment.startswith("before enforcing a final adverse housing decision,"):
+                prefix = "Before enforcing a final adverse housing decision,"
+                fragment = fragment[len(prefix):].strip() if fragment.startswith(prefix) else fragment
+                lowered_fragment = fragment.lower()
 
         prefix_replacements = (
             ("plaintiff alleges that ", ""),
@@ -2856,8 +2879,10 @@ class FormalComplaintDocumentBuilder:
                 fragment = "on " + fragment[len("On "):]
             elif fragment and fragment[0].isupper():
                 fragment = fragment[0].lower() + fragment[1:]
+        elif index == 0 and fragment.startswith("On ") and lead_in.startswith("This count is further supported by"):
+            fragment = "on " + fragment[len("On "):]
 
-        if ": " in fragment and lead_in.startswith("This claim is further supported by"):
+        if ": " in fragment and lead_in.startswith("Authority for this count includes"):
             head, tail = fragment.split(": ", 1)
             if head and tail:
                 fragment = f"{head} {tail[0].lower() + tail[1:]}" if tail[:1].isupper() else f"{head} {tail}"

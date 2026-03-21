@@ -693,6 +693,45 @@ class TestMediatorThreePhaseIntegration:
         assert 'what notice, message, or decision record proves that action' in question.lower()
         assert 'retaliation' in question.lower()
 
+    def test_process_answer_splits_structured_timeline_lines_into_multiple_event_facts(self):
+        denoiser = ComplaintDenoiser()
+        kg = KnowledgeGraphBuilder().build_from_text("HACC retaliated against me after I used the grievance process.")
+
+        question = {
+            'type': 'timeline',
+            'context': {
+                'gap_type': 'retaliation_missing_sequence',
+                'workflow_phase': 'graph_analysis',
+                'extraction_targets': ['exact_dates', 'event_order', 'protected_activity', 'adverse_action'],
+            },
+        }
+        answer = (
+            "- Me (tenant/complainant) | raised concerns and used the grievance process | "
+            "date: January 5, 2026 | artifact: grievance request email\n"
+            "- HACC staff | communicated an adverse action affecting my voucher status | "
+            "date: January 12, 2026 | artifact: status change notice\n"
+            "- Me | requested an informal hearing after that action | "
+            "date: after that action | artifact: hearing request form\n"
+            "- HACC hearing contact | responded without giving appeal-right details | "
+            "date: January 20, 2026 | artifact: response email"
+        )
+
+        updates = denoiser.process_answer(question, answer, kg, None)
+
+        assert updates['entities_updated'] >= 4
+        timeline_facts = [entity for entity in kg.get_entities_by_type('fact') if entity.attributes.get('fact_type') == 'timeline']
+        predicate_families = {entity.attributes.get('predicate_family') for entity in timeline_facts}
+        assert {'protected_activity', 'adverse_action', 'hearing_process', 'response_timeline'}.issubset(predicate_families)
+
+        structured_facts = [
+            entity for entity in timeline_facts
+            if str(entity.attributes.get('structured_timeline_group') or '').startswith('structured_timeline_')
+        ]
+        assert len(structured_facts) >= 4
+        assert sorted(entity.attributes.get('sequence_index') for entity in structured_facts)[:4] == [1, 2, 3, 4]
+        assert any(entity.attributes.get('event_date_or_range') == 'January 5, 2026' for entity in structured_facts)
+        assert any(entity.attributes.get('event_date_or_range') == 'after that action' for entity in structured_facts)
+
     def test_process_denoising_answer_syncs_temporal_relations_into_dependency_graph(self):
         from mediator.mediator import Mediator
 

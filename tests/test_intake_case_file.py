@@ -68,36 +68,33 @@ def test_build_intake_case_file_adds_structured_temporal_context_and_anchor_fiel
         "matched_text": "January 2026",
     }
     assert proof_lead["timeline_anchor_ids"] == []
-    assert intake_case_file["temporal_fact_registry"] == [
-        {
-            **timeline_fact,
-            "fact_id": "fact:1",
-            "temporal_fact_id": "fact:1",
-            "registry_version": "temporal_fact_registry.v1",
-            "claim_types": [],
-            "element_tags": [],
-            "actor_ids": [],
-            "target_ids": [],
-            "event_label": "Employer terminated Plaintiff on January 20, 2026.",
-            "predicate_family": "timeline",
-            "start_time": "2026-01-20",
-            "end_time": "2026-01-20",
-            "granularity": "day",
-            "is_approximate": False,
-            "is_range": False,
-            "relative_markers": [],
-            "timeline_anchor_ids": [timeline_anchor["anchor_id"]],
-            "temporal_context": timeline_fact["temporal_context"],
-            "temporal_status": "anchored",
-            "source_artifact_ids": [],
-            "testimony_record_ids": [],
-            "source_span_refs": [],
-            "confidence": 1.0,
-            "validation_status": "accepted",
-            "source_kind": "knowledge_graph_entity",
-            "source_ref": "fact:1",
-        }
-    ]
+    temporal_fact = intake_case_file["temporal_fact_registry"][0]
+    assert temporal_fact["fact_id"] == "fact:1"
+    assert temporal_fact["temporal_fact_id"] == "fact:1"
+    assert temporal_fact["registry_version"] == "temporal_fact_registry.v1"
+    assert temporal_fact["claim_types"] == []
+    assert temporal_fact["element_tags"] == []
+    assert temporal_fact["actor_ids"] == []
+    assert temporal_fact["target_ids"] == []
+    assert temporal_fact["event_label"] == "Employer terminated Plaintiff on January 20, 2026."
+    assert temporal_fact["predicate_family"] == "timeline"
+    assert temporal_fact["start_time"] == "2026-01-20"
+    assert temporal_fact["end_time"] == "2026-01-20"
+    assert temporal_fact["granularity"] == "day"
+    assert temporal_fact["is_approximate"] is False
+    assert temporal_fact["is_range"] is False
+    assert temporal_fact["relative_markers"] == []
+    assert temporal_fact["timeline_anchor_ids"] == [timeline_anchor["anchor_id"]]
+    assert temporal_fact["temporal_context"] == timeline_fact["temporal_context"]
+    assert temporal_fact["temporal_status"] == "anchored"
+    assert temporal_fact["source_artifact_ids"] == []
+    assert temporal_fact["testimony_record_ids"] == []
+    assert temporal_fact["source_span_refs"] == []
+    assert temporal_fact["confidence"] == 1.0
+    assert temporal_fact["validation_status"] == "accepted"
+    assert temporal_fact["source_kind"] == "knowledge_graph_entity"
+    assert temporal_fact["source_ref"] == "fact:1"
+    assert temporal_fact["event_support_refs"] == ["fact:fact:1"]
     assert intake_case_file["event_ledger"] == [
         {
             **intake_case_file["temporal_fact_registry"][0],
@@ -557,6 +554,88 @@ def test_build_intake_case_file_derives_anchor_dates_from_quantified_relative_re
         for relation in intake_case_file["timeline_relations"]
     )
     assert intake_case_file["temporal_issue_registry"] == []
+
+
+def test_build_intake_case_file_derives_sequence_relations_from_structured_timeline_group():
+    knowledge_graph = KnowledgeGraph()
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:protected",
+            type="fact",
+            name="Protected activity: grievance",
+            attributes={
+                "description": "Me raised concerns and used the grievance process. Artifact: grievance request email",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "event_label": "Protected activity",
+                "event_date_or_range": "January 5, 2026",
+                "event_id": "structured_event_001",
+                "sequence_index": 1,
+                "structured_timeline_group": "structured_timeline_demo",
+                "source_artifact_ids": ["grievance request email"],
+                "event_support_refs": ["grievance request email"],
+            },
+        )
+    )
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:adverse",
+            type="fact",
+            name="Adverse action: voucher status",
+            attributes={
+                "description": "HACC staff communicated an adverse action affecting voucher status. Artifact: status change notice",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "event_label": "Adverse action",
+                "event_id": "structured_event_002",
+                "sequence_index": 2,
+                "structured_timeline_group": "structured_timeline_demo",
+                "source_artifact_ids": ["status change notice"],
+                "event_support_refs": ["status change notice"],
+            },
+        )
+    )
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:hearing",
+            type="fact",
+            name="Hearing request: informal hearing",
+            attributes={
+                "description": "Me requested an informal hearing after that action. Artifact: hearing request form",
+                "fact_type": "timeline",
+                "predicate_family": "hearing_process",
+                "event_label": "Hearing request event",
+                "event_date_or_range": "after that action",
+                "event_id": "structured_event_003",
+                "sequence_index": 3,
+                "structured_timeline_group": "structured_timeline_demo",
+                "source_artifact_ids": ["hearing request form"],
+                "event_support_refs": ["hearing request form"],
+            },
+        )
+    )
+
+    intake_case_file = build_intake_case_file(knowledge_graph)
+
+    canonical_fact_by_id = {fact["fact_id"]: fact for fact in intake_case_file["canonical_facts"]}
+    assert canonical_fact_by_id["fact:protected"]["sequence_index"] == 1
+    assert canonical_fact_by_id["fact:protected"]["source_artifact_ids"] == ["grievance request email"]
+    assert canonical_fact_by_id["fact:hearing"]["event_date_or_range"] == "after that action"
+
+    relation_pairs = {
+        (relation["source_fact_id"], relation["target_fact_id"], relation.get("inference_basis"))
+        for relation in intake_case_file["timeline_relations"]
+    }
+    assert ("fact:protected", "fact:adverse", "structured_timeline_sequence") in relation_pairs
+    assert ("fact:adverse", "fact:hearing", "structured_timeline_sequence") in relation_pairs
+
+    relation_registry = intake_case_file["temporal_relation_registry"]
+    assert any(
+        relation["source_fact_id"] == "fact:protected"
+        and relation["target_fact_id"] == "fact:adverse"
+        and relation["inference_mode"] == "derived_from_structured_sequence"
+        for relation in relation_registry
+    )
 
 
 def test_knowledge_graph_builder_extracts_named_staff_role_titles():
