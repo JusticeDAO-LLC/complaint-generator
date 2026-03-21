@@ -775,6 +775,11 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
         "chronology_blocked": True,
         "chronology_task_count": 1,
         "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        "event_ids": ["event_001"],
+        "temporal_fact_ids": ["fact_001"],
+        "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_issue_ids": ["temporal_issue_001"],
+        "temporal_issue_ids": ["temporal_issue_001"],
         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
@@ -863,6 +868,61 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
 
     builder = FormalComplaintDocumentBuilder(_build_mediator())
     assert builder._build_claim_support_temporal_handoff({"intake_case_summary": intake_case_summary}) == expected
+
+
+def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chronology_registries():
+    intake_case_summary = {
+        "claim_support_packet_summary": {},
+        "alignment_evidence_tasks": [
+            {
+                "claim_type": "retaliation",
+                "claim_element_id": "causation",
+            }
+        ],
+        "event_ledger": [
+            {
+                "event_id": "event-ledger-001",
+                "temporal_fact_id": "fact-ledger-001",
+            }
+        ],
+        "temporal_fact_registry": [
+            {
+                "temporal_fact_id": "fact-ledger-001",
+            }
+        ],
+        "timeline_relations": [
+            {
+                "temporal_relation_id": "relation-ledger-001",
+            }
+        ],
+        "temporal_issue_registry": [
+            {
+                "temporal_issue_id": "issue-open-001",
+                "status": "open",
+            }
+        ],
+    }
+
+    assert document_optimization._build_claim_reasoning_theorem_export_metadata(
+        intake_case_summary,
+        claim_type="retaliation",
+        claim_element_id="causation",
+    ) == {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": "retaliation",
+        "claim_element_id": "causation",
+        "proof_bundle_id": "",
+        "chronology_blocked": True,
+        "chronology_task_count": 0,
+        "unresolved_temporal_issue_ids": ["issue-open-001"],
+        "event_ids": ["event-ledger-001"],
+        "temporal_fact_ids": ["fact-ledger-001"],
+        "temporal_relation_ids": ["relation-ledger-001"],
+        "timeline_issue_ids": ["issue-open-001"],
+        "temporal_issue_ids": ["issue-open-001"],
+        "temporal_proof_bundle_ids": [],
+        "temporal_proof_objectives": [],
+    }
 
 
 def test_formal_complaint_document_builder_exposes_runtime_workflow_phase_plan_from_phase_state():
@@ -2829,6 +2889,11 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                                         'chronology_blocked': True,
                                         'chronology_task_count': 1,
                                         'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+                                        'event_ids': ['event_001'],
+                                        'temporal_fact_ids': ['fact_001'],
+                                        'temporal_relation_ids': ['timeline_relation_001'],
+                                        'timeline_issue_ids': ['temporal_issue_001'],
+                                        'temporal_issue_ids': ['temporal_issue_001'],
                                         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
                                         'temporal_proof_objectives': ['establish_retaliation_sequence'],
                                     },
@@ -2919,6 +2984,11 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
         'chronology_blocked': True,
         'chronology_task_count': 1,
         'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'event_ids': ['event_001'],
+        'temporal_fact_ids': ['fact_001'],
+        'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_issue_ids': ['temporal_issue_001'],
+        'temporal_issue_ids': ['temporal_issue_001'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
@@ -3607,6 +3677,11 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
         'chronology_blocked': True,
         'chronology_task_count': 1,
         'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'event_ids': ['event_001'],
+        'temporal_fact_ids': ['fact_001'],
+        'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_issue_ids': ['temporal_issue_001'],
+        'temporal_issue_ids': ['temporal_issue_001'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
@@ -3631,6 +3706,11 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
         'chronology_blocked': True,
         'chronology_task_count': 1,
         'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'event_ids': ['event_001'],
+        'temporal_fact_ids': ['fact_001'],
+        'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_issue_ids': ['temporal_issue_001'],
+        'temporal_issue_ids': ['temporal_issue_001'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }

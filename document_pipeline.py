@@ -596,6 +596,11 @@ def _build_runtime_workflow_optimization_guidance(
             if isinstance(optimization_report.get("document_grounding_improvement_summary"), dict)
             else intake_case_summary.get("document_grounding_improvement_summary")
         )
+        document_grounding_lane_outcome_summary = (
+            optimization_report.get("document_grounding_lane_outcome_summary")
+            if isinstance(optimization_report.get("document_grounding_lane_outcome_summary"), dict)
+            else intake_case_summary.get("document_grounding_lane_outcome_summary")
+        )
         evidence_workflow_action_queue = (
             intake_case_summary.get("evidence_workflow_action_queue")
             if isinstance(intake_case_summary.get("evidence_workflow_action_queue"), list)
@@ -630,6 +635,11 @@ def _build_runtime_workflow_optimization_guidance(
             and isinstance(document_grounding_improvement_summary, dict)
         ):
             guidance["document_grounding_improvement_summary"] = dict(document_grounding_improvement_summary)
+        if (
+            "document_grounding_lane_outcome_summary" not in guidance
+            and isinstance(document_grounding_lane_outcome_summary, dict)
+        ):
+            guidance["document_grounding_lane_outcome_summary"] = dict(document_grounding_lane_outcome_summary)
         if (
             "document_drafting_next_action" not in guidance
             and isinstance(document_drafting_next_action, dict)
@@ -748,6 +758,15 @@ def _build_runtime_workflow_optimization_guidance(
         else (
             intake_case_summary.get("document_grounding_improvement_summary")
             if isinstance(intake_case_summary.get("document_grounding_improvement_summary"), dict)
+            else {}
+        )
+    )
+    document_grounding_lane_outcome_summary = (
+        optimization_report.get("document_grounding_lane_outcome_summary")
+        if isinstance(optimization_report.get("document_grounding_lane_outcome_summary"), dict)
+        else (
+            intake_case_summary.get("document_grounding_lane_outcome_summary")
+            if isinstance(intake_case_summary.get("document_grounding_lane_outcome_summary"), dict)
             else {}
         )
     )
@@ -896,6 +915,7 @@ def _build_runtime_workflow_optimization_guidance(
         "document_workflow_execution_summary": dict(document_workflow_execution_summary),
         "document_execution_drift_summary": dict(document_execution_drift_summary),
         "document_grounding_improvement_summary": dict(document_grounding_improvement_summary),
+        "document_grounding_lane_outcome_summary": dict(document_grounding_lane_outcome_summary),
         "document_drafting_next_action": dict(document_drafting_next_action),
         "complaint_type_generalization_summary": {
             "complaint_types": claim_types,

@@ -338,6 +338,25 @@ class CLI:
 					f" target={self._humanize_cli_label(str(targeted_claim_elements[0] or ''))}"
 				)
 			lines.append(grounding_line)
+		document_grounding_lane_outcome_summary = (
+			intake_status.get('document_grounding_lane_outcome_summary')
+			if isinstance(intake_status.get('document_grounding_lane_outcome_summary'), dict)
+			else {}
+		)
+		if document_grounding_lane_outcome_summary:
+			attempted_support_kind = self._humanize_cli_label(
+				document_grounding_lane_outcome_summary.get('attempted_support_kind')
+			) or 'Unspecified'
+			outcome_status = self._humanize_cli_label(
+				document_grounding_lane_outcome_summary.get('outcome_status')
+			) or 'Unknown'
+			recommended_support_kind = self._humanize_cli_label(
+				document_grounding_lane_outcome_summary.get('recommended_future_support_kind')
+			)
+			lane_line = f'  grounding_lane: attempted={attempted_support_kind} outcome={outcome_status}'
+			if recommended_support_kind:
+				lane_line += f' recommend={recommended_support_kind}'
+			lines.append(lane_line)
 		return '\n'.join(lines)
 
 	def _format_claim_review_quality_summary(self, claim_coverage_summary):

@@ -71,6 +71,7 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "documentWorkflowExecutionSummary.iteration_count" in content
     assert "documentExecutionDriftSummary.top_targeted_claim_element" in content
     assert "documentGroundingImprovementSummary.fact_backed_ratio_delta" in content
+    assert "documentGroundingLaneOutcomeSummary.recommended_future_support_kind" in content
     assert "Workflow Targeting Summary" in content
     assert "workflow-targeting-summary-block" in content
     assert "workflow-targeting-summary-chips" in content
@@ -80,8 +81,15 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Document Grounding Improvement Summary" in content
     assert "document-grounding-improvement-summary-block" in content
     assert "document-grounding-improvement-summary-chips" in content
+    assert "Document Grounding Lane Outcome Summary" in content
+    assert "document-grounding-lane-outcome-summary-block" in content
+    assert "document-grounding-lane-outcome-summary-chips" in content
     assert "grounding recovery: ${escapeHtml(groundingStatus)}" in content
     assert "fact-backed ratio delta: ${groundingDelta.toFixed(2)}" in content
+    assert "attempted lane: ${humanizeQueryValue(laneAttemptedSupportKind)}" in content
+    assert "lane outcome: ${humanizeQueryValue(laneOutcomeStatus)}" in content
+    assert "learned next lane: ${humanizeQueryValue(laneRecommendedSupportKind)}" in content
+    assert "Recent grounding outcomes now favor ${humanizeQueryValue(laneRecommendedSupportKind)} for the next recovery pass." in content
     assert "Grounding recovery improved the draft's fact-backed ratio" in content
     assert "Grounding recovery did not materially improve the draft's fact-backed ratio" in content
     assert "drafting priority: realign to ${humanizeQueryValue(resolvedTopTargetedElement)}" in content

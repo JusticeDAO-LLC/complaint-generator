@@ -630,6 +630,11 @@ def _build_review_workflow_priority(
     intake_case_summary: Dict[str, Any],
     workflow_phase_priority: Dict[str, Any],
 ) -> Dict[str, Any]:
+    document_grounding_lane_outcome_summary = (
+        intake_case_summary.get("document_grounding_lane_outcome_summary")
+        if isinstance(intake_case_summary.get("document_grounding_lane_outcome_summary"), dict)
+        else {}
+    )
     document_grounding_improvement_next_action = (
         intake_case_summary.get("document_grounding_improvement_next_action")
         if isinstance(intake_case_summary.get("document_grounding_improvement_next_action"), dict)
@@ -638,8 +643,11 @@ def _build_review_workflow_priority(
     if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
         claim_element_id = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
         preferred_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
+        suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
         focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "").strip()
         status = str(document_grounding_improvement_next_action.get("status") or "stalled").strip().lower() or "stalled"
+        attempted_support_kind = str(document_grounding_lane_outcome_summary.get("attempted_support_kind") or "").strip()
+        learned_support_kind = str(document_grounding_lane_outcome_summary.get("recommended_future_support_kind") or "").strip()
         chip_labels = [f"grounding status: {humanize_workflow_priority_label(status)}"]
         if claim_element_id:
             chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
@@ -647,18 +655,29 @@ def _build_review_workflow_priority(
             chip_labels.append(f"focus section: {humanize_workflow_priority_label(focus_section)}")
         if preferred_support_kind:
             chip_labels.append(f"current support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
+        if attempted_support_kind and attempted_support_kind != preferred_support_kind:
+            chip_labels.append(f"attempted lane: {humanize_workflow_priority_label(attempted_support_kind)}")
+        if learned_support_kind:
+            chip_labels.append(f"learned next lane: {humanize_workflow_priority_label(learned_support_kind)}")
+        elif suggested_support_kind:
+            chip_labels.append(f"suggested next lane: {humanize_workflow_priority_label(suggested_support_kind)}")
+        notes = [
+            str(
+                document_grounding_improvement_next_action.get("description")
+                or "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle."
+            ).strip(),
+            "Review the factual allegations and try a different support lane or narrower claim-element target before continuing broad document revisions.",
+        ]
+        if learned_support_kind:
+            notes.append(
+                f"Recent grounding cycles suggest {humanize_workflow_priority_label(learned_support_kind)} is the stronger lane for the next recovery pass."
+            )
         return {
             "status": "warning",
             "status_id": "refine_document_grounding_strategy",
             "title": "Refine document grounding strategy",
             "chip_labels": chip_labels,
-            "notes": [
-                str(
-                    document_grounding_improvement_next_action.get("description")
-                    or "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle."
-                ).strip(),
-                "Review the factual allegations and try a different support lane or narrower claim-element target before continuing broad document revisions.",
-            ],
+            "notes": notes,
             "buttons": [
                 _build_review_workflow_priority_button(
                     "intake-next-action-review-grounding-strategy",
@@ -3933,6 +3952,11 @@ def build_claim_support_review_payload(
         "document_grounding_improvement_summary": (
             dict(intake_case_summary.get("document_grounding_improvement_summary") or {})
             if isinstance(intake_case_summary.get("document_grounding_improvement_summary"), dict)
+            else {}
+        ),
+        "document_grounding_lane_outcome_summary": (
+            dict(intake_case_summary.get("document_grounding_lane_outcome_summary") or {})
+            if isinstance(intake_case_summary.get("document_grounding_lane_outcome_summary"), dict)
             else {}
         ),
         "document_grounding_improvement_next_action": (

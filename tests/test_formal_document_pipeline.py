@@ -1384,6 +1384,11 @@ def test_document_api_annotation_promotes_document_grounding_improvement_next_ac
             "preferred_support_kinds": ["authority"],
             "recovery_attempted_flag": True,
         },
+        "document_grounding_lane_outcome_summary": {
+            "attempted_support_kind": "authority",
+            "outcome_status": "stalled",
+            "recommended_future_support_kind": "testimony",
+        },
         "document_grounding_recovery_action": {
             "action": "recover_document_grounding",
             "phase_name": "document_generation",
@@ -1441,11 +1446,17 @@ def test_document_api_annotation_promotes_document_grounding_improvement_next_ac
         "recovery_attempted_flag": True,
         "targeted_claim_elements": ["protected_activity"],
         "preferred_support_kinds": ["authority"],
+        "learned_support_kind": "testimony",
+    }
+    assert payload["review_links"]["document_grounding_lane_outcome_summary"] == {
+        "attempted_support_kind": "authority",
+        "outcome_status": "stalled",
+        "recommended_future_support_kind": "testimony",
     }
     assert payload["review_links"]["workflow_priority"] == {
         "status": "warning",
         "title": "Refine document grounding strategy",
-        "description": "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle for protected_activity by trying testimony instead of authority.",
+        "description": "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle for protected_activity by trying testimony instead of authority. Learned lane preference now favors Testimony.",
         "action_label": "Review grounding strategy",
         "action_url": "/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=factual_allegations&follow_up_support_kind=testimony",
         "action_kind": "link",
@@ -1454,6 +1465,7 @@ def test_document_api_annotation_promotes_document_grounding_improvement_next_ac
             "grounding status: Stalled",
             "target element: Protected Activity",
             "current support lane: Authority",
+            "learned next lane: Testimony",
             "grounding delta: +0.00",
         ],
     }

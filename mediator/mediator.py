@@ -881,6 +881,17 @@ class Mediator:
 				return dict(document_provenance_summary)
 		return {}
 
+	def _get_document_grounding_lane_outcome_summary(self) -> Dict[str, Any]:
+		explicit_summary = self.phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, 'document_grounding_lane_outcome_summary')
+		if isinstance(explicit_summary, dict) and explicit_summary:
+			return dict(explicit_summary)
+		formal_complaint = self.phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint')
+		if isinstance(formal_complaint, dict):
+			lane_summary = formal_complaint.get('document_grounding_lane_outcome_summary')
+			if isinstance(lane_summary, dict) and lane_summary:
+				return dict(lane_summary)
+		return {}
+
 	def _get_document_grounding_recovery_action(
 		self,
 		*,
@@ -927,6 +938,7 @@ class Mediator:
 				provisional_evidence_workflow_action_queue=provisional_evidence_workflow_action_queue,
 				alignment_evidence_tasks=alignment_evidence_tasks,
 			),
+			self._get_document_grounding_lane_outcome_summary(),
 		)
 
 	def _summarize_evidence_workflow_action_queue(self, queue: Any) -> Dict[str, Any]:
@@ -9059,6 +9071,13 @@ class Mediator:
 						'document_grounding_improvement_next_action',
 						dict(document_grounding_improvement_next_action),
 					)
+			document_grounding_lane_outcome_summary = formal_complaint.get('document_grounding_lane_outcome_summary')
+			if isinstance(document_grounding_lane_outcome_summary, dict) and document_grounding_lane_outcome_summary:
+				self.phase_manager.update_phase_data(
+					ComplaintPhase.FORMALIZATION,
+					'document_grounding_lane_outcome_summary',
+					dict(document_grounding_lane_outcome_summary),
+				)
 		
 		result = {
 			'formal_complaint': formal_complaint,
@@ -9367,6 +9386,7 @@ class Mediator:
 			'evidence_workflow_action_queue': evidence_workflow_action_queue if isinstance(evidence_workflow_action_queue, list) else [],
 			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
 			'document_provenance_summary': self._get_document_provenance_summary(),
+			'document_grounding_lane_outcome_summary': self._get_document_grounding_lane_outcome_summary(),
 			'document_grounding_improvement_next_action': self._get_document_grounding_improvement_next_action(
 				provisional_evidence_workflow_action_queue=evidence_workflow_action_queue,
 				alignment_evidence_tasks=alignment_evidence_tasks,

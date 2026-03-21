@@ -2798,6 +2798,11 @@ def test_claim_support_review_payload_promotes_document_grounding_improvement_ne
             "preferred_support_kinds": ["authority"],
             "recovery_attempted_flag": True,
         },
+        "document_grounding_lane_outcome_summary": {
+            "attempted_support_kind": "authority",
+            "outcome_status": "regressed",
+            "recommended_future_support_kind": "testimony",
+        },
         "document_grounding_recovery_action": {
             "action": "recover_document_grounding",
             "phase_name": "document_generation",
@@ -2829,6 +2834,11 @@ def test_claim_support_review_payload_promotes_document_grounding_improvement_ne
         ClaimSupportReviewRequest(claim_type="retaliation"),
     )
 
+    assert payload["document_grounding_lane_outcome_summary"] == {
+        "attempted_support_kind": "authority",
+        "outcome_status": "regressed",
+        "recommended_future_support_kind": "testimony",
+    }
     assert payload["document_grounding_improvement_next_action"] == {
         "action": "refine_document_grounding_strategy",
         "phase_name": "document_generation",
@@ -2846,6 +2856,7 @@ def test_claim_support_review_payload_promotes_document_grounding_improvement_ne
         "recovery_attempted_flag": True,
         "targeted_claim_elements": ["protected_activity"],
         "preferred_support_kinds": ["authority"],
+        "learned_support_kind": "testimony",
     }
     assert payload["workflow_priority"] == {
         "status": "warning",
@@ -2856,10 +2867,12 @@ def test_claim_support_review_payload_promotes_document_grounding_improvement_ne
             "target element: Protected Activity",
             "focus section: Factual Allegations",
             "current support lane: Authority",
+            "learned next lane: Testimony",
         ],
         "notes": [
             "Grounding recovery regressed; switch support lanes or retarget the next grounding cycle for protected_activity by trying testimony instead of authority.",
             "Review the factual allegations and try a different support lane or narrower claim-element target before continuing broad document revisions.",
+            "Recent grounding cycles suggest Testimony is the stronger lane for the next recovery pass.",
         ],
         "buttons": [
             {

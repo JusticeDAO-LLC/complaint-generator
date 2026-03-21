@@ -2897,6 +2897,9 @@
             const documentGroundingImprovementSummary = intakeCaseSummary.document_grounding_improvement_summary && typeof intakeCaseSummary.document_grounding_improvement_summary === 'object'
                 ? intakeCaseSummary.document_grounding_improvement_summary
                 : {};
+            const documentGroundingLaneOutcomeSummary = intakeCaseSummary.document_grounding_lane_outcome_summary && typeof intakeCaseSummary.document_grounding_lane_outcome_summary === 'object'
+                ? intakeCaseSummary.document_grounding_lane_outcome_summary
+                : {};
             const workflowPhasePlan = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_plan && typeof reviewRenderState.payload.workflow_phase_plan === 'object'
                 ? reviewRenderState.payload.workflow_phase_plan
                 : {};
@@ -3210,6 +3213,21 @@
                     : `Grounding recovery did not materially improve the draft's fact-backed ratio (${groundingInitialRatio.toFixed(2)} to ${groundingFinalRatio.toFixed(2)}).`;
                 workflowPhaseGuidanceCard.hidden = false;
                 workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-grounding-improvement-summary-block" style="margin-top: 10px;"><strong>Document Grounding Improvement Summary</strong><div class="chip-row" id="document-grounding-improvement-summary-chips" style="margin-top: 8px;">${groundingChips.join('')}</div><div id="document-grounding-improvement-summary-notes" style="margin-top: 8px;">${escapeHtml(groundingNotes)}</div></div>`;
+            }
+            const laneAttemptedSupportKind = String(documentGroundingLaneOutcomeSummary.attempted_support_kind || '').trim();
+            const laneOutcomeStatus = String(documentGroundingLaneOutcomeSummary.outcome_status || '').trim();
+            const laneRecommendedSupportKind = String(documentGroundingLaneOutcomeSummary.recommended_future_support_kind || '').trim();
+            if (laneAttemptedSupportKind || laneOutcomeStatus || laneRecommendedSupportKind) {
+                const laneOutcomeChips = [
+                    laneAttemptedSupportKind ? `<span class="chip">attempted lane: ${humanizeQueryValue(laneAttemptedSupportKind)}</span>` : '',
+                    laneOutcomeStatus ? `<span class="chip">lane outcome: ${humanizeQueryValue(laneOutcomeStatus)}</span>` : '',
+                    laneRecommendedSupportKind ? `<span class="chip">learned next lane: ${humanizeQueryValue(laneRecommendedSupportKind)}</span>` : '',
+                ].filter(Boolean);
+                const laneOutcomeNotes = laneRecommendedSupportKind
+                    ? `Recent grounding outcomes now favor ${humanizeQueryValue(laneRecommendedSupportKind)} for the next recovery pass.`
+                    : 'Grounding lane outcomes are available for the current draft recovery cycle.';
+                workflowPhaseGuidanceCard.hidden = false;
+                workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-grounding-lane-outcome-summary-block" style="margin-top: 10px;"><strong>Document Grounding Lane Outcome Summary</strong><div class="chip-row" id="document-grounding-lane-outcome-summary-chips" style="margin-top: 8px;">${laneOutcomeChips.join('')}</div><div id="document-grounding-lane-outcome-summary-notes" style="margin-top: 8px;">${escapeHtml(laneOutcomeNotes)}</div></div>`;
             }
 
             if (recentValidationOutcome.claim_element_id || recentValidationOutcome.claim_type) {

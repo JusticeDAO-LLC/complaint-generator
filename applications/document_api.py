@@ -362,6 +362,11 @@ def _build_document_review_workflow_priority(
     claim_review_map: Dict[str, Dict[str, Any]],
     section_review_map: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
+    document_grounding_lane_outcome_summary = (
+        intake_case_summary.get("document_grounding_lane_outcome_summary")
+        if isinstance(intake_case_summary.get("document_grounding_lane_outcome_summary"), dict)
+        else {}
+    )
     document_grounding_improvement_next_action = (
         intake_case_summary.get("document_grounding_improvement_next_action")
         if isinstance(intake_case_summary.get("document_grounding_improvement_next_action"), dict)
@@ -372,6 +377,8 @@ def _build_document_review_workflow_priority(
         claim_type = str(document_grounding_improvement_next_action.get("claim_type") or default_claim_type or "").strip()
         preferred_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
         suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
+        attempted_support_kind = str(document_grounding_lane_outcome_summary.get("attempted_support_kind") or "").strip()
+        learned_support_kind = str(document_grounding_lane_outcome_summary.get("recommended_future_support_kind") or "").strip()
         action_url = _append_review_query_params(
             _resolve_document_review_url(
                 user_id=user_id,
@@ -415,16 +422,28 @@ def _build_document_review_workflow_priority(
             chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
         if preferred_support_kind:
             chip_labels.append(f"current support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
+        if attempted_support_kind and attempted_support_kind != preferred_support_kind:
+            chip_labels.append(f"attempted lane: {humanize_workflow_priority_label(attempted_support_kind)}")
+        if learned_support_kind:
+            chip_labels.append(f"learned next lane: {humanize_workflow_priority_label(learned_support_kind)}")
+        elif suggested_support_kind:
+            chip_labels.append(f"suggested next lane: {humanize_workflow_priority_label(suggested_support_kind)}")
         chip_labels.append(
             f"grounding delta: {float(document_grounding_improvement_next_action.get('fact_backed_ratio_delta') or 0.0):+.2f}"
         )
+        description = str(
+            document_grounding_improvement_next_action.get("description")
+            or "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle."
+        ).strip()
+        if learned_support_kind:
+            description = (
+                f"{description} Learned lane preference now favors "
+                f"{humanize_workflow_priority_label(learned_support_kind)}."
+            )
         return {
             "status": "warning",
             "title": "Refine document grounding strategy",
-            "description": str(
-                document_grounding_improvement_next_action.get("description")
-                or "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle."
-            ).strip(),
+            "description": description,
             "action_label": "Review grounding strategy",
             "action_url": action_url,
             "action_kind": "link",
@@ -1204,6 +1223,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         "document_grounding_improvement_summary": (
             dict(intake_case_summary.get("document_grounding_improvement_summary") or {})
             if isinstance(intake_case_summary.get("document_grounding_improvement_summary"), dict)
+            else {}
+        ),
+        "document_grounding_lane_outcome_summary": (
+            dict(intake_case_summary.get("document_grounding_lane_outcome_summary") or {})
+            if isinstance(intake_case_summary.get("document_grounding_lane_outcome_summary"), dict)
             else {}
         ),
         "document_grounding_improvement_next_action": (

@@ -2274,6 +2274,7 @@ class Optimizer:
                         "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
                         "document_provenance_summary": dict(report.document_provenance_summary or {}),
                         "document_grounding_improvement_summary": dict(report.document_grounding_improvement_summary or {}),
+                        "document_grounding_lane_outcome_summary": dict(report.document_grounding_lane_outcome_summary or {}),
                         "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                         "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                         "report_summary": {
@@ -2291,6 +2292,7 @@ class Optimizer:
                             "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
                             "document_provenance_summary": dict(report.document_provenance_summary or {}),
                             "document_grounding_improvement_summary": dict(report.document_grounding_improvement_summary or {}),
+                            "document_grounding_lane_outcome_summary": dict(report.document_grounding_lane_outcome_summary or {}),
                             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
                             "cross_phase_findings": list(report.cross_phase_findings or []),
@@ -2359,6 +2361,7 @@ class Optimizer:
             "document_evidence_targeting_summary": dict(report.document_evidence_targeting_summary or {}),
             "document_provenance_summary": dict(report.document_provenance_summary or {}),
             "document_grounding_improvement_summary": dict(report.document_grounding_improvement_summary or {}),
+            "document_grounding_lane_outcome_summary": dict(report.document_grounding_lane_outcome_summary or {}),
             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
             "cross_phase_findings": list(report.cross_phase_findings or []),

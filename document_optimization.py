@@ -818,6 +818,8 @@ def _build_claim_reasoning_theorem_export_metadata(
     packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
     alignment_tasks = summary.get("alignment_evidence_tasks")
     alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+    temporal_handoff = _build_claim_support_temporal_handoff(summary)
+    temporal_handoff = temporal_handoff if isinstance(temporal_handoff, dict) else {}
 
     normalized_claim_type = str(claim_type or "").strip()
     normalized_claim_element_id = str(claim_element_id or "").strip()
@@ -842,11 +844,49 @@ def _build_claim_reasoning_theorem_export_metadata(
 
     selected_task = matching_task or fallback_task
     unresolved_temporal_issue_ids = _dedupe_text_values(
-        selected_task.get("temporal_issue_ids") or packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
+        selected_task.get("temporal_issue_ids")
+        or temporal_handoff.get("unresolved_temporal_issue_ids")
+        or packet_summary.get("claim_support_unresolved_temporal_issue_ids")
+        or []
     )
-    proof_bundle_id = str(selected_task.get("temporal_proof_bundle_id") or "").strip()
-    proof_objective = str(selected_task.get("temporal_proof_objective") or "").strip()
-    chronology_task_count = int(packet_summary.get("temporal_gap_task_count", 0) or 0)
+    event_ids = _dedupe_text_values(
+        selected_task.get("event_ids") or temporal_handoff.get("event_ids") or []
+    )
+    temporal_fact_ids = _dedupe_text_values(
+        selected_task.get("temporal_fact_ids") or temporal_handoff.get("temporal_fact_ids") or []
+    )
+    temporal_relation_ids = _dedupe_text_values(
+        selected_task.get("temporal_relation_ids") or temporal_handoff.get("temporal_relation_ids") or []
+    )
+    timeline_issue_ids = _dedupe_text_values(
+        selected_task.get("timeline_issue_ids")
+        or temporal_handoff.get("timeline_issue_ids")
+        or unresolved_temporal_issue_ids
+    )
+    temporal_issue_ids = _dedupe_text_values(
+        selected_task.get("temporal_issue_ids")
+        or temporal_handoff.get("temporal_issue_ids")
+        or unresolved_temporal_issue_ids
+    )
+    temporal_proof_bundle_ids = _dedupe_text_values(
+        ([selected_task.get("temporal_proof_bundle_id")] if selected_task.get("temporal_proof_bundle_id") else [])
+        or temporal_handoff.get("temporal_proof_bundle_ids")
+        or []
+    )
+    temporal_proof_objectives = _dedupe_text_values(
+        ([selected_task.get("temporal_proof_objective")] if selected_task.get("temporal_proof_objective") else [])
+        or temporal_handoff.get("temporal_proof_objectives")
+        or []
+    )
+    proof_bundle_id = str(
+        selected_task.get("temporal_proof_bundle_id")
+        or (temporal_proof_bundle_ids[0] if temporal_proof_bundle_ids else "")
+    ).strip()
+    chronology_task_count = int(
+        temporal_handoff.get("chronology_task_count")
+        or packet_summary.get("temporal_gap_task_count", 0)
+        or 0
+    )
 
     metadata_claim_element_id = str(
         selected_task.get("claim_element_id") or normalized_claim_element_id
@@ -857,11 +897,21 @@ def _build_claim_reasoning_theorem_export_metadata(
         "claim_type": normalized_claim_type,
         "claim_element_id": metadata_claim_element_id,
         "proof_bundle_id": proof_bundle_id,
-        "chronology_blocked": bool(unresolved_temporal_issue_ids or chronology_task_count),
+        "chronology_blocked": bool(
+            chronology_task_count
+            or unresolved_temporal_issue_ids
+            or timeline_issue_ids
+            or temporal_issue_ids
+        ),
         "chronology_task_count": chronology_task_count,
         "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
-        "temporal_proof_bundle_ids": [proof_bundle_id] if proof_bundle_id else [],
-        "temporal_proof_objectives": [proof_objective] if proof_objective else [],
+        "event_ids": event_ids,
+        "temporal_fact_ids": temporal_fact_ids,
+        "temporal_relation_ids": temporal_relation_ids,
+        "timeline_issue_ids": timeline_issue_ids,
+        "temporal_issue_ids": temporal_issue_ids,
+        "temporal_proof_bundle_ids": temporal_proof_bundle_ids,
+        "temporal_proof_objectives": temporal_proof_objectives,
     }
     if not any(
         metadata[key]
@@ -870,6 +920,11 @@ def _build_claim_reasoning_theorem_export_metadata(
             "claim_element_id",
             "proof_bundle_id",
             "unresolved_temporal_issue_ids",
+            "event_ids",
+            "temporal_fact_ids",
+            "temporal_relation_ids",
+            "timeline_issue_ids",
+            "temporal_issue_ids",
             "temporal_proof_bundle_ids",
             "temporal_proof_objectives",
         )

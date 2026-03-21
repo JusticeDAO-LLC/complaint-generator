@@ -133,13 +133,18 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'top_targeted_claim_element': 'protected_activity',
                 'first_executed_claim_element': 'causation',
             },
-            'document_grounding_improvement_summary': {
-                'initial_fact_backed_ratio': 0.2,
-                'final_fact_backed_ratio': 0.45,
-                'fact_backed_ratio_delta': 0.25,
-                'improved_flag': True,
-                'targeted_claim_elements': ['protected_activity'],
-            },
+        'document_grounding_improvement_summary': {
+            'initial_fact_backed_ratio': 0.2,
+            'final_fact_backed_ratio': 0.45,
+            'fact_backed_ratio_delta': 0.25,
+            'improved_flag': True,
+            'targeted_claim_elements': ['protected_activity'],
+        },
+        'document_grounding_lane_outcome_summary': {
+            'attempted_support_kind': 'authority',
+            'outcome_status': 'improved',
+            'recommended_future_support_kind': 'testimony',
+        },
         },
         'claim_coverage_summary': {
             'retaliation': {
@@ -287,6 +292,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'document_execution: iterations=2 accepted=1 first=Claims For Relief / Causation [Testimony]' in rendered
     assert 'drafting_priority: realign to Protected Activity before further revisions (executed Causation first)' in rendered
     assert 'grounding_recovery: improved delta=+0.25 from=0.20 to=0.45 target=Protected Activity' in rendered
+    assert 'grounding_lane: attempted=Authority outcome=Improved recommend=Testimony' in rendered
     assert 'claim review quality summary:' in rendered
     assert '- retaliation: low_quality=2 issue_elements=1 avg_quality=62.50 authority_supportive=1 authority_adverse=1 authority_uncertain=1' in rendered
     assert 'refresh: Causal connection' in rendered
