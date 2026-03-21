@@ -239,10 +239,12 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
 
     tasks, report = optimizer.build_phase_patch_tasks(
         [result],
-        method="actor_critic",
         components={
             "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
-            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizationMethod": SimpleNamespace(
+                ACTOR_CRITIC="ACTOR_CRITIC",
+                TEST_DRIVEN="TEST_DRIVEN",
+            ),
             "OptimizerLLMRouter": None,
             "optimizer_classes": {},
         },
@@ -253,7 +255,7 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
 
     assert emitted_names == ordered_names
     assert any("document_pipeline.py" in [str(path) for path in task.target_files] for task in tasks)
-    assert all(task.method == "ACTOR_CRITIC" for task in tasks)
+    assert all(task.method == "TEST_DRIVEN" for task in tasks)
     intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
     graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
     document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
@@ -317,11 +319,13 @@ def test_build_phase_patch_tasks_can_skip_ready_workflow_steps():
 
     tasks, report = optimizer.build_phase_patch_tasks(
         [result],
-        method="actor_critic",
         include_ready_phases=False,
         components={
             "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
-            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizationMethod": SimpleNamespace(
+                ACTOR_CRITIC="ACTOR_CRITIC",
+                TEST_DRIVEN="TEST_DRIVEN",
+            ),
             "OptimizerLLMRouter": None,
             "optimizer_classes": {},
         },
@@ -355,10 +359,12 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
 
     bundle, report = optimizer.build_workflow_optimization_bundle(
         [result],
-        method="actor_critic",
         components={
             "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
-            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizationMethod": SimpleNamespace(
+                ACTOR_CRITIC="ACTOR_CRITIC",
+                TEST_DRIVEN="TEST_DRIVEN",
+            ),
             "OptimizerLLMRouter": None,
             "optimizer_classes": {},
         },
@@ -383,6 +389,7 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
     assert "document_handoff_summary" in payload["shared_context"]
     assert payload["phase_scorecards"]["document_generation"]["status"] in {"critical", "warning", "ready"}
     assert payload["cross_phase_findings"]
+    assert all(task["method"] == "TEST_DRIVEN" for task in payload["phase_tasks"])
 
 
 def test_analyze_builds_cross_phase_scorecards_and_document_handoff_summary():
