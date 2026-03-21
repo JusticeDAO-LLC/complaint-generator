@@ -221,9 +221,18 @@ def test_factual_allegations_use_complaint_style_missing_detail_language():
         claims_for_relief=[],
     )
 
-    assert any("exact date of the HACC hearing or review request remains to be confirmed" in item for item in allegations)
+    assert any(
+        ("exact date of HACC's hearing or review request remains to be confirmed" in item)
+        or ("exact date of the Housing Authority's hearing or review request remains to be confirmed" in item)
+        for item in allegations
+    )
     assert any("exact dates of the notice, response, and final decision have not yet been confirmed" in item for item in allegations)
-    assert any("does not yet identify by name the HACC official" in item for item in allegations)
+    assert any(
+        ("does not yet identify by name the HACC official" in item)
+        or ("does not yet identify by name the official at HACC" in item)
+        or ("does not yet identify by name the official at the Housing Authority" in item)
+        for item in allegations
+    )
     assert any("occurred in close sequence" in item for item in allegations)
     assert all("the complaint should state" not in item.lower() for item in allegations)
     assert all("should be identified with exact dates" not in item.lower() for item in allegations)
@@ -246,6 +255,10 @@ def test_factual_allegations_synthesize_policy_violation_allegations_from_notice
     )
     assert any(
         "failed to provide the informal review, grievance, or appeal process" in item
+        for item in allegations
+    )
+    assert any(
+        ("denial of assistance" in item) or ("denied Plaintiff housing assistance" in item)
         for item in allegations
     )
     assert any(("the Housing Authority" in item) or ("HACC" in item) for item in allegations)
@@ -275,5 +288,51 @@ def test_factual_allegations_dedupe_raw_policy_restatement_when_violation_allega
     )
     assert not any(
         item.startswith("As to Housing Discrimination, notice to the Applicant requires prompt written notice")
+        for item in allegations
+    )
+
+
+def test_factual_allegations_use_case_specific_adverse_action_clause_when_available():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "On March 3, 2026, HACC sent Plaintiff a written denial notice after Plaintiff requested a grievance hearing.",
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+            "Scheduling an Informal Review requires a written request for review.",
+        ],
+        claims_for_relief=[],
+    )
+
+    assert any(
+        "Plaintiff further alleges that on March 3, 2026, HACC sent Plaintiff a written denial notice after Plaintiff requested a grievance hearing, without the notice and review protections described in the governing process."
+        in item
+        for item in allegations
+    )
+
+
+def test_factual_allegations_preserve_case_specific_bridge_when_claim_facts_are_prefixed():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "On March 3, 2026, HACC sent Plaintiff a written denial notice after Plaintiff requested a grievance hearing.",
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+            "Scheduling an Informal Review requires a written request for review.",
+        ],
+        claims_for_relief=[
+            {
+                "claim_type": "housing_discrimination",
+                "count_title": "Housing Discrimination",
+                "supporting_facts": [
+                    "On March 3, 2026, HACC sent Plaintiff a written denial notice after Plaintiff requested a grievance hearing.",
+                ],
+            }
+        ],
+    )
+
+    assert any(
+        "Plaintiff further alleges that on March 3, 2026, HACC sent Plaintiff a written denial notice after Plaintiff requested a grievance hearing, without the notice and review protections described in the governing process."
+        in item
         for item in allegations
     )

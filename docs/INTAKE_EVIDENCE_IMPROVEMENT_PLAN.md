@@ -32,9 +32,13 @@ The original version of this plan assumed several chronology and workflow object
 
 - [complaint_phases/intake_case_file.py](/home/barberb/complaint-generator/complaint_phases/intake_case_file.py) `refresh_intake_case_file(...)` now rebuilds `timeline_anchors`, `timeline_relations`, `temporal_fact_registry`, `event_ledger`, `temporal_relation_registry`, and `temporal_issue_registry` from normalized intake facts.
 - [intake_status.py](/home/barberb/complaint-generator/intake_status.py) `build_intake_case_review_summary(...)` already preserves additive cross-phase data for `event_ledger_summary`, `alignment_evidence_tasks`, `alignment_task_summary`, `workflow_targeting_summary`, `document_workflow_execution_summary`, `document_execution_drift_summary`, and `intake_summary_handoff`.
+- [intake_status.py](/home/barberb/complaint-generator/intake_status.py) `build_intake_case_review_summary(...)` now also preserves the full `event_ledger`, `timeline_anchors`, `timeline_relations`, `temporal_fact_registry`, `temporal_relation_registry`, and `temporal_issue_registry`, so downstream consumers no longer need to reconstruct chronology from summaries alone.
 - [intake_status.py](/home/barberb/complaint-generator/intake_status.py) `build_intake_status_summary(...)` already exposes a compact `document_drafting_next_action` derived from execution drift, which means the intake summary boundary now carries operator-facing drafting repair guidance.
 - [mediator/claim_support_hooks.py](/home/barberb/complaint-generator/mediator/claim_support_hooks.py) already treats coverage matrix, validation, gaps, contradiction candidates, traces, packets, and snapshots as the evidence-support execution seam, and those payloads preserve `intake_summary_handoff`.
 - [mediator/evidence_hooks.py](/home/barberb/complaint-generator/mediator/evidence_hooks.py) already merges confirmed intake handoff metadata into stored evidence provenance and artifact metadata, so intake confirmation survives into evidence persistence.
+- [mediator/mediator.py](/home/barberb/complaint-generator/mediator/mediator.py) `_summarize_intake_evidence_alignment(...)` and `_build_alignment_evidence_tasks(...)` already propagate chronology refs such as `event_ids`, `temporal_fact_ids`, `temporal_relation_ids`, `timeline_issue_ids`, `temporal_issue_ids`, and `temporal_proof_bundle_id` into Phase 2 task payloads.
+- [complaint_phases/phase_manager.py](/home/barberb/complaint-generator/complaint_phases/phase_manager.py) already treats unresolved temporal registry issues and chronology gap tasks as readiness blockers, and its `proof_readiness_score` now applies an explicit chronology penalty instead of relying only on generic support ratios.
+- [claim_support_review.py](/home/barberb/complaint-generator/claim_support_review.py), [document_optimization.py](/home/barberb/complaint-generator/document_optimization.py), and [document_pipeline.py](/home/barberb/complaint-generator/document_pipeline.py) now preserve chronology blocker explanations through review, optimization, and exported package or packet payloads via `claim_support_temporal_handoff`, theorem export metadata, and `chronology_blocker_summary`.
 - [claim_support_review.py](/home/barberb/complaint-generator/claim_support_review.py) and [document_optimization.py](/home/barberb/complaint-generator/document_optimization.py) already consume the normalized intake/evidence summaries instead of rebuilding workflow logic in the UI layer.
 
 That changes the implementation posture. The next iteration does not need to invent chronology-first plumbing from scratch. It needs to promote the existing chronology and workflow objects from summary-friendly state into durable cross-phase execution contracts.
@@ -56,10 +60,11 @@ The current intake-to-evidence path is already concentrated in a small number of
 The chronology gap is now narrower than the original version of this plan assumed.
 
 - Phase 1 already builds a canonical `event_ledger` plus anchor, relation, and temporal-issue registries inside the intake case file.
-- Phase 2 still identifies most temporal work from claim-support packet metadata such as `temporal_rule_status`, `temporal_rule_blocking_reasons`, and `temporal_rule_follow_ups` instead of consuming the full ledger directly.
-- The cross-phase boundary currently preserves `event_ledger_summary`, not the full `event_ledger` object. That is good enough for review and optimization summaries, but not ideal for theorem-grade chronology reuse.
-- Workflow summaries such as `alignment_task_summary`, `workflow_targeting_summary`, and `document_execution_drift_summary` now exist, but they still sit one level above the underlying chronology objects.
-- The next iteration should therefore focus on making evidence tasks, readiness gates, and proof exports read stable event, relation, anchor, and issue identifiers directly rather than inferring chronology from packet summaries.
+- Phase 2 now carries chronology refs, but it still leans on packet-derived `temporal_rule_status`, `temporal_rule_blocking_reasons`, and `temporal_rule_follow_ups` to decide what chronology work exists. The event ledger is available, but it is not yet the authoritative task-generation source.
+- The cross-phase boundary now preserves the full chronology objects, but some downstream payloads still collapse them into aggregated task or blocker summaries before proof consumers can use the raw anchor and relation records.
+- Alignment tasks already carry `event_ids`, relation refs, issue refs, and proof-bundle refs, but they do not yet consistently expose `anchor_ids`, `missing_temporal_predicates`, or `required_provenance_kinds`.
+- `_apply_intake_answer_to_case_file(...)` already appends chronology-aware canonical facts, but chronology updates still rely too much on later intake-case-file refreshes to rebuild the durable ledger rather than explicitly authoring event, anchor, and relation objects at answer-application time.
+- The next iteration should therefore focus on making the event ledger the authored source of truth, enriching temporal tasks with predicate-grade proof requirements, and preserving that raw chronology contract all the way into theorem and proof consumers without summary loss.
 
 ## Diagnosis
 
@@ -342,6 +347,11 @@ Each temporal evidence task should additionally carry:
 - `missing_temporal_predicates`
 - `required_provenance_kinds`
 
+Current status:
+
+- `event_ids`, `temporal_fact_ids`, `temporal_relation_ids`, `timeline_issue_ids`, `temporal_issue_ids`, and `temporal_proof_bundle_id` already flow through `alignment_evidence_tasks`.
+- The remaining work is to add explicit `anchor_ids`, predicate-grade chronology requirements, and provenance-kind requirements so a temporal task can explain exactly what evidence would close the chronology gap.
+
 That change lets Phase 2 ask for the exact missing chronology proof, for example "anchor the complaint date", "prove protected activity occurred before termination", or "resolve contradictory notice dates", instead of only reporting that a packet element is temporally weak.
 
 ### 2. Move from element labels to minimum fact bundles
@@ -469,10 +479,19 @@ The following state additions should be preserved through [intake_status.py](/ho
 - `alignment_evidence_tasks[].missing_fact_bundle`
 - `alignment_evidence_tasks[].fallback_support_kinds`
 - `alignment_evidence_tasks[].source_quality_target`
+- `alignment_evidence_tasks[].event_ids`
+- `alignment_evidence_tasks[].temporal_fact_ids`
+- `alignment_evidence_tasks[].temporal_relation_ids`
+- `alignment_evidence_tasks[].timeline_issue_ids`
+- `alignment_evidence_tasks[].temporal_issue_ids`
+- `alignment_evidence_tasks[].temporal_proof_bundle_id`
 - `claim_support_packets[].elements[].missing_fact_bundle`
 - `claim_support_packets[].elements[].satisfied_fact_bundle`
 - `claim_support_packets[].elements[].support_quality`
 - `claim_support_packet_summary.proof_readiness_score`
+- `claim_support_packet_summary.temporal_gap_task_count`
+- `claim_support_packet_summary.claim_support_unresolved_temporal_issue_ids`
+- `chronology_blocker_summary`
 
 ## Review and Operator Surfaces
 
@@ -491,13 +510,14 @@ The important architectural rule is to extend normalized status builders and led
 
 ### Milestone 0: Chronology-first intake and evidence handoff
 
-Current status: partially complete
+Current status: mostly complete
 
-- preserve and expose the full event-ledger contract across the intake-to-evidence boundary, not only `event_ledger_summary`
-- update intake answer application so chronology answers create or update stable event, anchor, and relation records directly instead of relying on post-refresh derivation alone
-- make evidence alignment summaries carry event, relation, anchor, and issue refs into `alignment_evidence_tasks`
-- extend readiness and packet summaries so unresolved temporal issues remain first-class blockers while also pointing at the exact blocked chronology objects
-- preserve the full chronology contract through [intake_status.py](../intake_status.py), review payloads, persisted document refreshes, and optimization traces
+- completed: preserve and expose the full event-ledger contract across the intake-to-evidence boundary, not only `event_ledger_summary`
+- completed: make evidence alignment summaries carry event, relation, and issue refs into `alignment_evidence_tasks`
+- completed: extend readiness and packet summaries so unresolved temporal issues remain first-class blockers while also pointing at exact blocked chronology counts and IDs
+- completed: preserve chronology blocker state through [intake_status.py](../intake_status.py), review payloads, persisted document refreshes, optimization traces, and exported document package or packet payloads
+- remaining: update intake answer application so chronology answers create or update stable event, anchor, and relation records directly instead of relying on post-refresh derivation alone
+- remaining: add anchor-specific refs and predicate-grade chronology requirements to temporal evidence tasks and proof exports
 
 ### Milestone 1: Intake structure and question policy
 
@@ -547,15 +567,14 @@ Relevant current suites include:
 - [tests/test_claim_support_hooks.py](/home/barberb/complaint-generator/tests/test_claim_support_hooks.py)
 - [tests/test_document_pipeline.py](/home/barberb/complaint-generator/tests/test_document_pipeline.py)
 
-## Recommended First Implementation Slice
+## Recommended Next Implementation Slice
 
-The highest-leverage first slice is:
+The highest-leverage next slice is:
 
-1. expose the full `event_ledger` contract through [intake_status.py](../intake_status.py) alongside the existing `event_ledger_summary`, with stable `event_id`, `anchor_id`, `relation_id`, `issue_id`, and provenance refs preserved unchanged
-2. make `_apply_intake_answer_to_case_file(...)` in [mediator/mediator.py](../mediator/mediator.py) update event records explicitly at answer-application time so chronology is authored once instead of reconstructed later from facts
-3. enrich `_summarize_intake_evidence_alignment(...)` and `_build_alignment_evidence_tasks(...)` in [mediator/mediator.py](../mediator/mediator.py) so temporal tasks carry direct event, relation, anchor, and issue refs plus explicit temporal proof objectives
-4. extend [mediator/claim_support_hooks.py](../mediator/claim_support_hooks.py) so validation and gaps emit `missing_fact_bundle`, `satisfied_fact_bundle`, and chronology-specific predicate requirements rather than only element-level support status
-5. tighten [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py) readiness and evidence packet gates so chronology blockers reference the exact unresolved ledger objects and not only aggregate counts
-6. keep [claim_support_review.py](../claim_support_review.py), [document_optimization.py](../document_optimization.py), and [document_pipeline.py](../document_pipeline.py) on the normalized-summary path, but feed those summaries from the stronger shared ledger and task-board contracts
+1. make `_apply_intake_answer_to_case_file(...)` in [mediator/mediator.py](../mediator/mediator.py) update event, anchor, and relation records explicitly at answer-application time so chronology is authored once instead of reconstructed later from facts
+2. enrich `_summarize_intake_evidence_alignment(...)` and `_build_alignment_evidence_tasks(...)` in [mediator/mediator.py](../mediator/mediator.py) so temporal tasks carry `anchor_ids`, `missing_temporal_predicates`, and `required_provenance_kinds` in addition to the event and issue refs already present
+3. extend [mediator/claim_support_hooks.py](../mediator/claim_support_hooks.py) so validation and gaps emit chronology-specific predicate requirements alongside `missing_fact_bundle` and `satisfied_fact_bundle`, rather than stopping at element-level support status plus temporal-rule summaries
+4. tighten [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py) readiness and evidence packet gates so chronology blockers can reference exact unresolved ledger objects, not only counts and ID lists
+5. keep [claim_support_review.py](../claim_support_review.py), [document_optimization.py](../document_optimization.py), and [document_pipeline.py](../document_pipeline.py) on the normalized-summary path, but feed those summaries from the stronger authored ledger and predicate-grade task-board contracts
 
-That slice uses the implementation that already exists, closes the summary-vs-contract gap, and creates a cleaner handoff from intake chronology to evidence execution, review, drafting, and theorem export.
+That slice uses the implementation that already exists, closes the remaining authored-ledger gap, and creates a cleaner handoff from intake chronology to evidence execution, review, drafting, theorem export, and proof consumers.

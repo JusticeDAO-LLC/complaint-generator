@@ -1396,8 +1396,18 @@ class FormalComplaintDocumentBuilder:
             draft["document_provenance_summary"] = dict(draft.get("document_provenance_summary") or {})
         draft["filing_checklist"] = filing_checklist
         draft["affidavit"] = self._build_affidavit(draft)
+        intake_case_summary = (
+            document_optimization.get("intake_case_summary")
+            if isinstance(document_optimization, dict)
+            and isinstance(document_optimization.get("intake_case_summary"), dict)
+            else build_intake_case_review_summary(self.mediator)
+        )
         claim_support_temporal_handoff = self._build_claim_support_temporal_handoff(document_optimization)
         claim_reasoning_review = self._build_claim_reasoning_review(document_optimization)
+        chronology_blocker_summary = self._build_chronology_blocker_summary(
+            intake_case_summary=intake_case_summary,
+            claim_support_temporal_handoff=claim_support_temporal_handoff,
+        )
         formalization_gate = self._build_formalization_gate_payload(drafting_readiness)
         source_context = draft.get("source_context") if isinstance(draft.get("source_context"), dict) else {}
         enriched_source_context = dict(source_context)
@@ -1405,6 +1415,8 @@ class FormalComplaintDocumentBuilder:
             enriched_source_context["claim_support_temporal_handoff"] = claim_support_temporal_handoff
         if claim_reasoning_review:
             enriched_source_context["claim_reasoning_review"] = claim_reasoning_review
+        if chronology_blocker_summary:
+            enriched_source_context["chronology_blocker_summary"] = chronology_blocker_summary
         if formalization_gate:
             enriched_source_context["formalization_gate"] = formalization_gate
         if enriched_source_context:
@@ -1455,6 +1467,8 @@ class FormalComplaintDocumentBuilder:
             package_payload["claim_support_temporal_handoff"] = claim_support_temporal_handoff
         if claim_reasoning_review:
             package_payload["claim_reasoning_review"] = claim_reasoning_review
+        if chronology_blocker_summary:
+            package_payload["chronology_blocker_summary"] = chronology_blocker_summary
         return package_payload
 
     def build_draft(
@@ -2031,6 +2045,62 @@ class FormalComplaintDocumentBuilder:
         ):
             return {}
         return temporal_handoff
+
+    def _build_chronology_blocker_summary(
+        self,
+        *,
+        intake_case_summary: Any,
+        claim_support_temporal_handoff: Any,
+    ) -> Dict[str, Any]:
+        summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
+        packet_summary = summary.get("claim_support_packet_summary")
+        packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
+        alignment_task_summary = summary.get("alignment_task_summary")
+        alignment_task_summary = alignment_task_summary if isinstance(alignment_task_summary, dict) else {}
+        handoff = dict(claim_support_temporal_handoff or {}) if isinstance(claim_support_temporal_handoff, dict) else {}
+
+        unresolved_issue_ids = _dedupe_text_values(
+            packet_summary.get("claim_support_unresolved_temporal_issue_ids")
+            or handoff.get("unresolved_temporal_issue_ids")
+            or []
+        )
+        unresolved_issue_count = int(
+            packet_summary.get("claim_support_unresolved_temporal_issue_count")
+            or handoff.get("unresolved_temporal_issue_count")
+            or len(unresolved_issue_ids)
+            or 0
+        )
+        temporal_gap_task_count = int(
+            packet_summary.get("temporal_gap_task_count")
+            or alignment_task_summary.get("temporal_gap_task_count")
+            or 0
+        )
+        proof_readiness_score = float(packet_summary.get("proof_readiness_score", 0.0) or 0.0)
+        chronology_blocked = bool(unresolved_issue_count > 0 or temporal_gap_task_count > 0)
+        if not chronology_blocked and proof_readiness_score <= 0.0 and not unresolved_issue_ids:
+            return {}
+
+        summary_parts: List[str] = []
+        if temporal_gap_task_count > 0:
+            task_label = "task" if temporal_gap_task_count == 1 else "tasks"
+            summary_parts.append(f"{temporal_gap_task_count} pending chronology gap {task_label}")
+        if unresolved_issue_count > 0:
+            issue_label = "issue" if unresolved_issue_count == 1 else "issues"
+            summary_parts.append(f"{unresolved_issue_count} unresolved temporal {issue_label}")
+        summary_text = (
+            f"Chronology blockers remain: {'; '.join(summary_parts)}."
+            if summary_parts
+            else "No chronology blockers currently reduce proof readiness."
+        )
+
+        return {
+            "chronology_blocked": chronology_blocked,
+            "proof_readiness_score": round(proof_readiness_score, 3),
+            "temporal_gap_task_count": temporal_gap_task_count,
+            "unresolved_temporal_issue_count": unresolved_issue_count,
+            "unresolved_temporal_issue_ids": unresolved_issue_ids,
+            "summary": summary_text,
+        }
 
     def _build_claim_reasoning_review(self, document_optimization: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
@@ -3328,7 +3398,7 @@ class FormalComplaintDocumentBuilder:
                 flags.add("adverse")
             if re.search(r"\b(lost|suffered|experienced|benefits|wages|salary|income|opportunities)\b", lowered):
                 flags.add("harm")
-            if re.search(r"\b(notice|informal review|hearing|grievance|appeal|due process)\b", lowered):
+            if re.search(r"\b(notice|informal review|review protections?|hearing|grievance|appeal|due process)\b", lowered):
                 flags.add("policy_process")
             return flags
 
@@ -3363,8 +3433,10 @@ class FormalComplaintDocumentBuilder:
                 flags.add("opportunities")
             if re.search(r"\bnotice to the applicant\b|\bwritten notice\b", lowered):
                 flags.add("notice")
-            if re.search(r"\binformal review\b|\bhearing\b|\bgrievance\b|\bappeal\b", lowered):
+            if re.search(r"\binformal review\b|\breview protections?\b|\bhearing\b|\bgrievance\b|\bappeal\b", lowered):
                 flags.add("review_process")
+            if re.search(r"\b(denial notice|denied assistance|denying assistance|loss of assistance|terminated assistance|termination)\b", lowered):
+                flags.add("denial_action")
             if re.search(r"\bwithout providing\b|\bfailed to provide\b|\bshould have accompanied\b", lowered):
                 flags.add("process_violation")
             return flags
@@ -3381,6 +3453,17 @@ class FormalComplaintDocumentBuilder:
                 existing_features = _features(existing)
                 if not candidate_tokens or not existing_tokens:
                     continue
+                if (
+                    "without the notice and review protections described in the governing process" in candidate.lower()
+                    and "without the notice and review protections described in the governing process" not in existing.lower()
+                    and "denial notice" in candidate.lower()
+                    and "denial notice" in existing.lower()
+                    and _contains_date_anchor(candidate)
+                    and _contains_date_anchor(existing)
+                ):
+                    kept[index] = candidate
+                    skip = True
+                    break
                 if not (candidate_categories & existing_categories):
                     continue
                 overlap = len(candidate_tokens & existing_tokens) / max(1, min(len(candidate_tokens), len(existing_tokens)))
@@ -3395,6 +3478,17 @@ class FormalComplaintDocumentBuilder:
                     skip = True
                     break
                 if "policy_process" in candidate_categories and "policy_process" in existing_categories:
+                    if (
+                        "denial_action" in candidate_features
+                        and "denial_action" in existing_features
+                        and "process_violation" in candidate_features
+                        and "process_violation" not in existing_features
+                    ):
+                        kept[index] = candidate
+                        skip = True
+                        break
+                    if "denial_action" in candidate_features ^ existing_features:
+                        continue
                     if (
                         "process_violation" in candidate_features
                         and "process_violation" not in existing_features
@@ -3490,14 +3584,45 @@ class FormalComplaintDocumentBuilder:
             )
         return fallbacks
 
-    def _build_policy_process_allegations(self, allegations: List[str]) -> List[str]:
-        if not allegations:
+    def _build_policy_process_allegations(
+        self,
+        allegations: List[str],
+        source_allegations: Optional[List[str]] = None,
+    ) -> List[str]:
+        source_pool = [str(item or "").strip() for item in (source_allegations or allegations) if str(item or "").strip()]
+        if not allegations and not source_pool:
             return []
-        combined = " ".join(str(item or "") for item in allegations)
+        combined = " ".join(source_pool or [str(item or "") for item in allegations])
         lowered = combined.lower()
         references_notice = "written notice" in lowered or "notice to the applicant" in lowered or "notice" in lowered
         references_review = any(token in lowered for token in ("informal review", "grievance", "appeal", "hearing"))
-        actor_label = self._infer_actor_label_from_allegations(allegations)
+        references_denial = any(
+            token in lowered
+            for token in ("denying assistance", "denial notice", "denied assistance", "loss of assistance", "termination", "voucher")
+        )
+        actor_label = self._infer_actor_label_from_allegations(source_pool or allegations)
+
+        case_specific_adverse_clause = ""
+        for text in source_pool:
+            lowered_text = text.lower()
+            if not _contains_date_anchor(text):
+                continue
+            if any(
+                token in lowered_text
+                for token in ("denial notice", "denied assistance", "denying assistance", "loss of assistance", "termination")
+            ):
+                case_specific_adverse_clause = text.rstrip(".!?")
+                break
+
+        adverse_action_phrase = "denied Plaintiff housing assistance, or maintained the challenged loss of assistance"
+        if "denial notice" in lowered:
+            adverse_action_phrase = "issued a denial notice and denied Plaintiff housing assistance"
+        elif "denying assistance" in lowered or "denied assistance" in lowered:
+            adverse_action_phrase = "issued or maintained a denial of assistance"
+        elif "loss of assistance" in lowered:
+            adverse_action_phrase = "maintained the challenged loss of assistance"
+        elif "termination" in lowered:
+            adverse_action_phrase = "terminated or threatened to terminate Plaintiff's assistance"
 
         synthesized: List[str] = []
         if references_notice and not any(
@@ -3516,6 +3641,23 @@ class FormalComplaintDocumentBuilder:
             synthesized.append(
                 f"Plaintiff further alleges that {actor_label} failed to provide the informal review, grievance, or appeal process that should have accompanied the challenged action."
             )
+        if references_denial and not any(
+            "without the notice and review protections described in the governing process" in str(item).lower()
+            or "without providing the prompt written notice required" in str(item).lower()
+            for item in allegations
+        ):
+            if case_specific_adverse_clause:
+                lead_in = "Plaintiff further alleges that"
+                normalized_clause = case_specific_adverse_clause
+                if re.match(r"^(On|By|After|Before|During)\b", case_specific_adverse_clause):
+                    normalized_clause = case_specific_adverse_clause[0].lower() + case_specific_adverse_clause[1:]
+                synthesized.append(
+                    f"{lead_in} {normalized_clause}, without the notice and review protections described in the governing process."
+                )
+            else:
+                synthesized.append(
+                    f"Plaintiff further alleges that {actor_label} {adverse_action_phrase} without the notice and review protections described in the governing process."
+                )
         return synthesized
 
     def _build_factual_allegations(
@@ -3557,7 +3699,7 @@ class FormalComplaintDocumentBuilder:
                     return self._prune_near_duplicate_allegations(allegations)
 
         pruned = self._prune_near_duplicate_allegations(allegations)
-        pruned.extend(self._build_policy_process_allegations(pruned))
+        pruned.extend(self._build_policy_process_allegations(pruned, base_allegations))
         pruned.extend(self._build_missing_detail_allegations(pruned))
         pruned = self._prune_near_duplicate_allegations(pruned)
         return pruned[:24] or ["Additional factual development is required before filing."]
@@ -4516,6 +4658,7 @@ class FormalComplaintDocumentBuilder:
             "generated_at": source_context.get("generated_at") or _utcnow().isoformat(),
             "claim_support_temporal_handoff": dict(source_context.get("claim_support_temporal_handoff") or {}) if isinstance(source_context.get("claim_support_temporal_handoff"), dict) else {},
             "claim_reasoning_review": deepcopy(source_context.get("claim_reasoning_review") or {}) if isinstance(source_context.get("claim_reasoning_review"), dict) else {},
+            "chronology_blocker_summary": deepcopy(source_context.get("chronology_blocker_summary") or {}) if isinstance(source_context.get("chronology_blocker_summary"), dict) else {},
             "source_context": source_context,
             "case_caption": {
                 "plaintiffs": case_caption.get("plaintiffs", []),
