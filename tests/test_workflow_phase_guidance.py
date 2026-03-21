@@ -106,6 +106,7 @@ def test_document_generation_phase_guidance_supports_review_and_drafting_context
             "claim_support_packet_summary": {
                 "proof_readiness_score": 0.9,
                 "claim_support_unresolved_temporal_issue_count": 0,
+                "temporal_gap_task_count": 0,
                 "claim_support_unresolved_without_review_path_count": 0,
             }
         },
@@ -123,6 +124,8 @@ def test_document_generation_phase_guidance_supports_review_and_drafting_context
     assert review_phase["status"] == "ready"
     assert review_phase["summary"] == "Review state indicates the complaint can move into formal complaint drafting."
     assert review_phase["signals"]["proof_readiness_score"] == 0.9
+    assert review_phase["signals"]["chronology_blocked"] is False
+    assert review_phase["signals"]["temporal_gap_task_count"] == 0
 
     assert drafting_phase["status"] == "warning"
     assert drafting_phase["summary"] == "Document generation still has 1 section warning(s) and 1 claim warning(s) to review."
@@ -131,6 +134,28 @@ def test_document_generation_phase_guidance_supports_review_and_drafting_context
         "Run another document-optimization pass or accept the draft with recorded review warnings.",
     ]
     assert drafting_phase["signals"]["optimization_final_score"] == 0.62
+
+
+def test_document_generation_phase_guidance_blocks_on_temporal_gap_tasks_even_without_issue_ids():
+    review_phase = build_review_document_generation_phase_guidance(
+        intake_status={"next_action": {"action": "generate_formal_complaint"}},
+        intake_case_summary={
+            "claim_support_packet_summary": {
+                "proof_readiness_score": 0.88,
+                "claim_support_unresolved_temporal_issue_count": 0,
+                "temporal_gap_task_count": 2,
+                "claim_support_unresolved_without_review_path_count": 0,
+            }
+        },
+    )
+
+    assert review_phase["status"] == "warning"
+    assert review_phase["signals"]["chronology_blocked"] is True
+    assert review_phase["signals"]["temporal_gap_task_count"] == 2
+    assert review_phase["recommended_actions"] == [
+        "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
+        "Resolve outstanding chronology gap tasks and temporal issue blockers before generating a formal complaint.",
+    ]
 
 
 def test_resolve_prioritized_workflow_phase_normalizes_phase_context():

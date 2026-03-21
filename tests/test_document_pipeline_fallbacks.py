@@ -208,3 +208,22 @@ def test_factual_allegations_exclude_internal_evidence_ranking_narration():
 
     assert any("Notice to the Applicant requires prompt written notice" in item for item in allegations)
     assert all("strongest supporting material" not in item.lower() for item in allegations)
+
+
+def test_factual_allegations_use_complaint_style_missing_detail_language():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+            "HACC policy describes scheduling and procedures for informal review.",
+        ],
+        claims_for_relief=[],
+    )
+
+    assert any("exact date of the HACC hearing or review request remains to be confirmed" in item for item in allegations)
+    assert any("exact dates of the notice, response, and final decision have not yet been confirmed" in item for item in allegations)
+    assert any("does not yet identify by name the HACC official" in item for item in allegations)
+    assert any("occurred in close sequence" in item for item in allegations)
+    assert all("the complaint should state" not in item.lower() for item in allegations)
+    assert all("should be identified with exact dates" not in item.lower() for item in allegations)

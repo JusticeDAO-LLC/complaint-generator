@@ -419,6 +419,22 @@ def _contains_staff_identity_marker(value: Any) -> bool:
     )
 
 
+def _contains_sequence_timing_marker(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "days after",
+            "weeks after",
+            "before",
+            "after",
+            "thereafter",
+            "shortly after",
+            "in close sequence",
+        )
+    )
+
+
 def _contains_confirmation_placeholder(value: Any) -> bool:
     return bool(_CONFIRMATION_PLACEHOLDER_PATTERN.search(str(value or "")))
 
@@ -3380,6 +3396,50 @@ class FormalComplaintDocumentBuilder:
         pruned = self._prune_near_duplicate_allegations([*existing, candidate])
         return len(pruned) == len(existing)
 
+    def _build_missing_detail_allegations(self, allegations: List[str]) -> List[str]:
+        if not allegations:
+            return []
+        combined = " ".join(str(item or "") for item in allegations)
+        lowered = combined.lower()
+        references_notice = "notice" in lowered
+        references_review = any(token in lowered for token in ("informal review", "hearing", "grievance", "appeal"))
+        references_hacc = "hacc" in lowered
+        actor_label = "HACC" if references_hacc else "Defendant"
+
+        fallbacks: List[str] = []
+        if not any(_contains_hearing_timing_marker(line) for line in allegations):
+            if references_review:
+                fallbacks.append(
+                    f"The present record indicates that Plaintiff sought review of the challenged action, but the exact date of the {actor_label} hearing or review request remains to be confirmed."
+                )
+            else:
+                fallbacks.append(
+                    "The present record indicates that Plaintiff challenged the adverse action, but the exact date of that request for review remains to be confirmed."
+                )
+        if not any(_contains_response_date_marker(line) for line in allegations):
+            if references_notice and references_review:
+                fallbacks.append(
+                    f"The current record further indicates deficiencies in {actor_label}'s notice and review process, although the exact dates of the notice, response, and final decision have not yet been confirmed."
+                )
+            elif references_notice:
+                fallbacks.append(
+                    f"The current record indicates that {actor_label} issued or should have issued written notice, but the exact notice and response dates have not yet been confirmed."
+                )
+        if not any(_contains_staff_identity_marker(line) for line in allegations):
+            if references_notice or references_review:
+                fallbacks.append(
+                    f"The present record does not yet identify by name the {actor_label} official who issued the notice or handled Plaintiff's request for review."
+                )
+            else:
+                fallbacks.append(
+                    f"The present record does not yet identify by name the responsible {actor_label} decisionmaker."
+                )
+        if not any(_contains_sequence_timing_marker(line) for line in allegations):
+            fallbacks.append(
+                "The current chronology indicates that the protected activity, challenged notice, and resulting adverse treatment occurred in close sequence, although the precise intervals still require confirmation."
+            )
+        return fallbacks
+
     def _build_factual_allegations(
         self,
         *,
@@ -3419,22 +3479,8 @@ class FormalComplaintDocumentBuilder:
                     return self._prune_near_duplicate_allegations(allegations)
 
         pruned = self._prune_near_duplicate_allegations(allegations)
-        if pruned and not any(_contains_hearing_timing_marker(line) for line in pruned):
-            pruned.append(
-                "Plaintiff requested an informal review or hearing on [date], and the complaint should state when that request was made in relation to each adverse-action step."
-            )
-        if pruned and not any(_contains_response_date_marker(line) for line in pruned):
-            pruned.append(
-                "HACC response dates for notice, hearing/review requests, and final decision communications should be identified with exact dates."
-            )
-        if pruned and not any(_contains_staff_identity_marker(line) for line in pruned):
-            pruned.append(
-                "For each key event, the complaint should identify the HACC staff member by name and title, or by the best-known title if the name is not yet confirmed."
-            )
-        if pruned and not any("days after" in str(line).lower() or "weeks after" in str(line).lower() for line in pruned):
-            pruned.append(
-                "The complaint should describe the sequence between protected activity and adverse treatment using concrete timing, including whether action occurred days or weeks after protected activity."
-            )
+        pruned.extend(self._build_missing_detail_allegations(pruned))
+        pruned = self._prune_near_duplicate_allegations(pruned)
         return pruned[:24] or ["Additional factual development is required before filing."]
 
     def _build_factual_allegation_entries(

@@ -232,10 +232,16 @@ def build_review_document_generation_phase_guidance(
         else {}
     )
     unresolved_temporal_issue_count = _coerce_int(packet_summary.get("claim_support_unresolved_temporal_issue_count"), 0)
+    temporal_gap_task_count = _coerce_int(packet_summary.get("temporal_gap_task_count"), 0)
     unresolved_review_path_count = _coerce_int(packet_summary.get("claim_support_unresolved_without_review_path_count"), 0)
     proof_readiness_score = float(packet_summary.get("proof_readiness_score", 0.0) or 0.0)
+    chronology_blocked = unresolved_temporal_issue_count > 0 or temporal_gap_task_count > 0
 
-    if next_action_name in {"generate_formal_complaint", "complete_evidence"} and unresolved_temporal_issue_count <= 0:
+    if (
+        next_action_name in {"generate_formal_complaint", "complete_evidence"}
+        and not chronology_blocked
+        and unresolved_review_path_count <= 0
+    ):
         status = "ready"
         summary = "Review state indicates the complaint can move into formal complaint drafting."
         actions: List[str] = []
@@ -245,6 +251,10 @@ def build_review_document_generation_phase_guidance(
         actions = [
             "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
         ]
+        if chronology_blocked:
+            actions.append(
+                "Resolve outstanding chronology gap tasks and temporal issue blockers before generating a formal complaint."
+            )
 
     return {
         "priority": 1,
@@ -253,7 +263,9 @@ def build_review_document_generation_phase_guidance(
         "signals": {
             "recommended_next_action": next_action_name,
             "proof_readiness_score": proof_readiness_score,
+            "chronology_blocked": chronology_blocked,
             "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+            "temporal_gap_task_count": temporal_gap_task_count,
             "unresolved_without_review_path_count": unresolved_review_path_count,
         },
         "recommended_actions": actions,
