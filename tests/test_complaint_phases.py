@@ -912,6 +912,51 @@ class TestComplaintDenoiser:
         assert questions[0]['context']['claim_element_id'] == 'protected_activity'
         assert questions[1]['context']['alignment_task'] is True
         assert questions[1]['context']['claim_element_id'] == 'causation'
+
+    def test_generate_evidence_questions_can_retarget_document_grounding_after_failed_learned_lane(self):
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+
+        questions = denoiser.generate_evidence_questions(
+            kg,
+            dg,
+            evidence_gaps=[],
+            alignment_evidence_tasks=[],
+            evidence_workflow_action_queue=[
+                {
+                    'rank': 1,
+                    'phase_name': 'document_generation',
+                    'status': 'warning',
+                    'action': 'retarget document grounding',
+                    'action_code': 'retarget_document_grounding',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'suggested_claim_element_id': 'causation',
+                    'preferred_support_kind': 'authority',
+                    'learned_support_kind': 'testimony',
+                    'suggested_support_kind': 'testimony',
+                    'alternate_support_kinds': ['testimony', 'evidence'],
+                    'missing_fact_bundle': ['Complaint timing'],
+                    'learned_support_lane_priority': True,
+                    'focus_areas': ['protected_activity', 'testimony'],
+                }
+            ],
+            max_questions=2,
+        )
+
+        assert questions
+        assert questions[0]['context']['workflow_action'] is True
+        assert questions[0]['context']['document_grounding_retargeting'] is True
+        assert questions[0]['context']['learned_support_lane_priority'] is True
+        assert questions[0]['context']['learned_support_kind'] == 'testimony'
+        assert questions[0]['context']['claim_element_id'] == 'causation'
+        assert questions[0]['context']['original_claim_element_id'] == 'protected_activity'
+        assert 'did not improve grounding enough' in questions[0]['question'].lower()
+        assert 'instead of staying on protected activity' in questions[0]['question'].lower()
+        assert 'complaint timing' in questions[0]['question'].lower()
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

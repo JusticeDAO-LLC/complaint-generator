@@ -3937,7 +3937,8 @@ class AgenticDocumentOptimizer:
         )
         grounding_focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "").strip()
         if (
-            str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy"
+            str(document_grounding_improvement_next_action.get("action") or "").strip().lower()
+            in {"refine_document_grounding_strategy", "retarget_document_grounding"}
             and grounding_focus_section in self.VALID_FOCUS_SECTIONS
         ):
             return grounding_focus_section
@@ -4102,23 +4103,36 @@ class AgenticDocumentOptimizer:
             if isinstance(support_context.get("document_grounding_improvement_next_action"), dict)
             else {}
         )
-        if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
-            target_claim_element = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
+        grounding_action_code = str(document_grounding_improvement_next_action.get("action") or "").strip().lower()
+        if grounding_action_code in {"refine_document_grounding_strategy", "retarget_document_grounding"}:
+            target_claim_element = str(
+                document_grounding_improvement_next_action.get("suggested_claim_element_id")
+                or document_grounding_improvement_next_action.get("claim_element_id")
+                or ""
+            ).strip()
+            original_claim_element = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
             current_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
             suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
             candidate_rows.append(
                 {
                     "claim_type": "document_generation",
                     "text": (
-                        f"Refine grounding for {target_claim_element.replace('_', ' ')}"
-                        + (
-                            f" by trying {suggested_support_kind.replace('_', ' ')} instead of {current_support_kind.replace('_', ' ')}."
-                            if target_claim_element and suggested_support_kind and current_support_kind
-                            else "."
+                        (
+                            f"Retarget grounding from {original_claim_element.replace('_', ' ')} to {target_claim_element.replace('_', ' ')}."
+                            if grounding_action_code == "retarget_document_grounding" and target_claim_element and original_claim_element and target_claim_element != original_claim_element
+                            else (
+                                f"Refine grounding for {target_claim_element.replace('_', ' ')}"
+                                + (
+                                    f" by trying {suggested_support_kind.replace('_', ' ')} instead of {current_support_kind.replace('_', ' ')}."
+                                    if target_claim_element and suggested_support_kind and current_support_kind
+                                    else "."
+                                )
+                            )
                         )
                     ),
                     "kind": "document_grounding_improvement_next_action",
                     "claim_element_id": target_claim_element,
+                    "original_claim_element_id": original_claim_element,
                     "preferred_support_kind": suggested_support_kind or current_support_kind,
                     "focus_section": str(document_grounding_improvement_next_action.get("focus_section") or "").strip(),
                 }

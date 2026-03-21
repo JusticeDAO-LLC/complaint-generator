@@ -325,3 +325,225 @@ PATTERNS = [
 
     assert len(hits) == 1
     assert hits[0]["snippet"] == "HACC policy describes scheduling and procedures for informal review."
+
+
+def test_repository_grounding_refines_python_source_snippet_away_from_meta_literal(tmp_path, monkeypatch):
+    source = tmp_path / "synthesize_hacc_complaint.py"
+    source.write_text(
+        '''
+META = "These policy excerpts frame the notice theory and summarize what HACC policy appears to require for written notice or adverse-action disclosures."
+POLICY = "Notice to the Applicant requires prompt written notice of a decision denying assistance."
+''',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [source])
+    monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: tmp_path)
+
+    hits = hacc_evidence_module._build_repository_grounding_hits(
+        query="written notice denial assistance",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Notice to the Applicant", "written notice", "denial assistance"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        top_k=1,
+    )
+
+    assert len(hits) == 1
+    assert hits[0]["snippet"] == "Notice to the Applicant requires prompt written notice of a decision denying assistance."
+
+
+def test_build_hacc_evidence_seed_summary_uses_policy_snippet_not_meta_grounding_text():
+    payload = {
+        "results": [
+            {
+                "title": "synthesize_hacc_complaint.py",
+                "source_path": "/tmp/synthesize_hacc_complaint.py",
+                "snippet": "These policy excerpts frame the notice theory and summarize what HACC policy appears to require for written notice.",
+                "metadata": {"grounding_mode": "repository_fallback"},
+            }
+        ],
+        "search_summary": {
+            "requested_search_mode": "repository_fallback",
+            "effective_search_mode": "repository_fallback",
+        },
+    }
+    grounding_bundle = {
+        "upload_candidates": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "relative_path": "scripts/synthesize_hacc_complaint.py",
+                "source_path": "/tmp/admin-plan.txt",
+                "snippet": "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+                "score": 9.5,
+                "source_type": "repository_grounding",
+                "metadata": {"grounding_mode": "repository_fallback"},
+            }
+        ],
+        "mediator_evidence_packets": [],
+        "synthetic_prompts": {},
+        "search_summary": payload["search_summary"],
+    }
+
+    seed = hacc_evidence_module.build_hacc_evidence_seed(
+        payload,
+        query="notice to the applicant written notice",
+        complaint_type="housing_discrimination",
+        category="housing",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Notice to the Applicant", "written notice"],
+        grounding_bundle=grounding_bundle,
+    )
+
+    assert seed is not None
+    assert "These policy excerpts frame" not in seed["summary"]
+    assert "Notice to the Applicant requires prompt written notice" in seed["summary"]
+
+
+def test_build_hacc_evidence_seed_summary_skips_question_prompt_text():
+    payload = {
+        "results": [
+            {
+                "title": "synthesize_hacc_complaint.py",
+                "source_path": "/tmp/synthesize_hacc_complaint.py",
+                "snippet": "What written notice, informal review, grievance hearing, or appeal rights were provided, requested, denied, or ignored?",
+                "metadata": {"grounding_mode": "repository_fallback"},
+            }
+        ],
+        "search_summary": {
+            "requested_search_mode": "repository_fallback",
+            "effective_search_mode": "repository_fallback",
+        },
+    }
+    grounding_bundle = {
+        "upload_candidates": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "relative_path": "tests/test_hacc_evidence_loader.py",
+                "source_path": "/tmp/admin-plan.txt",
+                "snippet": "Notice to the Applicant requires prompt written notice before denying assistance.",
+                "score": 8.5,
+                "source_type": "repository_grounding",
+                "metadata": {"grounding_mode": "repository_fallback"},
+            }
+        ],
+        "mediator_evidence_packets": [],
+        "synthetic_prompts": {},
+        "search_summary": payload["search_summary"],
+    }
+
+    seed = hacc_evidence_module.build_hacc_evidence_seed(
+        payload,
+        query="notice to the applicant written notice",
+        complaint_type="housing_discrimination",
+        category="housing",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Notice to the Applicant", "written notice"],
+        grounding_bundle=grounding_bundle,
+    )
+
+    assert seed is not None
+    assert "What written notice" not in seed["summary"]
+    assert "Notice to the Applicant requires prompt written notice before denying assistance." in seed["summary"]
+
+
+def test_repository_grounding_prefers_direct_policy_excerpt_over_analytical_summary(tmp_path, monkeypatch):
+    source = tmp_path / "synthesize_hacc_complaint.py"
+    source.write_text(
+        '''
+SUMMARY = "The available policy language suggests the complainant should have received an informal review or hearing, written notice, and a review decision, but the intake narrative describes those protections as missing or unclear"
+POLICY = "Notice to the Applicant requires prompt written notice of a decision denying assistance. Scheduling an Informal Review requires a written request."
+''',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [source])
+    monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: tmp_path)
+
+    hits = hacc_evidence_module._build_repository_grounding_hits(
+        query="written notice informal review denial assistance",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Notice to the Applicant", "Scheduling an Informal Review", "written notice"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        top_k=1,
+    )
+
+    assert len(hits) == 1
+    assert hits[0]["snippet"].startswith("Notice to the Applicant requires prompt written notice")
+
+
+def test_repository_grounding_demotes_question_style_source_even_with_curated_path_boost(tmp_path, monkeypatch):
+    synth = tmp_path / "scripts" / "synthesize_hacc_complaint.py"
+    synth.parent.mkdir(parents=True, exist_ok=True)
+    synth.write_text(
+        '''
+QUESTION = "What written notice, informal review, grievance hearing, or appeal rights were provided, requested, denied, or ignored?"
+''',
+        encoding="utf-8",
+    )
+    policy = tmp_path / "tests" / "test_hacc_evidence_loader.py"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        '''
+POLICY = "Notice to the Applicant requires prompt written notice of a decision denying assistance."
+''',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [synth, policy])
+    monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: tmp_path)
+
+    hits = hacc_evidence_module._build_repository_grounding_hits(
+        query="written notice denial assistance informal review",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["written notice", "informal review", "denial assistance"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        top_k=2,
+    )
+
+    assert len(hits) == 2
+    assert hits[0]["source_path"] == str(policy)
+    assert hits[0]["snippet"] == "Notice to the Applicant requires prompt written notice of a decision denying assistance."
+
+
+def test_build_repository_grounding_bundle_excludes_question_style_upload_candidates(tmp_path, monkeypatch):
+    synth = tmp_path / "scripts" / "synthesize_hacc_complaint.py"
+    synth.parent.mkdir(parents=True, exist_ok=True)
+    synth.write_text(
+        '''
+QUESTION = "What written notice, informal review, grievance hearing, or appeal rights were provided, requested, denied, or ignored?"
+''',
+        encoding="utf-8",
+    )
+    policy = tmp_path / "tests" / "test_hacc_evidence_loader.py"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        '''
+POLICY = "Notice to the Applicant requires prompt written notice of a decision denying assistance."
+''',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [synth, policy])
+    monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: tmp_path)
+
+    bundle = hacc_evidence_module._build_repository_grounding_bundle(
+        query="written notice denial assistance informal review",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        category="housing",
+        anchor_terms=["written notice", "informal review", "denial assistance"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        authority_hints=None,
+        top_k=2,
+    )
+
+    titles = [item["title"] for item in bundle["upload_candidates"]]
+
+    assert titles == ["test_hacc_evidence_loader.py"]

@@ -2080,6 +2080,84 @@ class TestMediatorThreePhaseIntegration:
         assert queue[0]['learned_support_lane_priority'] is True
         assert queue[0]['suggested_support_kind'] == 'testimony'
 
+    def test_evidence_workflow_queue_retargets_after_failed_learned_grounding_lane(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {'retaliation': {'elements': [{'support_status': 'supported'}]}},
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_provenance_summary',
+            {'fact_backed_ratio': 0.25, 'low_grounding_flag': True},
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_recovery_action',
+            {
+                'action': 'recover_document_grounding',
+                'phase_name': 'document_generation',
+                'description': 'Strengthen draft grounding for protected_activity before formalization.',
+                'claim_type': 'retaliation',
+                'claim_element_id': 'protected_activity',
+                'focus_section': 'factual_allegations',
+                'preferred_support_kind': 'authority',
+                'fact_backed_ratio': 0.25,
+                'missing_fact_bundle': ['Complaint timing'],
+                'recovery_source': 'alignment_evidence_task',
+            },
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_improvement_summary',
+            {
+                'initial_fact_backed_ratio': 0.25,
+                'final_fact_backed_ratio': 0.24,
+                'fact_backed_ratio_delta': -0.01,
+                'regressed_flag': True,
+                'targeted_claim_elements': ['protected_activity', 'causation'],
+                'preferred_support_kinds': ['authority'],
+                'recovery_attempted_flag': True,
+            },
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_lane_outcome_summary',
+            {
+                'recommended_future_support_kind': 'testimony',
+                'learned_support_lane_attempted_flag': True,
+                'learned_support_lane_effective_flag': False,
+            },
+        )
+
+        queue = mediator._build_evidence_workflow_action_queue([], [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'evidence_workflow_action_queue',
+            queue,
+        )
+        status = mediator.get_three_phase_status()
+
+        assert queue[0]['action_code'] == 'retarget_document_grounding'
+        assert queue[0]['claim_element_id'] == 'protected_activity'
+        assert queue[0]['suggested_claim_element_id'] == 'causation'
+        assert queue[0]['preferred_support_kind'] == 'authority'
+        assert queue[0]['learned_support_kind'] == 'testimony'
+        assert queue[0]['learned_support_lane_priority'] is True
+        assert status['next_action']['action'] == 'retarget_document_grounding'
+        assert status['next_action']['claim_element_id'] == 'protected_activity'
+        assert status['next_action']['suggested_claim_element_id'] == 'causation'
+
     def test_process_evidence_denoising_uses_suggested_support_lane_for_grounding_refinement(self):
         from mediator.mediator import Mediator
 
@@ -2165,6 +2243,54 @@ class TestMediatorThreePhaseIntegration:
 
         assert calls
         assert calls[0]['claim_element_id'] == 'protected_activity'
+        assert calls[0]['preferred_support_kind'] == 'testimony'
+        assert calls[0]['original_preferred_support_kind'] == 'authority'
+        assert calls[0]['learned_support_kind'] == 'testimony'
+        assert calls[0]['suggested_support_kind'] == 'evidence'
+
+    def test_process_evidence_denoising_uses_learned_lane_for_grounding_retargeting(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', mediator.kg_builder.build_from_text("I complained to HR."))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', mediator.dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}], {}))
+
+        calls = []
+
+        def fake_add_evidence(evidence_data):
+            calls.append(evidence_data)
+            return {'added': True}
+
+        mediator.add_evidence_to_graphs = fake_add_evidence
+
+        mediator.process_evidence_denoising(
+            {
+                'type': 'evidence_clarification',
+                'question': 'The learned testimony lane still did not improve grounding enough. What more specific fact, date, witness detail, or document can narrow the grounding gap for Protected activity in retaliation?',
+                'context': {
+                    'workflow_action': True,
+                    'document_grounding_retargeting': True,
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'causation',
+                    'original_claim_element_id': 'protected_activity',
+                    'suggested_claim_element_id': 'causation',
+                    'preferred_support_kind': 'authority',
+                    'learned_support_kind': 'testimony',
+                    'suggested_support_kind': 'evidence',
+                },
+            },
+            'My coworker heard me complain to HR on March 3.',
+        )
+
+        assert calls
+        assert calls[0]['claim_element_id'] == 'causation'
         assert calls[0]['preferred_support_kind'] == 'testimony'
         assert calls[0]['original_preferred_support_kind'] == 'authority'
         assert calls[0]['learned_support_kind'] == 'testimony'

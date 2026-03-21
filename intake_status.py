@@ -214,6 +214,11 @@ def _build_document_grounding_improvement_next_action(
         for item in list(improvement_summary.get("targeted_claim_elements") or [])
         if str(item).strip()
     ]
+    lane_targeted_claim_elements = [
+        str(item).strip()
+        for item in list(lane_outcome_summary.get("targeted_claim_elements") or [])
+        if str(item).strip()
+    ]
     preferred_support_kinds = [
         str(item).strip()
         for item in list(improvement_summary.get("preferred_support_kinds") or [])
@@ -227,6 +232,16 @@ def _build_document_grounding_improvement_next_action(
         str(recovery_action.get("preferred_support_kind") or "").strip()
         or (preferred_support_kinds[0] if preferred_support_kinds else "")
     )
+    alternate_claim_element_ids = [
+        item
+        for item in [
+            *targeted_claim_elements,
+            *lane_targeted_claim_elements,
+        ]
+        if item and item != claim_element_id
+    ]
+    alternate_claim_element_ids = list(dict.fromkeys(alternate_claim_element_ids))
+    suggested_claim_element_id = alternate_claim_element_ids[0] if alternate_claim_element_ids else ""
     alternate_support_kinds = _build_alternate_support_kinds(
         preferred_support_kind,
         preferred_support_kinds,
@@ -236,6 +251,8 @@ def _build_document_grounding_improvement_next_action(
         targeted_claim_elements=targeted_claim_elements,
         lane_outcome_summary=lane_outcome_summary,
     )
+    learned_support_lane_attempted_flag = bool(lane_outcome_summary.get("learned_support_lane_attempted_flag"))
+    learned_support_lane_effective_flag = bool(lane_outcome_summary.get("learned_support_lane_effective_flag"))
     suggested_support_kind = (
         learned_support_kind
         if learned_support_kind and learned_support_kind != str(preferred_support_kind or "").strip().lower()
@@ -249,11 +266,28 @@ def _build_document_grounding_improvement_next_action(
     final_ratio = float(improvement_summary.get("final_fact_backed_ratio") or 0.0)
     ratio_delta = float(improvement_summary.get("fact_backed_ratio_delta") or 0.0)
     status = "regressed" if regressed_flag else "stalled"
-    if regressed_flag:
+    action_name = "refine_document_grounding_strategy"
+    if learned_support_lane_attempted_flag and not learned_support_lane_effective_flag and learned_support_kind:
+        action_name = "retarget_document_grounding"
+    if action_name == "retarget_document_grounding":
+        if regressed_flag:
+            description = "Grounding recovery regressed even after trying the learned support lane; retarget the next grounding cycle."
+        else:
+            description = "Grounding recovery stalled even after trying the learned support lane; retarget the next grounding cycle."
+    elif regressed_flag:
         description = "Grounding recovery regressed; switch support lanes or retarget the next grounding cycle."
     else:
         description = "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle."
-    if claim_element_id and preferred_support_kind and suggested_support_kind:
+    if action_name == "retarget_document_grounding" and claim_element_id and learned_support_kind:
+        if suggested_claim_element_id:
+            description = (
+                f"{description[:-1]} from {claim_element_id} toward {suggested_claim_element_id} after trying {learned_support_kind}."
+            )
+        else:
+            description = (
+                f"{description[:-1]} for {claim_element_id} after trying {learned_support_kind}."
+            )
+    elif claim_element_id and preferred_support_kind and suggested_support_kind:
         description = (
             f"{description[:-1]} for {claim_element_id} by trying {suggested_support_kind} instead of "
             f"{preferred_support_kind}."
@@ -267,7 +301,7 @@ def _build_document_grounding_improvement_next_action(
         description = f"{description[:-1]} for {claim_element_id}."
 
     result = {
-        "action": "refine_document_grounding_strategy",
+        "action": action_name,
         "phase_name": "document_generation",
         "description": description,
         "status": status,
@@ -283,7 +317,12 @@ def _build_document_grounding_improvement_next_action(
         "recovery_attempted_flag": bool(improvement_summary.get("recovery_attempted_flag")),
         "targeted_claim_elements": targeted_claim_elements,
         "preferred_support_kinds": preferred_support_kinds,
+        "learned_support_lane_attempted_flag": learned_support_lane_attempted_flag,
+        "learned_support_lane_effective_flag": learned_support_lane_effective_flag,
     }
+    if suggested_claim_element_id:
+        result["suggested_claim_element_id"] = suggested_claim_element_id
+        result["alternate_claim_element_ids"] = alternate_claim_element_ids
     if learned_support_kind:
         result["learned_support_kind"] = learned_support_kind
     return result

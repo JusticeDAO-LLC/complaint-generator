@@ -45,6 +45,34 @@ class _EvidenceFactMediator:
         ]
 
 
+class _EvidenceClaimTypeMediator(_ExplodingMediator):
+    def __init__(self):
+        self.phase_manager = None
+        self.state = type(
+            "_State",
+            (),
+            {
+                "legal_classification": {},
+                "applicable_statutes": [],
+                "summary_judgment_requirements": {},
+                "inquiries": [],
+                "complaint": None,
+                "original_complaint": None,
+            },
+        )()
+
+    def get_user_evidence(self, *, user_id):
+        assert user_id == "evidence-claim-user"
+        return [
+            {
+                "id": 202,
+                "description": "Grievance denial notice",
+                "claim_type": "housing_discrimination",
+                "metadata": {"claim_types": ["due_process_failure"]},
+            }
+        ]
+
+
 def test_build_draft_falls_back_to_legacy_builder_when_canonical_generation_crashes(monkeypatch):
     builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
     legacy_calls = {}
@@ -141,3 +169,42 @@ def test_uploaded_evidence_text_candidates_extract_complaint_usable_fragments():
     assert "HACC policy requires written notice before an informal hearing." in fragments
     assert "HACC must respond to a grievance request and provide appeal rights." in fragments
     assert all("from parser import example" not in fragment for fragment in fragments)
+
+
+def test_derive_claim_types_includes_uploaded_evidence_claim_types_when_intake_is_sparse():
+    builder = FormalComplaintDocumentBuilder(_EvidenceClaimTypeMediator())
+
+    claim_types = builder._derive_claim_types(
+        generated_complaint={},
+        classification={},
+        support_claims={},
+        requirements={},
+        user_id="evidence-claim-user",
+    )
+
+    assert "housing_discrimination" in claim_types
+    assert "due_process_failure" in claim_types
+
+
+def test_factual_allegations_exclude_internal_evidence_ranking_narration():
+    builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
+
+    allegations = builder._build_factual_allegations(
+        summary_of_facts=[
+            "The strongest supporting material is 'test_hacc_evidence_loader.py'.",
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+        ],
+        claims_for_relief=[
+            {
+                "claim_type": "housing_discrimination",
+                "count_title": "Housing Discrimination",
+                "supporting_facts": [
+                    "The strongest supporting material is 'test_hacc_evidence_loader.py'.",
+                    "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+                ],
+            }
+        ],
+    )
+
+    assert any("Notice to the Applicant requires prompt written notice" in item for item in allegations)
+    assert all("strongest supporting material" not in item.lower() for item in allegations)

@@ -4695,7 +4695,7 @@ class ComplaintDenoiser:
                 continue
             action_code = str(action.get('action_code') or '').strip().lower()
             if (
-                action_code == 'refine_document_grounding_strategy'
+                action_code in {'refine_document_grounding_strategy', 'retarget_document_grounding'}
                 and (
                     bool(action.get('learned_support_lane_priority'))
                     or str(action.get('learned_support_kind') or '').strip()
@@ -4723,7 +4723,13 @@ class ComplaintDenoiser:
             if not action_text:
                 return
             claim_type = str(action.get('claim_type') or 'this claim').strip()
-            claim_element_id = str(action.get('claim_element_id') or '').strip()
+            original_claim_element_id = str(action.get('claim_element_id') or '').strip()
+            suggested_claim_element_id = str(action.get('suggested_claim_element_id') or '').strip()
+            claim_element_id = (
+                suggested_claim_element_id
+                if action_code == 'retarget_document_grounding' and suggested_claim_element_id
+                else original_claim_element_id
+            )
             claim_element_label = str(
                 action.get('claim_element_label')
                 or claim_element_id
@@ -4755,7 +4761,7 @@ class ComplaintDenoiser:
                     question_text = (
                         f"What evidence would best ground {claim_element_label} for {claim_type}?{bundle_hint}"
                     )
-            elif action_code == 'refine_document_grounding_strategy':
+            elif action_code in {'refine_document_grounding_strategy', 'retarget_document_grounding'}:
                 suggested_support_kind = str(action.get('suggested_support_kind') or '').strip().lower()
                 alternate_support_kinds = [
                     str(item).strip().lower()
@@ -4763,7 +4769,23 @@ class ComplaintDenoiser:
                     if str(item).strip()
                 ]
                 next_lane = suggested_support_kind or (alternate_support_kinds[0] if alternate_support_kinds else '')
-                if next_lane == 'authority':
+                if action_code == 'retarget_document_grounding':
+                    bundle_hint = (
+                        f" Focus especially on {missing_fact_bundle[0]}."
+                        if missing_fact_bundle
+                        else ''
+                    )
+                    retarget_hint = (
+                        f" Instead of staying on {original_claim_element_id.replace('_', ' ')}, "
+                        if suggested_claim_element_id and original_claim_element_id and suggested_claim_element_id != original_claim_element_id
+                        else ''
+                    )
+                    question_text = (
+                        f"The learned {next_lane or 'support'} lane still did not improve grounding enough. "
+                        f"{retarget_hint}what more specific fact, date, witness detail, or document can narrow the grounding gap "
+                        f"for {claim_element_label} in {claim_type}?{bundle_hint}"
+                    )
+                elif next_lane == 'authority':
                     question_text = (
                         f"The last grounding pass did not improve enough. What legal authority, policy, or official document can better ground "
                         f"{claim_element_label} for {claim_type}?"
@@ -4794,6 +4816,8 @@ class ComplaintDenoiser:
                     'action_code': action_code,
                     'claim_type': claim_type,
                     'claim_element_id': claim_element_id,
+                    'original_claim_element_id': original_claim_element_id,
+                    'suggested_claim_element_id': suggested_claim_element_id,
                     'claim_element_label': claim_element_label,
                     'preferred_support_kind': preferred_support_kind,
                     'learned_support_kind': str(action.get('learned_support_kind') or '').strip().lower(),
@@ -4802,6 +4826,7 @@ class ComplaintDenoiser:
                     'missing_fact_bundle': missing_fact_bundle,
                     'document_grounding_recovery': action_code == 'recover_document_grounding',
                     'document_grounding_strategy_refinement': action_code == 'refine_document_grounding_strategy',
+                    'document_grounding_retargeting': action_code == 'retarget_document_grounding',
                     'learned_support_lane_priority': bool(action.get('learned_support_lane_priority')),
                 },
                 'priority': 'high',

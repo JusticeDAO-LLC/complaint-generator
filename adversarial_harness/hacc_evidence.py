@@ -249,6 +249,13 @@ def _build_repository_grounding_hits(
             + 1.2 * excerpt_quality[2]
             + min(2.0, excerpt_quality[3] / 240.0)
         )
+        score += 0.75 * _policy_language_priority_score(snippet)
+        if _looks_like_meta_grounding_text(snippet):
+            score -= 8.0
+        if _looks_like_question_prompt_text(snippet):
+            score -= 15.0
+        if _looks_like_serialized_prompt_text(snippet):
+            score -= 18.0
         hits.append(
             {
                 "document_id": path.stem,
@@ -304,10 +311,116 @@ def _looks_like_code_text(text: str) -> bool:
             "pytest",
             "module.",
             " = [",
+            " = {",
+            ' = "',
+            " = '",
+            '"results": [',
+            '"search_summary": {',
+            "payload = {",
+            "grounding_bundle = {",
             "return ",
             "pathlib",
         )
     )
+
+
+def _looks_like_meta_grounding_text(text: str) -> bool:
+    lowered = _normalize_match_text(text).lower()
+    if not lowered:
+        return False
+    return any(
+        marker in lowered
+        for marker in (
+            "these policy excerpts frame",
+            "these passages support the notice theory",
+            "support the notice theory",
+            "the strongest supporting material is",
+            "repository-grounded",
+            "repository grounded",
+            "case-specific facts still need confirmation",
+            "use uploaded evidence to ground",
+            "current evidence summary",
+        )
+    )
+
+
+def _looks_like_question_prompt_text(text: str) -> bool:
+    normalized = _normalize_match_text(text)
+    lowered = normalized.lower()
+    if not lowered:
+        return False
+    if normalized.endswith("?"):
+        return True
+    prompt_prefixes = (
+        "what ",
+        "when ",
+        "who ",
+        "how ",
+        "why ",
+        "whether ",
+        "please upload ",
+        "upload the ",
+        "do not ",
+    )
+    return lowered.startswith(prompt_prefixes)
+
+
+def _looks_like_serialized_prompt_text(text: str) -> bool:
+    normalized = _normalize_match_text(text)
+    lowered = normalized.lower()
+    if not lowered:
+        return False
+    return bool(
+        ('": "' in normalized and '", "' in normalized)
+        or '{"' in normalized
+        or any(
+            marker in lowered
+            for marker in (
+                '"anchor_adverse_action"',
+                '"anchor_appeal_rights"',
+                '"causation_link"',
+                '"hearing_request_timing"',
+                '"response_dates"',
+            )
+        )
+    )
+
+
+def _policy_language_priority_score(text: str) -> int:
+    lowered = _normalize_match_text(text).lower()
+    if not lowered:
+        return 0
+    score = 0
+    positive_markers = (
+        "notice to the applicant",
+        "scheduling an informal review",
+        "must give",
+        "must provide",
+        "must be made in writing",
+        "required",
+        "written notice",
+        "informal review",
+        "informal hearing",
+        "grievance hearing",
+        "denying assistance",
+        "appeal rights",
+    )
+    negative_markers = (
+        "the available policy language suggests",
+        "appears to require",
+        "intake narrative describes",
+        "should have received",
+        "protections as missing or unclear",
+    )
+    for marker in positive_markers:
+        if marker in lowered:
+            score += 2
+    for marker in negative_markers:
+        if marker in lowered:
+            score -= 3
+    if lowered.startswith(("notice to the applicant", "scheduling an informal review")):
+        score += 4
+    return score
 
 
 def _anchor_priority_score(text: str, anchor_terms: Sequence[str]) -> int:
@@ -336,11 +449,20 @@ def _refine_repository_grounding_snippet(
 ) -> str:
     current = _clean_extracted_excerpt(current_snippet)
     current_score = _score_excerpt_match(current, anchor_terms)
-    current_is_code = _looks_like_code_text(current)
+    current_is_code = (
+        _looks_like_code_text(current)
+        or _looks_like_meta_grounding_text(current)
+        or _looks_like_question_prompt_text(current)
+        or _looks_like_serialized_prompt_text(current)
+    )
     if current_is_code:
-        current_rank = (-1, -5, 0, 0, 0)
+        current_rank = (-1, -5, 0, 0, 0, -5)
     else:
-        current_rank = (_anchor_priority_score(current, anchor_terms), *current_score)
+        current_rank = (
+            _anchor_priority_score(current, anchor_terms),
+            _policy_language_priority_score(current),
+            *current_score,
+        )
     best_snippet = current
     best_score = current_rank
 
@@ -355,14 +477,60 @@ def _refine_repository_grounding_snippet(
         score = _score_excerpt_match(cleaned, anchor_terms)
         if "hacc policy" in cleaned.lower():
             score = (score[0] + 1, score[1], score[2], score[3])
+        if (
+            _looks_like_meta_grounding_text(cleaned)
+            or _looks_like_question_prompt_text(cleaned)
+            or _looks_like_serialized_prompt_text(cleaned)
+        ):
+            score = (max(-5, score[0] - 2), 0, max(0, score[2] - 1), min(score[3], 180))
         if _looks_like_code_text(cleaned):
             score = (max(-5, score[0] - 2), 0, max(0, score[2] - 1), min(score[3], 160))
-        rank = (_anchor_priority_score(cleaned, anchor_terms), *score)
+        rank = (
+            _anchor_priority_score(cleaned, anchor_terms),
+            _policy_language_priority_score(cleaned),
+            *score,
+        )
         if rank > best_score:
             best_snippet = cleaned
             best_score = rank
 
     return best_snippet or current
+
+
+def _select_seed_summary_snippet(
+    *,
+    lead_title: str,
+    anchor_passages: Sequence[Dict[str, Any]],
+    repository_candidates: Sequence[Dict[str, Any]],
+    hits: Sequence[Dict[str, Any]],
+) -> str:
+    candidates: List[str] = []
+    for item in list(anchor_passages or []):
+        candidates.append(str(item.get("snippet") or ""))
+    for item in list(repository_candidates or []):
+        candidates.append(str(item.get("snippet") or ""))
+    for item in list(hits or []):
+        candidates.append(str(item.get("snippet") or ""))
+
+    for candidate in candidates:
+        cleaned = _clean_extracted_excerpt(candidate)
+        if len(cleaned) < 24:
+            continue
+        if (
+            _looks_like_code_text(cleaned)
+            or _looks_like_meta_grounding_text(cleaned)
+            or _looks_like_question_prompt_text(cleaned)
+            or _looks_like_serialized_prompt_text(cleaned)
+        ):
+            continue
+        return cleaned
+
+    fallback = _clean_extracted_excerpt(str(next((item.get("snippet") for item in hits if item.get("snippet")), ""), ""))
+    if fallback and not _looks_like_code_text(fallback):
+        return fallback
+    if lead_title:
+        return f"HACC policy and procedure materials in {lead_title} support the complaint theory and should be tied to uploaded case-specific evidence."
+    return "HACC policy and procedure materials support the complaint theory and should be tied to uploaded case-specific evidence."
 
 
 def _build_repository_grounding_bundle(
@@ -386,6 +554,17 @@ def _build_repository_grounding_bundle(
         protected_bases=protected_bases,
         top_k=top_k,
     )
+    usable_hits = [
+        hit
+        for hit in hits
+        if not (
+            _looks_like_code_text(str(hit.get("snippet") or ""))
+            or _looks_like_meta_grounding_text(str(hit.get("snippet") or ""))
+            or _looks_like_question_prompt_text(str(hit.get("snippet") or ""))
+            or _looks_like_serialized_prompt_text(str(hit.get("snippet") or ""))
+        )
+    ]
+    selected_hits = usable_hits or hits
     upload_candidates = [
         {
             "title": str(hit.get("title") or ""),
@@ -396,10 +575,10 @@ def _build_repository_grounding_bundle(
             "source_type": str(hit.get("source_type") or "repository_grounding"),
             "metadata": dict(hit.get("metadata") or {}),
         }
-        for hit in hits
+        for hit in selected_hits[: max(1, int(top_k))]
     ]
-    anchor_sections = _summarize_section_labels(_extract_anchor_passages(hits, anchor_terms=anchor_terms))
-    lead_titles = [str(hit.get("title") or "") for hit in hits[:2] if str(hit.get("title") or "").strip()]
+    anchor_sections = _summarize_section_labels(_extract_anchor_passages(selected_hits, anchor_terms=anchor_terms))
+    lead_titles = [str(hit.get("title") or "") for hit in selected_hits[:2] if str(hit.get("title") or "").strip()]
     prompt_focus = ", ".join(anchor_sections[:3]) or ", ".join(list(theory_labels or [])[:3]) or complaint_type
     upload_focus = ", ".join(lead_titles) or "the strongest repository evidence files"
     synthetic_prompts = {
@@ -1642,17 +1821,23 @@ def build_hacc_evidence_seed(
             lead = hits[0]
             anchor_passages = _extract_anchor_passages(hits, anchor_terms=anchor_terms)
             anchor_sections = _summarize_section_labels(anchor_passages)
+    source_paths = [hit["source_path"] for hit in hits if hit.get("source_path")]
+    evidence_titles = [hit["title"] for hit in hits if hit.get("title")]
+    repository_candidates = _build_repository_candidates(grounding_bundle)
+    summary_snippet = _select_seed_summary_snippet(
+        lead_title=str(lead.get("title") or ""),
+        anchor_passages=anchor_passages,
+        repository_candidates=repository_candidates,
+        hits=hits,
+    )
     evidence_summary = " ".join(
         part
         for part in [
             f"The strongest supporting material is '{lead['title']}'." if lead.get("title") else "",
-            lead.get("snippet", ""),
+            summary_snippet,
         ]
         if part
     ).strip()
-    source_paths = [hit["source_path"] for hit in hits if hit.get("source_path")]
-    evidence_titles = [hit["title"] for hit in hits if hit.get("title")]
-    repository_candidates = _build_repository_candidates(grounding_bundle)
     synthetic_prompts = _merge_synthetic_prompts(
         complaint_type=complaint_type,
         description=description,

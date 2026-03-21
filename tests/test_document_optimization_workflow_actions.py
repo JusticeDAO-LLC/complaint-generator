@@ -143,6 +143,37 @@ def test_select_support_context_includes_workflow_targeting_rows():
     assert any(row.get("claim_element_id") == "causation" for row in selected["top_support"])
 
 
+def test_select_support_context_retargets_document_grounding_to_suggested_claim_element():
+    mediator = Mock()
+    optimizer = AgenticDocumentOptimizer(mediator)
+    optimizer._rank_candidates = lambda *, query, candidates: list(candidates)
+
+    selected = optimizer._select_support_context(
+        focus_section="factual_allegations",
+        draft={"factual_allegations": []},
+        support_context={
+            "claims": [],
+            "evidence": [],
+            "intake_priorities": {},
+            "workflow_action_queue": [],
+            "evidence_workflow_action_queue": [],
+            "document_grounding_improvement_next_action": {
+                "action": "retarget_document_grounding",
+                "focus_section": "factual_allegations",
+                "claim_element_id": "protected_activity",
+                "suggested_claim_element_id": "causation",
+                "preferred_support_kind": "authority",
+                "suggested_support_kind": "testimony",
+            },
+        },
+    )
+
+    assert selected["top_support"]
+    assert selected["top_support"][0]["kind"] == "document_grounding_improvement_next_action"
+    assert selected["top_support"][0]["claim_element_id"] == "causation"
+    assert selected["top_support"][0]["original_claim_element_id"] == "protected_activity"
+
+
 def test_choose_focus_section_can_use_workflow_targeting_summary():
     mediator = Mock()
     optimizer = AgenticDocumentOptimizer(mediator)

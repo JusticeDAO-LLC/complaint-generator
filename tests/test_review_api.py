@@ -2857,6 +2857,8 @@ def test_claim_support_review_payload_promotes_document_grounding_improvement_ne
         "targeted_claim_elements": ["protected_activity"],
         "preferred_support_kinds": ["authority"],
         "learned_support_kind": "testimony",
+        "learned_support_lane_attempted_flag": False,
+        "learned_support_lane_effective_flag": False,
     }
     assert payload["workflow_priority"] == {
         "status": "warning",

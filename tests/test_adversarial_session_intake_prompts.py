@@ -728,6 +728,44 @@ def test_run_does_not_require_blocker_questions_when_seed_has_no_blocker_objecti
     assert mediator._index == 3
 
 
+def test_run_prefers_causation_sequence_fallback_over_generic_timeline_question():
+    mediator = _ConvergingMediator()
+    session = AdversarialSession(
+        session_id="causation_fallback_session",
+        mediator=mediator,
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=1,
+    )
+    seed = {
+        "document_optimization": {
+            "intake_priorities": {
+                "claim_temporal_gap_summary": [
+                    {
+                        "claim_type": "retaliation",
+                        "gap_count": 1,
+                        "gaps": [
+                            "Chronology gap: Protected activity and adverse action still need tighter causation sequencing.",
+                        ],
+                    }
+                ]
+            }
+        },
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": []
+            }
+        },
+    }
+
+    session.run(seed)
+
+    assert session.conversation_history[0]["role"] == "mediator"
+    assert session.conversation_history[0]["content"].startswith(
+        "For your retaliation claim, please walk through the sequence from protected activity to adverse action"
+    )
+
+
 def test_session_runs_document_generation_handoff_and_records_grounding_summary():
     mediator = _DocumentMediator()
     class _PhaseManager:

@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import importlib.util
 
 import pytest
 
@@ -68,6 +69,13 @@ def _strip_reserved_example_urls(text: str) -> str:
 
 
 def pytest_addoption(parser):
+    if importlib.util.find_spec("pytest_asyncio") is None:
+        parser.addini(
+            "asyncio_mode",
+            "Compatibility shim for environments where pytest-asyncio is unavailable.",
+            default="auto",
+        )
+
     group = parser.getgroup("gating")
     group.addoption(
         "--run-llm",

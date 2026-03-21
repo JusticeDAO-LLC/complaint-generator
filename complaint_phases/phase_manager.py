@@ -1105,19 +1105,32 @@ class PhaseManager:
             for workflow_action in evidence_workflow_action_queue:
                 if not isinstance(workflow_action, dict):
                     continue
-                if str(workflow_action.get('action_code') or '').strip().lower() != 'recover_document_grounding':
+                workflow_action_code = str(workflow_action.get('action_code') or '').strip().lower()
+                if workflow_action_code not in {
+                    'recover_document_grounding',
+                    'refine_document_grounding_strategy',
+                    'retarget_document_grounding',
+                }:
                     continue
-                return {
-                    'action': 'recover_document_grounding',
+                response = {
+                    'action': workflow_action_code,
                     'phase_name': 'document_generation',
                     'claim_type': str(workflow_action.get('claim_type') or ''),
                     'claim_element_id': str(workflow_action.get('claim_element_id') or ''),
+                    'suggested_claim_element_id': str(workflow_action.get('suggested_claim_element_id') or ''),
+                    'alternate_claim_element_ids': list(workflow_action.get('alternate_claim_element_ids') or [])[:3],
                     'claim_element_label': str(workflow_action.get('claim_element_label') or ''),
                     'preferred_support_kind': str(workflow_action.get('preferred_support_kind') or ''),
                     'missing_fact_bundle': list(workflow_action.get('missing_fact_bundle') or [])[:4],
-                    'fact_backed_ratio': float(workflow_action.get('fact_backed_ratio') or 0.0),
                     'recommended_actions': list(data.get('claim_support_recommended_actions', [])),
                 }
+                if workflow_action_code == 'recover_document_grounding':
+                    response['fact_backed_ratio'] = float(workflow_action.get('fact_backed_ratio') or 0.0)
+                else:
+                    response['suggested_support_kind'] = str(workflow_action.get('suggested_support_kind') or '')
+                    response['learned_support_kind'] = str(workflow_action.get('learned_support_kind') or '')
+                    response['alternate_support_kinds'] = list(workflow_action.get('alternate_support_kinds') or [])[:3]
+                return response
             if prioritized_alignment_tasks:
                 first_task = prioritized_alignment_tasks[0]
                 return {

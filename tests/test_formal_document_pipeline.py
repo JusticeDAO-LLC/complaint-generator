@@ -1447,6 +1447,8 @@ def test_document_api_annotation_promotes_document_grounding_improvement_next_ac
         "targeted_claim_elements": ["protected_activity"],
         "preferred_support_kinds": ["authority"],
         "learned_support_kind": "testimony",
+        "learned_support_lane_attempted_flag": False,
+        "learned_support_lane_effective_flag": False,
     }
     assert payload["review_links"]["document_grounding_lane_outcome_summary"] == {
         "attempted_support_kind": "authority",

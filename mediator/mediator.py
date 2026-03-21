@@ -800,6 +800,7 @@ class Mediator:
 				str(item).strip()
 				for item in [
 					document_grounding_improvement_next_action.get('claim_element_id'),
+					document_grounding_improvement_next_action.get('suggested_claim_element_id'),
 					document_grounding_improvement_next_action.get('suggested_support_kind'),
 					*(document_grounding_improvement_next_action.get('alternate_support_kinds') or []),
 				]
@@ -809,12 +810,14 @@ class Mediator:
 				'rank': 1,
 				'phase_name': 'document_generation',
 				'status': 'warning',
-				'action': 'refine document grounding strategy',
-				'action_code': 'refine_document_grounding_strategy',
+				'action': str(document_grounding_improvement_next_action.get('action') or 'refine_document_grounding_strategy').replace('_', ' '),
+				'action_code': str(document_grounding_improvement_next_action.get('action') or 'refine_document_grounding_strategy').strip().lower(),
 				'focus_areas': refinement_focus_areas[:4],
 				'claim_type': str(document_grounding_improvement_next_action.get('claim_type') or '').strip(),
 				'claim_element_id': str(document_grounding_improvement_next_action.get('claim_element_id') or '').strip(),
 				'claim_element_label': str(document_grounding_improvement_next_action.get('claim_element_id') or '').strip(),
+				'suggested_claim_element_id': str(document_grounding_improvement_next_action.get('suggested_claim_element_id') or '').strip(),
+				'alternate_claim_element_ids': list(document_grounding_improvement_next_action.get('alternate_claim_element_ids') or [])[:3],
 				'preferred_support_kind': str(document_grounding_improvement_next_action.get('preferred_support_kind') or '').strip(),
 				'learned_support_kind': str(document_grounding_improvement_next_action.get('learned_support_kind') or '').strip(),
 				'suggested_support_kind': str(document_grounding_improvement_next_action.get('suggested_support_kind') or '').strip(),
@@ -825,7 +828,7 @@ class Mediator:
 			}
 			if not any(
 				isinstance(item, dict)
-				and str(item.get('action_code') or '').strip().lower() == 'refine_document_grounding_strategy'
+				and str(item.get('action_code') or '').strip().lower() in {'refine_document_grounding_strategy', 'retarget_document_grounding'}
 				for item in queue
 			):
 				queue = [refinement_entry, *queue]
@@ -861,7 +864,10 @@ class Mediator:
 			):
 				if any(
 					isinstance(item, dict)
-					and str(item.get('action_code') or '').strip().lower() == 'refine_document_grounding_strategy'
+					and str(item.get('action_code') or '').strip().lower() in {
+						'refine_document_grounding_strategy',
+						'retarget_document_grounding',
+					}
 					for item in queue
 				):
 					queue = [queue[0], recovery_entry, *queue[1:]]
@@ -8780,7 +8786,9 @@ class Mediator:
 		context_learned_support_kind = str(question_context.get('learned_support_kind') or '').strip().lower()
 		context_suggested_support_kind = str(question_context.get('suggested_support_kind') or '').strip().lower()
 		context_capture_support_kind = context_preferred_support_kind
-		if bool(question_context.get('document_grounding_strategy_refinement')):
+		if bool(question_context.get('document_grounding_strategy_refinement')) or bool(
+			question_context.get('document_grounding_retargeting')
+		):
 			context_capture_support_kind = (
 				context_learned_support_kind
 				or context_suggested_support_kind
@@ -8789,7 +8797,9 @@ class Mediator:
 		evidence_refreshed = False
 		should_capture_grounding_answer = bool(
 			str(question_context.get('document_grounding_recovery') or '').strip()
+			or str(question_context.get('document_grounding_retargeting') or '').strip()
 			or bool(question_context.get('document_grounding_recovery'))
+			or bool(question_context.get('document_grounding_retargeting'))
 		)
 		if (
 			(len(answer) > 20) or (should_capture_grounding_answer and bool(str(answer or '').strip()))

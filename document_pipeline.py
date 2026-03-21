@@ -1639,7 +1639,13 @@ class FormalComplaintDocumentBuilder:
         requirements = getattr(state, "summary_judgment_requirements", {}) or {}
         support_summary = _safe_call(self.mediator, "summarize_claim_support", user_id=user_id) or {}
         support_claims = support_summary.get("claims", {}) if isinstance(support_summary, dict) else {}
-        claim_types = self._derive_claim_types(generated_complaint, classification, support_claims, requirements)
+        claim_types = self._derive_claim_types(
+            generated_complaint,
+            classification,
+            support_claims,
+            requirements,
+            user_id=user_id,
+        )
         plaintiffs, defendants = self._derive_parties(
             generated_complaint,
             plaintiff_names=plaintiff_names,
@@ -3107,6 +3113,8 @@ class FormalComplaintDocumentBuilder:
             return False
         if lowered.startswith(("evidence shows facts supporting", "the intake record describes facts supporting")):
             return False
+        if "the strongest supporting material is" in lowered:
+            return False
         if re.match(r"^(as to [^,]+, )?(title\s+[ivxlcdm0-9]+\b|\d+\s+u\.s\.c\.|\d+\s+c\.f\.r\.|[a-z]{2,6}\.\s+gov\.\s+code\b)", lowered):
             return False
         if len(text) > 360:
@@ -3120,7 +3128,11 @@ class FormalComplaintDocumentBuilder:
 
     def _is_generic_claim_support_text(self, value: Any) -> bool:
         lowered = re.sub(r"\s+", " ", str(value or "")).strip().lower()
-        return lowered.startswith(("evidence shows facts supporting", "the intake record describes facts supporting"))
+        return (
+            lowered.startswith(("evidence shows facts supporting", "the intake record describes facts supporting"))
+            or "the strongest supporting material is" in lowered
+            or lowered.startswith("for this question, the strongest supporting material is")
+        )
 
     def _expand_allegation_sources(self, values: Any, *, limit: Optional[int] = None) -> List[str]:
         expanded: List[str] = []
@@ -4493,11 +4505,21 @@ class FormalComplaintDocumentBuilder:
         classification: Dict[str, Any],
         support_claims: Dict[str, Any],
         requirements: Dict[str, Any],
+        *,
+        user_id: Optional[str] = None,
     ) -> List[str]:
         claim_names = []
         claim_names.extend(_coerce_list(classification.get("claim_types")))
         claim_names.extend(list(support_claims.keys()))
         claim_names.extend(list(requirements.keys()))
+        if user_id:
+            for evidence in _coerce_list(_safe_call(self.mediator, "get_user_evidence", user_id=user_id) or []):
+                if not isinstance(evidence, dict):
+                    continue
+                claim_names.extend(_coerce_list(evidence.get("claim_type")))
+                metadata = evidence.get("metadata") if isinstance(evidence.get("metadata"), dict) else {}
+                claim_names.extend(_coerce_list(metadata.get("claim_type")))
+                claim_names.extend(_coerce_list(metadata.get("claim_types")))
         for claim in _coerce_list(generated_complaint.get("legal_claims")):
             if isinstance(claim, dict):
                 claim_names.append(claim.get("title"))

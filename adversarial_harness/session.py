@@ -839,11 +839,6 @@ class AdversarialSession:
         question_text = AdversarialSession._extract_question_text(question)
         if AdversarialSession._is_contradiction_resolution_question(question):
             return -2
-        if missing_anchor_sections and AdversarialSession._question_targets_missing_anchor_section(
-            question_text,
-            missing_anchor_sections,
-        ):
-            return -1
         if need_exact_dates and AdversarialSession._is_exact_dates_question(question):
             return 0
         if need_adverse_action_details and AdversarialSession._is_adverse_action_detail_question(question):
@@ -856,19 +851,24 @@ class AdversarialSession:
             return 4
         if need_causation_sequence and AdversarialSession._is_causation_sequence_question(question):
             return 5
-        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
+        if missing_anchor_sections and AdversarialSession._question_targets_missing_anchor_section(
+            question_text,
+            missing_anchor_sections,
+        ):
             return 6
-        if need_timeline and AdversarialSession._is_timeline_question(question):
+        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
             return 7
-        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
+        if need_timeline and AdversarialSession._is_timeline_question(question):
             return 8
-        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
+        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
             return 9
-        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
+        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
             return 10
-        if need_witness and AdversarialSession._is_witness_question(question):
+        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
             return 11
-        return 12
+        if need_witness and AdversarialSession._is_witness_question(question):
+            return 12
+        return 13
 
     @staticmethod
     def _extract_actor_critic_score(question: Any) -> float:
@@ -4165,6 +4165,21 @@ class AdversarialSession:
                 need_response_dates = require_response_dates_probe and not has_response_dates_question
                 need_causation_sequence = require_causation_sequence_probe and not has_causation_sequence_question
 
+                coverage_rank_kwargs = dict(
+                    need_timeline=need_timeline,
+                    need_harm_remedy=need_harm_remedy,
+                    need_actor_decisionmaker=need_actor_decisionmaker,
+                    need_adverse_action_details=need_actor_decisionmaker,
+                    need_causation=need_causation,
+                    need_documentary_evidence=need_documentary_evidence,
+                    need_witness=need_witness,
+                    need_exact_dates=need_exact_dates,
+                    need_staff_names_titles=need_staff_names_titles,
+                    need_hearing_request_timing=need_hearing_request_timing,
+                    need_response_dates=need_response_dates,
+                    need_causation_sequence=need_causation_sequence,
+                    missing_anchor_sections=missing_anchor_sections,
+                )
                 question = None
                 if questions:
                     # Ask a non-repeated question when available and prioritize key coverage gaps.
@@ -4189,28 +4204,38 @@ class AdversarialSession:
                         missing_anchor_sections=missing_anchor_sections,
                     )
 
-                if question is None:
-                    question = self._build_fallback_probe(
-                        seed_complaint,
-                        asked_question_counts=asked_question_counts,
-                        asked_intent_counts=asked_intent_counts,
-                        need_timeline=need_timeline,
-                        need_harm_remedy=need_harm_remedy,
-                        need_actor_decisionmaker=need_actor_decisionmaker,
-                        need_causation=need_causation,
-                        need_documentary_evidence=need_documentary_evidence,
-                        need_witness=need_witness,
-                        need_exact_dates=need_exact_dates,
-                        need_staff_names_titles=need_staff_names_titles,
-                        need_hearing_request_timing=need_hearing_request_timing,
-                        need_response_dates=need_response_dates,
-                        need_causation_sequence=need_causation_sequence,
-                        last_question_key=last_question_key,
-                        last_question_intent_key=last_question_intent_key,
-                        recent_intent_keys=set(recent_intent_keys),
-                        missing_anchor_sections=missing_anchor_sections,
-                    )
+                fallback_question = self._build_fallback_probe(
+                    seed_complaint,
+                    asked_question_counts=asked_question_counts,
+                    asked_intent_counts=asked_intent_counts,
+                    need_timeline=need_timeline,
+                    need_harm_remedy=need_harm_remedy,
+                    need_actor_decisionmaker=need_actor_decisionmaker,
+                    need_causation=need_causation,
+                    need_documentary_evidence=need_documentary_evidence,
+                    need_witness=need_witness,
+                    need_exact_dates=need_exact_dates,
+                    need_staff_names_titles=need_staff_names_titles,
+                    need_hearing_request_timing=need_hearing_request_timing,
+                    need_response_dates=need_response_dates,
+                    need_causation_sequence=need_causation_sequence,
+                    last_question_key=last_question_key,
+                    last_question_intent_key=last_question_intent_key,
+                    recent_intent_keys=set(recent_intent_keys),
+                    missing_anchor_sections=missing_anchor_sections,
+                )
+                if fallback_question is not None:
+                    use_fallback = question is None
                     if question is not None:
+                        fallback_rank = self._coverage_gap_rank(fallback_question, **coverage_rank_kwargs)
+                        selected_rank = self._coverage_gap_rank(question, **coverage_rank_kwargs)
+                        if fallback_rank < selected_rank and not self._questions_substantially_overlap(
+                            fallback_question,
+                            question,
+                        ):
+                            use_fallback = True
+                    if use_fallback:
+                        question = fallback_question
                         logger.debug("Using harness fallback probe for missing coverage")
 
                 if question is None:
