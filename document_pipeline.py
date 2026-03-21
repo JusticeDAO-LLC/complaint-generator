@@ -5381,6 +5381,8 @@ class FormalComplaintDocumentBuilder:
                         claim_type=claim_type,
                         requirements=requirements,
                         statutes=statutes,
+                        support_claim=support_claim,
+                        related_exhibits=related_exhibits,
                     ),
                     "supporting_facts": claim_facts,
                     "supporting_fact_entries": claim_fact_entries,
@@ -5875,8 +5877,11 @@ class FormalComplaintDocumentBuilder:
         claim_type: str,
         requirements: Dict[str, Any],
         statutes: List[Dict[str, Any]],
+        support_claim: Optional[Dict[str, Any]] = None,
+        related_exhibits: Optional[List[Dict[str, Any]]] = None,
     ) -> List[str]:
         standards = _unique_preserving_order(_extract_text_candidates(requirements.get(claim_type, [])))
+        explicit_requirement_standards = bool(standards)
         related_statutes = self._select_statutes_for_claim(claim_type, statutes)
         for statute in related_statutes:
             citation = statute.get("citation")
@@ -5885,9 +5890,70 @@ class FormalComplaintDocumentBuilder:
             parts = [part for part in [citation, title, relevance] if part]
             if parts:
                 standards.append(" - ".join(parts))
+        if not explicit_requirement_standards:
+            standards.extend(self._build_claim_legal_standard_fallbacks(claim_type))
+        standards.extend(
+            self._build_authority_backed_standard_lines(
+                claim_type=claim_type,
+                support_claim=support_claim or {},
+                related_exhibits=related_exhibits or [],
+            )
+        )
         if standards:
-            return standards
+            return _unique_preserving_order(standards)
         return self._build_claim_legal_standard_fallbacks(claim_type)
+
+    def _build_authority_backed_standard_lines(
+        self,
+        *,
+        claim_type: str,
+        support_claim: Dict[str, Any],
+        related_exhibits: List[Dict[str, Any]],
+    ) -> List[str]:
+        lines: List[str] = []
+        seen = set()
+        for exhibit in related_exhibits:
+            if not isinstance(exhibit, dict):
+                continue
+            if str(exhibit.get("kind") or "").strip().lower() != "authority":
+                continue
+            title = str(exhibit.get("title") or "").strip()
+            summary = str(exhibit.get("summary") or "").strip()
+            if not title and not summary:
+                continue
+            if summary:
+                line = f"{title}: {summary}" if title else summary
+            else:
+                line = title
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(line)
+            if len(lines) >= 2:
+                return lines
+
+        for element in _coerce_list((support_claim or {}).get("elements")):
+            if not isinstance(element, dict):
+                continue
+            for link in _coerce_list(element.get("links")):
+                if not isinstance(link, dict):
+                    continue
+                if str(link.get("support_kind") or "").strip().lower() != "authority":
+                    continue
+                citation = str(link.get("citation") or link.get("support_label") or link.get("title") or "").strip()
+                relevance = str(link.get("relevance") or link.get("description") or "").strip()
+                if not citation and not relevance:
+                    continue
+                line = f"{citation} - {relevance}" if citation and relevance else (citation or relevance)
+                key = line.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                lines.append(line)
+                if len(lines) >= 2:
+                    return lines
+        return lines
 
     def _build_claim_legal_standard_fallbacks(self, claim_type: str) -> List[str]:
         normalized = normalize_claim_type(claim_type or "")

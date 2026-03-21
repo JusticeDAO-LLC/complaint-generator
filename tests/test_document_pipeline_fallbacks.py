@@ -131,6 +131,29 @@ class _HousingProcessMediator(_ExplodingMediator):
             },
         ]
 
+    def summarize_claim_support(self, *, user_id):
+        assert user_id == "housing-process-user"
+        return {
+            "claims": {
+                "due_process_failure": {
+                    "elements": [
+                        {
+                            "element_id": "notice-review-process",
+                            "element_text": "Required notice and review process",
+                            "links": [
+                                {
+                                    "support_kind": "authority",
+                                    "citation": "24 C.F.R. 982.555",
+                                    "title": "Informal review for denial of assistance",
+                                    "relevance": "Requires written notice and an opportunity for informal review before a final adverse housing decision is enforced.",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        }
+
 
 def test_build_draft_falls_back_to_legacy_builder_when_canonical_generation_crashes(monkeypatch):
     builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
@@ -485,5 +508,9 @@ def test_build_draft_uses_claim_specific_titles_and_housing_process_relief():
     )
     assert any(
         "required to provide the written notice, review opportunity, hearing, grievance, appeal, or comparable process" in item
+        for item in by_type["due_process_failure"]["legal_standards"]
+    )
+    assert any(
+        "24 C.F.R. 982.555" in item
         for item in by_type["due_process_failure"]["legal_standards"]
     )
