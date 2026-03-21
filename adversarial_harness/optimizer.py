@@ -81,6 +81,7 @@ class OptimizationReport:
     document_evidence_targeting_summary: Dict[str, Any] | None = None
     document_workflow_execution_summary: Dict[str, Any] | None = None
     document_execution_drift_summary: Dict[str, Any] | None = None
+    document_grounding_improvement_summary: Dict[str, Any] | None = None
     cross_phase_findings: List[str] | None = None
     workflow_action_queue: List[Dict[str, Any]] | None = None
     document_provenance_summary: Dict[str, Any] | None = None
@@ -138,6 +139,7 @@ class OptimizationReport:
             'document_provenance_summary': self.document_provenance_summary or {},
             'document_workflow_execution_summary': self.document_workflow_execution_summary or {},
             'document_execution_drift_summary': self.document_execution_drift_summary or {},
+            'document_grounding_improvement_summary': self.document_grounding_improvement_summary or {},
             'cross_phase_findings': list(self.cross_phase_findings or []),
             'workflow_action_queue': list(self.workflow_action_queue or []),
         }
@@ -1297,6 +1299,67 @@ class Optimizer:
             "avg_claim_supporting_fact_backed_ratio": round(sum(claim_ratios) / len(claim_ratios), 4),
             "low_grounding_session_count": low_grounding_session_count,
             "low_grounding_flag": bool(low_grounding_session_count),
+        }
+
+    @staticmethod
+    def _build_document_grounding_improvement_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        summaries: List[Dict[str, Any]] = []
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            workflow_guidance = (
+                final_state.get("workflow_optimization_guidance")
+                if isinstance(final_state.get("workflow_optimization_guidance"), dict)
+                else {}
+            )
+            improvement_summary = (
+                workflow_guidance.get("document_grounding_improvement_summary")
+                if isinstance(workflow_guidance.get("document_grounding_improvement_summary"), dict)
+                else final_state.get("document_grounding_improvement_summary")
+                if isinstance(final_state.get("document_grounding_improvement_summary"), dict)
+                else {}
+            )
+            if isinstance(improvement_summary, dict) and improvement_summary:
+                summaries.append(improvement_summary)
+
+        if not summaries:
+            return {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_initial_fact_backed_ratio": 0.0,
+                "avg_final_fact_backed_ratio": 0.0,
+                "avg_fact_backed_ratio_delta": 0.0,
+                "improved_session_count": 0,
+                "regressed_session_count": 0,
+                "stalled_session_count": 0,
+                "recovery_attempted_session_count": 0,
+                "low_grounding_resolved_session_count": 0,
+                "improved_flag": False,
+            }
+
+        initial_ratios = [float(summary.get("initial_fact_backed_ratio") or 0.0) for summary in summaries]
+        final_ratios = [float(summary.get("final_fact_backed_ratio") or 0.0) for summary in summaries]
+        deltas = [float(summary.get("fact_backed_ratio_delta") or 0.0) for summary in summaries]
+        improved_session_count = sum(1 for summary in summaries if bool(summary.get("improved_flag")))
+        regressed_session_count = sum(1 for summary in summaries if bool(summary.get("regressed_flag")))
+        stalled_session_count = sum(1 for summary in summaries if bool(summary.get("stalled_flag")))
+        recovery_attempted_session_count = sum(
+            1 for summary in summaries if bool(summary.get("recovery_attempted_flag"))
+        )
+        low_grounding_resolved_session_count = sum(
+            1 for summary in summaries if bool(summary.get("low_grounding_resolved_flag"))
+        )
+        return {
+            "count": len(summaries),
+            "sessions_with_summary": len(summaries),
+            "avg_initial_fact_backed_ratio": round(sum(initial_ratios) / len(initial_ratios), 4),
+            "avg_final_fact_backed_ratio": round(sum(final_ratios) / len(final_ratios), 4),
+            "avg_fact_backed_ratio_delta": round(sum(deltas) / len(deltas), 4),
+            "improved_session_count": improved_session_count,
+            "regressed_session_count": regressed_session_count,
+            "stalled_session_count": stalled_session_count,
+            "recovery_attempted_session_count": recovery_attempted_session_count,
+            "low_grounding_resolved_session_count": low_grounding_resolved_session_count,
+            "improved_flag": improved_session_count > regressed_session_count,
         }
 
     @staticmethod
