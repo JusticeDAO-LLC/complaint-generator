@@ -1480,6 +1480,77 @@ class Mediator:
 			'questions': questions
 		}
 
+	@staticmethod
+	def _extract_document_chronology_priority_hints(*payloads: Any) -> Dict[str, Any]:
+		candidate_containers = [payload for payload in payloads if isinstance(payload, dict)]
+		unresolved_temporal_issue_count = 0
+		chronology_task_count = 0
+		missing_proof_artifact_count = 0
+		objectives = set()
+
+		for payload in candidate_containers:
+			nested_payloads = [
+				payload,
+				payload.get('workflow_optimization_guidance') if isinstance(payload.get('workflow_optimization_guidance'), dict) else None,
+				payload.get('document_optimization') if isinstance(payload.get('document_optimization'), dict) else None,
+				payload.get('optimization_guidance') if isinstance(payload.get('optimization_guidance'), dict) else None,
+				payload.get('actor_critic_optimizer') if isinstance(payload.get('actor_critic_optimizer'), dict) else None,
+			]
+			for nested in nested_payloads:
+				if not isinstance(nested, dict):
+					continue
+				temporal_handoff = nested.get('claim_support_temporal_handoff')
+				if isinstance(temporal_handoff, dict):
+					unresolved_temporal_issue_count += int(temporal_handoff.get('unresolved_temporal_issue_count') or 0)
+					chronology_task_count += int(temporal_handoff.get('chronology_task_count') or 0)
+					if int(temporal_handoff.get('unresolved_temporal_issue_count') or 0) > 0 or int(temporal_handoff.get('chronology_task_count') or 0) > 0:
+						objectives.update({'timeline', 'exact_dates'})
+					claim_element_id = str(temporal_handoff.get('claim_element_id') or '').strip().lower()
+					temporal_objective_text = ' '.join(
+						str(item or '').strip().lower()
+						for item in list(temporal_handoff.get('temporal_proof_objectives') or [])
+						if str(item or '').strip()
+					)
+					if claim_element_id == 'causation' or any(
+						token in temporal_objective_text
+						for token in ('causation', 'protected activity', 'adverse action', 'retaliation', 'sequence')
+					):
+						objectives.add('causation_sequence')
+					if any(
+						token in temporal_objective_text
+						for token in ('hearing', 'appeal', 'review', 'grievance')
+					):
+						objectives.add('hearing_request_timing')
+					if any(
+						token in temporal_objective_text
+						for token in ('response', 'notice', 'decision')
+					):
+						objectives.add('response_dates')
+
+				claim_reasoning_review = nested.get('claim_reasoning_review')
+				if isinstance(claim_reasoning_review, dict):
+					for review in claim_reasoning_review.values():
+						if not isinstance(review, dict):
+							continue
+						status_counts = dict(review.get('proof_artifact_status_counts') or {})
+						missing_count = int(status_counts.get('missing') or 0)
+						if missing_count <= 0:
+							total_count = int(review.get('proof_artifact_element_count') or 0)
+							available_count = int(review.get('proof_artifact_available_element_count') or 0)
+							missing_count = max(0, total_count - available_count)
+						if missing_count > 0:
+							missing_proof_artifact_count += missing_count
+							objectives.add('documents')
+
+		return {
+			'needs_chronology_closure': bool(unresolved_temporal_issue_count or chronology_task_count),
+			'needs_decision_document_precision': bool(missing_proof_artifact_count),
+			'objectives': sorted(objectives),
+			'unresolved_temporal_issue_count': unresolved_temporal_issue_count,
+			'chronology_task_count': chronology_task_count,
+			'missing_proof_artifact_count': missing_proof_artifact_count,
+		}
+
 	def build_inquiry_gap_context(self) -> Dict[str, Any]:
 		priority_terms: List[str] = []
 		priority_term_lookup = set()
@@ -1487,6 +1558,17 @@ class Mediator:
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
 		adversarial_summary = (
 			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary') or {}
+		)
+		chronology_priority_hints = self._extract_document_chronology_priority_hints(
+			intake_case_file,
+			claim_support_packets,
+			adversarial_summary,
+			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'workflow_optimization_guidance') or {},
+			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'claim_support_temporal_handoff') or {},
+			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'claim_reasoning_review') or {},
+			self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'workflow_optimization_guidance') or {},
+			self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_temporal_handoff') or {},
+			self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_reasoning_review') or {},
 		)
 		expected_objectives = [
 			str(value).strip().lower()
@@ -1528,6 +1610,14 @@ class Mediator:
 				uncovered_objectives.append(default_objective)
 				if default_objective not in expected_objectives:
 					expected_objectives.append(default_objective)
+		for chronology_objective in chronology_priority_hints.get('objectives') or []:
+			objective = str(chronology_objective).strip().lower()
+			if not objective:
+				continue
+			if objective not in expected_objectives:
+				expected_objectives.append(objective)
+			if objective not in covered_objectives and objective not in uncovered_objectives:
+				uncovered_objectives.append(objective)
 
 		def _add_priority_term(value: Any) -> None:
 			text = str(value or '').strip()
@@ -1594,7 +1684,48 @@ class Mediator:
 				'date management received hearing request',
 			):
 				_add_priority_term(term)
+		if bool(chronology_priority_hints.get('needs_chronology_closure')):
+			for term in (
+				'exact dates',
+				'event timeline',
+				'chronology sequence',
+				'order of events',
+				'decision timeline',
+			):
+				_add_priority_term(term)
+		if 'causation_sequence' in uncovered_objectives:
+			for term in (
+				'causation sequence',
+				'protected activity timeline',
+				'sequence from complaint to adverse action',
+			):
+				_add_priority_term(term)
+		if 'response_dates' in uncovered_objectives:
+			for term in (
+				'response date',
+				'decision notice date',
+				'when the denial or decision was communicated',
+			):
+				_add_priority_term(term)
+		if bool(chronology_priority_hints.get('needs_decision_document_precision')):
+			for term in (
+				'decision notice',
+				'denial letter',
+				'written decision',
+				'notice email',
+			):
+				_add_priority_term(term)
 		intake_fallback_probes: List[Dict[str, str]] = []
+		if bool(chronology_priority_hints.get('needs_chronology_closure')):
+			intake_fallback_probes.append({
+				'objective': 'timeline',
+				'question': 'Ask for the exact sequence of events, including dates for the protected activity, any response, and the adverse decision.',
+			})
+		if bool(chronology_priority_hints.get('needs_decision_document_precision')):
+			intake_fallback_probes.append({
+				'objective': 'documents',
+				'question': 'Ask for the denial notice, written decision, appeal notice, or related emails that fix the decision date and stated reason.',
+			})
 		if 'anchor_grievance_hearing' in uncovered_objectives:
 			intake_fallback_probes.append({
 				'objective': 'anchor_grievance_hearing',
@@ -1639,6 +1770,11 @@ class Mediator:
 		return {
 			'priority_terms': priority_terms,
 			'gap_count': len(priority_terms),
+			'needs_chronology_closure': bool(chronology_priority_hints.get('needs_chronology_closure')),
+			'needs_decision_document_precision': bool(chronology_priority_hints.get('needs_decision_document_precision')),
+			'unresolved_temporal_issue_count': int(chronology_priority_hints.get('unresolved_temporal_issue_count') or 0),
+			'chronology_task_count': int(chronology_priority_hints.get('chronology_task_count') or 0),
+			'missing_proof_artifact_count': int(chronology_priority_hints.get('missing_proof_artifact_count') or 0),
 			'intake_expected_objectives': expected_objectives,
 			'intake_covered_objectives': covered_objectives,
 			'intake_uncovered_objectives': uncovered_objectives,

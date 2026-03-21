@@ -1307,16 +1307,81 @@ class ComplaintDocumentBuilder:
 
     def render_text(self, draft: Dict[str, Any]) -> str:
         caption = draft.get("caption", {}) if isinstance(draft.get("caption"), dict) else {}
+        parties = draft.get("parties", {}) if isinstance(draft.get("parties"), dict) else {}
+        intake_summary = [item for item in _listify(draft.get("intake_summary")) if isinstance(item, dict)]
         lines: List[str] = []
+
+        def _append_blank() -> None:
+            if lines and lines[-1] != "":
+                lines.append("")
+
+        def _format_id_list(values: Any, *, prefix: str = "") -> str:
+            entries = [_clean_text(value) for value in _listify(values) if _clean_text(value)]
+            return f"{prefix}{', '.join(entries)}" if entries else ""
+
+        def _claim_rows(claim: Dict[str, Any]) -> List[Dict[str, Any]]:
+            rows = [
+                row
+                for row in _listify(claim.get("supporting_fact_provenance"))
+                if isinstance(row, dict) and _clean_text(row.get("text") or "")
+            ]
+            if rows:
+                return rows
+            return [
+                row
+                for row in _listify(claim.get("supporting_fact_entries"))
+                if isinstance(row, dict) and _clean_text(row.get("text") or "")
+            ]
+
+        def _intake_clarifications() -> List[str]:
+            focus_tokens = {
+                "when",
+                "date",
+                "time",
+                "timeline",
+                "after",
+                "before",
+                "who",
+                "actor",
+                "title",
+                "because",
+                "caus",
+                "grievance",
+                "hearing",
+                "appeal",
+                "retaliat",
+                "notice",
+            }
+            clarifications: List[str] = []
+            seen = set()
+            for item in intake_summary:
+                question = _clean_text(item.get("question") or "")
+                answer = _clean_text(item.get("answer") or "")
+                if not answer:
+                    continue
+                lowered = f"{question} {answer}".lower()
+                if not any(token in lowered for token in focus_tokens):
+                    continue
+                sentence = _clean_sentence(answer)
+                if not sentence:
+                    continue
+                marker = sentence.lower()
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                clarifications.append(sentence)
+            return clarifications
+
         lines.append(str(draft.get("court_header") or "IN THE COURT OF COMPETENT JURISDICTION"))
         if caption.get("division_line"):
             lines.append(str(caption["division_line"]))
         if caption.get("county_line"):
             lines.append(str(caption["county_line"]))
         lines.append("")
-        plaintiffs = ", ".join(draft.get("parties", {}).get("plaintiffs", []) or ["Plaintiff"])
-        defendants = ", ".join(draft.get("parties", {}).get("defendants", []) or ["Defendant"])
-        case_number = draft.get("case_number") or "________________"
+
+        plaintiffs = ", ".join(parties.get("plaintiffs", []) or ["Plaintiff"])
+        defendants = ", ".join(parties.get("defendants", []) or ["Defendant"])
+        case_number = draft.get("case_number") or caption.get("case_number") or "________________"
         lines.append(f"{plaintiffs}, Plaintiff,")
         lines.append("v.")
         lines.append(f"{defendants}, Defendant.")
@@ -1333,22 +1398,29 @@ class ComplaintDocumentBuilder:
         lines.append("COMPLAINT")
         if caption.get("jury_demand_notice"):
             lines.append(str(caption["jury_demand_notice"]))
-        lines.append("")
+
+        _append_blank()
         lines.append("NATURE OF THE ACTION")
         lines.append(_clean_sentence(draft.get("nature_of_action")))
-        lines.append("")
+
+        _append_blank()
         lines.append("PARTIES")
-        for index, party in enumerate(draft.get("parties", {}).get("plaintiffs", []), 1):
+        plaintiffs_list = _listify(parties.get("plaintiffs"))
+        defendants_list = _listify(parties.get("defendants"))
+        for index, party in enumerate(plaintiffs_list, 1):
             lines.append(f"{index}. Plaintiff {party} is an aggrieved party bringing this action.")
-        start_index = len(draft.get("parties", {}).get("plaintiffs", []))
-        for offset, party in enumerate(draft.get("parties", {}).get("defendants", []), 1):
+        start_index = len(plaintiffs_list)
+        for offset, party in enumerate(defendants_list, 1):
             lines.append(f"{start_index + offset}. Defendant {party} is alleged to be responsible for the acts described below.")
-        lines.append("")
+
+        _append_blank()
         lines.append("JURISDICTION AND VENUE")
         lines.append(_clean_sentence(draft.get("jurisdiction_statement")))
         lines.append(_clean_sentence(draft.get("venue_statement")))
-        lines.append("")
+
+        _append_blank()
         lines.append("FACTUAL ALLEGATIONS")
+        allegation_counter = 0
         allegation_groups = draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else []
         if allegation_groups:
             for group in allegation_groups:
@@ -1360,11 +1432,42 @@ class ComplaintDocumentBuilder:
                     if not isinstance(entry, dict):
                         continue
                     text = _clean_sentence(entry.get("text"))
-                    if text:
-                        lines.append(f"{entry.get('number')}. {text}")
+                    if not text:
+                        continue
+                    allegation_counter += 1
+                    number = entry.get("number") if entry.get("number") not in (None, "") else allegation_counter
+                    lines.append(f"{number}. {text}")
         else:
-            for index, allegation in enumerate(_listify(draft.get("factual_allegations")), 1):
-                lines.append(f"{index}. {_clean_sentence(allegation)}")
+            allegation_entries = [
+                entry
+                for entry in _listify(draft.get("factual_allegation_paragraphs"))
+                if isinstance(entry, dict) and _clean_text(entry.get("text") or "")
+            ]
+            if allegation_entries:
+                for index, entry in enumerate(allegation_entries, 1):
+                    text = _clean_sentence(entry.get("text"))
+                    if not text:
+                        continue
+                    lines.append(f"{index}. {text}")
+                    trace_bits = []
+                    fact_ids = _format_id_list(entry.get("fact_ids"), prefix="fact ids: ")
+                    source_ids = _format_id_list(entry.get("source_artifact_ids"), prefix="artifact ids: ")
+                    if fact_ids:
+                        trace_bits.append(fact_ids)
+                    if source_ids:
+                        trace_bits.append(source_ids)
+                    if trace_bits:
+                        lines.append(f"   Support Trace: {'; '.join(trace_bits)}")
+            else:
+                for index, allegation in enumerate(_listify(draft.get("factual_allegations")), 1):
+                    lines.append(f"{index}. {_clean_sentence(allegation)}")
+
+        incorporated_clarifications = _intake_clarifications()
+        if incorporated_clarifications:
+            _append_blank()
+            lines.append("INTAKE CLARIFICATIONS INCORPORATED")
+            for index, sentence in enumerate(incorporated_clarifications, 1):
+                lines.append(f"{index}. {sentence}")
 
         chronology_lines = [
             _clean_sentence(item)
@@ -1372,78 +1475,186 @@ class ComplaintDocumentBuilder:
             if _clean_text(item)
         ]
         if chronology_lines:
-            lines.append("")
+            _append_blank()
             lines.append("ANCHORED CHRONOLOGY")
             for index, chronology_line in enumerate(chronology_lines, 1):
                 lines.append(f"{index}. {chronology_line}")
 
-        claims = _listify(draft.get("legal_claims"))
+        claims = _listify(draft.get("legal_claims")) or _listify(draft.get("claims_for_relief"))
         if claims:
-            lines.append("")
+            _append_blank()
             lines.append("CLAIMS FOR RELIEF")
         for claim in claims:
-            lines.append("")
-            lines.append(str(claim.get("title") or claim.get("claim_name") or "Claim"))
+            if not isinstance(claim, dict):
+                continue
+            _append_blank()
+            lines.append(str(claim.get("title") or claim.get("count_title") or claim.get("claim_name") or "Claim"))
             if claim.get("description"):
                 lines.append(_clean_sentence(claim.get("description")))
             if claim.get("legal_standard"):
                 lines.append("Legal Standard:")
                 lines.append(_clean_sentence(claim.get("legal_standard")))
             for item in _listify(claim.get("legal_standard_elements")):
+                if not isinstance(item, dict):
+                    continue
                 element_text = _clean_sentence(item.get("element") or item.get("description"))
                 citation = str(item.get("citation") or "").strip()
-                if citation:
+                if citation and element_text:
                     lines.append(f"- {element_text} ({citation})")
                 elif element_text:
                     lines.append(f"- {element_text}")
-            supporting_facts = _listify(claim.get("supporting_facts"))
+
+            supporting_facts = [_clean_sentence(fact) for fact in _listify(claim.get("supporting_facts")) if _clean_text(fact)]
             if supporting_facts:
                 lines.append("Supporting Facts:")
                 for fact in supporting_facts:
-                    lines.append(f"- {_clean_sentence(fact)}")
+                    lines.append(f"- {fact}")
+                rows = _claim_rows(claim)
+                if rows:
+                    row_lookup = {}
+                    for row in rows:
+                        text_key = _clean_text(row.get("text") or "").lower()
+                        if text_key and text_key not in row_lookup:
+                            row_lookup[text_key] = row
+                    for fact in supporting_facts:
+                        row = row_lookup.get(_clean_text(fact).rstrip(".").lower())
+                        if not isinstance(row, dict):
+                            row = row_lookup.get(_clean_text(fact).lower())
+                        if not isinstance(row, dict):
+                            continue
+                        trace_parts = []
+                        fact_ids = _format_id_list(row.get("fact_ids"), prefix="fact ids: ")
+                        trace_ids = _format_id_list(row.get("support_trace_ids"), prefix="trace ids: ")
+                        artifact_ids = _format_id_list(row.get("source_artifact_ids"), prefix="artifact ids: ")
+                        if fact_ids:
+                            trace_parts.append(fact_ids)
+                        if trace_ids:
+                            trace_parts.append(trace_ids)
+                        if artifact_ids:
+                            trace_parts.append(artifact_ids)
+                        if trace_parts:
+                            lines.append(f"  Support Trace: {'; '.join(trace_parts)}")
+
             authorities = _listify(claim.get("supporting_authorities"))
             if authorities:
                 lines.append("Supporting Authorities:")
                 for authority in authorities:
+                    if not isinstance(authority, dict):
+                        continue
                     authority_line = authority.get("citation") or authority.get("title") or "Authority"
                     if authority.get("title") and authority.get("citation"):
                         authority_line = f"{authority['citation']} - {authority['title']}"
                     lines.append(f"- {_clean_text(authority_line)}")
+
+            missing_requirements = [item for item in _listify(claim.get("missing_requirements")) if isinstance(item, dict)]
+            if missing_requirements:
+                lines.append("Unresolved Gaps:")
+                for requirement in missing_requirements:
+                    name = _clean_text(requirement.get("name") or "Gap")
+                    citation = _clean_text(requirement.get("citation") or "")
+                    action = _clean_text(requirement.get("suggested_action") or "")
+                    if citation and action:
+                        lines.append(f"- {name} ({citation}): {action}")
+                    elif citation:
+                        lines.append(f"- {name} ({citation})")
+                    elif action:
+                        lines.append(f"- {name}: {action}")
+                    else:
+                        lines.append(f"- {name}")
+
             supporting_exhibits = _listify(claim.get("supporting_exhibits"))
             if supporting_exhibits:
-                exhibit_labels = ", ".join(exhibit.get("label", "") for exhibit in supporting_exhibits if exhibit.get("label"))
+                exhibit_labels = ", ".join(exhibit.get("label", "") for exhibit in supporting_exhibits if isinstance(exhibit, dict) and exhibit.get("label"))
                 if exhibit_labels:
                     lines.append(f"Exhibits Incorporated by Reference: {exhibit_labels}.")
 
-        lines.append("")
+        _append_blank()
         lines.append("PRAYER FOR RELIEF")
         for item in _listify(draft.get("requested_relief")):
             lines.append(f"- {_clean_sentence(item)}")
 
         jury_demand = draft.get("jury_demand", {}) if isinstance(draft.get("jury_demand"), dict) else {}
         if jury_demand:
-            lines.append("")
+            _append_blank()
             lines.append(str(jury_demand.get("title") or "JURY DEMAND").upper())
             if jury_demand.get("text"):
                 lines.append(_clean_sentence(jury_demand.get("text")))
 
-        exhibits = _listify(draft.get("exhibits"))
+        exhibits = [item for item in _listify(draft.get("exhibits")) if isinstance(item, dict)]
         if exhibits:
-            lines.append("")
+            _append_blank()
             lines.append("EXHIBITS")
             for exhibit in exhibits:
-                reference = exhibit.get("reference") or exhibit.get("source_url") or exhibit.get("cid") or ""
-                summary = exhibit.get("summary") or exhibit.get("description") or ""
-                exhibit_line = f"{exhibit.get('label', 'Exhibit')} - {_clean_text(exhibit.get('title') or exhibit.get('description') or 'Supporting exhibit')}"
+                reference = _clean_text(exhibit.get("reference") or exhibit.get("source_url") or exhibit.get("cid") or "")
+                summary = _clean_text(exhibit.get("summary") or exhibit.get("description") or "")
+                title = _clean_text(exhibit.get("title") or exhibit.get("description") or "Supporting exhibit")
+                exhibit_line = f"{exhibit.get('label', 'Exhibit')} - {title}"
+                context_parts: List[str] = []
                 if reference:
-                    exhibit_line = f"{exhibit_line} ({reference})"
+                    context_parts.append(reference)
+                modality = _clean_text(exhibit.get("type") or exhibit.get("source_kind") or "")
+                if modality in {"policy_document", "file_evidence"}:
+                    context_parts.append(f"modality: {modality}")
+                if context_parts:
+                    exhibit_line = f"{exhibit_line} ({'; '.join(context_parts)})"
                 lines.append(exhibit_line)
                 if summary:
                     lines.append(f"  {_clean_sentence(summary)}")
+                exhibit_fact_ids = _format_id_list(exhibit.get("fact_ids") or exhibit.get("canonical_fact_ids"), prefix="fact ids: ")
+                exhibit_trace_ids = _format_id_list(exhibit.get("support_trace_ids"), prefix="trace ids: ")
+                if exhibit_fact_ids or exhibit_trace_ids:
+                    trace_parts = [item for item in [exhibit_fact_ids, exhibit_trace_ids] if item]
+                    lines.append(f"  Support Trace: {'; '.join(trace_parts)}")
+
+        drafting_readiness = draft.get("drafting_readiness", {}) if isinstance(draft.get("drafting_readiness"), dict) else {}
+        document_provenance_summary = (
+            draft.get("document_provenance_summary", {})
+            if isinstance(draft.get("document_provenance_summary"), dict)
+            else {}
+        )
+        if drafting_readiness or document_provenance_summary:
+            _append_blank()
+            lines.append("DRAFTING READINESS")
+            if drafting_readiness:
+                lines.append(f"Status: {_clean_text(drafting_readiness.get('status') or 'unknown').upper() or 'UNKNOWN'}")
+                warning_count = drafting_readiness.get("warning_count")
+                if warning_count not in (None, ""):
+                    lines.append(f"Warning count: {int(warning_count)}")
+                for section in _listify(drafting_readiness.get("sections")):
+                    if not isinstance(section, dict):
+                        continue
+                    section_title = _clean_text(section.get("title") or section.get("name") or "")
+                    section_status = _clean_text(section.get("status") or "")
+                    if section_title and section_status:
+                        lines.append(f"- {section_title}: {section_status}")
+            if document_provenance_summary:
+                ratio = document_provenance_summary.get("fact_backed_ratio")
+                if ratio is not None:
+                    lines.append(f"Fact-backed ratio: {float(ratio):.2f}")
+                summary_fact_backed = int(document_provenance_summary.get("summary_fact_backed_count") or 0)
+                summary_fact_total = int(document_provenance_summary.get("summary_fact_count") or 0)
+                claim_fact_backed = int(document_provenance_summary.get("claim_supporting_fact_backed_count") or 0)
+                claim_fact_total = int(document_provenance_summary.get("claim_supporting_fact_count") or 0)
+                lines.append(f"Summary facts grounded: {summary_fact_backed}/{summary_fact_total}")
+                lines.append(f"Claim support grounded: {claim_fact_backed}/{claim_fact_total}")
+                if document_provenance_summary.get("low_grounding_flag"):
+                    lines.append("Grounding warning: canonical fact and artifact support should be increased before filing.")
+
+        explicit_anchor_markers = " ".join(lines).lower()
+        unresolved_anchor_questions: List[str] = []
+        if "grievance_hearing" not in explicit_anchor_markers and "grievance hearing" not in explicit_anchor_markers:
+            unresolved_anchor_questions.append("What grievance hearing request was made, when was it made, and who responded on behalf of HACC?")
+        if "appeal_rights" not in explicit_anchor_markers and "appeal rights" not in explicit_anchor_markers:
+            unresolved_anchor_questions.append("What appeal rights notice was provided, on what date, and by which HACC actor?")
+        if unresolved_anchor_questions:
+            _append_blank()
+            lines.append("UNRESOLVED FACTUAL OR LEGAL GAPS BEFORE FORMALIZATION")
+            for index, question in enumerate(unresolved_anchor_questions, 1):
+                lines.append(f"{index}. {_clean_sentence(question)}")
 
         affidavit = draft.get("affidavit", {}) if isinstance(draft.get("affidavit"), dict) else {}
         if affidavit:
-            lines.append("")
+            _append_blank()
             lines.append(str(affidavit.get("title") or "AFFIDAVIT IN SUPPORT OF COMPLAINT").upper())
             for venue_line in _listify(affidavit.get("venue_lines")):
                 cleaned_venue_line = _clean_text(venue_line)
@@ -1479,7 +1690,7 @@ class ComplaintDocumentBuilder:
 
         verification = draft.get("verification", {}) if isinstance(draft.get("verification"), dict) else {}
         if verification:
-            lines.append("")
+            _append_blank()
             lines.append(str(verification.get("title") or "VERIFICATION").upper())
             if verification.get("text"):
                 lines.append(_clean_sentence(verification.get("text")))
@@ -1490,7 +1701,7 @@ class ComplaintDocumentBuilder:
 
         certificate_of_service = draft.get("certificate_of_service", {}) if isinstance(draft.get("certificate_of_service"), dict) else {}
         if certificate_of_service:
-            lines.append("")
+            _append_blank()
             lines.append(str(certificate_of_service.get("title") or "CERTIFICATE OF SERVICE").upper())
             if certificate_of_service.get("text"):
                 lines.append(_clean_sentence(certificate_of_service.get("text")))
@@ -1503,7 +1714,7 @@ class ComplaintDocumentBuilder:
                 lines.append(str(certificate_of_service["signature_line"]))
 
         signature_block = draft.get("signature_block", {}) if isinstance(draft.get("signature_block"), dict) else {}
-        lines.append("")
+        _append_blank()
         lines.append("SIGNATURE BLOCK")
         lines.append("Respectfully submitted,")
         lines.extend(self._signature_block_lines(signature_block))

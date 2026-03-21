@@ -83,6 +83,7 @@ class OptimizationReport:
     document_execution_drift_summary: Dict[str, Any] | None = None
     document_grounding_improvement_summary: Dict[str, Any] | None = None
     document_grounding_lane_outcome_summary: Dict[str, Any] | None = None
+    document_chronology_reasoning_summary: Dict[str, Any] | None = None
     cross_phase_findings: List[str] | None = None
     workflow_action_queue: List[Dict[str, Any]] | None = None
     document_provenance_summary: Dict[str, Any] | None = None
@@ -142,6 +143,7 @@ class OptimizationReport:
             'document_execution_drift_summary': self.document_execution_drift_summary or {},
             'document_grounding_improvement_summary': self.document_grounding_improvement_summary or {},
             'document_grounding_lane_outcome_summary': self.document_grounding_lane_outcome_summary or {},
+            'document_chronology_reasoning_summary': self.document_chronology_reasoning_summary or {},
             'cross_phase_findings': list(self.cross_phase_findings or []),
             'workflow_action_queue': list(self.workflow_action_queue or []),
         }
@@ -432,10 +434,12 @@ class Optimizer:
         document_evidence_targeting_summary: Optional[Dict[str, Any]] = None,
         document_provenance_summary: Optional[Dict[str, Any]] = None,
         document_workflow_execution_summary: Optional[Dict[str, Any]] = None,
+        document_chronology_reasoning_summary: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         document_evidence_targeting_summary = dict(document_evidence_targeting_summary or {})
         document_provenance_summary = dict(document_provenance_summary or {})
         document_workflow_execution_summary = dict(document_workflow_execution_summary or {})
+        document_chronology_reasoning_summary = dict(document_chronology_reasoning_summary or {})
         intake_actions = list((coverage_remediation.get("intake_priorities") or {}).get("recommended_actions") or [])
         intake_signals: List[str] = []
         intake_recommendations: List[Dict[str, Any]] = []
@@ -584,6 +588,33 @@ class Optimizer:
             graph_signals.append(f"dependency satisfaction rate is only {dg_satisfaction_rate:.2f}")
             graph_severity += 2
 
+        chronology_pressure_flag = bool(document_chronology_reasoning_summary.get("chronology_pressure_flag"))
+        unresolved_temporal_issue_count = int(
+            document_chronology_reasoning_summary.get("unresolved_temporal_issue_count") or 0
+        )
+        chronology_task_count = int(document_chronology_reasoning_summary.get("chronology_task_count") or 0)
+        proof_artifact_element_count = int(
+            document_chronology_reasoning_summary.get("proof_artifact_element_count") or 0
+        )
+        proof_artifact_available_element_count = int(
+            document_chronology_reasoning_summary.get("proof_artifact_available_element_count") or 0
+        )
+        if chronology_pressure_flag:
+            graph_signals.append(
+                "chronology and proof-review gaps require stronger graph propagation into timeline and actor modeling"
+            )
+            graph_severity += 2 if unresolved_temporal_issue_count > 0 else 1
+            graph_recommendations.append(
+                {
+                    "focus": "chronology_graph_handoff",
+                    "signal": "document_chronology_reasoning",
+                    "recommended_action": (
+                        "Preserve chronology tasks, proof bundle ids, and unresolved temporal issues in graph updates so "
+                        "timeline and causation reasoning stay available to downstream drafting."
+                    ),
+                }
+            )
+
         document_signals: List[str] = []
         document_recommendations: List[Dict[str, Any]] = []
         document_severity = 0
@@ -680,6 +711,32 @@ class Optimizer:
                         "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
                     ),
                 }
+            )
+        if chronology_pressure_flag:
+            chronology_parts: List[str] = []
+            if unresolved_temporal_issue_count > 0:
+                chronology_parts.append(f"{unresolved_temporal_issue_count} unresolved temporal issues")
+            if chronology_task_count > 0:
+                chronology_parts.append(f"{chronology_task_count} chronology tasks")
+            if proof_artifact_element_count > 0:
+                chronology_parts.append(
+                    f"{proof_artifact_available_element_count}/{proof_artifact_element_count} proof artifacts available"
+                )
+            chronology_summary = ", ".join(chronology_parts) or "chronology review metadata is present"
+            document_signals.append(
+                "drafting still carries chronology and proof-review pressure: " + chronology_summary
+            )
+            document_severity += 3 if unresolved_temporal_issue_count > 0 else 2
+            document_recommendations.insert(
+                0,
+                {
+                    "focus": "chronology_reasoning_handoff",
+                    "signal": "document_chronology_reasoning",
+                    "recommended_action": (
+                        "Thread unresolved chronology issues, proof artifact availability, and temporal proof bundle ids "
+                        "through drafting-target selection so factual allegations and claim support stay timeline-complete."
+                    ),
+                },
             )
         targeted_document_elements = [
             str(name)
@@ -798,6 +855,38 @@ class Optimizer:
         return list(capabilities.get(str(phase_name), []))
 
     @staticmethod
+    def _workflow_phase_task_priority(
+        *,
+        base_priority: int,
+        phase_name: str,
+        phase_payload: Dict[str, Any],
+        phase_scorecard: Dict[str, Any],
+        report: OptimizationReport,
+    ) -> Tuple[int, Dict[str, int]]:
+        base_value = int(base_priority or 0)
+        rank = int(phase_payload.get("priority") or 0)
+        status = str(phase_payload.get("status") or phase_scorecard.get("status") or "ready").strip().lower()
+        components = {
+            "base_priority": base_value,
+            "phase_rank_bonus": max(0, 4 - rank) * 10 if rank else 0,
+            "status_bonus": 12 if status == "critical" else 6 if status == "warning" else 0,
+            "chronology_bonus": 0,
+            "execution_bonus": 0,
+        }
+        chronology_summary = dict(report.document_chronology_reasoning_summary or {})
+        if bool(chronology_summary.get("chronology_pressure_flag")):
+            unresolved_temporal_issue_count = int(chronology_summary.get("unresolved_temporal_issue_count") or 0)
+            chronology_task_count = int(chronology_summary.get("chronology_task_count") or 0)
+            if phase_name == "document_generation":
+                components["chronology_bonus"] = min(10, 4 + unresolved_temporal_issue_count + chronology_task_count)
+            elif phase_name == "graph_analysis":
+                components["chronology_bonus"] = min(8, 2 + unresolved_temporal_issue_count)
+        if phase_name == "document_generation" and bool(phase_scorecard.get("execution_mismatch_flag")):
+            components["execution_bonus"] = 4
+        total_priority = sum(components.values())
+        return total_priority, components
+
+    @staticmethod
     def _workflow_phase_constraints(
         phase_name: str,
         target_paths: List[Path],
@@ -856,8 +945,6 @@ class Optimizer:
                 if path.name == "knowledge_graph.py":
                     target_map[key] = [
                         "build_from_text",
-                        "_extract_entities",
-                        "_extract_relationships",
                     ]
                     if {"chronology", "timeline", "actors"} & graph_focus_areas:
                         target_map[key].append("_detect_claim_types")
@@ -914,7 +1001,7 @@ class Optimizer:
                         target_map[key].append("_factual_background")
                 elif path.name == "formal_document.py":
                     target_map[key] = [
-                        "ComplaintDocumentBuilder",
+                        "render_text",
                     ]
         if not target_map:
             return {}
@@ -1146,6 +1233,7 @@ class Optimizer:
         workflow_phase_plan: Dict[str, Any],
         complaint_type_summary: Dict[str, Any],
         evidence_modality_summary: Dict[str, Any],
+        document_chronology_reasoning_summary: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         intake_priorities = dict((coverage_remediation or {}).get("intake_priorities") or {})
         uncovered_objectives = [
@@ -1167,14 +1255,107 @@ class Optimizer:
             blockers.append("complaint_type_generalization_gaps")
         if int((evidence_modality_summary or {}).get("below_baseline_count") or 0) > 0:
             blockers.append("evidence_modality_generalization_gaps")
+        chronology_summary = dict(document_chronology_reasoning_summary or {})
         return {
             "unresolved_intake_objectives": uncovered_objectives,
             "graph_dependency_status": str(graph_phase.get("status") or "ready"),
             "document_generation_status": str(document_phase.get("status") or "ready"),
             "complaint_type_gap_count": int((complaint_type_summary or {}).get("below_baseline_count") or 0),
             "evidence_modality_gap_count": int((evidence_modality_summary or {}).get("below_baseline_count") or 0),
+            "unresolved_temporal_issue_count": int(chronology_summary.get("unresolved_temporal_issue_count") or 0),
+            "chronology_task_count": int(chronology_summary.get("chronology_task_count") or 0),
+            "proof_artifact_element_count": int(chronology_summary.get("proof_artifact_element_count") or 0),
             "blockers": blockers,
             "ready_for_document_optimization": not blockers,
+        }
+
+    @staticmethod
+    def _build_document_chronology_reasoning_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        sessions_with_summary = 0
+        sessions_with_temporal_handoff = 0
+        sessions_with_reasoning_review = 0
+        unresolved_temporal_issue_count = 0
+        chronology_task_count = 0
+        proof_artifact_element_count = 0
+        proof_artifact_available_element_count = 0
+        proof_artifact_status_counts: Dict[str, int] = {}
+        claim_type_counts: Dict[str, int] = {}
+        unresolved_claim_type_counts: Dict[str, int] = {}
+        temporal_proof_bundle_ids = set()
+
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            workflow_guidance = (
+                final_state.get("workflow_optimization_guidance")
+                if isinstance(final_state.get("workflow_optimization_guidance"), dict)
+                else {}
+            )
+            document_optimization = (
+                final_state.get("document_optimization")
+                if isinstance(final_state.get("document_optimization"), dict)
+                else {}
+            )
+            temporal_handoff = (
+                workflow_guidance.get("claim_support_temporal_handoff")
+                if isinstance(workflow_guidance.get("claim_support_temporal_handoff"), dict)
+                else final_state.get("claim_support_temporal_handoff")
+                if isinstance(final_state.get("claim_support_temporal_handoff"), dict)
+                else document_optimization.get("claim_support_temporal_handoff")
+                if isinstance(document_optimization.get("claim_support_temporal_handoff"), dict)
+                else {}
+            )
+            claim_reasoning_review = (
+                workflow_guidance.get("claim_reasoning_review")
+                if isinstance(workflow_guidance.get("claim_reasoning_review"), dict)
+                else final_state.get("claim_reasoning_review")
+                if isinstance(final_state.get("claim_reasoning_review"), dict)
+                else document_optimization.get("claim_reasoning_review")
+                if isinstance(document_optimization.get("claim_reasoning_review"), dict)
+                else {}
+            )
+            if temporal_handoff or claim_reasoning_review:
+                sessions_with_summary += 1
+            if temporal_handoff:
+                sessions_with_temporal_handoff += 1
+                unresolved_temporal_issue_count += int(temporal_handoff.get("unresolved_temporal_issue_count") or 0)
+                chronology_task_count += int(temporal_handoff.get("chronology_task_count") or 0)
+                claim_type = str(temporal_handoff.get("claim_type") or "").strip()
+                if claim_type and int(temporal_handoff.get("unresolved_temporal_issue_count") or 0) > 0:
+                    unresolved_claim_type_counts[claim_type] = unresolved_claim_type_counts.get(claim_type, 0) + 1
+                for proof_bundle_id in list(temporal_handoff.get("temporal_proof_bundle_ids") or []):
+                    normalized = str(proof_bundle_id or "").strip()
+                    if normalized:
+                        temporal_proof_bundle_ids.add(normalized)
+            if claim_reasoning_review:
+                sessions_with_reasoning_review += 1
+                for claim_type, review in dict(claim_reasoning_review or {}).items():
+                    normalized_claim_type = str(claim_type or "").strip()
+                    if not normalized_claim_type or not isinstance(review, dict):
+                        continue
+                    claim_type_counts[normalized_claim_type] = claim_type_counts.get(normalized_claim_type, 0) + 1
+                    proof_artifact_element_count += int(review.get("proof_artifact_element_count") or 0)
+                    proof_artifact_available_element_count += int(review.get("proof_artifact_available_element_count") or 0)
+                    for status, count in dict(review.get("proof_artifact_status_counts") or {}).items():
+                        normalized_status = str(status or "").strip()
+                        if normalized_status:
+                            proof_artifact_status_counts[normalized_status] = (
+                                proof_artifact_status_counts.get(normalized_status, 0) + int(count or 0)
+                            )
+
+        return {
+            "count": sessions_with_summary,
+            "sessions_with_temporal_handoff": sessions_with_temporal_handoff,
+            "sessions_with_reasoning_review": sessions_with_reasoning_review,
+            "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+            "chronology_task_count": chronology_task_count,
+            "proof_artifact_element_count": proof_artifact_element_count,
+            "proof_artifact_available_element_count": proof_artifact_available_element_count,
+            "proof_artifact_status_counts": proof_artifact_status_counts,
+            "claim_type_counts": claim_type_counts,
+            "unresolved_claim_type_counts": unresolved_claim_type_counts,
+            "temporal_proof_bundle_count": len(temporal_proof_bundle_ids),
+            "temporal_proof_bundle_ids": sorted(temporal_proof_bundle_ids),
+            "chronology_pressure_flag": bool(unresolved_temporal_issue_count or chronology_task_count),
         }
 
     @staticmethod
@@ -1776,6 +1957,7 @@ class Optimizer:
         document_grounding_lane_outcome_summary: Dict[str, Any],
         document_workflow_execution_summary: Dict[str, Any],
         document_execution_drift_summary: Dict[str, Any],
+        document_chronology_reasoning_summary: Dict[str, Any],
     ) -> Dict[str, Dict[str, Any]]:
         workflow_phases = dict((report.workflow_phase_plan or {}).get("phases") or {})
         weakest_objectives = self._top_uncovered_intake_objectives(report, limit=5)
@@ -1832,6 +2014,7 @@ class Optimizer:
         )
         kg_avg_gaps = self._safe_float((graph_summary or {}).get("kg_avg_gaps")) or 0.0
         dg_satisfaction_rate = self._safe_float((graph_summary or {}).get("dg_avg_satisfaction_rate")) or 0.0
+        chronology_pressure_flag = bool((document_chronology_reasoning_summary or {}).get("chronology_pressure_flag"))
         return {
             "intake_questioning": {
                 "status": str((workflow_phases.get("intake_questioning") or {}).get("status") or "ready"),
@@ -1872,6 +2055,7 @@ class Optimizer:
                     4,
                 ),
                 "focus_areas": [
+                    *(["chronology_closure"] if chronology_pressure_flag else []),
                     *list((document_handoff_summary or {}).get("unresolved_intake_objectives") or [])[:2],
                     *targeted_claim_elements[:2],
                 ][:3],
@@ -1890,6 +2074,12 @@ class Optimizer:
                 "document_grounding_improved_flag": bool((document_grounding_improvement_summary or {}).get("improved_flag")),
                 "execution_mismatch_flag": execution_mismatch_flag,
                 "execution_drift_summary": dict(document_execution_drift_summary or {}),
+                "unresolved_temporal_issue_count": int((document_chronology_reasoning_summary or {}).get("unresolved_temporal_issue_count") or 0),
+                "chronology_task_count": int((document_chronology_reasoning_summary or {}).get("chronology_task_count") or 0),
+                "proof_artifact_element_count": int((document_chronology_reasoning_summary or {}).get("proof_artifact_element_count") or 0),
+                "proof_artifact_available_element_count": int((document_chronology_reasoning_summary or {}).get("proof_artifact_available_element_count") or 0),
+                "document_chronology_reasoning_summary": dict(document_chronology_reasoning_summary or {}),
+                "chronology_pressure_flag": chronology_pressure_flag,
             },
         }
 
@@ -1915,6 +2105,10 @@ class Optimizer:
         if "complaint_type_generalization_gaps" in blockers or "evidence_modality_generalization_gaps" in blockers:
             findings.append(
                 "Generalization gaps across complaint types or evidence modalities should be addressed across intake, graph analysis, and drafting together rather than in a single phase."
+            )
+        if int((document_handoff_summary or {}).get("unresolved_temporal_issue_count") or 0) > 0:
+            findings.append(
+                "Chronology gaps remain unresolved in document generation; preserve proof-review signals and temporal handoff metadata through graph analysis and drafting fixes."
             )
         if not findings:
             findings.append(
@@ -2087,7 +2281,31 @@ class Optimizer:
                 (report.workflow_phase_plan or {}).get("phases", {}).get("document_generation", {}).get("status") or ""
             ),
             "document_blockers": list((report.document_handoff_summary or {}).get("blockers") or []),
+            "unresolved_temporal_issue_count": int(
+                (report.document_chronology_reasoning_summary or {}).get("unresolved_temporal_issue_count") or 0
+            ),
+            "chronology_task_count": int(
+                (report.document_chronology_reasoning_summary or {}).get("chronology_task_count") or 0
+            ),
+            "proof_artifact_element_count": int(
+                (report.document_chronology_reasoning_summary or {}).get("proof_artifact_element_count") or 0
+            ),
+            "proof_artifact_available_element_count": int(
+                (report.document_chronology_reasoning_summary or {}).get("proof_artifact_available_element_count") or 0
+            ),
+            "chronology_pressure_flag": bool(
+                (report.document_chronology_reasoning_summary or {}).get("chronology_pressure_flag")
+            ),
         }
+        graph_signal_context["chronology_pressure_flag"] = bool(
+            (report.document_chronology_reasoning_summary or {}).get("chronology_pressure_flag")
+        )
+        graph_signal_context["unresolved_temporal_issue_count"] = int(
+            (report.document_chronology_reasoning_summary or {}).get("unresolved_temporal_issue_count") or 0
+        )
+        graph_signal_context["chronology_task_count"] = int(
+            (report.document_chronology_reasoning_summary or {}).get("chronology_task_count") or 0
+        )
 
         weak_complaint_types = [
             name
@@ -2212,6 +2430,10 @@ class Optimizer:
                     description += " Graph evidence targets: " + ", ".join(targeted_elements[:3]) + "."
                 if targeted_focus_areas:
                     description += " Graph focus areas: " + ", ".join(targeted_focus_areas[:2]) + "."
+                if bool((report.document_chronology_reasoning_summary or {}).get("chronology_pressure_flag")):
+                    description += (
+                        " Preserve chronology tasks and proof-review metadata when updating timelines, actors, and causation links."
+                    )
             if phase_name == "document_generation":
                 targeting_summary = dict(report.document_evidence_targeting_summary or {})
                 targeted_elements = [
@@ -2234,6 +2456,19 @@ class Optimizer:
                     description += " Draft loop evidence targets: " + ", ".join(targeted_elements[:3]) + "."
                 if targeted_support_kinds:
                     description += " Preferred support lanes: " + ", ".join(targeted_support_kinds[:2]) + "."
+                if bool((report.document_chronology_reasoning_summary or {}).get("chronology_pressure_flag")):
+                    description += (
+                        " Prioritize unresolved chronology issues and proof artifact gaps when selecting drafting focus sections."
+                    )
+
+            phase_scorecard = dict((report.phase_scorecards or {}).get(phase_name) or {})
+            task_priority, priority_components = self._workflow_phase_task_priority(
+                base_priority=int(priority),
+                phase_name=phase_name,
+                phase_payload=phase_payload,
+                phase_scorecard=phase_scorecard,
+                report=report,
+            )
 
             tasks.append(
                 task_cls(
@@ -2241,7 +2476,7 @@ class Optimizer:
                     description=description,
                     target_files=target_paths,
                     method=getattr(method_enum, normalized_method.upper()),
-                    priority=int(priority),
+                    priority=task_priority,
                     constraints={
                         **dict(constraints or {}),
                         **phase_constraints,
@@ -2258,9 +2493,11 @@ class Optimizer:
                         "workflow_phase_tertiary_target_files": [str(path) for path in tertiary_target_paths],
                         "workflow_phase_tertiary_constraints": dict(tertiary_phase_constraints or {}),
                         "workflow_capabilities": self._workflow_phase_capabilities(phase_name),
+                        "workflow_phase_task_priority": task_priority,
+                        "workflow_phase_task_priority_components": priority_components,
                         "weak_complaint_types": weak_complaint_types,
                         "weak_evidence_modalities": weak_evidence_modalities,
-                        "phase_scorecard": dict((report.phase_scorecards or {}).get(phase_name) or {}),
+                        "phase_scorecard": phase_scorecard,
                         "phase_signal_context": (
                             graph_signal_context if phase_name == "graph_analysis"
                             else intake_signal_context if phase_name == "intake_questioning"
@@ -2277,6 +2514,7 @@ class Optimizer:
                         "document_grounding_lane_outcome_summary": dict(report.document_grounding_lane_outcome_summary or {}),
                         "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                         "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
+                        "document_chronology_reasoning_summary": dict(report.document_chronology_reasoning_summary or {}),
                         "report_summary": {
                             "average_score": report.average_score,
                             "score_trend": report.score_trend,
@@ -2295,6 +2533,7 @@ class Optimizer:
                             "document_grounding_lane_outcome_summary": dict(report.document_grounding_lane_outcome_summary or {}),
                             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
                             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
+                            "document_chronology_reasoning_summary": dict(report.document_chronology_reasoning_summary or {}),
                             "cross_phase_findings": list(report.cross_phase_findings or []),
                         },
                         **dict(metadata or {}),
@@ -2364,6 +2603,7 @@ class Optimizer:
             "document_grounding_lane_outcome_summary": dict(report.document_grounding_lane_outcome_summary or {}),
             "document_workflow_execution_summary": dict(report.document_workflow_execution_summary or {}),
             "document_execution_drift_summary": dict(report.document_execution_drift_summary or {}),
+            "document_chronology_reasoning_summary": dict(report.document_chronology_reasoning_summary or {}),
             "cross_phase_findings": list(report.cross_phase_findings or []),
             "workflow_action_queue": list(report.workflow_action_queue or []),
         }
@@ -2899,6 +3139,7 @@ class Optimizer:
         document_grounding_improvement_summary = self._build_document_grounding_improvement_summary(successful)
         document_grounding_lane_outcome_summary = self._build_document_grounding_lane_outcome_summary(successful)
         document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
+        document_chronology_reasoning_summary = self._build_document_chronology_reasoning_summary(successful)
         document_execution_drift_summary = self._build_document_execution_drift_summary(
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
@@ -2928,6 +3169,7 @@ class Optimizer:
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
+            document_chronology_reasoning_summary=document_chronology_reasoning_summary,
         )
         recommended_hacc_preset = None
         if hacc_preset_performance:
@@ -3235,6 +3477,7 @@ class Optimizer:
             workflow_phase_plan=workflow_phase_plan,
             complaint_type_summary=complaint_type_generalization_summary,
             evidence_modality_summary=evidence_modality_generalization_summary,
+            document_chronology_reasoning_summary=document_chronology_reasoning_summary,
         )
         phase_scorecards_placeholder = {}
         report = OptimizationReport(
@@ -3290,6 +3533,7 @@ class Optimizer:
             document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
+            document_chronology_reasoning_summary=document_chronology_reasoning_summary,
             cross_phase_findings=[],
             workflow_action_queue=[],
         )
@@ -3307,6 +3551,7 @@ class Optimizer:
             document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
+            document_chronology_reasoning_summary=document_chronology_reasoning_summary,
         )
         report.cross_phase_findings = self._build_cross_phase_findings(
             phase_scorecards=report.phase_scorecards,

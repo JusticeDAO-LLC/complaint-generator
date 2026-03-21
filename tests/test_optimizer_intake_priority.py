@@ -316,6 +316,12 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     tertiary_constraints = document_task.metadata["workflow_phase_tertiary_constraints"]
     assert "target_symbols" in tertiary_constraints
     assert document_task.metadata["workflow_phase_tertiary_target_files"]
+    assert any(
+        path.endswith("formal_document.py") or path.endswith("document_pipeline.py")
+        for path in tertiary_constraints["target_symbols"]
+    )
+    for symbols in tertiary_constraints["target_symbols"].values():
+        assert symbols
     intake_secondary_constraints = intake_task.metadata["workflow_phase_secondary_constraints"]
     complainant_symbols = next(
         symbols
@@ -326,6 +332,13 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     intake_tertiary_constraints = intake_task.metadata["workflow_phase_tertiary_constraints"]
     assert "target_symbols" in intake_tertiary_constraints
     assert intake_task.metadata["workflow_phase_tertiary_target_files"]
+    graph_tertiary_constraints = graph_task.metadata["workflow_phase_tertiary_constraints"]
+    knowledge_graph_symbols = next(
+        symbols
+        for path, symbols in graph_tertiary_constraints["target_symbols"].items()
+        if path.endswith("knowledge_graph.py")
+    )
+    assert knowledge_graph_symbols == ["build_from_text"]
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 
@@ -422,6 +435,7 @@ def test_build_workflow_optimization_bundle_exposes_all_phases():
     assert "evidence_modality_performance" in payload["shared_context"]
     assert "phase_scorecards" in payload["shared_context"]
     assert "document_handoff_summary" in payload["shared_context"]
+    assert "document_chronology_reasoning_summary" in payload["shared_context"]
     assert payload["shared_context"]["workflow_action_queue"]
     assert payload["phase_scorecards"]["document_generation"]["status"] in {"critical", "warning", "ready"}
     assert payload["cross_phase_findings"]
@@ -648,6 +662,20 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
                     "regressed_flag": False,
                     "stalled_flag": False,
                 },
+                "claim_support_temporal_handoff": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "unresolved_temporal_issue_count": 2,
+                    "chronology_task_count": 1,
+                    "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                },
+                "claim_reasoning_review": {
+                    "retaliation": {
+                        "proof_artifact_element_count": 2,
+                        "proof_artifact_available_element_count": 1,
+                        "proof_artifact_status_counts": {"available": 1, "missing": 1},
+                    }
+                },
             },
             "adversarial_intake_priority_summary": {
                 "expected_objectives": ["timeline"],
@@ -668,22 +696,36 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert report.document_grounding_improvement_summary["avg_fact_backed_ratio_delta"] == 0.2444
     assert report.document_grounding_lane_outcome_summary["recommended_future_support_kind"] == "testimony"
     assert report.document_grounding_lane_outcome_summary["support_kind_stats"]["testimony"]["improved_count"] == 1
+    assert report.document_chronology_reasoning_summary["unresolved_temporal_issue_count"] == 2
+    assert report.document_chronology_reasoning_summary["chronology_task_count"] == 1
+    assert report.document_chronology_reasoning_summary["proof_artifact_element_count"] == 2
+    assert report.document_chronology_reasoning_summary["proof_artifact_available_element_count"] == 1
+    assert report.document_chronology_reasoning_summary["proof_artifact_status_counts"] == {"available": 1, "missing": 1}
+    assert report.document_chronology_reasoning_summary["unresolved_claim_type_counts"] == {"retaliation": 1}
     assert report.document_execution_drift_summary["drift_flag"] is True
     assert report.document_execution_drift_summary["top_targeted_claim_element"] == "protected_activity"
     assert report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
     assert "protected_activity" in report.phase_scorecards["document_generation"]["targeted_claim_elements"]
+    assert report.phase_scorecards["document_generation"]["chronology_pressure_flag"] is True
+    assert report.phase_scorecards["document_generation"]["unresolved_temporal_issue_count"] == 2
+    assert report.phase_scorecards["document_generation"]["proof_artifact_element_count"] == 2
     assert report.phase_scorecards["document_generation"]["execution_mismatch_flag"] is True
     assert report.phase_scorecards["document_generation"]["execution_drift_summary"]["drift_flag"] is True
     assert report.phase_scorecards["document_generation"]["document_low_grounding_flag"] is True
     assert report.phase_scorecards["document_generation"]["document_fact_backed_ratio"] == 0.3889
     assert report.phase_scorecards["document_generation"]["document_grounding_improved_flag"] is True
     assert report.phase_scorecards["document_generation"]["first_executed_claim_element"] == "causation"
+    assert report.document_handoff_summary["unresolved_temporal_issue_count"] == 2
+    assert report.workflow_phase_plan["phases"]["document_generation"]["status"] == "critical"
+    assert report.workflow_phase_plan["phases"]["graph_analysis"]["status"] == "critical"
+    assert report.workflow_phase_plan["recommended_order"][0] == "document_generation"
     assert any("protected_activity" in recommendation for recommendation in report.recommendations)
     assert any("acting on the highest-priority targeted claim element first" in recommendation for recommendation in report.recommendations)
     assert any("Draft grounding is weak" in recommendation for recommendation in report.recommendations)
     assert any("Grounding recovery prompts are improving fact-backed ratios" in recommendation for recommendation in report.recommendations)
     assert any("Grounding improvement is strongest when using testimony support" in recommendation for recommendation in report.recommendations)
     assert any("The learned grounding lane testimony is producing measurable gains" in recommendation for recommendation in report.recommendations)
+    assert any("Chronology gaps remain unresolved in document generation" in finding for finding in report.cross_phase_findings)
 
     tasks, _ = optimizer.build_phase_patch_tasks(
         [result],
@@ -696,9 +738,13 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
         },
         report=report,
     )
+    intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
+    graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
     document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
     assert "Draft loop evidence targets" in document_task.description
     assert "Preferred support lanes" in document_task.description
+    assert "Prioritize unresolved chronology issues and proof artifact gaps" in document_task.description
+    assert document_task.priority > intake_task.priority > graph_task.priority
     assert len(document_task.target_files) == 1
     assert document_task.target_files[0].name == "document_optimization.py"
     assert "document_optimization.py" in document_task.constraints["target_symbols"]
@@ -711,6 +757,9 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert document_task.metadata["document_grounding_lane_outcome_summary"]["recommended_future_support_kind"] == "testimony"
     assert document_task.metadata["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["document_execution_drift_summary"]["drift_flag"] is True
+    assert document_task.metadata["document_chronology_reasoning_summary"]["unresolved_temporal_issue_count"] == 2
+    assert document_task.metadata["phase_signal_context"]["unresolved_temporal_issue_count"] == 2
+    assert document_task.metadata["workflow_phase_task_priority_components"]["chronology_bonus"] > 0
     assert document_task.metadata["report_summary"]["document_evidence_targeting_summary"]["claim_element_counts"] == {
         "protected_activity": 1,
     }
@@ -718,6 +767,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert document_task.metadata["report_summary"]["document_grounding_improvement_summary"]["avg_fact_backed_ratio_delta"] == 0.2444
     assert document_task.metadata["report_summary"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert document_task.metadata["report_summary"]["document_execution_drift_summary"]["drift_flag"] is True
+    assert document_task.metadata["report_summary"]["document_chronology_reasoning_summary"]["proof_artifact_element_count"] == 2
 
     bundle, bundle_report = optimizer.build_workflow_optimization_bundle(
         [result],
@@ -737,7 +787,10 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert payload["shared_context"]["document_grounding_lane_outcome_summary"]["recommended_future_support_kind"] == "testimony"
     assert payload["shared_context"]["document_workflow_execution_summary"]["first_targeted_claim_element"] == "causation"
     assert payload["shared_context"]["document_execution_drift_summary"]["drift_flag"] is True
+    assert payload["shared_context"]["document_chronology_reasoning_summary"]["chronology_pressure_flag"] is True
+    assert payload["shared_context"]["document_chronology_reasoning_summary"]["temporal_proof_bundle_count"] == 1
     assert bundle_report.document_evidence_targeting_summary["claim_element_counts"] == {"protected_activity": 1}
+    assert bundle_report.document_chronology_reasoning_summary["proof_artifact_status_counts"] == {"available": 1, "missing": 1}
 
 
 def test_document_execution_mismatch_escalates_document_phase_priority():
@@ -780,6 +833,70 @@ def test_document_execution_mismatch_escalates_document_phase_priority():
     document_phase = report.workflow_phase_plan["phases"]["document_generation"]
     assert document_phase["status"] in {"critical", "warning"}
     assert "document_generation" in report.workflow_phase_plan["recommended_order"][:2]
+
+
+def test_document_chronology_pressure_escalates_graph_and_document_workflow_priorities():
+    optimizer = Optimizer()
+    result = _session_result(
+        "session_chronology_priority",
+        0.82,
+        {
+            "workflow_optimization_guidance": {
+                "claim_support_temporal_handoff": {
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "unresolved_temporal_issue_count": 1,
+                    "chronology_task_count": 1,
+                    "temporal_proof_bundle_ids": ["retaliation:causation:bundle_002"],
+                },
+                "claim_reasoning_review": {
+                    "retaliation": {
+                        "proof_artifact_element_count": 1,
+                        "proof_artifact_available_element_count": 0,
+                        "proof_artifact_status_counts": {"missing": 1},
+                    }
+                },
+            },
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": [],
+                "covered_objectives": [],
+                "uncovered_objectives": [],
+            },
+        },
+    )
+    result.knowledge_graph_summary = {"total_entities": 4, "total_relationships": 3, "gaps": 0}
+    result.dependency_graph_summary = {"total_nodes": 4, "total_dependencies": 3, "satisfaction_rate": 0.9}
+
+    report = optimizer.analyze([result])
+
+    assert report.document_chronology_reasoning_summary["chronology_pressure_flag"] is True
+    assert report.workflow_phase_plan["phases"]["intake_questioning"]["status"] == "ready"
+    assert report.workflow_phase_plan["phases"]["graph_analysis"]["status"] == "warning"
+    assert report.workflow_phase_plan["phases"]["document_generation"]["status"] == "critical"
+    assert report.workflow_phase_plan["recommended_order"][:2] == ["document_generation", "graph_analysis"]
+
+    tasks, _ = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+        report=report,
+    )
+
+    intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
+    graph_task = next(task for task in tasks if task.metadata["workflow_phase"] == "graph_analysis")
+    document_task = next(task for task in tasks if task.metadata["workflow_phase"] == "document_generation")
+
+    assert document_task.priority > graph_task.priority > intake_task.priority
+    assert graph_task.metadata["workflow_phase_task_priority_components"]["chronology_bonus"] > 0
+    assert document_task.metadata["workflow_phase_task_priority_components"]["chronology_bonus"] > 0
+    assert document_task.metadata["phase_signal_context"]["unresolved_temporal_issue_count"] == 1
+    assert "chronology tasks and proof-review metadata" in graph_task.description
+    assert "Prioritize unresolved chronology issues and proof artifact gaps" in document_task.description
 
 
 def test_analyze_and_phase_tasks_carry_graph_element_targeting_summary():

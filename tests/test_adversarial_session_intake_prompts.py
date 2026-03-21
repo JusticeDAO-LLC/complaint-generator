@@ -547,6 +547,94 @@ def test_inject_intake_prompt_questions_prepends_prioritized_candidates():
     assert merged[3]["question"] == "Can you describe what documents you still have?"
 
 
+def test_extract_latest_batch_priority_flags_reads_document_chronology_hints():
+    seed = {
+        "workflow_optimization_guidance": {
+            "claim_support_temporal_handoff": {
+                "claim_element_id": "causation",
+                "unresolved_temporal_issue_count": 2,
+                "chronology_task_count": 1,
+                "temporal_proof_objectives": ["response_timeline", "protected_activity_causation"],
+            },
+            "claim_reasoning_review": {
+                "retaliation": {
+                    "proof_artifact_element_count": 2,
+                    "proof_artifact_available_element_count": 1,
+                    "proof_artifact_status_counts": {"missing": 1, "available": 1},
+                }
+            },
+        }
+    }
+
+    flags = AdversarialSession._extract_latest_batch_priority_flags(seed)
+
+    assert flags["needs_chronology_closure"] is True
+    assert flags["needs_decision_document_precision"] is True
+
+
+def test_reprioritize_candidates_uses_document_chronology_hints_to_frontload_timeline_and_documents():
+    seed = {
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "When did the first incident happen, and what happened next?",
+                    "Do you have any emails, notices, or other written documents about this?",
+                    "What remedy are you seeking now?",
+                ]
+            }
+        },
+        "workflow_optimization_guidance": {
+            "claim_support_temporal_handoff": {
+                "claim_element_id": "causation",
+                "unresolved_temporal_issue_count": 1,
+                "chronology_task_count": 1,
+                "temporal_proof_objectives": ["response_timeline", "protected_activity_causation"],
+            },
+            "claim_reasoning_review": {
+                "retaliation": {
+                    "proof_artifact_element_count": 1,
+                    "proof_artifact_available_element_count": 0,
+                    "proof_artifact_status_counts": {"missing": 1},
+                }
+            },
+        },
+    }
+    candidates = [
+        {
+            "question": "What remedy are you seeking now?",
+            "type": "harm_remedy",
+            "question_objective": "harm_remedy",
+            "selector_score": 100.0,
+            "proof_priority": 1,
+        },
+        {
+            "question": "Do you have any emails, notices, or other written documents about this?",
+            "type": "documents",
+            "question_objective": "documents",
+            "selector_score": 20.0,
+            "proof_priority": 2,
+        },
+        {
+            "question": "When did the first incident happen, and what happened next?",
+            "type": "timeline",
+            "question_objective": "timeline",
+            "selector_score": 10.0,
+            "proof_priority": 3,
+        },
+    ]
+
+    ranked = AdversarialSession._reprioritize_candidates_for_intake_objectives(
+        candidates,
+        seed,
+        max_questions=3,
+    )
+
+    assert "When did the first incident happen" in ranked[0]["question"]
+    assert ranked[0]["selector_signals"]["intake_priority_match"] == ["timeline"]
+    assert ranked[1]["question"].startswith("Do you have any emails, notices")
+    assert ranked[1]["selector_signals"]["intake_priority_match"] == ["documents"]
+
+
 def test_summarize_intake_priority_coverage_does_not_force_selection_criteria_for_non_selection_seed():
     seed = {
         "actor_critic_optimizer": {

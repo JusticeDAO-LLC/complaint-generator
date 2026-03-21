@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
 from mediator.inquiries import Inquiries
+from mediator import Mediator
+from complaint_phases import ComplaintPhase
 
 
 def test_inquiries_prioritize_support_gap_targeted_legal_questions_first():
@@ -192,3 +194,112 @@ def test_inquiries_merge_legal_questions_records_intake_priority_matches():
     assert mediator.state.inquiries[0]['intake_priority_rank'] == 0
     assert mediator.state.inquiries[1]['intake_priority_objectives'] == ['timeline']
     assert mediator.state.inquiries[1]['intake_priority_rank'] == 1
+
+
+def test_mediator_build_inquiry_gap_context_surfaces_chronology_and_proof_hints():
+    class FakePhaseManager:
+        def __init__(self, payloads):
+            self.payloads = payloads
+
+        def get_phase_data(self, phase, key):
+            return self.payloads.get((phase, key))
+
+    mediator = Mediator.__new__(Mediator)
+    mediator.phase_manager = FakePhaseManager({
+        (ComplaintPhase.INTAKE, 'intake_case_file'): {'candidate_claims': []},
+        (ComplaintPhase.EVIDENCE, 'claim_support_packets'): {},
+        (ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary'): {},
+        (ComplaintPhase.INTAKE, 'workflow_optimization_guidance'): {
+            'claim_support_temporal_handoff': {
+                'unresolved_temporal_issue_count': 2,
+                'chronology_task_count': 1,
+                'temporal_proof_objectives': [
+                    'protected activity to adverse action sequence',
+                    'decision notice response date',
+                ],
+            },
+            'claim_reasoning_review': {
+                'retaliation': {
+                    'proof_artifact_status_counts': {'missing': 2},
+                }
+            },
+        },
+    })
+
+    context = Mediator.build_inquiry_gap_context(mediator)
+
+    assert context['needs_chronology_closure'] is True
+    assert context['needs_decision_document_precision'] is True
+    assert context['unresolved_temporal_issue_count'] == 2
+    assert context['chronology_task_count'] == 1
+    assert context['missing_proof_artifact_count'] == 2
+    assert 'timeline' in context['intake_uncovered_objectives']
+    assert 'exact_dates' in context['intake_uncovered_objectives']
+    assert 'causation_sequence' in context['intake_uncovered_objectives']
+    assert 'response_dates' in context['intake_uncovered_objectives']
+    assert 'documents' in context['intake_uncovered_objectives']
+    assert 'decision notice' in [term.lower() for term in context['priority_terms']]
+
+
+def test_inquiries_get_next_prioritizes_chronology_closure_before_documents():
+    mediator = SimpleNamespace(
+        state=SimpleNamespace(
+            inquiries=[
+                {
+                    'question': 'Do you still have the denial notice or related emails?',
+                    'answer': None,
+                    'priority': 'High',
+                    'alternative_questions': [],
+                },
+                {
+                    'question': 'What exact date did the denial happen, and what happened next?',
+                    'answer': None,
+                    'priority': 'High',
+                    'alternative_questions': [],
+                },
+            ]
+        ),
+        build_inquiry_gap_context=lambda: {
+            'priority_terms': [],
+            'gap_count': 0,
+            'needs_chronology_closure': True,
+            'needs_decision_document_precision': True,
+            'intake_expected_objectives': ['documents', 'timeline', 'exact_dates'],
+            'intake_uncovered_objectives': ['documents', 'timeline', 'exact_dates'],
+            'intake_covered_objectives': [],
+        },
+    )
+    inquiries = Inquiries(mediator)
+
+    next_question = inquiries.get_next()
+
+    assert next_question['question'] == 'What exact date did the denial happen, and what happened next?'
+
+
+def test_inquiries_explain_inquiry_reports_chronology_and_document_reasons():
+    mediator = SimpleNamespace(
+        state=SimpleNamespace(inquiries=[]),
+        build_inquiry_gap_context=lambda: {
+            'priority_terms': [],
+            'gap_count': 0,
+            'needs_chronology_closure': True,
+            'needs_decision_document_precision': True,
+            'unresolved_temporal_issue_count': 2,
+            'chronology_task_count': 1,
+            'missing_proof_artifact_count': 3,
+            'intake_expected_objectives': ['timeline', 'documents'],
+            'intake_uncovered_objectives': ['timeline', 'documents'],
+            'intake_covered_objectives': [],
+        },
+    )
+    inquiries = Inquiries(mediator)
+
+    explanation = inquiries.explain_inquiry({
+        'question': 'When did you receive the denial notice?',
+        'priority': 'High',
+        'intake_priority_targeted': True,
+        'intake_priority_objectives': ['timeline', 'documents'],
+    })
+
+    assert any('chronology gaps' in reason for reason in explanation['reasons'])
+    assert any('missing decision or notice documents' in reason for reason in explanation['reasons'])

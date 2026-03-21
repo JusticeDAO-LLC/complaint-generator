@@ -1461,17 +1461,94 @@ class AdversarialSession:
             'artifact',
             'precision',
         )
+        chronology_priority_hints = cls._extract_document_chronology_priority_hints(seed_complaint)
         needs_chronology_closure = any(
             any(marker in item for marker in chronology_markers)
             for item in priorities
-        )
+        ) or bool(chronology_priority_hints.get('needs_chronology_closure'))
         needs_decision_document_precision = any(
             any(marker in item for marker in decision_document_markers)
             for item in priorities
-        )
+        ) or bool(chronology_priority_hints.get('needs_decision_document_precision'))
         return {
             'needs_chronology_closure': needs_chronology_closure,
             'needs_decision_document_precision': needs_decision_document_precision,
+        }
+
+    @staticmethod
+    def _extract_document_chronology_priority_hints(seed_complaint: Dict[str, Any]) -> Dict[str, Any]:
+        candidate_containers = [
+            seed_complaint,
+            seed_complaint.get('workflow_optimization_guidance') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint, dict) else None,
+        ]
+        unresolved_temporal_issue_count = 0
+        chronology_task_count = 0
+        missing_proof_artifact_count = 0
+        objectives: Set[str] = set()
+
+        for payload in candidate_containers:
+            if not isinstance(payload, dict):
+                continue
+            nested_payloads = [
+                payload,
+                payload.get('workflow_optimization_guidance') if isinstance(payload.get('workflow_optimization_guidance'), dict) else None,
+            ]
+            for nested in nested_payloads:
+                if not isinstance(nested, dict):
+                    continue
+                temporal_handoff = nested.get('claim_support_temporal_handoff')
+                if isinstance(temporal_handoff, dict):
+                    unresolved_temporal_issue_count += int(temporal_handoff.get('unresolved_temporal_issue_count') or 0)
+                    chronology_task_count += int(temporal_handoff.get('chronology_task_count') or 0)
+                    if int(temporal_handoff.get('unresolved_temporal_issue_count') or 0) > 0 or int(temporal_handoff.get('chronology_task_count') or 0) > 0:
+                        objectives.update({'timeline', 'exact_dates'})
+                    claim_element_id = str(temporal_handoff.get('claim_element_id') or '').strip().lower()
+                    temporal_objective_text = ' '.join(
+                        str(item or '').strip().lower()
+                        for item in list(temporal_handoff.get('temporal_proof_objectives') or [])
+                        if str(item or '').strip()
+                    )
+                    if claim_element_id == 'causation' or any(
+                        token in temporal_objective_text
+                        for token in ('causation', 'protected activity', 'adverse action', 'retaliation', 'sequence')
+                    ):
+                        objectives.add('causation_sequence')
+                    if any(
+                        token in temporal_objective_text
+                        for token in ('hearing', 'appeal', 'review', 'grievance')
+                    ):
+                        objectives.add('hearing_request_timing')
+                    if any(
+                        token in temporal_objective_text
+                        for token in ('response', 'notice', 'decision')
+                    ):
+                        objectives.add('response_dates')
+
+                claim_reasoning_review = nested.get('claim_reasoning_review')
+                if isinstance(claim_reasoning_review, dict):
+                    for review in claim_reasoning_review.values():
+                        if not isinstance(review, dict):
+                            continue
+                        status_counts = dict(review.get('proof_artifact_status_counts') or {})
+                        missing_count = int(status_counts.get('missing') or 0)
+                        if missing_count <= 0:
+                            total_count = int(review.get('proof_artifact_element_count') or 0)
+                            available_count = int(review.get('proof_artifact_available_element_count') or 0)
+                            missing_count = max(0, total_count - available_count)
+                        if missing_count > 0:
+                            missing_proof_artifact_count += missing_count
+                            objectives.add('documents')
+
+        return {
+            'needs_chronology_closure': bool(unresolved_temporal_issue_count or chronology_task_count),
+            'needs_decision_document_precision': bool(missing_proof_artifact_count),
+            'objectives': sorted(objectives),
+            'unresolved_temporal_issue_count': unresolved_temporal_issue_count,
+            'chronology_task_count': chronology_task_count,
+            'missing_proof_artifact_count': missing_proof_artifact_count,
         }
 
     @staticmethod
@@ -2457,6 +2534,7 @@ class AdversarialSession:
         optimizer_context = cls._extract_actor_critic_intake_context(seed_complaint)
         key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
         unresolved_intake_objectives: Set[str] = set()
+        chronology_priority_hints = cls._extract_document_chronology_priority_hints(seed_complaint)
         unresolved_objective_keys = ('unresolved_intake_objectives', 'uncovered_objectives', 'focus_areas')
         context_payloads = [
             seed_complaint,
@@ -2482,6 +2560,11 @@ class AdversarialSession:
                         objective = str(value or '').strip().lower()
                         if objective:
                             unresolved_intake_objectives.add(objective)
+        unresolved_intake_objectives.update(
+            str(value).strip().lower()
+            for value in list(chronology_priority_hints.get('objectives') or [])
+            if str(value).strip()
+        )
         signal_values = [
             float(value)
             for value in (
@@ -2533,6 +2616,7 @@ class AdversarialSession:
         should_frontload_causation_sequence = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'causation_sequence' in unresolved_intake_objectives
+            or bool(chronology_priority_hints.get('needs_chronology_closure'))
         )
         if supports_selection_criteria and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             forced_objectives.update({'documents', 'anchor_selection_criteria'})
@@ -2571,6 +2655,10 @@ class AdversarialSession:
             forced_objectives.add('staff_names_titles')
         if should_frontload_anchor_adverse_action:
             forced_objectives.add('anchor_adverse_action')
+        if bool(chronology_priority_hints.get('needs_chronology_closure')):
+            forced_objectives.update({'timeline', 'exact_dates'})
+        if bool(chronology_priority_hints.get('needs_decision_document_precision')):
+            forced_objectives.add('documents')
         for objective in sorted(forced_objectives):
             objective_priority.setdefault(objective, len(objective_priority))
         if should_frontload_anchor_adverse_action and 'anchor_adverse_action' in objective_priority:
@@ -2587,6 +2675,14 @@ class AdversarialSession:
             objective_priority['staff_names_titles'] = min(-4, objective_priority['staff_names_titles'])
         if should_frontload_causation_sequence and 'causation_sequence' in objective_priority:
             objective_priority['causation_sequence'] = min(-2, objective_priority['causation_sequence'])
+        if bool(chronology_priority_hints.get('needs_chronology_closure')) and 'timeline' in objective_priority:
+            objective_priority['timeline'] = min(-8, objective_priority['timeline'])
+        if bool(chronology_priority_hints.get('needs_chronology_closure')) and 'exact_dates' in objective_priority:
+            objective_priority['exact_dates'] = min(-7, objective_priority['exact_dates'])
+        if bool(chronology_priority_hints.get('needs_chronology_closure')) and 'causation_sequence' in objective_priority:
+            objective_priority['causation_sequence'] = min(-6, objective_priority['causation_sequence'])
+        if bool(chronology_priority_hints.get('needs_decision_document_precision')) and 'documents' in objective_priority:
+            objective_priority['documents'] = min(-3, objective_priority['documents'])
 
         for objective in list(objective_priority):
             if objective == 'documents' and set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'}):
@@ -2761,6 +2857,38 @@ class AdversarialSession:
             # Preserve mediator ordering during recovery and avoid aggressive
             # objective-forcing while signals are uninformative.
             selected: List[Any] = []
+            if bool(chronology_priority_hints.get('needs_chronology_closure')):
+                for chronology_objective in ('timeline', 'exact_dates', 'causation_sequence'):
+                    added = False
+                    for rank_index, candidate in enumerate(ranked_candidates):
+                        matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+                        if chronology_objective not in matched:
+                            continue
+                        if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
+                            continue
+                        unresolved_ranked = sorted(
+                            [objective for objective in matched if objective in unresolved_intake_objectives],
+                            key=lambda item: objective_priority.get(item, 999),
+                        )
+                        tightened_candidate = candidate
+                        for objective in unresolved_ranked:
+                            if cls._intake_objective_group(objective) not in {'factual', 'anchor'}:
+                                continue
+                            evidence_anchor = cls._strongest_evidence_anchor_for_objective(
+                                objective,
+                                weak_evidence_modalities,
+                            )
+                            tightened_candidate = cls._tighten_intake_candidate_for_objective(
+                                candidate,
+                                objective,
+                                evidence_anchor,
+                            )
+                            break
+                        selected.append(tightened_candidate)
+                        added = True
+                        break
+                    if added or len(selected) >= max_questions:
+                        break
             for rank_index, candidate in enumerate(ranked_candidates):
                 if len(selected) >= max_questions:
                     break
@@ -2874,6 +3002,31 @@ class AdversarialSession:
                     return updated
                 return tightened
             return candidate
+
+        if bool(chronology_priority_hints.get('needs_chronology_closure')):
+            for chronology_objective in ('timeline', 'exact_dates', 'causation_sequence'):
+                added = False
+                for rank_index, candidate in enumerate(ranked_candidates):
+                    if rank_index in selected_indexes:
+                        continue
+                    matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+                    if chronology_objective not in matched:
+                        continue
+                    if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
+                        continue
+                    selected.append(tighten_selected_candidate(candidate, matched))
+                    selected_indexes.add(rank_index)
+                    selected_objectives.update(matched)
+                    for matched_objective in matched:
+                        group = cls._intake_objective_group(matched_objective)
+                        if group in selected_group_counts:
+                            selected_group_counts[group] += 1
+                    added = True
+                    break
+                if added or len(selected) >= max_questions:
+                    break
+            if len(selected) >= max_questions:
+                return selected
 
         for objective in sorted(forced_objectives, key=lambda item: objective_priority.get(item, 99)):
             for rank_index, candidate in enumerate(ranked_candidates):

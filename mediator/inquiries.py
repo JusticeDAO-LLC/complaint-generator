@@ -29,6 +29,7 @@ class Inquiries:
 	}
 	_OBJECTIVE_KEYWORDS = {
 		"timeline": ("when", "date", "time", "timeline", "first incident", "date range"),
+		"exact_dates": ("exact date", "exact dates", "specific date", "what date", "calendar date"),
 		"actors": ("who", "decision", "decision-maker", "supervisor", "manager", "hr", "told you"),
 		"documents": ("document", "documents", "email", "emails", "notice", "records", "message", "written"),
 		"witnesses": ("witness", "witnesses", "saw", "heard", "present"),
@@ -38,6 +39,9 @@ class Inquiries:
 		"anchor_appeal_rights": ("appeal", "review", "deadline", "rights to appeal"),
 		"anchor_reasonable_accommodation": ("accommodation", "disability", "medical restriction", "interactive process"),
 		"anchor_selection_criteria": ("selection criteria", "criteria", "qualifications", "not selected", "selection process"),
+		"causation_sequence": ("sequence", "chronology", "order of events", "protected activity", "retaliation timeline"),
+		"hearing_request_timing": ("hearing request", "review request", "requested a hearing", "asked for review"),
+		"response_dates": ("response date", "decision date", "notice date", "when did they respond", "when were you notified"),
 	}
 
 	def __init__(self, mediator):
@@ -200,6 +204,28 @@ class Inquiries:
 		inquiry = dict(inquiry or {})
 		priority = str(inquiry.get("priority") or "Medium")
 		reasons: List[str] = []
+		gap_context = self._build_gap_context()
+		matched_objectives, _ = self._match_intake_objectives(inquiry, gap_context)
+		chronology_objectives = {"timeline", "exact_dates", "causation_sequence", "hearing_request_timing", "response_dates"}
+		if bool(gap_context.get("needs_chronology_closure")) and any(
+			objective in chronology_objectives for objective in matched_objectives
+		):
+			unresolved_temporal_issue_count = int(gap_context.get("unresolved_temporal_issue_count") or 0)
+			chronology_task_count = int(gap_context.get("chronology_task_count") or 0)
+			if unresolved_temporal_issue_count or chronology_task_count:
+				reasons.append(
+					f"helps close chronology gaps flagged by review ({unresolved_temporal_issue_count} unresolved issues, {chronology_task_count} chronology tasks)"
+				)
+			else:
+				reasons.append("helps close chronology gaps flagged by review")
+		if bool(gap_context.get("needs_decision_document_precision")) and "documents" in matched_objectives:
+			missing_proof_artifact_count = int(gap_context.get("missing_proof_artifact_count") or 0)
+			if missing_proof_artifact_count:
+				reasons.append(
+					f"helps recover missing decision or notice documents flagged by proof review ({missing_proof_artifact_count} missing artifacts)"
+				)
+			else:
+				reasons.append("helps recover missing decision or notice documents flagged by proof review")
 		if inquiry.get("support_gap_targeted"):
 			reasons.append("targets a missing claim element or support gap")
 		if inquiry.get("dependency_gap_targeted"):
@@ -354,7 +380,16 @@ class Inquiries:
 				objective = str(value).strip()
 				if objective and objective not in ordered:
 					ordered.append(objective)
-		return ordered
+		priority_prefix: List[str] = []
+		if bool(gap_context.get("needs_chronology_closure")):
+			for objective in ("timeline", "exact_dates", "causation_sequence", "response_dates", "hearing_request_timing"):
+				if objective in ordered and objective not in priority_prefix:
+					priority_prefix.append(objective)
+		if bool(gap_context.get("needs_decision_document_precision")) and "documents" in ordered:
+			priority_prefix.append("documents")
+		if not priority_prefix:
+			return ordered
+		return priority_prefix + [objective for objective in ordered if objective not in priority_prefix]
 
 	def _objectives_for_inquiry(self, inquiry: Any) -> List[str]:
 		if not isinstance(inquiry, dict):
