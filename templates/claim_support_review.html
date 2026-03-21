@@ -3217,13 +3217,23 @@
             const laneAttemptedSupportKind = String(documentGroundingLaneOutcomeSummary.attempted_support_kind || '').trim();
             const laneOutcomeStatus = String(documentGroundingLaneOutcomeSummary.outcome_status || '').trim();
             const laneRecommendedSupportKind = String(documentGroundingLaneOutcomeSummary.recommended_future_support_kind || '').trim();
+            const laneLearnedSupportKind = String(documentGroundingLaneOutcomeSummary.learned_support_kind || '').trim();
+            const laneLearnedAttempted = Boolean(documentGroundingLaneOutcomeSummary.learned_support_lane_attempted_flag);
+            const laneLearnedEffective = Boolean(documentGroundingLaneOutcomeSummary.learned_support_lane_effective_flag);
             if (laneAttemptedSupportKind || laneOutcomeStatus || laneRecommendedSupportKind) {
                 const laneOutcomeChips = [
                     laneAttemptedSupportKind ? `<span class="chip">attempted lane: ${humanizeQueryValue(laneAttemptedSupportKind)}</span>` : '',
                     laneOutcomeStatus ? `<span class="chip">lane outcome: ${humanizeQueryValue(laneOutcomeStatus)}</span>` : '',
+                    laneLearnedSupportKind ? `<span class="chip">learned lane: ${humanizeQueryValue(laneLearnedSupportKind)}</span>` : '',
+                    laneLearnedAttempted ? '<span class="chip">learned lane used: yes</span>' : '<span class="chip">learned lane used: no</span>',
+                    laneLearnedEffective ? '<span class="chip">learned lane effective: yes</span>' : '',
                     laneRecommendedSupportKind ? `<span class="chip">learned next lane: ${humanizeQueryValue(laneRecommendedSupportKind)}</span>` : '',
                 ].filter(Boolean);
-                const laneOutcomeNotes = laneRecommendedSupportKind
+                const laneOutcomeNotes = laneLearnedEffective
+                    ? `The learned lane ${humanizeQueryValue(laneLearnedSupportKind || laneAttemptedSupportKind)} was used and improved grounding in this recovery cycle.`
+                    : laneLearnedAttempted
+                    ? `The learned lane ${humanizeQueryValue(laneLearnedSupportKind || laneAttemptedSupportKind)} was used, but grounding still ${humanizeQueryValue(laneOutcomeStatus || 'stalled')}.`
+                    : laneRecommendedSupportKind
                     ? `Recent grounding outcomes now favor ${humanizeQueryValue(laneRecommendedSupportKind)} for the next recovery pass.`
                     : 'Grounding lane outcomes are available for the current draft recovery cycle.';
                 workflowPhaseGuidanceCard.hidden = false;

@@ -88,8 +88,13 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "fact-backed ratio delta: ${groundingDelta.toFixed(2)}" in content
     assert "attempted lane: ${humanizeQueryValue(laneAttemptedSupportKind)}" in content
     assert "lane outcome: ${humanizeQueryValue(laneOutcomeStatus)}" in content
+    assert "learned lane: ${humanizeQueryValue(laneLearnedSupportKind)}" in content
+    assert "learned lane used: yes" in content
+    assert "learned lane effective: yes" in content
     assert "learned next lane: ${humanizeQueryValue(laneRecommendedSupportKind)}" in content
     assert "Recent grounding outcomes now favor ${humanizeQueryValue(laneRecommendedSupportKind)} for the next recovery pass." in content
+    assert "The learned lane ${humanizeQueryValue(laneLearnedSupportKind || laneAttemptedSupportKind)} was used and improved grounding in this recovery cycle." in content
+    assert "The learned lane ${humanizeQueryValue(laneLearnedSupportKind || laneAttemptedSupportKind)} was used, but grounding still ${humanizeQueryValue(laneOutcomeStatus || 'stalled')}." in content
     assert "Grounding recovery improved the draft's fact-backed ratio" in content
     assert "Grounding recovery did not materially improve the draft's fact-backed ratio" in content
     assert "drafting priority: realign to ${humanizeQueryValue(resolvedTopTargetedElement)}" in content

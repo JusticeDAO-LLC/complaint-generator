@@ -3090,12 +3090,34 @@ class Optimizer:
         recommended_future_support_kind = str(
             (document_grounding_lane_outcome_summary or {}).get("recommended_future_support_kind") or ""
         ).strip()
+        support_kind_stats = (
+            document_grounding_lane_outcome_summary.get("support_kind_stats")
+            if isinstance(document_grounding_lane_outcome_summary.get("support_kind_stats"), dict)
+            else {}
+        )
         if recommended_future_support_kind:
+            recommended_stats = (
+                support_kind_stats.get(recommended_future_support_kind)
+                if isinstance(support_kind_stats.get(recommended_future_support_kind), dict)
+                else {}
+            )
             recommendations.append(
                 "Grounding improvement is strongest when using "
                 + recommended_future_support_kind
                 + " support. Prefer that lane first for similar grounding-recovery cycles."
             )
+            if bool(recommended_stats.get("improved_count")):
+                recommendations.append(
+                    "The learned grounding lane "
+                    + recommended_future_support_kind
+                    + " is producing measurable gains. Keep routing similar grounding recoveries into that lane first."
+                )
+            elif bool(recommended_stats.get("stalled_count")) or bool(recommended_stats.get("regressed_count")):
+                recommendations.append(
+                    "The learned grounding lane "
+                    + recommended_future_support_kind
+                    + " is still underperforming in some sessions. Narrow the claim-element target or switch the support lane sooner when recovery stalls."
+                )
         first_executed_claim_element = str(
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
         ).strip()

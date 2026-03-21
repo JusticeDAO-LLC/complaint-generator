@@ -350,10 +350,25 @@ class CLI:
 			outcome_status = self._humanize_cli_label(
 				document_grounding_lane_outcome_summary.get('outcome_status')
 			) or 'Unknown'
+			learned_support_kind = self._humanize_cli_label(
+				document_grounding_lane_outcome_summary.get('learned_support_kind')
+			)
+			learned_lane_attempted = bool(
+				document_grounding_lane_outcome_summary.get('learned_support_lane_attempted_flag')
+			)
+			learned_lane_effective = bool(
+				document_grounding_lane_outcome_summary.get('learned_support_lane_effective_flag')
+			)
 			recommended_support_kind = self._humanize_cli_label(
 				document_grounding_lane_outcome_summary.get('recommended_future_support_kind')
 			)
 			lane_line = f'  grounding_lane: attempted={attempted_support_kind} outcome={outcome_status}'
+			if learned_support_kind:
+				lane_line += f' learned={learned_support_kind}'
+			if learned_lane_attempted:
+				lane_line += ' learned_used=yes'
+			if learned_lane_effective:
+				lane_line += ' learned_effective=yes'
 			if recommended_support_kind:
 				lane_line += f' recommend={recommended_support_kind}'
 			lines.append(lane_line)

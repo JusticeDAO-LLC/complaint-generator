@@ -632,6 +632,21 @@ class PhaseManager:
                     continue
                 _append_issue_ids(self._extract_temporal_issue_ids(element))
 
+        temporal_issue_registry = data.get('temporal_issue_registry')
+        for issue in temporal_issue_registry if isinstance(temporal_issue_registry, list) else []:
+            if not isinstance(issue, dict):
+                continue
+            resolution_status = self._normalize_evidence_escalation_status(
+                issue.get('current_resolution_status') or issue.get('status')
+            )
+            if resolution_status in _EVIDENCE_RESOLVED_STATUSES:
+                continue
+            for key in ('temporal_issue_id', 'issue_id', 'timeline_issue_id'):
+                normalized = str(issue.get(key) or '').strip()
+                if normalized:
+                    _append_issue_ids([normalized])
+                    break
+
         return issue_ids
 
     def _get_actionable_alignment_tasks(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:

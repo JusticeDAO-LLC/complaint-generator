@@ -2120,7 +2120,55 @@ class TestMediatorThreePhaseIntegration:
 
         assert calls
         assert calls[0]['claim_element_id'] == 'protected_activity'
-        assert calls[0]['preferred_support_kind'] == 'authority'
+        assert calls[0]['preferred_support_kind'] == 'testimony'
+        assert calls[0]['original_preferred_support_kind'] == 'authority'
+        assert calls[0]['suggested_support_kind'] == 'testimony'
+
+    def test_process_evidence_denoising_prefers_learned_support_lane_for_grounding_refinement(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', mediator.kg_builder.build_from_text("I complained to HR."))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', mediator.dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}], {}))
+
+        calls = []
+
+        def fake_add_evidence(evidence_data):
+            calls.append(evidence_data)
+            return {'added': True}
+
+        mediator.add_evidence_to_graphs = fake_add_evidence
+
+        mediator.process_evidence_denoising(
+            {
+                'type': 'evidence_clarification',
+                'question': 'The last grounding pass did not improve enough. What first-hand testimony or witness detail can better ground Protected activity for retaliation?',
+                'context': {
+                    'workflow_action': True,
+                    'document_grounding_strategy_refinement': True,
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'preferred_support_kind': 'authority',
+                    'learned_support_kind': 'testimony',
+                    'suggested_support_kind': 'evidence',
+                },
+            },
+            'I told HR directly on January 5.',
+        )
+
+        assert calls
+        assert calls[0]['claim_element_id'] == 'protected_activity'
+        assert calls[0]['preferred_support_kind'] == 'testimony'
+        assert calls[0]['original_preferred_support_kind'] == 'authority'
+        assert calls[0]['learned_support_kind'] == 'testimony'
+        assert calls[0]['suggested_support_kind'] == 'evidence'
 
     def test_process_evidence_and_legal_denoising_include_confirmed_intake_handoff(self):
         """Evidence and formalization workflow payloads should preserve the confirmed intake handoff."""

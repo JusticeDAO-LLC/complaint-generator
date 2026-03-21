@@ -638,6 +638,9 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
                 "document_grounding_lane_outcome_summary": {
                     "attempted_support_kind": "testimony",
                     "outcome_status": "improved",
+                    "learned_support_kind": "testimony",
+                    "learned_support_lane_attempted_flag": True,
+                    "learned_support_lane_effective_flag": True,
                     "fact_backed_ratio_delta": 0.2444,
                     "targeted_claim_elements": ["protected_activity"],
                     "recommended_future_support_kind": "testimony",
@@ -680,6 +683,7 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert any("Draft grounding is weak" in recommendation for recommendation in report.recommendations)
     assert any("Grounding recovery prompts are improving fact-backed ratios" in recommendation for recommendation in report.recommendations)
     assert any("Grounding improvement is strongest when using testimony support" in recommendation for recommendation in report.recommendations)
+    assert any("The learned grounding lane testimony is producing measurable gains" in recommendation for recommendation in report.recommendations)
 
     tasks, _ = optimizer.build_phase_patch_tasks(
         [result],

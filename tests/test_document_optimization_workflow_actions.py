@@ -370,7 +370,14 @@ def test_build_document_grounding_improvement_summary_detects_improvement():
                     "action_code": "recover_document_grounding",
                     "claim_element_id": "protected_activity",
                     "preferred_support_kind": "authority",
-                }
+                },
+                {
+                    "action_code": "refine_document_grounding_strategy",
+                    "claim_element_id": "protected_activity",
+                    "preferred_support_kind": "authority",
+                    "learned_support_kind": "testimony",
+                    "suggested_support_kind": "testimony",
+                },
             ]
         },
     )
@@ -381,7 +388,10 @@ def test_build_document_grounding_improvement_summary_detects_improvement():
     assert summary["improved_flag"] is True
     assert summary["low_grounding_resolved_flag"] is True
     assert summary["recovery_attempted_flag"] is True
+    assert summary["refinement_action_count"] == 1
     assert summary["targeted_claim_elements"] == ["protected_activity"]
+    assert summary["learned_support_kind"] == "testimony"
+    assert summary["learned_support_kinds"] == ["testimony"]
 
 
 def test_build_document_grounding_lane_outcome_summary_tracks_attempted_lane():
@@ -389,6 +399,7 @@ def test_build_document_grounding_lane_outcome_summary_tracks_attempted_lane():
         document_grounding_improvement_summary={
             "fact_backed_ratio_delta": 0.35,
             "preferred_support_kinds": ["testimony"],
+            "learned_support_kind": "testimony",
             "targeted_claim_elements": ["protected_activity"],
             "improved_flag": True,
             "regressed_flag": False,
@@ -401,6 +412,9 @@ def test_build_document_grounding_lane_outcome_summary_tracks_attempted_lane():
 
     assert summary["attempted_support_kind"] == "testimony"
     assert summary["outcome_status"] == "improved"
+    assert summary["learned_support_kind"] == "testimony"
+    assert summary["learned_support_lane_attempted_flag"] is True
+    assert summary["learned_support_lane_effective_flag"] is True
     assert summary["recommended_future_support_kind"] == "testimony"
     assert summary["targeted_claim_elements"] == ["protected_activity"]
 

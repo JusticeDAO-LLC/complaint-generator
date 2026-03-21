@@ -269,6 +269,16 @@ def _build_document_grounding_improvement_summary(
             or str(action.get("action") or "").strip().lower() == "recover document grounding"
         )
     ]
+    refinement_actions = [
+        action
+        for action in [*evidence_workflow_action_queue, *workflow_action_queue]
+        if isinstance(action, dict)
+        and (
+            bool(action.get("document_grounding_strategy_refinement"))
+            or str(action.get("action_code") or "").strip().lower() == "refine_document_grounding_strategy"
+            or str(action.get("action") or "").strip().lower() == "refine document grounding strategy"
+        )
+    ]
     targeted_claim_elements = _unique_preserving_order(
         str((action or {}).get("claim_element_id") or "").strip()
         for action in recovery_actions
@@ -277,6 +287,15 @@ def _build_document_grounding_improvement_summary(
     preferred_support_kinds = _unique_preserving_order(
         str((action or {}).get("preferred_support_kind") or "").strip()
         for action in recovery_actions
+        if isinstance(action, dict)
+    )
+    learned_support_kinds = _unique_preserving_order(
+        str(
+            (action or {}).get("learned_support_kind")
+            or (action or {}).get("suggested_support_kind")
+            or ""
+        ).strip()
+        for action in refinement_actions
         if isinstance(action, dict)
     )
     improved_flag = delta > 0.02
@@ -292,9 +311,12 @@ def _build_document_grounding_improvement_summary(
         "initial_low_grounding_flag": bool(initial_summary.get("low_grounding_flag")),
         "final_low_grounding_flag": bool(final_summary.get("low_grounding_flag")),
         "recovery_action_count": len(recovery_actions),
+        "refinement_action_count": len(refinement_actions),
         "recovery_attempted_flag": bool(recovery_actions),
         "targeted_claim_elements": targeted_claim_elements,
         "preferred_support_kinds": preferred_support_kinds,
+        "learned_support_kinds": learned_support_kinds,
+        "learned_support_kind": learned_support_kinds[0] if learned_support_kinds else "",
         "improved_flag": improved_flag,
         "regressed_flag": regressed_flag,
         "stalled_flag": stalled_flag,
@@ -325,6 +347,7 @@ def _build_document_grounding_lane_outcome_summary(
         if isinstance(improvement_summary.get("preferred_support_kinds"), list)
         else []
     )
+    learned_support_kind = str(improvement_summary.get("learned_support_kind") or "").strip()
     attempted_support_kind = str(
         execution_summary.get("first_preferred_support_kind")
         or (preferred_support_kinds[0] if preferred_support_kinds else "")
@@ -341,12 +364,25 @@ def _build_document_grounding_lane_outcome_summary(
         outcome_status = "regressed"
     else:
         outcome_status = "stalled"
+    learned_support_lane_attempted_flag = bool(
+        learned_support_kind and attempted_support_kind and learned_support_kind == attempted_support_kind
+    )
+    learned_support_lane_effective_flag = bool(
+        learned_support_lane_attempted_flag and bool(improvement_summary.get("improved_flag"))
+    )
     return {
         "attempted_support_kind": attempted_support_kind,
         "outcome_status": outcome_status,
         "fact_backed_ratio_delta": float(improvement_summary.get("fact_backed_ratio_delta") or 0.0),
         "targeted_claim_elements": targeted_claim_elements,
-        "recommended_future_support_kind": attempted_support_kind if outcome_status == "improved" else "",
+        "learned_support_kind": learned_support_kind,
+        "learned_support_lane_attempted_flag": learned_support_lane_attempted_flag,
+        "learned_support_lane_effective_flag": learned_support_lane_effective_flag,
+        "recommended_future_support_kind": (
+            attempted_support_kind
+            if outcome_status == "improved"
+            else (learned_support_kind if learned_support_kind and learned_support_kind != attempted_support_kind else "")
+        ),
         "improved_flag": bool(improvement_summary.get("improved_flag")),
         "regressed_flag": bool(improvement_summary.get("regressed_flag")),
         "stalled_flag": bool(improvement_summary.get("stalled_flag")),
