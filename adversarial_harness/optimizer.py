@@ -1361,6 +1361,70 @@ class Optimizer:
         }
 
     @staticmethod
+    def _build_document_grounding_lane_outcome_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        support_kind_stats: Dict[str, Dict[str, Any]] = {}
+        recommended_future_support_kind = ""
+        recommended_score = -999
+
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            workflow_guidance = (
+                final_state.get("workflow_optimization_guidance")
+                if isinstance(final_state.get("workflow_optimization_guidance"), dict)
+                else {}
+            )
+            lane_summary = (
+                workflow_guidance.get("document_grounding_lane_outcome_summary")
+                if isinstance(workflow_guidance.get("document_grounding_lane_outcome_summary"), dict)
+                else final_state.get("document_grounding_lane_outcome_summary")
+                if isinstance(final_state.get("document_grounding_lane_outcome_summary"), dict)
+                else {}
+            )
+            support_kind = str(lane_summary.get("attempted_support_kind") or "").strip()
+            if not support_kind:
+                continue
+            stats = support_kind_stats.setdefault(
+                support_kind,
+                {
+                    "count": 0,
+                    "improved_count": 0,
+                    "regressed_count": 0,
+                    "stalled_count": 0,
+                    "avg_fact_backed_ratio_delta": 0.0,
+                    "targeted_claim_element_counts": {},
+                },
+            )
+            stats["count"] += 1
+            stats["avg_fact_backed_ratio_delta"] += float(lane_summary.get("fact_backed_ratio_delta") or 0.0)
+            if bool(lane_summary.get("improved_flag")):
+                stats["improved_count"] += 1
+            elif bool(lane_summary.get("regressed_flag")):
+                stats["regressed_count"] += 1
+            else:
+                stats["stalled_count"] += 1
+            for item in lane_summary.get("targeted_claim_elements") or []:
+                normalized = str(item or "").strip()
+                if not normalized:
+                    continue
+                stats["targeted_claim_element_counts"][normalized] = (
+                    stats["targeted_claim_element_counts"].get(normalized, 0) + 1
+                )
+
+        for support_kind, stats in support_kind_stats.items():
+            count = int(stats.get("count") or 0)
+            if count:
+                stats["avg_fact_backed_ratio_delta"] = round(float(stats["avg_fact_backed_ratio_delta"]) / count, 4)
+            score = int(stats.get("improved_count") or 0) - int(stats.get("regressed_count") or 0)
+            if score > recommended_score:
+                recommended_score = score
+                recommended_future_support_kind = support_kind
+
+        return {
+            "support_kind_stats": support_kind_stats,
+            "recommended_future_support_kind": recommended_future_support_kind,
+        }
+
+    @staticmethod
     def _build_document_workflow_execution_summary(successful_results: List[Any]) -> Dict[str, Any]:
         focus_section_counts: Dict[str, int] = {}
         top_support_kind_counts: Dict[str, int] = {}
@@ -2815,6 +2879,7 @@ class Optimizer:
         document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(successful)
         document_provenance_summary = self._build_document_provenance_summary(successful)
         document_grounding_improvement_summary = self._build_document_grounding_improvement_summary(successful)
+        document_grounding_lane_outcome_summary = self._build_document_grounding_lane_outcome_summary(successful)
         document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
         document_execution_drift_summary = self._build_document_execution_drift_summary(
             document_evidence_targeting_summary=document_evidence_targeting_summary,
@@ -3173,6 +3238,7 @@ class Optimizer:
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
             document_grounding_improvement_summary=document_grounding_improvement_summary,
+            document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
             cross_phase_findings=[],
@@ -3189,6 +3255,7 @@ class Optimizer:
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
             document_grounding_improvement_summary=document_grounding_improvement_summary,
+            document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
             document_execution_drift_summary=document_execution_drift_summary,
         )
