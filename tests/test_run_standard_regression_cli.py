@@ -44,6 +44,16 @@ def test_resolve_test_targets_returns_full_slice():
     assert "tests/test_document_pipeline.py" in targets
     assert "tests/test_formal_document_pipeline.py" in targets
     assert "tests/test_claim_support_review_playwright_smoke.py" in targets
+    assert "tests/test_phase_manager_temporal_registry.py" in targets
+
+
+def test_resolve_test_targets_returns_lean_slice_with_temporal_registry_guard():
+    cli = _load_cli_module()
+
+    targets = cli.resolve_test_targets("lean")
+
+    assert targets == cli.REGRESSION_SLICES["lean"]
+    assert "tests/test_phase_manager_temporal_registry.py" in targets
 
 
 def test_build_pytest_command_places_passthrough_args_before_targets():

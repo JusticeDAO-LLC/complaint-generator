@@ -106,6 +106,7 @@ def _repository_grounding_paths() -> List[Path]:
         for relative_path in (
             root / "scripts" / "synthesize_hacc_complaint.py",
             root / "tests" / "test_synthesize_hacc_complaint.py",
+            root / "tests" / "test_hacc_evidence_loader.py",
             root / "docs" / "HACC_INTEGRATION.md",
             root / "docs" / "HACC_INTEGRATION_ARCHITECTURE.md",
             root / "docs" / "HACC_ANALYSIS_README.md",
@@ -150,12 +151,16 @@ def _repository_grounding_path_weight(path: Path) -> float:
         score += 6.0
     if normalized.endswith("tests/test_synthesize_hacc_complaint.py"):
         score += 4.5
+    if normalized.endswith("tests/test_hacc_evidence_loader.py"):
+        score += 3.8
     if "/docs/" in normalized and "hacc_" in normalized:
         score += 1.0
     if normalized.endswith("/readme.md") or normalized.endswith("readme.md"):
         score -= 6.0
     if "hacc_grounding_regression" in normalized:
         score -= 6.0
+    if normalized.endswith("docs/hacc_integration.md"):
+        score -= 3.0
     if any(marker in normalized for marker in ("integration_architecture", "files_summary", "improvement_plan", "optimization_plan")):
         score -= 2.5
     return score
