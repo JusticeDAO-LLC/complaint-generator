@@ -2050,18 +2050,18 @@
 
         function normalizeTheoremExportMetadata(value) {
             const metadata = value && typeof value === 'object' ? value : {};
+            const normalizeList = (items) => Array.isArray(items)
+                ? items.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
             const unresolvedIssueIds = Array.isArray(metadata.unresolved_temporal_issue_ids)
                 ? metadata.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
                 : [];
-            const issueIds = Array.isArray(metadata.temporal_issue_ids)
-                ? metadata.temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
-            const proofBundleIds = Array.isArray(metadata.temporal_proof_bundle_ids)
-                ? metadata.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
-            const proofObjectives = Array.isArray(metadata.temporal_proof_objectives)
-                ? metadata.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
+            const issueIds = normalizeList(metadata.temporal_issue_ids);
+            const proofBundleIds = normalizeList(metadata.temporal_proof_bundle_ids);
+            const proofObjectives = normalizeList(metadata.temporal_proof_objectives);
+            const timelineAnchorIds = normalizeList(metadata.timeline_anchor_ids);
+            const missingTemporalPredicates = normalizeList(metadata.missing_temporal_predicates);
+            const requiredProvenanceKinds = normalizeList(metadata.required_provenance_kinds);
             const unresolvedCount = Number.isFinite(Number(metadata.unresolved_temporal_issue_count))
                 ? Number(metadata.unresolved_temporal_issue_count || 0)
                 : unresolvedIssueIds.length;
@@ -2077,7 +2077,19 @@
                 unresolvedIssueIds,
                 proofBundleIds,
                 proofObjectives,
-                hasSignal: Boolean(issueCount || chronologyTaskCount || proofBundleIds.length || proofObjectives.length || metadata.chronology_blocked),
+                timelineAnchorIds,
+                missingTemporalPredicates,
+                requiredProvenanceKinds,
+                hasSignal: Boolean(
+                    issueCount
+                    || chronologyTaskCount
+                    || proofBundleIds.length
+                    || proofObjectives.length
+                    || timelineAnchorIds.length
+                    || missingTemporalPredicates.length
+                    || requiredProvenanceKinds.length
+                    || metadata.chronology_blocked
+                ),
             };
         }
 
@@ -2097,7 +2109,16 @@
             const eventIds = Array.isArray(normalized.event_ids)
                 ? normalized.event_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
                 : [];
-            if (!unresolvedCount && !chronologyTaskCount && !issueIds.length && !proofBundleIds.length && !proofObjectives.length && !eventIds.length) {
+            const timelineAnchorIds = Array.isArray(normalized.timeline_anchor_ids)
+                ? normalized.timeline_anchor_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const missingTemporalPredicates = Array.isArray(normalized.missing_temporal_predicates)
+                ? normalized.missing_temporal_predicates.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            const requiredProvenanceKinds = Array.isArray(normalized.required_provenance_kinds)
+                ? normalized.required_provenance_kinds.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
+            if (!unresolvedCount && !chronologyTaskCount && !issueIds.length && !proofBundleIds.length && !proofObjectives.length && !eventIds.length && !timelineAnchorIds.length && !missingTemporalPredicates.length && !requiredProvenanceKinds.length) {
                 return [];
             }
             return [
@@ -2106,8 +2127,11 @@
                 `Claim support chronology tasks: ${chronologyTaskCount}`,
                 issueIds.length ? `Claim support chronology issue ids: ${issueIds.join(', ')}` : '',
                 eventIds.length ? `Claim support chronology events: ${eventIds.join(', ')}` : '',
+                timelineAnchorIds.length ? `Claim support timeline anchors: ${timelineAnchorIds.join(', ')}` : '',
                 proofBundleIds.length ? `Claim support proof bundles: ${proofBundleIds.join(', ')}` : '',
                 proofObjectives.length ? `Claim support chronology objectives: ${proofObjectives.join(', ')}` : '',
+                missingTemporalPredicates.length ? `Claim support missing predicates: ${missingTemporalPredicates.join(', ')}` : '',
+                requiredProvenanceKinds.length ? `Claim support required provenance: ${requiredProvenanceKinds.join(', ')}` : '',
             ].filter(Boolean);
         }
 

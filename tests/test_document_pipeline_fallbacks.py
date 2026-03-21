@@ -541,3 +541,114 @@ def test_factual_allegation_entries_store_real_identifier_lists():
         assert isinstance(entry.get("source_artifact_ids"), list)
         assert isinstance(entry.get("claim_types"), list)
         assert all("generator object" not in str(value) for value in entry.get("fact_ids", []))
+
+
+def test_synthesized_review_process_allegation_inherits_process_fact_ids():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+    builder._attach_allegation_references(draft)
+
+    review_paragraph = next(
+        paragraph
+        for paragraph in draft["factual_allegation_paragraphs"]
+        if "failed to provide the informal review" in paragraph["text"]
+    )
+    assert review_paragraph["fact_ids"]
+    assert "fact-303-2" in review_paragraph["fact_ids"]
+    assert "fact-303-5" in review_paragraph["fact_ids"]
+
+
+def test_chronology_allegation_inherits_full_dated_fact_chain():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+    builder._attach_allegation_references(draft)
+
+    chronology_paragraph = next(
+        paragraph
+        for paragraph in draft["factual_allegation_paragraphs"]
+        if paragraph["text"].startswith("The chronology shows that ")
+    )
+    assert chronology_paragraph["fact_ids"]
+    assert "fact-303-1" in chronology_paragraph["fact_ids"]
+    assert "fact-303-2" in chronology_paragraph["fact_ids"]
+    assert "fact-303-3" in chronology_paragraph["fact_ids"]

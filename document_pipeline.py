@@ -4027,6 +4027,16 @@ class FormalComplaintDocumentBuilder:
         entries: List[Dict[str, Any]] = []
         for text in allegation_texts:
             matched_entries = self._match_document_source_entries(text, source_entries)
+            if "failed to provide the informal review" in str(text or "").lower():
+                matched_entries = self._enrich_review_process_fact_matches(
+                    matched_entries=matched_entries,
+                    source_entries=source_entries,
+                )
+            if str(text or "").lower().startswith("the chronology shows that "):
+                matched_entries = self._enrich_chronology_fact_matches(
+                    matched_entries=matched_entries,
+                    source_entries=source_entries,
+                )
             entries.append(
                 {
                     "text": text,
@@ -4069,6 +4079,148 @@ class FormalComplaintDocumentBuilder:
                 }
             )
         return entries
+
+    def _enrich_review_process_fact_matches(
+        self,
+        *,
+        matched_entries: List[Dict[str, Any]],
+        source_entries: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        def _entry_key(entry: Dict[str, Any]) -> tuple[tuple[str, ...], str]:
+            return (
+                tuple(_normalize_identifier_list(entry.get("fact_ids"))),
+                str(entry.get("text") or ""),
+            )
+
+        def _is_requirement_fact(entry: Dict[str, Any]) -> bool:
+            text = str(entry.get("text") or "").lower()
+            return bool(_coerce_list(entry.get("fact_ids"))) and (
+                ("require" in text or "required" in text)
+                and ("review" in text or "grievance" in text or "appeal" in text)
+            )
+
+        def _is_event_fact(entry: Dict[str, Any]) -> bool:
+            text = str(entry.get("text") or "").lower()
+            if not _coerce_list(entry.get("fact_ids")):
+                return False
+            if "require" in text or "required" in text:
+                return False
+            return (
+                "grievance request" in text
+                or "review decision" in text
+                or ("submitted" in text and "grievance" in text)
+                or ("issued" in text and "review decision" in text)
+            )
+
+        enriched = [dict(entry) for entry in matched_entries if isinstance(entry, dict)]
+        seen_keys = {_entry_key(entry) for entry in enriched}
+
+        requirement_entry = next((entry for entry in enriched if _is_requirement_fact(entry)), None)
+        event_entry = next((entry for entry in enriched if _is_event_fact(entry)), None)
+
+        if requirement_entry is None:
+            for entry in source_entries:
+                if isinstance(entry, dict) and _is_requirement_fact(entry):
+                    candidate_key = _entry_key(entry)
+                    if candidate_key not in seen_keys:
+                        enriched.append(dict(entry))
+                        seen_keys.add(candidate_key)
+                    requirement_entry = dict(entry)
+                    break
+        if event_entry is None:
+            for entry in source_entries:
+                if isinstance(entry, dict) and _is_event_fact(entry):
+                    candidate_key = _entry_key(entry)
+                    if candidate_key not in seen_keys:
+                        enriched.append(dict(entry))
+                        seen_keys.add(candidate_key)
+                    event_entry = dict(entry)
+                    break
+        if event_entry is None:
+            for entry in source_entries:
+                if not isinstance(entry, dict) or not _coerce_list(entry.get("fact_ids")):
+                    continue
+                text = str(entry.get("text") or "").lower()
+                if "grievance request" not in text and "review decision" not in text:
+                    continue
+                candidate_key = _entry_key(entry)
+                if candidate_key not in seen_keys:
+                    enriched.append(dict(entry))
+                    seen_keys.add(candidate_key)
+                event_entry = dict(entry)
+                break
+        return enriched
+
+    def _enrich_chronology_fact_matches(
+        self,
+        *,
+        matched_entries: List[Dict[str, Any]],
+        source_entries: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        def _entry_key(entry: Dict[str, Any]) -> tuple[tuple[str, ...], str]:
+            return (
+                tuple(_normalize_identifier_list(entry.get("fact_ids"))),
+                str(entry.get("text") or ""),
+            )
+
+        def _entry_category(entry: Dict[str, Any]) -> str:
+            text = str(entry.get("text") or "").lower()
+            if not _coerce_list(entry.get("fact_ids")):
+                return ""
+            if any(
+                marker in text
+                for marker in (
+                    "grievance request",
+                    "requested a grievance hearing",
+                    "requested review",
+                    "review request",
+                    "submitted a grievance",
+                    "informal review request",
+                )
+            ):
+                return "review_request"
+            if any(
+                marker in text
+                for marker in (
+                    "review decision",
+                    "hearing outcome",
+                    "final decision",
+                    "issued the review decision",
+                    "issued the decision",
+                )
+            ):
+                return "review_decision"
+            if (
+                "denial notice" in text
+                or ("written notice" in text and "decision denying assistance" in text)
+                or ("sent plaintiff" in text and "notice" in text)
+            ):
+                return "notice"
+            return ""
+
+        enriched = [dict(entry) for entry in matched_entries if isinstance(entry, dict)]
+        seen_keys = {_entry_key(entry) for entry in enriched}
+        present_categories = {
+            category
+            for entry in enriched
+            if (category := _entry_category(entry))
+        }
+
+        for category in ("notice", "review_request", "review_decision"):
+            if category in present_categories:
+                continue
+            for entry in source_entries:
+                if not isinstance(entry, dict):
+                    continue
+                if _entry_category(entry) != category:
+                    continue
+                candidate_key = _entry_key(entry)
+                if candidate_key not in seen_keys:
+                    enriched.append(dict(entry))
+                    seen_keys.add(candidate_key)
+                present_categories.add(category)
+                break
+        return enriched
 
     def _attach_allegation_references(self, draft: Dict[str, Any]) -> None:
         allegation_lines = self._normalize_text_lines(
@@ -8402,6 +8554,18 @@ class FormalComplaintDocumentBuilder:
             return []
         line_lower = line_text.lower()
         line_tokens = self._text_tokens(line_text)
+        process_markers = (
+            "notice",
+            "informal review",
+            "grievance",
+            "appeal",
+            "review decision",
+            "request for review",
+            "review",
+            "hearing",
+            "denial notice",
+        )
+        line_process_markers = {marker for marker in process_markers if marker in line_lower}
         scored: List[tuple[int, Dict[str, Any]]] = []
         for entry in source_entries:
             if not isinstance(entry, dict):
@@ -8414,11 +8578,113 @@ class FormalComplaintDocumentBuilder:
             score = len(line_tokens & entry_tokens)
             if entry_lower in line_lower or line_lower in entry_lower:
                 score += 20
+            entry_process_markers = {marker for marker in process_markers if marker in entry_lower}
+            if line_process_markers and entry_process_markers:
+                score += 4 * len(line_process_markers & entry_process_markers)
+            if "failed to provide the informal review" in line_lower and (
+                "informal review" in entry_lower
+                or "grievance" in entry_lower
+                or "review decision" in entry_lower
+                or "request for review" in entry_lower
+            ):
+                score += 10
+            if "failed to provide" in line_lower and "review" in line_lower:
+                if "require" in entry_lower and (
+                    "review" in entry_lower or "grievance" in entry_lower or "appeal" in entry_lower
+                ):
+                    score += 8
+                if "issued" in entry_lower and "review decision" in entry_lower:
+                    score += 6
             if score <= 0:
                 continue
             scored.append((score, entry))
         scored.sort(key=lambda item: (-item[0], str(item[1].get("text") or "")))
-        return [dict(item[1]) for item in scored[:limit]]
+        selected_entries = [dict(item[1]) for item in scored[:limit]]
+        if "failed to provide the informal review" in line_lower:
+            selected_entries = self._augment_review_process_matches(
+                selected_entries=selected_entries,
+                scored_entries=scored,
+                limit=limit,
+            )
+        return selected_entries
+
+    def _augment_review_process_matches(
+        self,
+        *,
+        selected_entries: List[Dict[str, Any]],
+        scored_entries: List[tuple[int, Dict[str, Any]]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        if not selected_entries or not scored_entries:
+            return selected_entries
+
+        def _has_process_fact(entry: Dict[str, Any], markers: tuple[str, ...]) -> bool:
+            text = str(entry.get("text") or "").lower()
+            return bool(_coerce_list(entry.get("fact_ids"))) and any(marker in text for marker in markers)
+
+        def _is_requirement_fact(entry: Dict[str, Any]) -> bool:
+            return _has_process_fact(entry, ("require", "required")) and _has_process_fact(
+                entry,
+                ("review", "grievance", "appeal"),
+            )
+
+        def _is_event_fact(entry: Dict[str, Any]) -> bool:
+            return _has_process_fact(entry, ("submitted", "issued", "request", "decision")) and _has_process_fact(
+                entry,
+                ("review", "grievance"),
+            )
+
+        seen_keys = {
+            (
+                tuple(_normalize_identifier_list(entry.get("fact_ids"))),
+                str(entry.get("text") or ""),
+            )
+            for entry in selected_entries
+        }
+        sticky_entries: List[Dict[str, Any]] = []
+        for entry in selected_entries:
+            if _is_requirement_fact(entry) and not any(_is_requirement_fact(item) for item in sticky_entries):
+                sticky_entries.append(entry)
+            elif _is_event_fact(entry) and not any(_is_event_fact(item) for item in sticky_entries):
+                sticky_entries.append(entry)
+
+        for _, candidate in scored_entries:
+            candidate_entry = dict(candidate)
+            candidate_key = (
+                tuple(_normalize_identifier_list(candidate_entry.get("fact_ids"))),
+                str(candidate_entry.get("text") or ""),
+            )
+            if candidate_key in seen_keys:
+                continue
+            if _is_requirement_fact(candidate_entry) and not any(_is_requirement_fact(item) for item in sticky_entries):
+                sticky_entries.append(candidate_entry)
+                seen_keys.add(candidate_key)
+            elif _is_event_fact(candidate_entry) and not any(_is_event_fact(item) for item in sticky_entries):
+                sticky_entries.append(candidate_entry)
+                seen_keys.add(candidate_key)
+            if any(_is_requirement_fact(item) for item in sticky_entries) and any(
+                _is_event_fact(item) for item in sticky_entries
+            ):
+                break
+
+        ordered_entries: List[Dict[str, Any]] = []
+        for entry in sticky_entries + selected_entries:
+            candidate_key = (
+                tuple(_normalize_identifier_list(entry.get("fact_ids"))),
+                str(entry.get("text") or ""),
+            )
+            if candidate_key in {
+                (
+                    tuple(_normalize_identifier_list(item.get("fact_ids"))),
+                    str(item.get("text") or ""),
+                )
+                for item in ordered_entries
+            }:
+                continue
+            ordered_entries.append(entry)
+            if len(ordered_entries) >= limit:
+                break
+        return ordered_entries
 
     def _select_exhibit_for_line(
         self,
