@@ -1682,12 +1682,42 @@ class ComplaintDenoiser:
         relative_markers: List[str],
     ) -> str:
         normalized_issue_type = str(issue_type or '').strip().lower()
-        claim_reference = claim_label or 'this claim'
+        claim_reference = str(claim_label or '').strip() or 'this claim'
+        if claim_reference.lower() == 'this claim':
+            claim_reference = 'claim'
         if normalized_issue_type == 'relative_only_ordering':
             relative_phrase = ''
             if relative_markers:
                 relative_phrase = f" using the reported {', '.join(relative_markers)} sequence"
             anchor_subject = left_node_name or 'the event you described'
+            relative_context = " ".join(
+                part
+                for part in (
+                    claim_reference,
+                    summary,
+                    left_node_name,
+                    right_node_name,
+                    " ".join(relative_markers or []),
+                )
+                if isinstance(part, str) and part.strip()
+            ).lower()
+            if any(
+                token in relative_context
+                for token in (
+                    'retaliat',
+                    'adverse',
+                    'complaint',
+                    'grievance',
+                    'hearing',
+                    'appeal',
+                    'housing status',
+                )
+            ):
+                return (
+                    f"For your {claim_reference}, what protected activity happened first, what exact adverse action "
+                    "followed, on what date or timeframe did it happen, who communicated it, and what notice, "
+                    "message, or decision record proves that action?"
+                )
             return (
                 f"For your {claim_reference} claim, what is the most specific date or timeframe for {anchor_subject}, "
                 f"and what happened immediately before and after it{relative_phrase}?"
@@ -4742,6 +4772,7 @@ class ComplaintDenoiser:
             phase_name = str(action.get('phase_name') or '').strip().lower()
             if phase_name not in {'graph_analysis', 'document_generation', 'evidence_collection', 'cross_phase'}:
                 continue
+            action_code = str(action.get('action_code') or '').strip().lower()
             focus_areas = [
                 str(item).strip()
                 for item in (action.get('focus_areas') or [])
@@ -4750,10 +4781,44 @@ class ComplaintDenoiser:
             action_text = str(action.get('action') or '').strip()
             if not action_text:
                 continue
-            question_text = (
-                f"What evidence would best help us {action_text.lower()}"
-                + (f" Focus first on {focus_areas[0]}." if focus_areas else "")
-            )
+            claim_type = str(action.get('claim_type') or 'this claim').strip()
+            claim_element_id = str(action.get('claim_element_id') or '').strip()
+            claim_element_label = str(
+                action.get('claim_element_label')
+                or claim_element_id
+                or (focus_areas[0] if focus_areas else 'this issue')
+            ).strip()
+            preferred_support_kind = str(action.get('preferred_support_kind') or '').strip().lower()
+            missing_fact_bundle = [
+                str(item).strip()
+                for item in (action.get('missing_fact_bundle') or [])
+                if str(item).strip()
+            ]
+            if action_code == 'recover_document_grounding':
+                bundle_hint = (
+                    f" I still need grounding facts about {missing_fact_bundle[0]}."
+                    if missing_fact_bundle
+                    else ''
+                )
+                if preferred_support_kind == 'authority':
+                    question_text = (
+                        f"What legal authority, policy, or official document can ground "
+                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
+                    )
+                elif preferred_support_kind == 'testimony':
+                    question_text = (
+                        f"What first-hand testimony or witness detail can ground "
+                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
+                    )
+                else:
+                    question_text = (
+                        f"What evidence would best ground {claim_element_label} for {claim_type}?{bundle_hint}"
+                    )
+            else:
+                question_text = (
+                    f"What evidence would best help us {action_text.lower()}"
+                    + (f" Focus first on {focus_areas[0]}." if focus_areas else "")
+                )
             questions.append({
                 'question': self._with_empathy(question_text, 'evidence_clarification'),
                 'type': 'evidence_clarification',
@@ -4762,6 +4827,13 @@ class ComplaintDenoiser:
                     'workflow_phase': phase_name,
                     'workflow_rank': int(action.get('rank', 0) or 0),
                     'workflow_focus_areas': focus_areas,
+                    'action_code': action_code,
+                    'claim_type': claim_type,
+                    'claim_element_id': claim_element_id,
+                    'claim_element_label': claim_element_label,
+                    'preferred_support_kind': preferred_support_kind,
+                    'missing_fact_bundle': missing_fact_bundle,
+                    'document_grounding_recovery': action_code == 'recover_document_grounding',
                 },
                 'priority': 'high',
                 'proof_priority': 0,

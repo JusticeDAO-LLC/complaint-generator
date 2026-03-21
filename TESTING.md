@@ -93,7 +93,7 @@ VS Code also exposes this runner through the workspace tasks `Claim Support Regr
 
 The Run and Debug panel now mirrors those entry points with `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)` launch configurations.
 
-GitHub Actions now enforces the same slice in `.github/workflows/claim-support-regression.yml` with separate non-browser and browser-required lanes.
+GitHub Actions now enforces the same focused slice in `.github/workflows/claim-support-regression.yml` with separate non-browser and browser-required lanes.
 
 ### Standard Regression Gate
 
@@ -110,6 +110,12 @@ Equivalent entry points:
 - `make regression`
 - VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
 - GitHub Actions workflow `.github/workflows/standard-regression.yml`
+
+Maintenance rule:
+
+- When you add or remove tests from `scripts/run_standard_regression.py`, update `.github/workflows/standard-regression.yml` path filters in the same change so CI triggers still match the executed slice.
+- When you add or remove tests from `scripts/run_claim_support_review_regression.py`, update `.github/workflows/claim-support-regression.yml` path filters in the same change.
+- Prefer high-confidence direct source files, runner scripts, and test files over speculative transitive dependencies when expanding workflow trigger paths.
 
 ### Current Validation Guidance
 - Use `scripts/run_standard_regression.py` as the default gate for review-surface, workflow-guidance, and document-pipeline changes.

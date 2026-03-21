@@ -1,7 +1,7 @@
 # Complaint Generator
 ### by JusticeDAO
 
-[![Claim Support Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml)
+[![Focused Claim Support Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml)
 [![Standard Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml)
 [![HACC Unit Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml)
 
@@ -189,7 +189,7 @@ The helper now defaults to the browser-inclusive `full` slice so the review, tem
 Also available via:
 
 - VS Code task `Claim Support Regression` with `No Browser` and `Require Browser` variants
-- GitHub Actions workflow `claim-support-regression.yml`
+- GitHub Actions workflow `claim-support-regression.yml` for the focused claim-support slice
 
 If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
 
@@ -215,6 +215,7 @@ The dry run reports legacy testimony rows that can be canonically linked to regi
 ```
 
 The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path.
+The lightweight slice also covers adversarial session intake-prompt regressions that shape HACC-specific questioning and recovery behavior.
 
 Also available via:
 

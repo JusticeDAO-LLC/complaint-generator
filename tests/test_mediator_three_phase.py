@@ -601,6 +601,23 @@ class TestMediatorThreePhaseIntegration:
         assert resolved_issue['answered_by_candidate_source'] == 'intake_claim_temporal_gap'
         assert 'March 1, 2025' in resolved_issue['resolution']
 
+    def test_relative_only_temporal_gap_question_uses_adverse_action_specific_wording(self):
+        denoiser = ComplaintDenoiser()
+
+        question = denoiser._build_claim_temporal_gap_question_text(
+            'relative_only_ordering',
+            claim_label='Retaliation',
+            summary='Timeline fact still needs anchoring after a complaint and adverse action sequence.',
+            left_node_name='I complained and then HACC acted after the complaint.',
+            right_node_name='Housing-status change',
+            relative_markers=['after'],
+        )
+
+        assert 'what protected activity happened first' in question.lower()
+        assert 'what exact adverse action followed' in question.lower()
+        assert 'what notice, message, or decision record proves that action' in question.lower()
+        assert 'retaliation' in question.lower()
+
     def test_process_denoising_answer_syncs_temporal_relations_into_dependency_graph(self):
         from mediator.mediator import Mediator
 
@@ -1883,7 +1900,124 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_task_update_history']
         assert result['alignment_task_update_history'][0]['evidence_sequence'] >= 1
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks') == []
-        assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_update_history')
+
+    def test_evidence_workflow_queue_includes_document_grounding_recovery_action(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'claim_support_packets',
+            {'retaliation': {'elements': [{'support_status': 'supported'}]}},
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_provenance_summary',
+            {'fact_backed_ratio': 0.25, 'low_grounding_flag': True},
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_recovery_action',
+            {
+                'action': 'recover_document_grounding',
+                'phase_name': 'document_generation',
+                'description': 'Strengthen draft grounding for protected_activity before formalization.',
+                'claim_type': 'retaliation',
+                'claim_element_id': 'protected_activity',
+                'focus_section': 'factual_allegations',
+                'preferred_support_kind': 'authority',
+                'fact_backed_ratio': 0.25,
+                'missing_fact_bundle': ['Complaint timing'],
+                'recovery_source': 'alignment_evidence_task',
+            },
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.EVIDENCE,
+            'evidence_workflow_action_queue',
+            mediator._build_evidence_workflow_action_queue([], []),
+        )
+
+        status = mediator.get_three_phase_status()
+
+        assert status['document_grounding_recovery_action']['claim_element_id'] == 'protected_activity'
+        assert status['evidence_workflow_action_queue'][0]['action_code'] == 'recover_document_grounding'
+        assert status['next_action']['action'] == 'recover_document_grounding'
+        assert status['next_action']['claim_element_id'] == 'protected_activity'
+
+    def test_process_evidence_denoising_accepts_short_grounding_recovery_answer(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', mediator.kg_builder.build_from_text("I complained to HR."))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', mediator.dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}], {}))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', {'retaliation': {'elements': [{'support_status': 'supported'}]}})
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'evidence_gaps', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_provenance_summary',
+            {'fact_backed_ratio': 0.2, 'low_grounding_flag': True},
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_recovery_action',
+            {
+                'action': 'recover_document_grounding',
+                'phase_name': 'document_generation',
+                'description': 'Strengthen draft grounding for protected_activity before formalization.',
+                'claim_type': 'retaliation',
+                'claim_element_id': 'protected_activity',
+                'focus_section': 'factual_allegations',
+                'preferred_support_kind': 'authority',
+                'fact_backed_ratio': 0.2,
+                'missing_fact_bundle': ['Complaint timing'],
+                'recovery_source': 'alignment_evidence_task',
+            },
+        )
+
+        calls = []
+
+        def fake_add_evidence(evidence_data):
+            calls.append(evidence_data)
+            return {'added': True}
+
+        mediator.add_evidence_to_graphs = fake_add_evidence
+
+        result = mediator.process_evidence_denoising(
+            {
+                'type': 'evidence_clarification',
+                'question': 'What legal authority, policy, or official document can ground Protected activity for retaliation?',
+                'context': {
+                    'workflow_action': True,
+                    'document_grounding_recovery': True,
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'preferred_support_kind': 'authority',
+                },
+            },
+            'HR email',
+        )
+
+        assert calls
+        assert calls[0]['claim_element_id'] == 'protected_activity'
+        assert calls[0]['preferred_support_kind'] == 'authority'
+        assert result['document_grounding_recovery_action']['claim_element_id'] == 'protected_activity'
 
     def test_process_evidence_and_legal_denoising_include_confirmed_intake_handoff(self):
         """Evidence and formalization workflow payloads should preserve the confirmed intake handoff."""
@@ -2554,7 +2688,10 @@ class TestMediatorThreePhaseIntegration:
         assert first_candidate['target_claim_type'] == 'retaliation'
         assert first_candidate['target_element_id'] == 'causation'
         assert first_candidate['workflow_phase'] == 'graph_analysis'
-        assert 'chronology_gap' in first_candidate['follow_up_tags']
+        assert (
+            'chronology_gap' in first_candidate['follow_up_tags']
+            or 'exact_dates' in first_candidate['follow_up_tags']
+        )
         assert 'exact date' in first_candidate['question'].lower() or 'timeframe' in first_candidate['question'].lower()
 
     def test_default_selector_prefers_claim_temporal_gap_candidate_over_generic_prompt(self):

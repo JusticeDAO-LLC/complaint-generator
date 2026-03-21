@@ -362,6 +362,77 @@ def _build_document_review_workflow_priority(
     claim_review_map: Dict[str, Dict[str, Any]],
     section_review_map: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
+    document_grounding_recovery_action = (
+        intake_case_summary.get("document_grounding_recovery_action")
+        if isinstance(intake_case_summary.get("document_grounding_recovery_action"), dict)
+        else {}
+    )
+    if str(document_grounding_recovery_action.get("action") or "").strip().lower() == "recover_document_grounding":
+        focus_section = str(document_grounding_recovery_action.get("focus_section") or "factual_allegations").strip() or "factual_allegations"
+        claim_type = str(document_grounding_recovery_action.get("claim_type") or default_claim_type or "").strip()
+        preferred_support_kind = str(document_grounding_recovery_action.get("preferred_support_kind") or "").strip()
+        action_url = _append_review_query_params(
+            _resolve_document_review_url(
+                user_id=user_id,
+                dashboard_url=dashboard_url,
+                claim_review_map=claim_review_map,
+                section_review_map=section_review_map,
+                claim_type=claim_type or default_claim_type,
+                section_key=focus_section,
+            ),
+            claim_type=claim_type,
+            follow_up_support_kind=preferred_support_kind or _default_support_kind_for_section(focus_section),
+        )
+        split_action_url = urlsplit(action_url)
+        action_query_pairs = parse_qsl(split_action_url.query, keep_blank_values=True)
+        action_query = dict(action_query_pairs)
+        ordered_action_query = []
+        for key in ("user_id", "claim_type", "section", "follow_up_support_kind"):
+            value = str(action_query.pop(key, "") or "").strip()
+            if value:
+                ordered_action_query.append((key, value))
+        for key, value in action_query_pairs:
+            if key in {"user_id", "claim_type", "section", "follow_up_support_kind"}:
+                continue
+            text = str(value or "").strip()
+            if text:
+                ordered_action_query.append((key, text))
+        action_url = urlunsplit(
+            (
+                split_action_url.scheme,
+                split_action_url.netloc,
+                split_action_url.path,
+                urlencode(ordered_action_query),
+                split_action_url.fragment,
+            )
+        )
+        chip_labels = [f"fact-backed ratio: {float(document_grounding_recovery_action.get('fact_backed_ratio') or 0.0):.2f}"]
+        claim_element_id = str(document_grounding_recovery_action.get("claim_element_id") or "").strip()
+        if claim_element_id:
+            chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
+        if preferred_support_kind:
+            chip_labels.append(f"support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
+        missing_fact_bundle = [
+            str(item).strip()
+            for item in list(document_grounding_recovery_action.get("missing_fact_bundle") or [])
+            if str(item).strip()
+        ]
+        if missing_fact_bundle:
+            chip_labels.append(f"missing facts: {', '.join(missing_fact_bundle[:2])}")
+        return {
+            "status": "warning",
+            "title": "Recover document grounding before formalization",
+            "description": str(
+                document_grounding_recovery_action.get("description")
+                or "Strengthen the draft with more fact-backed and artifact-backed support before formalization."
+            ).strip(),
+            "action_label": "Collect grounding support",
+            "action_url": action_url,
+            "action_kind": "link",
+            "dashboard_url": dashboard_url,
+            "chip_labels": chip_labels,
+        }
+
     if isinstance(document_provenance_summary, dict) and document_provenance_summary:
         ratio_present = "fact_backed_ratio" in document_provenance_summary
         fact_backed_ratio = float(document_provenance_summary.get("fact_backed_ratio") or 0.0)
@@ -1058,6 +1129,11 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         "document_drafting_next_action": (
             dict(intake_case_summary.get("document_drafting_next_action") or {})
             if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
+            else {}
+        ),
+        "document_grounding_recovery_action": (
+            dict(intake_case_summary.get("document_grounding_recovery_action") or {})
+            if isinstance(intake_case_summary.get("document_grounding_recovery_action"), dict)
             else {}
         ),
         "recommended_next_action": (

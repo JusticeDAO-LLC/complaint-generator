@@ -144,6 +144,8 @@ Before opening a PR that touches the review surface, document pipeline, workflow
 
 That helper now defaults to the browser-inclusive `full` slice. The same gate is also available through `make regression`, the VS Code `Standard Regression` tasks and launch entries, and GitHub Actions through `.github/workflows/standard-regression.yml`.
 
+If you change the regression runners or the list of tests they target, update the matching GitHub Actions workflow path filters in the same PR so the CI trigger surface stays aligned with the slice being executed.
+
 ### Run Claim-Support Regression
 
 When you need a narrower follow-up slice for the review surface, testimony-linking flow, or dashboard rendering, run the focused claim-support regression:

@@ -573,6 +573,33 @@ def test_summarize_intake_priority_coverage_does_not_force_selection_criteria_fo
     assert "anchor_selection_criteria" not in summary["expected_objectives"]
 
 
+def test_summarize_intake_priority_coverage_marks_adverse_action_as_priority_when_uncovered():
+    seed = {
+        "actor_critic_optimizer": {
+            "weak_complaint_types": ["housing_discrimination", "hacc_research_engine"],
+            "weak_evidence_modalities": ["file_evidence"],
+        },
+        "key_facts": {
+            "anchor_sections": ["adverse_action"],
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "What exact adverse action did HACC take or threaten to take, on what date did it happen, who made or communicated it, and what notice, message, or decision record shows that action?",
+                    "When did the key events happen?",
+                ]
+            },
+        },
+    }
+
+    summary = AdversarialSession._summarize_intake_priority_coverage(
+        [{"question": "When did the key events happen?", "type": "timeline"}],
+        seed,
+    )
+
+    assert "anchor_adverse_action" in summary["expected_objectives"]
+    assert "anchor_adverse_action" in summary["priority_uncovered_objectives"]
+    assert "anchor_adverse_action" in summary["forced_uncovered_objectives"]
+
+
 def test_inject_intake_prompt_questions_skips_semantic_duplicate_mediator_question():
     seed = {
         "key_facts": {
@@ -597,6 +624,32 @@ def test_inject_intake_prompt_questions_skips_semantic_duplicate_mediator_questi
 
     assert len(merged) == 1
     assert merged[0]["question"].startswith("Can you walk me through when the complaint")
+
+
+def test_inject_intake_prompt_questions_frontloads_adverse_action_anchor_in_recovery_mode():
+    seed = {
+        "actor_critic_optimizer": {
+            "weak_complaint_types": ["housing_discrimination", "hacc_research_engine"],
+            "question_quality": 0.0,
+            "empathy": 0.0,
+            "efficiency": 0.0,
+        },
+        "key_facts": {
+            "anchor_sections": ["adverse_action"],
+            "synthetic_prompts": {
+                "intake_questions": []
+            },
+        },
+    }
+
+    merged = AdversarialSession._inject_intake_prompt_questions(
+        seed,
+        [{"question": "Can you describe what happened overall?", "type": "timeline"}],
+    )
+
+    assert merged[0]["question"].startswith("For the unresolved anchor adverse action")
+    assert merged[0]["question_objective"] == "anchor_adverse_action"
+    assert "what notice, message, or decision record shows that action" in merged[0]["question"].lower()
 
 
 def test_run_temporarily_prioritizes_mediator_selector_for_intake_objectives():

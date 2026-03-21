@@ -1949,6 +1949,11 @@ class AdversarialSession:
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'anchor_grievance_hearing' in unresolved_intake_objectives
         )
+        should_frontload_anchor_adverse_action = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_adverse_action' in unresolved_intake_objectives
+            or 'adverse_action' in cls._extract_anchor_sections(seed_complaint)
+        )
         should_frontload_hearing_request_timing = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'hearing_request_timing' in unresolved_intake_objectives
@@ -1983,6 +1988,13 @@ class AdversarialSession:
                 (
                     "For the grievance hearing process, on what date did you request a hearing or review, how did you request it (portal/email/form/phone/in person), when did HACC respond, and what record or file verifies each step?",
                     "anchor_grievance_hearing",
+                )
+            )
+        if should_frontload_anchor_adverse_action:
+            seed_boosted_probes.append(
+                (
+                    "What exact adverse action did HACC take or threaten to take, on what date did it happen, who made or communicated it, and what notice, message, or decision record shows that action?",
+                    "anchor_adverse_action",
                 )
             )
         if should_frontload_anchor_selection:
@@ -2054,6 +2066,8 @@ class AdversarialSession:
         for prompt_index, (probe_text, probe_type) in enumerate(prioritized_prompts):
             if probe_type == 'anchor_selection_criteria':
                 prompt_priority_tier[prompt_index] = 0
+            elif probe_type == 'anchor_adverse_action':
+                prompt_priority_tier[prompt_index] = 1
             elif probe_type in {'anchor_grievance_hearing', 'anchor_appeal_rights', 'hearing_request_timing'}:
                 prompt_priority_tier[prompt_index] = 1
             elif probe_type == 'staff_names_titles' and should_frontload_staff_names_titles:
@@ -2089,6 +2103,7 @@ class AdversarialSession:
             {
                 objective
                 for objective in (
+                    'anchor_adverse_action',
                     'anchor_appeal_rights',
                     'anchor_grievance_hearing',
                     'anchor_selection_criteria',
@@ -2156,6 +2171,7 @@ class AdversarialSession:
             'actors',
             'causation_sequence',
             'documents',
+            'anchor_adverse_action',
             'anchor_appeal_rights',
             'anchor_grievance_hearing',
             'anchor_selection_criteria',
@@ -2223,6 +2239,8 @@ class AdversarialSession:
                 weight += 0.75
             if probe_type == 'anchor_selection_criteria' and should_frontload_anchor_selection:
                 weight += 0.95
+            if probe_type == 'anchor_adverse_action' and should_frontload_anchor_adverse_action:
+                weight += 0.93
             if probe_type == 'anchor_appeal_rights' and should_frontload_anchor_appeal_rights:
                 weight += 0.90
             if probe_type == 'anchor_grievance_hearing' and should_frontload_anchor_grievance_hearing:
@@ -2238,8 +2256,10 @@ class AdversarialSession:
                 weight -= 0.40
                 if (
                     should_frontload_anchor_grievance_hearing
+                    or should_frontload_anchor_adverse_action
                     or should_frontload_anchor_selection
                     or 'anchor_grievance_hearing' in unresolved_intake_objectives
+                    or 'anchor_adverse_action' in unresolved_intake_objectives
                     or 'anchor_selection_criteria' in unresolved_intake_objectives
                 ):
                     weight -= 0.75
@@ -2270,6 +2290,7 @@ class AdversarialSession:
             'actors',
             'adverse_action_details',
             'documents',
+            'anchor_adverse_action',
             'anchor_appeal_rights',
             'anchor_grievance_hearing',
             'anchor_selection_criteria',
@@ -2494,6 +2515,11 @@ class AdversarialSession:
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'anchor_grievance_hearing' in unresolved_intake_objectives
         )
+        should_frontload_anchor_adverse_action = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_adverse_action' in unresolved_intake_objectives
+            or 'adverse_action' in cls._extract_anchor_sections(seed_complaint)
+        )
         should_frontload_hearing_request_timing = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'hearing_request_timing' in unresolved_intake_objectives
@@ -2530,6 +2556,7 @@ class AdversarialSession:
             {
                 objective
                 for objective in (
+                    'anchor_adverse_action',
                     'anchor_appeal_rights',
                     'anchor_grievance_hearing',
                     'anchor_selection_criteria',
@@ -2542,8 +2569,12 @@ class AdversarialSession:
         )
         if should_frontload_staff_names_titles:
             forced_objectives.add('staff_names_titles')
+        if should_frontload_anchor_adverse_action:
+            forced_objectives.add('anchor_adverse_action')
         for objective in sorted(forced_objectives):
             objective_priority.setdefault(objective, len(objective_priority))
+        if should_frontload_anchor_adverse_action and 'anchor_adverse_action' in objective_priority:
+            objective_priority['anchor_adverse_action'] = min(-6, objective_priority['anchor_adverse_action'])
         if should_frontload_anchor_appeal_rights and 'anchor_appeal_rights' in objective_priority:
             objective_priority['anchor_appeal_rights'] = min(-5, objective_priority['anchor_appeal_rights'])
         if should_frontload_anchor_grievance_hearing and 'anchor_grievance_hearing' in objective_priority:
@@ -2569,9 +2600,11 @@ class AdversarialSession:
             if objective in unresolved_intake_objectives:
                 objective_priority[objective] = max(-6, objective_priority[objective] - 2)
             if objective == 'intake_follow_up' and (
-                should_frontload_anchor_grievance_hearing
+                should_frontload_anchor_adverse_action
+                or should_frontload_anchor_grievance_hearing
                 or should_frontload_anchor_selection
                 or should_frontload_hearing_request_timing
+                or 'anchor_adverse_action' in unresolved_intake_objectives
                 or 'anchor_grievance_hearing' in unresolved_intake_objectives
                 or 'anchor_selection_criteria' in unresolved_intake_objectives
             ):
@@ -2765,7 +2798,11 @@ class AdversarialSession:
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             group_targets['anchor'] = 1
             group_targets['factual'] = 2
-        if should_frontload_anchor_appeal_rights or should_frontload_anchor_grievance_hearing:
+        if (
+            should_frontload_anchor_adverse_action
+            or should_frontload_anchor_appeal_rights
+            or should_frontload_anchor_grievance_hearing
+        ):
             group_targets['anchor'] = max(group_targets['anchor'], 2)
 
         def tighten_selected_candidate(candidate: Any, matched: List[str]) -> Any:
@@ -2776,6 +2813,7 @@ class AdversarialSession:
             unresolved_priority_order = [
                 'anchor_selection_criteria',
                 'anchor_grievance_hearing',
+                'anchor_adverse_action',
                 'hearing_request_timing',
                 'staff_names_titles',
                 'causation_sequence',
@@ -2808,6 +2846,7 @@ class AdversarialSession:
                 objective_specific_suffix = {
                     'anchor_selection_criteria': " Please ask for the exact criterion/threshold, where it appears in policy, and the matching case-file or notice citation.",
                     'anchor_grievance_hearing': " Keep this question limited to request date, method, response date, and the record that verifies each step.",
+                    'anchor_adverse_action': " Keep this question limited to the exact adverse action, the action date, who communicated it, and the notice or record that proves it.",
                     'hearing_request_timing': " Ask for exact request/response dates and the record that proves each date.",
                     'causation_sequence': " Tie the sequence to dated records for each event.",
                     'adverse_action_details': " Require who made the decision, the stated reason, communication channel, and exact date.",
@@ -2990,6 +3029,11 @@ class AdversarialSession:
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'anchor_grievance_hearing' in unresolved_intake_objectives
         )
+        should_frontload_anchor_adverse_action = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'anchor_adverse_action' in unresolved_intake_objectives
+            or 'adverse_action' in cls._extract_anchor_sections(seed_complaint)
+        )
         should_frontload_hearing_request_timing = bool(
             weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
             or 'hearing_request_timing' in unresolved_intake_objectives
@@ -3027,6 +3071,7 @@ class AdversarialSession:
             {
                 objective
                 for objective in (
+                    'anchor_adverse_action',
                     'anchor_appeal_rights',
                     'anchor_grievance_hearing',
                     'anchor_selection_criteria',
@@ -3039,6 +3084,8 @@ class AdversarialSession:
         )
         if should_frontload_staff_names_titles:
             forced_objectives.add('staff_names_titles')
+        if should_frontload_anchor_adverse_action:
+            forced_objectives.add('anchor_adverse_action')
         for objective in sorted(forced_objectives):
             if objective not in expected_objectives:
                 expected_objectives.append(objective)
@@ -3111,7 +3158,11 @@ class AdversarialSession:
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
             group_targets['factual'] = 2
             group_targets['anchor'] = 1
-        if should_frontload_anchor_appeal_rights or should_frontload_anchor_grievance_hearing:
+        if (
+            should_frontload_anchor_adverse_action
+            or should_frontload_anchor_appeal_rights
+            or should_frontload_anchor_grievance_hearing
+        ):
             group_targets['anchor'] = max(group_targets['anchor'], 2)
         group_covered_counts = {
             group: len(grouped_covered.get(group, []))
@@ -3139,6 +3190,8 @@ class AdversarialSession:
             priority_uncovered.append('anchor_appeal_rights')
         if should_frontload_anchor_grievance_hearing and coverage_counts.get('anchor_grievance_hearing', 0) <= 0:
             priority_uncovered.append('anchor_grievance_hearing')
+        if should_frontload_anchor_adverse_action and coverage_counts.get('anchor_adverse_action', 0) <= 0:
+            priority_uncovered.append('anchor_adverse_action')
         if should_frontload_anchor_selection and coverage_counts.get('anchor_selection_criteria', 0) <= 0:
             priority_uncovered.append('anchor_selection_criteria')
         if should_frontload_hearing_request_timing and coverage_counts.get('hearing_request_timing', 0) <= 0:

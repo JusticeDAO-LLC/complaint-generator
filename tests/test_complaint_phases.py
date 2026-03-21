@@ -793,6 +793,42 @@ class TestComplaintDenoiser:
         assert questions[0]['context']['workflow_action'] is True
         assert questions[0]['context']['workflow_phase'] == 'graph_analysis'
         assert 'causation' in questions[0]['question'].lower()
+
+    def test_generate_evidence_questions_can_target_document_grounding_recovery(self):
+        denoiser = ComplaintDenoiser()
+
+        kg = KnowledgeGraph()
+        dg = DependencyGraph()
+
+        questions = denoiser.generate_evidence_questions(
+            kg,
+            dg,
+            evidence_gaps=[],
+            alignment_evidence_tasks=[],
+            evidence_workflow_action_queue=[
+                {
+                    'rank': 1,
+                    'phase_name': 'document_generation',
+                    'status': 'warning',
+                    'action': 'recover document grounding',
+                    'action_code': 'recover_document_grounding',
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'claim_element_label': 'Protected activity',
+                    'preferred_support_kind': 'authority',
+                    'missing_fact_bundle': ['Complaint timing'],
+                    'focus_areas': ['protected_activity', 'Complaint timing'],
+                }
+            ],
+            max_questions=2,
+        )
+
+        assert questions
+        assert questions[0]['context']['workflow_action'] is True
+        assert questions[0]['context']['document_grounding_recovery'] is True
+        assert questions[0]['context']['claim_element_id'] == 'protected_activity'
+        assert 'legal authority' in questions[0]['question'].lower()
+        assert 'complaint timing' in questions[0]['question'].lower()
     
     def test_calculate_noise_level(self):
         """Test noise level calculation."""

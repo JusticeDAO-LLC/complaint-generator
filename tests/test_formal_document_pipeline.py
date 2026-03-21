@@ -1295,6 +1295,88 @@ def test_document_api_annotation_prioritizes_document_provenance_grounding_warni
     }
 
 
+def test_document_api_annotation_promotes_document_grounding_recovery_action_into_workflow_priority():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "intake_readiness": {
+            "score": 0.5,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": [],
+            "criteria": {},
+        },
+        "document_provenance_summary": {"fact_backed_ratio": 0.25, "low_grounding_flag": True},
+        "document_grounding_recovery_action": {
+            "action": "recover_document_grounding",
+            "phase_name": "document_generation",
+            "description": "Strengthen draft grounding for protected_activity before formalization.",
+            "claim_type": "retaliation",
+            "claim_element_id": "protected_activity",
+            "focus_section": "factual_allegations",
+            "preferred_support_kind": "authority",
+            "fact_backed_ratio": 0.25,
+            "missing_fact_bundle": ["Complaint timing", "Manager knowledge"],
+            "recovery_source": "alignment_evidence_task",
+        },
+        "next_action": {"action": "complete_evidence"},
+    }
+    payload = _annotate_review_links(
+        {
+            "draft": {
+                "title": "Jane Doe v. Acme Corporation",
+                "source_context": {"user_id": "Jane Doe"},
+                "document_provenance_summary": {
+                    "summary_fact_count": 4,
+                    "summary_fact_backed_count": 1,
+                    "claim_supporting_fact_count": 3,
+                    "claim_supporting_fact_backed_count": 1,
+                    "fact_backed_ratio": 0.25,
+                    "low_grounding_flag": True,
+                },
+            },
+            "drafting_readiness": {
+                "status": "warning",
+                "workflow_phase_plan": {"recommended_order": ["document_generation"], "phases": {}},
+                "sections": {"factual_allegations": {"status": "warning", "title": "Factual Allegations"}},
+                "claims": [{"claim_type": "retaliation", "status": "warning"}],
+            },
+            "document_optimization": {},
+        },
+        mediator=mediator,
+        user_id="Jane Doe",
+    )
+
+    assert payload["review_links"]["document_grounding_recovery_action"] == {
+        "action": "recover_document_grounding",
+        "phase_name": "document_generation",
+        "description": "Strengthen draft grounding for protected_activity before formalization.",
+        "claim_type": "retaliation",
+        "claim_element_id": "protected_activity",
+        "focus_section": "factual_allegations",
+        "preferred_support_kind": "authority",
+        "fact_backed_ratio": 0.25,
+        "missing_fact_bundle": ["Complaint timing", "Manager knowledge"],
+        "recovery_source": "alignment_evidence_task",
+    }
+    assert payload["review_links"]["workflow_priority"] == {
+        "status": "warning",
+        "title": "Recover document grounding before formalization",
+        "description": "Strengthen draft grounding for protected_activity before formalization.",
+        "action_label": "Collect grounding support",
+        "action_url": "/claim-support-review?user_id=Jane+Doe&claim_type=retaliation&section=factual_allegations&follow_up_support_kind=authority",
+        "action_kind": "link",
+        "dashboard_url": "/claim-support-review?user_id=Jane+Doe",
+        "chip_labels": [
+            "fact-backed ratio: 0.25",
+            "target element: Protected Activity",
+            "support lane: Authority",
+            "missing facts: Complaint timing, Manager knowledge",
+        ],
+    }
+
+
 def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
     optimizer = document_optimization.AgenticDocumentOptimizer(
         mediator=_build_seeded_mediator(),

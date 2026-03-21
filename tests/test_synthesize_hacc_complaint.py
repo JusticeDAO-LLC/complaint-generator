@@ -311,6 +311,54 @@ def test_anchored_chronology_lines_generalize_to_notice_hearing_and_response_seq
     ]
 
 
+def test_anchored_chronology_lines_fallback_to_timeline_anchors_without_relations():
+    session = {
+        "final_state": {
+            "intake_case_file": {
+                "canonical_facts": [
+                    {
+                        "fact_id": "fact:notice",
+                        "predicate_family": "notice_chain",
+                        "event_label": "Notice communication",
+                    }
+                ],
+                "timeline_relations": [],
+                "timeline_anchors": [
+                    {
+                        "fact_id": "fact:notice",
+                        "start_date": "2025-01-05",
+                        "anchor_text": "2025-01-05",
+                        "relative_markers": ["after"],
+                    }
+                ],
+            }
+        },
+    }
+
+    chronology = MODULE._anchored_chronology_lines(session, limit=2)
+
+    assert chronology == [
+        "The intake chronology anchors notice communication at January 5, 2025. Reported relative timing includes after."
+    ]
+
+
+def test_drafting_readiness_accepts_timeline_anchors_without_explicit_relations():
+    seed = {"key_facts": {"drafting_readiness": {"coverage": 0.95, "phase_status": "ready", "blockers": []}}}
+    session = {
+        "final_state": {
+            "intake_case_file": {
+                "canonical_facts": [{"fact_id": "fact:1", "text": "Notice sent", "fact_type": "timeline"}],
+                "timeline_relations": [],
+                "timeline_anchors": [{"fact_id": "fact:1", "start_date": "2025-01-05"}],
+            }
+        }
+    }
+
+    readiness = MODULE._drafting_readiness_for_formalization(seed, session)
+
+    assert "graph_analysis_not_ready" not in readiness["blockers"]
+
+
 def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
     session = {
         "final_state": {

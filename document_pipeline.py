@@ -1434,6 +1434,8 @@ class FormalComplaintDocumentBuilder:
                 )
             except TypeError:
                 result = None
+            except Exception:
+                result = None
             if isinstance(result, dict) and isinstance(result.get("formal_complaint"), dict):
                 draft = self._adapt_formal_complaint_to_package_draft(result["formal_complaint"])
                 draft["affidavit_overrides"] = affidavit_overrides

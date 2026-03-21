@@ -770,7 +770,25 @@ def _anchored_chronology_lines(session: Dict[str, Any], limit: int = 2) -> List[
     intake_case_file = _session_intake_case_file(session)
     facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
     relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
-    if not facts or not relations:
+    timeline_anchors = [dict(item) for item in list(intake_case_file.get("timeline_anchors") or []) if isinstance(item, dict)]
+    if not facts:
+        return []
+    if not relations and timeline_anchors:
+        lines: List[str] = []
+        for anchor in timeline_anchors[:limit]:
+            fact_id = str(anchor.get("fact_id") or "").strip()
+            matching_fact = next((fact for fact in facts if str(fact.get("fact_id") or "").strip() == fact_id), {})
+            label = _chronology_fact_label(matching_fact or {})
+            anchor_text = _format_timeline_date(anchor.get("start_date") or anchor.get("anchor_text"))
+            if not anchor_text:
+                continue
+            relative_markers = [str(item) for item in list(anchor.get("relative_markers") or []) if str(item)]
+            line = f"The intake chronology anchors {label.lower()} at {anchor_text}."
+            if relative_markers:
+                line = line.rstrip(".") + f". Reported relative timing includes {relative_markers[0]}."
+            lines.append(line)
+        return _dedupe_sentences(lines, limit=limit)
+    if not relations:
         return []
 
     fact_by_id = {
@@ -3043,7 +3061,8 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
     intake_case_file = _session_intake_case_file(session)
     canonical_facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
     timeline_relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
-    graph_complete = bool(canonical_facts) and bool(timeline_relations)
+    timeline_anchors = [dict(item) for item in list(intake_case_file.get("timeline_anchors") or []) if isinstance(item, dict)]
+    graph_complete = bool(canonical_facts) and bool(timeline_relations or timeline_anchors)
     if not graph_complete:
         phase_status = "warning"
         if "graph_analysis_not_ready" not in blockers:
@@ -3051,6 +3070,8 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
         missing_graph_line = "Graph chronology is incomplete and still needs canonical events and timeline links before formalization."
         if missing_graph_line not in factual_gaps:
             factual_gaps.append(missing_graph_line)
+    elif "graph_analysis_not_ready" in blockers and timeline_anchors:
+        blockers = [item for item in blockers if item != "graph_analysis_not_ready"]
 
     for gap in _outstanding_intake_gaps(session, limit=5):
         if gap not in factual_gaps:

@@ -46,6 +46,7 @@ from claim_support_review import (
 	summarize_claim_support_snapshot_lifecycle,
 )
 from document_pipeline import FormalComplaintDocumentBuilder
+from intake_status import _build_document_grounding_recovery_action
 
 
 ALIGNMENT_TASK_UPDATE_HISTORY_LIMIT = 25
@@ -754,9 +755,13 @@ class Mediator:
 					'phase_name': 'graph_analysis' if bool(task.get('blocking')) else 'document_generation',
 					'status': 'warning',
 					'action': str(task.get('action') or 'fill_evidence_gaps').replace('_', ' '),
+					'action_code': str(task.get('action') or 'fill_evidence_gaps').strip().lower(),
 					'focus_areas': focus_areas[:4],
 					'claim_type': str(task.get('claim_type') or '').strip(),
 					'claim_element_id': str(task.get('claim_element_id') or '').strip(),
+					'claim_element_label': str(task.get('claim_element_label') or '').strip(),
+					'preferred_support_kind': str(task.get('preferred_support_kind') or '').strip(),
+					'missing_fact_bundle': list(task.get('missing_fact_bundle') or [])[:4],
 				}
 			)
 		if not queue:
@@ -769,14 +774,83 @@ class Mediator:
 						'phase_name': 'evidence_collection',
 						'status': 'warning',
 						'action': str(gap.get('name') or gap.get('description') or 'close evidence gap').strip(),
+						'action_code': 'fill_evidence_gaps',
 						'focus_areas': [
 							str(item).strip()
 							for item in [gap.get('related_claim'), gap.get('name')]
 							if str(item).strip()
 						][:3],
+						'claim_type': str(gap.get('related_claim') or '').strip(),
 					}
 				)
+		document_grounding_recovery_action = self._get_document_grounding_recovery_action(
+			provisional_evidence_workflow_action_queue=queue,
+			alignment_evidence_tasks=alignment_evidence_tasks,
+		)
+		if document_grounding_recovery_action:
+			recovery_focus_areas = [
+				str(item).strip()
+				for item in [
+					document_grounding_recovery_action.get('claim_element_id'),
+					*(document_grounding_recovery_action.get('missing_fact_bundle') or []),
+				]
+				if str(item).strip()
+			]
+			recovery_entry = {
+				'rank': 1,
+				'phase_name': 'document_generation',
+				'status': 'warning',
+				'action': 'recover document grounding',
+				'action_code': 'recover_document_grounding',
+				'focus_areas': recovery_focus_areas[:4],
+				'claim_type': str(document_grounding_recovery_action.get('claim_type') or '').strip(),
+				'claim_element_id': str(document_grounding_recovery_action.get('claim_element_id') or '').strip(),
+				'claim_element_label': str(document_grounding_recovery_action.get('claim_element_id') or '').strip(),
+				'preferred_support_kind': str(document_grounding_recovery_action.get('preferred_support_kind') or '').strip(),
+				'missing_fact_bundle': list(document_grounding_recovery_action.get('missing_fact_bundle') or [])[:4],
+				'fact_backed_ratio': float(document_grounding_recovery_action.get('fact_backed_ratio') or 0.0),
+				'recovery_source': str(document_grounding_recovery_action.get('recovery_source') or '').strip(),
+				'document_grounding_recovery': True,
+			}
+			if not any(
+				isinstance(item, dict)
+				and str(item.get('action_code') or '').strip().lower() == 'recover_document_grounding'
+				for item in queue
+			):
+				queue = [recovery_entry, *queue]
+		for index, item in enumerate(queue, start=1):
+			if isinstance(item, dict):
+				item['rank'] = index
 		return queue
+
+	def _get_document_provenance_summary(self) -> Dict[str, Any]:
+		explicit_summary = self.phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, 'document_provenance_summary')
+		if isinstance(explicit_summary, dict) and explicit_summary:
+			return dict(explicit_summary)
+		formal_complaint = self.phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint')
+		if isinstance(formal_complaint, dict):
+			document_provenance_summary = formal_complaint.get('document_provenance_summary')
+			if isinstance(document_provenance_summary, dict) and document_provenance_summary:
+				return dict(document_provenance_summary)
+		return {}
+
+	def _get_document_grounding_recovery_action(
+		self,
+		*,
+		provisional_evidence_workflow_action_queue: Any = None,
+		alignment_evidence_tasks: Any = None,
+	) -> Dict[str, Any]:
+		explicit_action = self.phase_manager.get_phase_data(
+			ComplaintPhase.FORMALIZATION,
+			'document_grounding_recovery_action',
+		)
+		if isinstance(explicit_action, dict) and explicit_action:
+			return dict(explicit_action)
+		return _build_document_grounding_recovery_action(
+			self._get_document_provenance_summary(),
+			provisional_evidence_workflow_action_queue,
+			alignment_evidence_tasks,
+		)
 
 	def _summarize_evidence_workflow_action_queue(self, queue: Any) -> Dict[str, Any]:
 		summary = {
@@ -8610,15 +8684,24 @@ class Mediator:
 		updates = self.denoiser.process_answer(question, answer, kg, dg)
 		
 		# If answer describes evidence, add it
+		question_context = question.get('context', {}) if isinstance(question.get('context'), dict) else {}
 		evidence_refreshed = False
-		if len(answer) > 20 and question.get('type') in ['evidence_clarification', 'evidence_quality']:
+		should_capture_grounding_answer = bool(
+			str(question_context.get('document_grounding_recovery') or '').strip()
+			or bool(question_context.get('document_grounding_recovery'))
+		)
+		if (
+			(len(answer) > 20) or (should_capture_grounding_answer and bool(str(answer or '').strip()))
+		) and question.get('type') in ['evidence_clarification', 'evidence_quality']:
 			evidence_data = {
 				'id': f"evidence_from_q_{len(self.denoiser.questions_asked)}",
 				'name': f"Evidence: {answer[:50]}",
 				'type': 'user_provided',
 				'description': answer,
 				'confidence': 0.7,
-				'supports_claims': [question.get('context', {}).get('claim_id')]
+				'supports_claims': [question_context.get('claim_id') or question_context.get('claim_type')],
+				'claim_element_id': question_context.get('claim_element_id'),
+				'preferred_support_kind': question_context.get('preferred_support_kind'),
 			}
 			self.add_evidence_to_graphs(evidence_data)
 			evidence_refreshed = True
@@ -8712,6 +8795,10 @@ class Mediator:
 			'alignment_evidence_tasks': alignment_evidence_tasks,
 			'evidence_workflow_action_queue': evidence_workflow_action_queue,
 			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
+			'document_grounding_recovery_action': self._get_document_grounding_recovery_action(
+				provisional_evidence_workflow_action_queue=evidence_workflow_action_queue,
+				alignment_evidence_tasks=alignment_evidence_tasks,
+			),
 			'alignment_task_updates': alignment_task_updates,
 			'alignment_task_update_history': alignment_task_update_history,
 			'next_action': self.phase_manager.get_next_action(),
@@ -8862,6 +8949,21 @@ class Mediator:
 		)
 		
 		self.phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'formal_complaint', formal_complaint)
+		if isinstance(formal_complaint, dict):
+			document_provenance_summary = formal_complaint.get('document_provenance_summary')
+			if isinstance(document_provenance_summary, dict) and document_provenance_summary:
+				self.phase_manager.update_phase_data(
+					ComplaintPhase.FORMALIZATION,
+					'document_provenance_summary',
+					dict(document_provenance_summary),
+				)
+			document_grounding_recovery_action = formal_complaint.get('document_grounding_recovery_action')
+			if isinstance(document_grounding_recovery_action, dict) and document_grounding_recovery_action:
+				self.phase_manager.update_phase_data(
+					ComplaintPhase.FORMALIZATION,
+					'document_grounding_recovery_action',
+					dict(document_grounding_recovery_action),
+				)
 		
 		result = {
 			'formal_complaint': formal_complaint,
@@ -9169,6 +9271,11 @@ class Mediator:
 			'alignment_evidence_tasks': alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else [],
 			'evidence_workflow_action_queue': evidence_workflow_action_queue if isinstance(evidence_workflow_action_queue, list) else [],
 			'evidence_workflow_action_summary': self._summarize_evidence_workflow_action_queue(evidence_workflow_action_queue),
+			'document_provenance_summary': self._get_document_provenance_summary(),
+			'document_grounding_recovery_action': self._get_document_grounding_recovery_action(
+				provisional_evidence_workflow_action_queue=evidence_workflow_action_queue,
+				alignment_evidence_tasks=alignment_evidence_tasks,
+			),
 			'alignment_task_summary': alignment_task_summary,
 			'alignment_task_updates': alignment_task_updates if isinstance(alignment_task_updates, list) else [],
 			'alignment_task_update_history': alignment_task_update_history if isinstance(alignment_task_update_history, list) else [],

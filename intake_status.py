@@ -37,6 +37,75 @@ def _build_document_drafting_next_action(document_execution_drift_summary: Any) 
     }
 
 
+def _build_document_grounding_recovery_action(
+    document_provenance_summary: Any,
+    evidence_workflow_action_queue: Any,
+    alignment_evidence_tasks: Any,
+) -> Dict[str, Any]:
+    provenance_summary = (
+        document_provenance_summary
+        if isinstance(document_provenance_summary, dict)
+        else {}
+    )
+    if not provenance_summary:
+        return {}
+    low_grounding_flag = bool(provenance_summary.get("low_grounding_flag"))
+    ratio_present = "fact_backed_ratio" in provenance_summary
+    fact_backed_ratio = float(provenance_summary.get("fact_backed_ratio") or 0.0)
+    if not low_grounding_flag and (not ratio_present or fact_backed_ratio >= 0.6):
+        return {}
+
+    claim_type = ""
+    claim_element_id = ""
+    preferred_support_kind = ""
+    missing_fact_bundle: List[str] = []
+    recovery_source = "document_provenance_summary"
+
+    for task in alignment_evidence_tasks if isinstance(alignment_evidence_tasks, list) else []:
+        if not isinstance(task, dict):
+            continue
+        claim_type = str(task.get("claim_type") or "").strip()
+        claim_element_id = str(task.get("claim_element_id") or "").strip()
+        fallback_lanes = [str(item).strip() for item in list(task.get("fallback_lanes") or []) if str(item).strip()]
+        preferred_support_kind = (
+            str(task.get("preferred_support_kind") or "").strip()
+            or (fallback_lanes[0] if fallback_lanes else "")
+        )
+        missing_fact_bundle = [str(item).strip() for item in list(task.get("missing_fact_bundle") or []) if str(item).strip()]
+        recovery_source = "alignment_evidence_task"
+        if claim_type or claim_element_id or preferred_support_kind or missing_fact_bundle:
+            break
+
+    if recovery_source == "document_provenance_summary":
+        for action in evidence_workflow_action_queue if isinstance(evidence_workflow_action_queue, list) else []:
+            if not isinstance(action, dict):
+                continue
+            claim_type = str(action.get("claim_type") or "").strip()
+            claim_element_id = str(action.get("claim_element_id") or "").strip()
+            focus_areas = [str(item).strip() for item in list(action.get("focus_areas") or []) if str(item).strip()]
+            missing_fact_bundle = focus_areas[:3]
+            preferred_support_kind = "testimony"
+            recovery_source = "evidence_workflow_action_queue"
+            if claim_type or claim_element_id or missing_fact_bundle:
+                break
+
+    description = "Strengthen the draft with more fact-backed and artifact-backed support before formalization."
+    if claim_element_id:
+        description = f"Strengthen draft grounding for {claim_element_id} before formalization."
+    return {
+        "action": "recover_document_grounding",
+        "phase_name": "document_generation",
+        "description": description,
+        "claim_type": claim_type,
+        "claim_element_id": claim_element_id,
+        "focus_section": "factual_allegations",
+        "preferred_support_kind": preferred_support_kind or "testimony",
+        "fact_backed_ratio": fact_backed_ratio,
+        "missing_fact_bundle": missing_fact_bundle[:4],
+        "recovery_source": recovery_source,
+    }
+
+
 def _build_confirmed_intake_summary_handoff(raw_status: Any) -> Dict[str, Any]:
     status = raw_status if isinstance(raw_status, dict) else {}
     confirmation = status.get("complainant_summary_confirmation")
@@ -450,12 +519,23 @@ def build_intake_status_summary(
     next_action = raw_status.get("next_action")
     next_action = next_action if isinstance(next_action, dict) else {}
     document_execution_drift_summary = raw_status.get("document_execution_drift_summary")
+    document_provenance_summary = raw_status.get("document_provenance_summary")
+    evidence_workflow_action_queue = raw_status.get("evidence_workflow_action_queue")
+    alignment_evidence_tasks = raw_status.get("alignment_evidence_tasks")
     raw_document_drafting_next_action = raw_status.get("document_drafting_next_action")
+    raw_document_grounding_recovery_action = raw_status.get("document_grounding_recovery_action")
     document_drafting_next_action = (
         dict(raw_document_drafting_next_action)
         if isinstance(raw_document_drafting_next_action, dict) and raw_document_drafting_next_action
         else _build_document_drafting_next_action(document_execution_drift_summary)
     )
+    document_grounding_recovery_action = _build_document_grounding_recovery_action(
+        document_provenance_summary,
+        evidence_workflow_action_queue,
+        alignment_evidence_tasks,
+    )
+    if isinstance(raw_document_grounding_recovery_action, dict) and raw_document_grounding_recovery_action:
+        document_grounding_recovery_action = dict(raw_document_grounding_recovery_action)
     compact_next_action: Dict[str, Any] = {}
     primary_validation_target = {}
     if next_action:
@@ -480,6 +560,8 @@ def build_intake_status_summary(
             compact_next_action["primary_validation_target"] = primary_validation_target
     if document_drafting_next_action:
         compact_next_action["document_drafting_next_action"] = dict(document_drafting_next_action)
+    if document_grounding_recovery_action:
+        compact_next_action["document_grounding_recovery_action"] = dict(document_grounding_recovery_action)
 
     summary = {
         "current_phase": str(raw_status.get("current_phase") or "").strip(),
@@ -507,6 +589,8 @@ def build_intake_status_summary(
         "canonical_fact_count": int(readiness.get("canonical_fact_count", 0) or 0),
         "proof_lead_count": int(readiness.get("proof_lead_count", 0) or 0),
     }
+    if document_grounding_recovery_action:
+        summary["document_grounding_recovery_action"] = document_grounding_recovery_action
     if include_iteration_count:
         try:
             summary["iteration_count"] = int(raw_status.get("iteration_count"))
@@ -567,12 +651,21 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     workflow_targeting_summary = raw_status.get("workflow_targeting_summary")
     document_workflow_execution_summary = raw_status.get("document_workflow_execution_summary")
     document_execution_drift_summary = raw_status.get("document_execution_drift_summary")
+    document_provenance_summary = raw_status.get("document_provenance_summary")
     raw_document_drafting_next_action = raw_status.get("document_drafting_next_action")
+    raw_document_grounding_recovery_action = raw_status.get("document_grounding_recovery_action")
     document_drafting_next_action = (
         dict(raw_document_drafting_next_action)
         if isinstance(raw_document_drafting_next_action, dict) and raw_document_drafting_next_action
         else _build_document_drafting_next_action(document_execution_drift_summary)
     )
+    document_grounding_recovery_action = _build_document_grounding_recovery_action(
+        document_provenance_summary,
+        evidence_workflow_action_queue,
+        alignment_evidence_tasks,
+    )
+    if isinstance(raw_document_grounding_recovery_action, dict) and raw_document_grounding_recovery_action:
+        document_grounding_recovery_action = dict(raw_document_grounding_recovery_action)
     next_action = raw_status.get("next_action")
     question_candidate_summary = raw_status.get("question_candidate_summary")
     adversarial_intake_priority_summary = raw_status.get("adversarial_intake_priority_summary")
@@ -741,12 +834,18 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             if isinstance(document_workflow_execution_summary, dict)
             else {}
         ),
+        "document_provenance_summary": (
+            document_provenance_summary
+            if isinstance(document_provenance_summary, dict)
+            else {}
+        ),
         "document_execution_drift_summary": (
             document_execution_drift_summary
             if isinstance(document_execution_drift_summary, dict)
             else {}
         ),
         "document_drafting_next_action": document_drafting_next_action,
+        "document_grounding_recovery_action": document_grounding_recovery_action,
         "next_action": next_action if isinstance(next_action, dict) else {},
         "question_candidate_summary": (
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}

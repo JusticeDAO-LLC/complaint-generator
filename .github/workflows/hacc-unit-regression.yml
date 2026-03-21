@@ -6,11 +6,13 @@ on:
     paths:
       - .github/workflows/hacc-unit-regression.yml
       - adversarial_harness/hacc_evidence.py
+      - adversarial_harness/session.py
       - scripts/run_hacc_unit_regression.py
       - scripts/run_hacc_grounding_regression.py
       - scripts/run_hacc_grounded_pipeline.py
       - scripts/run_hacc_adversarial_report.py
       - scripts/synthesize_hacc_complaint.py
+      - tests/test_adversarial_session_intake_prompts.py
       - tests/test_hacc_evidence_loader.py
       - tests/test_synthesize_hacc_complaint.py
       - tests/test_run_hacc_adversarial_report.py
@@ -25,11 +27,13 @@ on:
     paths:
       - .github/workflows/hacc-unit-regression.yml
       - adversarial_harness/hacc_evidence.py
+      - adversarial_harness/session.py
       - scripts/run_hacc_unit_regression.py
       - scripts/run_hacc_grounding_regression.py
       - scripts/run_hacc_grounded_pipeline.py
       - scripts/run_hacc_adversarial_report.py
       - scripts/synthesize_hacc_complaint.py
+      - tests/test_adversarial_session_intake_prompts.py
       - tests/test_hacc_evidence_loader.py
       - tests/test_synthesize_hacc_complaint.py
       - tests/test_run_hacc_adversarial_report.py

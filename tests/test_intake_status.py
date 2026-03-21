@@ -147,6 +147,53 @@ def test_build_intake_status_summary_includes_document_drafting_next_action_from
     assert summary["next_action"]["document_drafting_next_action"] == summary["document_drafting_next_action"]
 
 
+def test_build_intake_status_summary_includes_document_grounding_recovery_action():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "intake_readiness": {
+            "score": 0.42,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": [],
+            "criteria": {},
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "document_provenance_summary": {
+            "fact_backed_ratio": 0.25,
+            "low_grounding_flag": True,
+        },
+        "alignment_evidence_tasks": [
+            {
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "fallback_lanes": ["authority", "testimony"],
+                "missing_fact_bundle": ["Complaint timing", "Manager knowledge"],
+            }
+        ],
+        "next_action": {"action": "complete_evidence"},
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["document_grounding_recovery_action"] == {
+        "action": "recover_document_grounding",
+        "phase_name": "document_generation",
+        "description": "Strengthen draft grounding for protected_activity before formalization.",
+        "claim_type": "retaliation",
+        "claim_element_id": "protected_activity",
+        "focus_section": "factual_allegations",
+        "preferred_support_kind": "authority",
+        "fact_backed_ratio": 0.25,
+        "missing_fact_bundle": ["Complaint timing", "Manager knowledge"],
+        "recovery_source": "alignment_evidence_task",
+    }
+    assert summary["next_action"]["document_grounding_recovery_action"] == summary["document_grounding_recovery_action"]
+
+
 def test_build_intake_case_review_summary_returns_additive_structured_fields():
     mediator = Mock()
     mediator.get_three_phase_status.return_value = {

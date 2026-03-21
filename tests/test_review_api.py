@@ -914,52 +914,50 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["workflow_phase_plan"]["phases"]["graph_analysis"]["status"] == "warning"
         assert payload["workflow_phase_plan"]["phases"]["document_generation"]["status"] == "warning"
         assert payload["primary_validation_target"] == {}
-        assert payload["intake_status"] == {
-            "current_phase": "intake",
-            "iteration_count": 2,
-            "ready_to_advance": False,
-            "score": 0.5,
-            "remaining_gap_count": 1,
-            "contradiction_count": 1,
-            "contradiction_summary": {
-                "count": 1,
-                "lane_counts": {},
-                "status_counts": {},
-                "severity_counts": {"high": 1},
-                "corroboration_required_count": 0,
-                "affected_claim_type_counts": {},
-                "affected_element_counts": {},
-            },
-            "blockers": ["resolve_contradictions"],
-            "criteria": {
-                "case_theory_coherent": True,
-                "minimum_proof_path_present": True,
-                "claim_disambiguation_resolved": False,
-            },
-            "contradictions": [
-                {
-                    "contradiction_id": "",
-                    "summary": "Complaint timing conflicts with employer timeline",
-                    "left_text": "The complaint came first.",
-                    "right_text": "The schedule cut came first.",
-                    "category": "",
-                    "severity": "high",
-                    "question": "Which event happened first?",
-                    "recommended_resolution_lane": "",
-                    "current_resolution_status": "",
-                    "external_corroboration_required": False,
-                    "affected_claim_types": [],
-                    "affected_element_ids": [],
-                }
-            ],
-            "blocking_contradictions": [],
-            "next_action": {},
-            "document_drafting_next_action": {},
-            "primary_validation_target": {},
-            "candidate_claim_count": 2,
-            "canonical_fact_count": 2,
-            "proof_lead_count": 1,
+        intake_status = payload["intake_status"]
+        assert intake_status["current_phase"] == "intake"
+        assert intake_status["iteration_count"] == 2
+        assert intake_status["ready_to_advance"] is False
+        assert intake_status["score"] == 0.5
+        assert intake_status["remaining_gap_count"] == 1
+        assert intake_status["contradiction_count"] == 1
+        assert intake_status["contradiction_summary"] == {
+            "count": 1,
+            "lane_counts": {},
+            "status_counts": {},
+            "severity_counts": {"high": 1},
+            "corroboration_required_count": 0,
+            "affected_claim_type_counts": {},
+            "affected_element_counts": {},
         }
+        assert intake_status["blockers"] == ["resolve_contradictions"]
+        assert intake_status["criteria"] == {
+            "case_theory_coherent": True,
+            "minimum_proof_path_present": True,
+            "claim_disambiguation_resolved": False,
+        }
+        assert intake_status["contradictions"] == [
+            {
+                "contradiction_id": "",
+                "summary": "Complaint timing conflicts with employer timeline",
+                "left_text": "The complaint came first.",
+                "right_text": "The schedule cut came first.",
+                "category": "",
+                "severity": "high",
+                "question": "Which event happened first?",
+                "recommended_resolution_lane": "",
+                "current_resolution_status": "",
+                "external_corroboration_required": False,
+                "affected_claim_types": [],
+                "affected_element_ids": [],
+            }
+        ]
+        assert intake_status["blocking_contradictions"] == []
+        assert intake_status["document_drafting_next_action"] == {}
+        assert intake_status["primary_validation_target"] == {}
+        assert intake_status["candidate_claim_count"] == 2
+        assert intake_status["canonical_fact_count"] == 2
+        assert intake_status["proof_lead_count"] == 1
         assert payload["intake_contradiction_summary"] == {
             "count": 1,
             "lane_counts": {},
@@ -1910,6 +1908,10 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "proof_artifact_status_counts": {},
         "proof_artifact_explanation_element_count": 0,
         "proof_artifact_preview": [],
+        "claim_temporal_issue_count": 0,
+        "claim_unresolved_temporal_issue_count": 0,
+        "claim_resolved_temporal_issue_count": 0,
+        "claim_temporal_issue_status_counts": {},
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -2045,6 +2047,10 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "proof_artifact_status_counts": {},
         "proof_artifact_explanation_element_count": 0,
         "proof_artifact_preview": [],
+        "claim_temporal_issue_count": 0,
+        "claim_unresolved_temporal_issue_count": 0,
+        "claim_resolved_temporal_issue_count": 0,
+        "claim_temporal_issue_status_counts": {},
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(

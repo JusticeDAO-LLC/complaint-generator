@@ -3014,7 +3014,11 @@ class DependencyGraphBuilder:
                 node_type=NodeType.FACT,
                 name=str(fact.get('text') or fact_id),
                 description=str(fact.get('event_date_or_range') or fact.get('text') or ''),
-                satisfied=bool(temporal_context.get('start_date')),
+                satisfied=bool(
+                    temporal_context.get('start_date')
+                    or temporal_context.get('relative_markers')
+                    or fact.get('event_date_or_range')
+                ),
                 confidence=float(fact.get('confidence', 0.0) or 0.0),
                 attributes={
                     'timeline_fact_node': True,
