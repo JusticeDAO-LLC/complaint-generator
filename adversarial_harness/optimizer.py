@@ -1708,6 +1708,7 @@ class Optimizer:
         graph_element_targeting_summary: Dict[str, Any],
         document_evidence_targeting_summary: Dict[str, Any],
         document_provenance_summary: Dict[str, Any],
+        document_grounding_improvement_summary: Dict[str, Any],
         document_workflow_execution_summary: Dict[str, Any],
         document_execution_drift_summary: Dict[str, Any],
     ) -> Dict[str, Dict[str, Any]]:
@@ -1819,6 +1820,8 @@ class Optimizer:
                 "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
                 "document_low_grounding_flag": bool((document_provenance_summary or {}).get("low_grounding_flag")),
                 "document_provenance_summary": dict(document_provenance_summary or {}),
+                "document_grounding_improvement_summary": dict(document_grounding_improvement_summary or {}),
+                "document_grounding_improved_flag": bool((document_grounding_improvement_summary or {}).get("improved_flag")),
                 "execution_mismatch_flag": execution_mismatch_flag,
                 "execution_drift_summary": dict(document_execution_drift_summary or {}),
             },
@@ -2788,6 +2791,7 @@ class Optimizer:
         )
         document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(successful)
         document_provenance_summary = self._build_document_provenance_summary(successful)
+        document_grounding_improvement_summary = self._build_document_grounding_improvement_summary(successful)
         document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
         document_execution_drift_summary = self._build_document_execution_drift_summary(
             document_evidence_targeting_summary=document_evidence_targeting_summary,

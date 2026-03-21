@@ -14,10 +14,7 @@ from complaint_phases.intake_claim_registry import (
     normalize_claim_type,
     registry_element_for_claim_type,
 )
-from document_optimization import (
-    AgenticDocumentOptimizer,
-    build_claim_support_temporal_handoff_from_intake_case_summary,
-)
+from document_optimization import AgenticDocumentOptimizer
 from intake_status import build_intake_case_review_summary, build_intake_status_summary
 from workflow_phase_guidance import (
     build_drafting_document_generation_phase_guidance,
@@ -99,6 +96,35 @@ def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
         seen.add(text)
         normalized_values.append(text)
     return normalized_values
+
+
+def _collect_temporal_registry_identifiers(records: Any, *keys: str) -> List[str]:
+    identifiers: List[str] = []
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        for key in keys:
+            value = str(record.get(key) or "").strip()
+            if value:
+                identifiers.append(value)
+                break
+    return _dedupe_text_values(identifiers)
+
+
+def _collect_unresolved_temporal_issue_identifiers(records: Any) -> List[str]:
+    unresolved_issue_ids: List[str] = []
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        status = str(record.get("current_resolution_status") or record.get("status") or "open").strip().lower()
+        if status in {"resolved", "closed", "complete", "completed"}:
+            continue
+        for key in ("temporal_issue_id", "issue_id", "timeline_issue_id"):
+            value = str(record.get(key) or "").strip()
+            if value:
+                unresolved_issue_ids.append(value)
+                break
+    return _dedupe_text_values(unresolved_issue_ids)
 
 
 def _normalize_identifier_list(values: Any) -> List[str]:
@@ -1819,7 +1845,113 @@ class FormalComplaintDocumentBuilder:
             intake_case_summary = build_intake_case_review_summary(self.mediator)
         if not isinstance(intake_case_summary, dict) or not intake_case_summary:
             return {}
-        return build_claim_support_temporal_handoff_from_intake_case_summary(intake_case_summary)
+
+        packet_summary = intake_case_summary.get("claim_support_packet_summary")
+        packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
+        alignment_tasks = intake_case_summary.get("alignment_evidence_tasks")
+        alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+
+        unresolved_temporal_issue_ids = _dedupe_text_values(
+            packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
+        )
+        event_ids: List[str] = []
+        temporal_fact_ids: List[str] = []
+        temporal_relation_ids: List[str] = []
+        timeline_issue_ids: List[str] = []
+        temporal_issue_ids: List[str] = []
+        temporal_proof_bundle_ids: List[str] = []
+        temporal_proof_objectives: List[str] = []
+
+        for task in alignment_tasks:
+            if not isinstance(task, dict):
+                continue
+            event_ids.extend(_dedupe_text_values(task.get("event_ids") or []))
+            temporal_fact_ids.extend(_dedupe_text_values(task.get("temporal_fact_ids") or []))
+            temporal_relation_ids.extend(_dedupe_text_values(task.get("temporal_relation_ids") or []))
+            timeline_issue_ids.extend(_dedupe_text_values(task.get("timeline_issue_ids") or []))
+            temporal_issue_ids.extend(_dedupe_text_values(task.get("temporal_issue_ids") or []))
+            proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
+            if proof_bundle_id:
+                temporal_proof_bundle_ids.append(proof_bundle_id)
+            proof_objective = str(task.get("temporal_proof_objective") or "").strip()
+            if proof_objective:
+                temporal_proof_objectives.append(proof_objective)
+
+        raw_event_ids = _collect_temporal_registry_identifiers(
+            intake_case_summary.get("event_ledger"),
+            "event_id",
+            "temporal_fact_id",
+            "fact_id",
+        )
+        raw_temporal_fact_ids = _collect_temporal_registry_identifiers(
+            intake_case_summary.get("temporal_fact_registry"),
+            "temporal_fact_id",
+            "fact_id",
+            "event_id",
+        )
+        if not raw_temporal_fact_ids:
+            raw_temporal_fact_ids = _collect_temporal_registry_identifiers(
+                intake_case_summary.get("event_ledger"),
+                "temporal_fact_id",
+                "event_id",
+                "fact_id",
+            )
+        raw_temporal_relation_ids = _collect_temporal_registry_identifiers(
+            intake_case_summary.get("temporal_relation_registry"),
+            "temporal_relation_id",
+            "relation_id",
+        )
+        if not raw_temporal_relation_ids:
+            raw_temporal_relation_ids = _collect_temporal_registry_identifiers(
+                intake_case_summary.get("timeline_relations"),
+                "temporal_relation_id",
+                "relation_id",
+            )
+        raw_temporal_issue_ids = _collect_temporal_registry_identifiers(
+            intake_case_summary.get("temporal_issue_registry"),
+            "temporal_issue_id",
+            "issue_id",
+            "timeline_issue_id",
+        )
+        raw_unresolved_temporal_issue_ids = _collect_unresolved_temporal_issue_identifiers(
+            intake_case_summary.get("temporal_issue_registry")
+        )
+
+        unresolved_temporal_issue_count = int(
+            packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
+        )
+        if not unresolved_temporal_issue_count and raw_unresolved_temporal_issue_ids:
+            unresolved_temporal_issue_count = len(raw_unresolved_temporal_issue_ids)
+        if not unresolved_temporal_issue_ids:
+            unresolved_temporal_issue_ids = raw_unresolved_temporal_issue_ids
+
+        temporal_handoff = {
+            "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+            "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
+            "chronology_task_count": int(packet_summary.get("temporal_gap_task_count", 0) or 0),
+            "event_ids": _dedupe_text_values(event_ids) or raw_event_ids,
+            "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids) or raw_temporal_fact_ids,
+            "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids) or raw_temporal_relation_ids,
+            "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids,
+            "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids,
+            "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
+            "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
+        }
+        if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
+            temporal_handoff[key]
+            for key in (
+                "unresolved_temporal_issue_ids",
+                "event_ids",
+                "temporal_fact_ids",
+                "temporal_relation_ids",
+                "timeline_issue_ids",
+                "temporal_issue_ids",
+                "temporal_proof_bundle_ids",
+                "temporal_proof_objectives",
+            )
+        ):
+            return {}
+        return temporal_handoff
 
     def _adapt_formal_complaint_to_package_draft(self, formal_complaint: Dict[str, Any]) -> Dict[str, Any]:
         caption = formal_complaint.get("caption", {}) if isinstance(formal_complaint.get("caption"), dict) else {}
