@@ -206,6 +206,25 @@ def test_logic_entrypoints_preserve_claim_support_temporal_handoff():
             'temporal_proof_bundle_ids': ['retaliation:1:bundle_001'],
             'temporal_proof_objectives': ['resolve_temporal_rule_profile'],
         },
+        'claim_reasoning_review': {
+            'retaliation': {
+                'proof_artifact_element_count': 1,
+                'proof_artifact_available_element_count': 1,
+                'proof_artifact_preview': ['proof-retaliation-001'],
+                'flagged_elements': [
+                    {
+                        'element_id': 'retaliation:1',
+                        'proof_artifact_proof_id': 'proof-retaliation-001',
+                        'proof_artifact_theorem_export_metadata': {
+                            'contract_version': 'claim_support_temporal_handoff_v1',
+                            'claim_type': 'retaliation',
+                            'claim_element_id': 'retaliation:1',
+                            'proof_bundle_id': 'retaliation:1:bundle_001',
+                        },
+                    }
+                ],
+            }
+        },
     }
 
     proof_result = prove_claim_elements(payload)
@@ -215,6 +234,7 @@ def test_logic_entrypoints_preserve_claim_support_temporal_handoff():
     for result in (proof_result, contradiction_result, hybrid_result):
         handoff = result['temporal_reasoning_payload']['claim_support_temporal_handoff']
         assert handoff == payload['claim_support_temporal_handoff']
+        assert result['temporal_reasoning_payload']['claim_reasoning_review'] == payload['claim_reasoning_review']
         assert handoff['unresolved_temporal_issue_count'] == 1
         assert handoff['event_ids'] == ['fact_1']
         assert handoff['temporal_proof_bundle_ids'] == ['retaliation:1:bundle_001']
@@ -225,6 +245,7 @@ def test_logic_entrypoints_preserve_claim_support_temporal_handoff():
         assert theorem_export_metadata['temporal_issue_ids'] == ['timeline-gap-001']
 
     assert hybrid_result['result']['theorem_export_metadata'] == hybrid_result['temporal_reasoning_payload']['theorem_export_metadata']
+    assert hybrid_result['result']['claim_reasoning_review'] == payload['claim_reasoning_review']
     proof_artifact = hybrid_result['result']['proof_artifact']
     assert proof_artifact['available'] is True
     assert proof_artifact['theorem_export_metadata'] == hybrid_result['temporal_reasoning_payload']['theorem_export_metadata']

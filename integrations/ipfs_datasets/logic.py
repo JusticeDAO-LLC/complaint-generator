@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 import inspect
 from typing import Any, Dict, Iterable, List
 
@@ -126,6 +127,18 @@ def _normalize_claim_support_temporal_handoff(value: Any) -> Dict[str, Any]:
     return normalized
 
 
+def _normalize_claim_reasoning_review(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: Dict[str, Any] = {}
+    for claim_type, review in value.items():
+        claim_key = str(claim_type or "").strip()
+        if not claim_key or not isinstance(review, dict):
+            continue
+        normalized[claim_key] = deepcopy(review)
+    return normalized
+
+
 def _normalize_logic_payload(payload_or_predicates: Any) -> Dict[str, Any]:
     if isinstance(payload_or_predicates, dict):
         raw_predicates = payload_or_predicates.get("predicates")
@@ -137,6 +150,9 @@ def _normalize_logic_payload(payload_or_predicates: Any) -> Dict[str, Any]:
             "claim_support_temporal_handoff": _normalize_claim_support_temporal_handoff(
                 payload_or_predicates.get("claim_support_temporal_handoff")
             ),
+            "claim_reasoning_review": _normalize_claim_reasoning_review(
+                payload_or_predicates.get("claim_reasoning_review")
+            ),
             "payload_keys": sorted(payload_or_predicates.keys()),
         }
 
@@ -144,6 +160,7 @@ def _normalize_logic_payload(payload_or_predicates: Any) -> Dict[str, Any]:
         "predicates": [predicate for predicate in payload_or_predicates if isinstance(predicate, dict)],
         "temporal_reasoning_payload": {},
         "claim_support_temporal_handoff": {},
+        "claim_reasoning_review": {},
         "payload_keys": [],
     }
 
@@ -179,6 +196,7 @@ def _build_temporal_reasoning_payload(
     predicates: Iterable[Dict[str, Any]],
     *,
     claim_support_temporal_handoff: Any = None,
+    claim_reasoning_review: Any = None,
 ) -> Dict[str, Any]:
     predicate_list: List[Dict[str, Any]] = [
         predicate for predicate in predicates
@@ -326,6 +344,9 @@ def _build_temporal_reasoning_payload(
     if normalized_handoff:
         temporal_reasoning_payload["claim_support_temporal_handoff"] = normalized_handoff
         temporal_reasoning_payload["theorem_export_metadata"] = _build_theorem_export_metadata(normalized_handoff)
+    normalized_claim_reasoning_review = _normalize_claim_reasoning_review(claim_reasoning_review)
+    if normalized_claim_reasoning_review:
+        temporal_reasoning_payload["claim_reasoning_review"] = normalized_claim_reasoning_review
     return temporal_reasoning_payload
 
 
@@ -515,6 +536,7 @@ def prove_claim_elements(predicates: Iterable[Dict[str, Any]] | Dict[str, Any]) 
     temporal_reasoning_payload = _build_temporal_reasoning_payload(
         predicate_list,
         claim_support_temporal_handoff=normalized_payload["claim_support_temporal_handoff"],
+        claim_reasoning_review=normalized_payload["claim_reasoning_review"],
     )
     return with_adapter_metadata(
         {
@@ -539,6 +561,7 @@ def check_contradictions(predicates: Iterable[Dict[str, Any]] | Dict[str, Any]) 
     temporal_reasoning_payload = _build_temporal_reasoning_payload(
         predicate_list,
         claim_support_temporal_handoff=normalized_payload["claim_support_temporal_handoff"],
+        claim_reasoning_review=normalized_payload["claim_reasoning_review"],
     )
     return with_adapter_metadata(
         {
@@ -560,14 +583,16 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
     predicates = normalized_payload["predicates"]
     bridge_payload = normalized_payload["temporal_reasoning_payload"]
     claim_support_temporal_handoff = normalized_payload["claim_support_temporal_handoff"]
+    claim_reasoning_review = normalized_payload["claim_reasoning_review"]
     predicate_summary = _summarize_predicates(predicates)
 
     if isinstance(bridge_payload, dict) and bridge_payload:
-        temporal_reasoning_payload = dict(bridge_payload)
+        temporal_reasoning_payload = deepcopy(bridge_payload)
     else:
         temporal_reasoning_payload = _build_temporal_reasoning_payload(
             predicates,
             claim_support_temporal_handoff=claim_support_temporal_handoff,
+            claim_reasoning_review=claim_reasoning_review,
         )
 
     if claim_support_temporal_handoff and not isinstance(
@@ -582,6 +607,11 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
         temporal_reasoning_payload["theorem_export_metadata"] = _build_theorem_export_metadata(
             claim_support_temporal_handoff
         )
+    if claim_reasoning_review and not isinstance(
+        temporal_reasoning_payload.get("claim_reasoning_review"),
+        dict,
+    ):
+        temporal_reasoning_payload["claim_reasoning_review"] = deepcopy(claim_reasoning_review)
 
     proof_artifact = _build_reasoner_proof_artifact(
         predicates,
@@ -603,6 +633,7 @@ def run_hybrid_reasoning(payload: Dict[str, Any]) -> Dict[str, Any]:
             "reasoning_mode": "temporal_bridge",
             "compiler_bridge_available": REASONER_BRIDGE_AVAILABLE,
             "proof_artifact": proof_artifact,
+            "claim_reasoning_review": deepcopy(temporal_reasoning_payload.get("claim_reasoning_review") or {}),
             "compiler_bridge_path": (
                 REASONER_BRIDGE_PATH if REASONER_BRIDGE_AVAILABLE else ""
             ),

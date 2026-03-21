@@ -848,10 +848,8 @@ class Optimizer:
                     ]
                 elif path.name == "complainant.py":
                     target_map[key] = [
-                        "build_default_context",
+                        "_build_actor_critic_guidance",
                     ]
-                    if {"actors", "harm_remedy"} & intake_focus_areas:
-                        target_map[key].append("generate_response")
             elif str(phase_name) == "graph_analysis":
                 if path.name == "knowledge_graph.py":
                     target_map[key] = [
@@ -909,8 +907,6 @@ class Optimizer:
                 elif path.name == "synthesize_hacc_complaint.py":
                     target_map[key] = [
                         "_merge_seed_with_grounding",
-                        "_factual_allegations",
-                        "_claims_theory",
                     ]
                     if "factual_allegations" in targeted_focus_sections:
                         target_map[key].append("_factual_background")

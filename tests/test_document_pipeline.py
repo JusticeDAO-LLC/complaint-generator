@@ -684,6 +684,39 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert result["draft"]["signature_block"]["additional_signers"][0]["signature_line"] == "/s/ John Roe, Esq."
     assert result["draft"]["signature_block"]["additional_signers"][0]["firm"] == "Roe Civil Rights Group"
     assert result["draft"]["verification"]["signature_line"] == "/s/ Jane Doe"
+
+
+def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
+    mediator = Mock()
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 7,
+            "cid": "bafy-evidence",
+            "description": "Hearing request email",
+            "claim_type": "retaliation",
+            "metadata": {
+                "document_graph_summary": {
+                    "entity_count": 2,
+                    "relationship_count": 1,
+                }
+            },
+        }
+    ]
+    mediator.get_evidence_facts.return_value = [
+        {"text": "Email requested a grievance hearing on March 3, 2026."},
+        {"text": "Response denied the request on March 10, 2026."},
+    ]
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    exhibits = builder._collect_exhibits(
+        user_id="user-1",
+        claim_types=["retaliation"],
+        support_claims={},
+    )
+
+    assert len(exhibits) == 1
+    assert "Email requested a grievance hearing on March 3, 2026." in exhibits[0]["summary"]
+    assert "Graph extraction: 2 entities, 1 relationships." in exhibits[0]["summary"]
     assert result["draft"]["verification"]["text"].startswith("I, Jane Doe, declare under penalty of perjury")
     assert result["draft"]["verification"]["dated"] == "Executed on: 2026-03-12"
     employment_claim = next(
@@ -732,7 +765,21 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
+    assert result["claim_reasoning_review"]["retaliation"]["proof_artifact_element_count"] == 1
+    assert result["claim_reasoning_review"]["retaliation"]["proof_artifact_preview"] == ["proof-retaliation-001"]
+    assert result["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_theorem_export_metadata"] == {
+        "contract_version": "claim_support_temporal_handoff_v1",
+        "claim_type": "retaliation",
+        "claim_element_id": "causation",
+        "proof_bundle_id": "retaliation:causation:bundle_001",
+        "chronology_blocked": True,
+        "chronology_task_count": 1,
+        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+        "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+        "temporal_proof_objectives": ["establish_retaliation_sequence"],
+    }
     assert result["draft"]["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
+    assert result["draft"]["source_context"]["claim_reasoning_review"] == result["claim_reasoning_review"]
 
 
 def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
@@ -1655,7 +1702,9 @@ def test_formal_complaint_document_builder_generates_filing_packet_json(tmp_path
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
     assert packet["court_header"] == "IN THE UNITED STATES DISTRICT COURT FOR THE NORTHERN DISTRICT OF CALIFORNIA"
     assert packet["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
+    assert packet["claim_reasoning_review"] == result["claim_reasoning_review"]
     assert packet["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
+    assert packet["source_context"]["claim_reasoning_review"] == result["claim_reasoning_review"]
     assert packet["case_caption"]["plaintiffs"] == ["Jane Doe"]
     assert packet["sections"]["summary_of_facts"]
     assert packet["sections"]["claims_for_relief"]
@@ -2935,7 +2984,13 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                         "temporal_issue_ids": ["temporal_issue_001"],
                         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
                         "temporal_proof_objectives": ["establish_retaliation_sequence"],
-                    }
+                    },
+                    "claim_reasoning_review": {
+                        "retaliation": {
+                            "proof_artifact_element_count": 1,
+                            "proof_artifact_preview": ["proof-retaliation-001"],
+                        }
+                    },
                 },
                 "court_header": "IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF COLUMBIA",
                 "case_caption": {
@@ -3000,6 +3055,12 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                 "temporal_issue_ids": ["temporal_issue_001"],
                 "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
                 "temporal_proof_objectives": ["establish_retaliation_sequence"],
+            },
+            "claim_reasoning_review": {
+                "retaliation": {
+                    "proof_artifact_element_count": 1,
+                    "proof_artifact_preview": ["proof-retaliation-001"],
+                }
             },
             "output_formats": ["docx"],
             "generated_at": "2026-03-12T12:00:00+00:00",
@@ -3154,7 +3215,10 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
             'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
             'temporal_proof_objectives': ['establish_retaliation_sequence'],
         }
+        assert payload['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
+        assert payload['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
         assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
+        assert payload['draft']['source_context']['claim_reasoning_review'] == payload['claim_reasoning_review']
         _assert_normalized_intake_status(payload['review_links']['intake_status'], score=0.38)
         assert payload.get('document_optimization') in (None, {})
         assert any(
@@ -3558,7 +3622,20 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
+    assert payload['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
+    assert payload['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_theorem_export_metadata'] == {
+        'contract_version': 'claim_support_temporal_handoff_v1',
+        'claim_type': 'retaliation',
+        'claim_element_id': 'causation',
+        'proof_bundle_id': 'retaliation:causation:bundle_001',
+        'chronology_blocked': True,
+        'chronology_task_count': 1,
+        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
+        'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
+        'temporal_proof_objectives': ['establish_retaliation_sequence'],
+    }
     assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
+    assert payload['draft']['source_context']['claim_reasoning_review'] == payload['claim_reasoning_review']
     _assert_normalized_intake_status(report['intake_status'], score=0.38)
     assert report['intake_constraints'] == [
         {

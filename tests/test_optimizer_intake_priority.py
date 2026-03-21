@@ -307,7 +307,19 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "synthesize_hacc_complaint.py" in document_task.metadata["workflow_phase_secondary_target_files"][0]
     secondary_constraints = document_task.metadata["workflow_phase_secondary_constraints"]
     assert "target_symbols" in secondary_constraints
-    assert any(path.endswith("synthesize_hacc_complaint.py") for path in secondary_constraints["target_symbols"])
+    synth_symbols = next(
+        symbols
+        for path, symbols in secondary_constraints["target_symbols"].items()
+        if path.endswith("synthesize_hacc_complaint.py")
+    )
+    assert synth_symbols == ["_merge_seed_with_grounding"]
+    intake_secondary_constraints = intake_task.metadata["workflow_phase_secondary_constraints"]
+    complainant_symbols = next(
+        symbols
+        for path, symbols in intake_secondary_constraints["target_symbols"].items()
+        if path.endswith("complainant.py")
+    )
+    assert complainant_symbols == ["_build_actor_critic_guidance"]
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 
