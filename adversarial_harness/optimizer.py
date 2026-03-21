@@ -774,8 +774,6 @@ class Optimizer:
                 elif path.name == "document_optimization.py":
                     target_map[key] = [
                         "optimize_draft",
-                        "_build_support_context",
-                        "_heuristic_review",
                     ]
                 elif path.name == "synthesize_hacc_complaint.py":
                     target_map[key] = [

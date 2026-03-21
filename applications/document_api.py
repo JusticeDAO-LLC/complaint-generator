@@ -591,6 +591,52 @@ def _build_checklist_intake_status(intake_status: Dict[str, Any]) -> Dict[str, A
     }
 
 
+def _merge_claim_temporal_gap_summary(
+    intake_case_summary: Dict[str, Any],
+    document_optimization: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    merged = dict(intake_case_summary or {}) if isinstance(intake_case_summary, dict) else {}
+    optimization_payload = document_optimization if isinstance(document_optimization, dict) else {}
+    intake_priorities = (
+        optimization_payload.get("intake_priorities")
+        if isinstance(optimization_payload.get("intake_priorities"), dict)
+        else {}
+    )
+    claim_temporal_gap_summary = intake_priorities.get("claim_temporal_gap_summary")
+    if not isinstance(claim_temporal_gap_summary, list) or not claim_temporal_gap_summary:
+        return merged
+    merged["claim_temporal_gap_count"] = int(intake_priorities.get("claim_temporal_gap_count") or 0)
+    merged["claim_temporal_gap_summary"] = [
+        dict(item)
+        for item in claim_temporal_gap_summary
+        if isinstance(item, dict)
+    ]
+    return merged
+
+
+def _annotate_workflow_priority_with_temporal_gap_summary(
+    workflow_priority: Dict[str, Any],
+    intake_case_summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not isinstance(workflow_priority, dict) or not workflow_priority:
+        return workflow_priority
+    claim_temporal_gap_count = int(intake_case_summary.get("claim_temporal_gap_count") or 0)
+    claim_temporal_gap_summary = (
+        intake_case_summary.get("claim_temporal_gap_summary")
+        if isinstance(intake_case_summary.get("claim_temporal_gap_summary"), list)
+        else []
+    )
+    if claim_temporal_gap_count <= 0 or not claim_temporal_gap_summary:
+        return workflow_priority
+    chip_labels = list(workflow_priority.get("chip_labels") or [])
+    chip_labels.append(f"claim chronology gaps: {claim_temporal_gap_count}")
+    first_claim_type = str((claim_temporal_gap_summary[0] or {}).get("claim_type") or "").strip()
+    if first_claim_type:
+        chip_labels.append(f"chronology focus: {humanize_workflow_priority_label(first_claim_type)}")
+    workflow_priority["chip_labels"] = chip_labels
+    return workflow_priority
+
+
 def _merge_warning_entries(existing: Any, additions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     base = existing if isinstance(existing, list) else []
     merged: List[Dict[str, Any]] = [item for item in base if isinstance(item, dict)]
@@ -832,6 +878,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         )
 
     document_optimization = payload.get("document_optimization")
+    intake_case_summary = _merge_claim_temporal_gap_summary(intake_case_summary, document_optimization)
     if isinstance(document_optimization, dict):
         optimization_intake_status = document_optimization.get("intake_status")
         if isinstance(optimization_intake_status, dict) and optimization_intake_status and not intake_status:
@@ -879,6 +926,10 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
         dashboard_url=dashboard_url,
         claim_review_map=claim_review_map,
         section_review_map=section_review_map,
+    )
+    workflow_priority = _annotate_workflow_priority_with_temporal_gap_summary(
+        workflow_priority,
+        intake_case_summary,
     )
 
     payload["review_links"] = {

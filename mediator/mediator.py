@@ -158,10 +158,16 @@ class Mediator:
 		dg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
 		kg = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
 		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+		gap_context = self.build_inquiry_gap_context()
 		claim_pressure = self._build_intake_claim_pressure_map(dg)
 		matching_pressure = self._build_intake_matching_pressure_map(kg, dg, intake_case_file)
 		scored_candidates = [
-			self._annotate_intake_question_candidate(candidate, claim_pressure, matching_pressure)
+			self._annotate_intake_question_candidate(
+				candidate,
+				claim_pressure,
+				matching_pressure,
+				gap_context=gap_context,
+			)
 			for candidate in normalized_candidates
 		]
 		scored_candidates.sort(
@@ -182,6 +188,32 @@ class Mediator:
 						else {}
 					).get('blocker_closure_match_count', 0)
 					or 0
+				),
+				-int(
+					(
+						candidate.get('selector_signals', {})
+						if isinstance(candidate.get('selector_signals'), dict)
+						else {}
+					).get('intake_priority_match_count', 0)
+					or 0
+				),
+				-int(
+					bool(
+						(
+							candidate.get('selector_signals', {})
+							if isinstance(candidate.get('selector_signals'), dict)
+							else {}
+						).get('anchor_selection_criteria_match', False)
+					)
+				),
+				int(
+					bool(
+						(
+							candidate.get('selector_signals', {})
+							if isinstance(candidate.get('selector_signals'), dict)
+							else {}
+						).get('generic_catch_all_prompt', False)
+					)
 				),
 				-int(
 					bool(
@@ -353,9 +385,12 @@ class Mediator:
 		candidate: Dict[str, Any],
 		claim_pressure: Dict[str, Dict[str, Any]],
 		matching_pressure: Dict[str, Dict[str, Any]],
+		*,
+		gap_context: Optional[Dict[str, Any]] = None,
 	) -> Dict[str, Any]:
 		annotated = dict(candidate)
 		explanation = dict(candidate.get('ranking_explanation', {}) if isinstance(candidate.get('ranking_explanation'), dict) else {})
+		gap_context = gap_context if isinstance(gap_context, dict) else {}
 		target_claim_type = str(
 			explanation.get('target_claim_type')
 			or candidate.get('target_claim_type')
@@ -375,7 +410,8 @@ class Mediator:
 		blocking_level = str(explanation.get('blocking_level') or candidate.get('blocking_level') or '').strip().lower()
 		question_goal = str(explanation.get('question_goal') or candidate.get('question_goal') or '').strip().lower()
 		candidate_source = str(explanation.get('candidate_source') or candidate.get('candidate_source') or '').strip().lower()
-		proof_priority = int(candidate.get('proof_priority', 99) or 99)
+		proof_priority_value = candidate.get('proof_priority')
+		proof_priority = int(proof_priority_value) if proof_priority_value is not None else 99
 		question_objective = str(
 			candidate.get('question_objective')
 			or explanation.get('question_objective')
@@ -417,8 +453,9 @@ class Mediator:
 				or 'caus' in question_goal
 			)
 		phase1_section = str(explanation.get('phase1_section') or candidate.get('phase1_section') or '').strip().lower()
-		phase_focus_rank = self._phase_focus_rank(phase1_section)
-		phase_focus_bonus = self._phase_focus_bonus(phase1_section)
+		workflow_phase = str(explanation.get('workflow_phase') or candidate.get('workflow_phase') or phase1_section or '').strip().lower()
+		phase_focus_rank = self._phase_focus_rank(workflow_phase)
+		phase_focus_bonus = self._phase_focus_bonus(workflow_phase)
 		exact_dates_closure_match = self._is_exact_dates_closure_match(
 			question_text,
 			question_objective,
@@ -442,6 +479,94 @@ class Mediator:
 			)
 			if matched
 		)
+		expected_objectives = [
+			str(value).strip().lower()
+			for value in (
+				gap_context.get('intake_expected_objectives')
+				or gap_context.get('intake_uncovered_objectives')
+				or []
+			)
+			if str(value).strip()
+		]
+		uncovered_objectives = [
+			str(value).strip().lower()
+			for value in (gap_context.get('intake_uncovered_objectives') or [])
+			if str(value).strip()
+		]
+		if not expected_objectives:
+			expected_objectives = list(uncovered_objectives)
+		ordered_priority_objectives: List[str] = []
+		for objective in uncovered_objectives + expected_objectives:
+			if objective and objective not in ordered_priority_objectives:
+				ordered_priority_objectives.append(objective)
+		anchor_selection_criteria_match = bool(
+			question_objective == 'anchor_selection_criteria'
+			or question_type == 'anchor_selection_criteria'
+			or any(
+				token in question_text
+				for token in (
+					'selection criteria',
+					'selection process',
+					'not selected',
+					'criteria were used',
+					'qualifications',
+				)
+			)
+		)
+		causation_step_by_step_match = bool(
+			causation_sequence_match
+			and any(token in question_text for token in ('step by step', 'walk me through', 'what happened first', 'then what happened', 'next'))
+		)
+		if not causation_step_by_step_match:
+			causation_step_by_step_match = bool(
+				causation_sequence_match
+				and all(
+					any(token in question_text for token in token_group)
+					for token_group in (
+						('protected activity', 'complaint', 'reported', 'accommodation request', 'grievance', 'appeal'),
+						('response', 'respond', 'decision', 'notice', 'management did', 'what they did'),
+						('adverse', 'retaliat', 'denial', 'termination', 'disciplin', 'harm'),
+					)
+				)
+			)
+		policy_or_file_evidence_match = bool(
+			any(token in question_text for token in ('policy', 'handbook', 'written rule', 'procedure', 'document', 'file', 'email', 'attachment'))
+			or any(token in expected_proof_gain for token in ('policy_document', 'file_evidence', 'policy', 'document', 'file'))
+		)
+		generic_catch_all_prompt = bool(
+			question_type in {'general', 'open_ended', 'open-ended', 'general_intake_clarification', 'clarification'}
+			or any(
+				token in question_text
+				for token in (
+					'anything else',
+					'any other details',
+					'tell me more',
+					'is there anything else',
+					'any additional information',
+				)
+			)
+		)
+		weak_claim_generalization_match = bool(
+			target_claim_type in {'housing_discrimination', 'hacc_research_engine'}
+			or any(token in question_text for token in ('housing', 'lease', 'tenant', 'voucher', 'hacc'))
+		)
+		intake_priority_match: List[str] = []
+		for objective in ordered_priority_objectives:
+			if objective == 'anchor_selection_criteria' and anchor_selection_criteria_match:
+				intake_priority_match.append(objective)
+				continue
+			if objective == 'causation_sequence' and (causation_sequence_match or causation_step_by_step_match):
+				intake_priority_match.append(objective)
+				continue
+			if objective in {question_objective, question_type} and objective not in intake_priority_match:
+				intake_priority_match.append(objective)
+		intake_priority_rank = (
+			ordered_priority_objectives.index(intake_priority_match[0])
+			if intake_priority_match
+			else None
+		)
+		intake_priority_match_count = len(intake_priority_match)
+		priority_anchor_uncovered = 'anchor_selection_criteria' in uncovered_objectives
 
 		score = 0.0
 		score += max(0, 10 - proof_priority) * 2.0
@@ -453,6 +578,7 @@ class Mediator:
 		score += {
 			'dependency_graph_contradiction': 35.0,
 			'intake_claim_element_gap': 18.0,
+			'intake_claim_temporal_gap': 16.0,
 			'intake_proof_gap': 12.0,
 			'dependency_graph_requirement': 10.0,
 			'knowledge_graph_gap': 6.0,
@@ -468,7 +594,7 @@ class Mediator:
 		score += max(0.0, 1.0 - matcher_confidence) * 4.0
 		if direct_legal_target_match:
 			score += 15.0
-		score += max(-3.0, min(6.0, actor_critic_score)) * 3.0
+		score += max(-3.0, min(6.0, actor_critic_score)) * (4.0 if intake_priority_match else 3.0)
 		if date_anchor_timeline_match:
 			score += 11.0
 		if causation_match:
@@ -483,6 +609,22 @@ class Mediator:
 			score += 12.0
 		if causation_sequence_match:
 			score += 14.0
+		if causation_step_by_step_match:
+			score += 16.0
+		if anchor_selection_criteria_match:
+			score += 18.0
+		if policy_or_file_evidence_match:
+			score += 10.0
+		if weak_claim_generalization_match:
+			score += 5.0
+		if intake_priority_match:
+			score += 20.0
+			if intake_priority_rank is not None:
+				score += max(0.0, 8.0 - float(intake_priority_rank) * 2.0)
+		if generic_catch_all_prompt:
+			score -= 12.0
+		if priority_anchor_uncovered and generic_catch_all_prompt and not anchor_selection_criteria_match:
+			score -= 16.0
 		score += blocker_closure_match_count * 4.0
 		if question_type == 'contradiction' or candidate_source == 'dependency_graph_contradiction':
 			score += 20.0
@@ -507,13 +649,24 @@ class Mediator:
 			'question_objective': question_objective,
 			'question_type': question_type,
 			'phase1_section': phase1_section,
+			'workflow_phase': workflow_phase,
 			'phase_focus_rank': phase_focus_rank,
 			'exact_dates_closure_match': exact_dates_closure_match,
 			'staff_names_titles_closure_match': staff_names_titles_closure_match,
 			'hearing_request_timing_closure_match': hearing_request_timing_closure_match,
 			'response_dates_closure_match': response_dates_closure_match,
 			'causation_sequence_match': causation_sequence_match,
+			'causation_step_by_step_match': causation_step_by_step_match,
 			'blocker_closure_match_count': blocker_closure_match_count,
+			'anchor_selection_criteria_match': anchor_selection_criteria_match,
+			'generic_catch_all_prompt': generic_catch_all_prompt,
+			'policy_or_file_evidence_match': policy_or_file_evidence_match,
+			'weak_claim_generalization_match': weak_claim_generalization_match,
+			'intake_expected_objectives': expected_objectives,
+			'intake_uncovered_objectives': uncovered_objectives,
+			'intake_priority_match': intake_priority_match,
+			'intake_priority_rank': intake_priority_rank,
+			'intake_priority_match_count': intake_priority_match_count,
 		}
 		annotated['selector_score'] = score
 		annotated['selector_signals'] = selector_signals
@@ -527,6 +680,16 @@ class Mediator:
 		explanation['hearing_request_timing_closure_match'] = hearing_request_timing_closure_match
 		explanation['response_dates_closure_match'] = response_dates_closure_match
 		explanation['causation_sequence_match'] = causation_sequence_match
+		explanation['causation_step_by_step_match'] = causation_step_by_step_match
+		explanation['anchor_selection_criteria_match'] = anchor_selection_criteria_match
+		explanation['generic_catch_all_prompt'] = generic_catch_all_prompt
+		explanation['policy_or_file_evidence_match'] = policy_or_file_evidence_match
+		explanation['weak_claim_generalization_match'] = weak_claim_generalization_match
+		explanation['intake_expected_objectives'] = expected_objectives
+		explanation['intake_uncovered_objectives'] = uncovered_objectives
+		explanation['intake_priority_match'] = intake_priority_match
+		explanation['intake_priority_rank'] = intake_priority_rank
+		explanation['intake_priority_match_count'] = intake_priority_match_count
 		explanation['blocker_closure_match_count'] = blocker_closure_match_count
 		annotated['ranking_explanation'] = explanation
 		return annotated
@@ -661,7 +824,57 @@ class Mediator:
 
 	def build_inquiry_gap_context(self) -> Dict[str, Any]:
 		priority_terms: List[str] = []
+		priority_term_lookup = set()
+		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
+		adversarial_summary = (
+			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary') or {}
+		)
+		expected_objectives = [
+			str(value).strip().lower()
+			for value in (
+				(adversarial_summary.get('expected_objectives') or [])
+				if isinstance(adversarial_summary, dict)
+				else []
+			)
+			if str(value).strip()
+		]
+		covered_objectives = [
+			str(value).strip().lower()
+			for value in (
+				(adversarial_summary.get('covered_objectives') or [])
+				if isinstance(adversarial_summary, dict)
+				else []
+			)
+			if str(value).strip()
+		]
+		uncovered_objectives = [
+			str(value).strip().lower()
+			for value in (
+				(adversarial_summary.get('uncovered_objectives') or [])
+				if isinstance(adversarial_summary, dict)
+				else []
+			)
+			if str(value).strip()
+		]
+		for default_objective in ('anchor_selection_criteria', 'causation_sequence'):
+			if default_objective in expected_objectives or default_objective in uncovered_objectives:
+				continue
+			if default_objective not in covered_objectives:
+				uncovered_objectives.append(default_objective)
+				if default_objective not in expected_objectives:
+					expected_objectives.append(default_objective)
+
+		def _add_priority_term(value: Any) -> None:
+			text = str(value or '').strip()
+			if not text:
+				return
+			lowered = text.lower()
+			if lowered in priority_term_lookup:
+				return
+			priority_term_lookup.add(lowered)
+			priority_terms.append(text)
+
 		for claim_packet in claim_support_packets.values() if isinstance(claim_support_packets, dict) else []:
 			if not isinstance(claim_packet, dict):
 				continue
@@ -671,12 +884,57 @@ class Mediator:
 				if str(element.get('support_status') or '').strip().lower() == 'supported':
 					continue
 				for value in (element.get('element_label'), element.get('element_id'), claim_packet.get('claim_type')):
-					text = str(value or '').strip()
-					if text and text.lower() not in {term.lower() for term in priority_terms}:
-						priority_terms.append(text)
+					_add_priority_term(value)
+		if 'anchor_selection_criteria' in uncovered_objectives:
+			for term in (
+				'selection criteria',
+				'selection process',
+				'qualifications used for selection',
+				'written policy or rubric',
+			):
+				_add_priority_term(term)
+		if 'causation_sequence' in uncovered_objectives:
+			for term in (
+				'protected activity',
+				'response timeline',
+				'adverse action sequence',
+				'step-by-step chronology',
+			):
+				_add_priority_term(term)
+		weak_claim_types = []
+		for claim in intake_case_file.get('candidate_claims', []) if isinstance(intake_case_file, dict) else []:
+			if not isinstance(claim, dict):
+				continue
+			claim_type = str(claim.get('claim_type') or '').strip().lower()
+			if claim_type in {'housing_discrimination', 'hacc_research_engine'} and claim_type not in weak_claim_types:
+				weak_claim_types.append(claim_type)
+		weak_modalities = set()
+		for claim_packet in claim_support_packets.values() if isinstance(claim_support_packets, dict) else []:
+			if not isinstance(claim_packet, dict):
+				continue
+			for element in claim_packet.get('elements', []) or []:
+				if not isinstance(element, dict):
+					continue
+				for key in ('evidence_classes', 'recommended_evidence', 'recommended_evidence_types', 'missing_evidence_modalities'):
+					values = element.get(key)
+					for value in values if isinstance(values, list) else [values]:
+						normalized = str(value or '').strip().lower()
+						if normalized in {'policy_document', 'file_evidence'}:
+							weak_modalities.add(normalized)
+		if 'policy_document' in weak_modalities:
+			for term in ('policy document', 'handbook', 'written procedure', 'official policy notice'):
+				_add_priority_term(term)
+		if 'file_evidence' in weak_modalities:
+			for term in ('file evidence', 'case file', 'email file', 'notice attachment'):
+				_add_priority_term(term)
 		return {
 			'priority_terms': priority_terms,
 			'gap_count': len(priority_terms),
+			'intake_expected_objectives': expected_objectives,
+			'intake_covered_objectives': covered_objectives,
+			'intake_uncovered_objectives': uncovered_objectives,
+			'weak_claim_types': weak_claim_types,
+			'weak_evidence_modalities': sorted(weak_modalities),
 		}
 
 	def get_current_inquiry_payload(self) -> Dict[str, Any]:

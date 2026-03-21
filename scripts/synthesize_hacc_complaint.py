@@ -2345,26 +2345,45 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         or graph_signals.get("graph_phase_status")
         or ""
     ).strip().lower()
+    graph_completeness = max(
+        _safe_float(graph_signals.get("graph_completeness"), 0.0),
+        _safe_float(graph_signals.get("completeness"), 0.0),
+        _safe_float(graph_signals.get("coverage"), 0.0),
+    )
     graph_gap_count = max(
         int(_safe_float(graph_signals.get("remaining_gap_count"), 0)),
         int(_safe_float(graph_signals.get("current_gap_count"), 0)),
+        int(_safe_float(graph_signals.get("open_gap_count"), 0)),
+        int(_safe_float(graph_signals.get("missing_edges"), 0)),
+        int(_safe_float(graph_signals.get("missing_entities"), 0)),
     )
+    graph_ready_threshold = 0.98
     graph_ready = (
         not graph_status
         or graph_status == "ready"
-    ) and graph_gap_count <= 0
+    ) and graph_gap_count <= 0 and (graph_completeness <= 0.0 or graph_completeness >= graph_ready_threshold)
     if not graph_ready:
         if "graph_analysis_not_ready" not in blockers:
             blockers.append("graph_analysis_not_ready")
-        graph_gap_line = (
-            "Graph analysis remains incomplete at drafting handoff; unresolved chronology/entity links should be closed before formalization."
-        )
+        graph_gap_line = "Graph analysis remains incomplete at drafting handoff; unresolved chronology/entity links should be closed before formalization."
+        if graph_completeness > 0.0:
+            graph_gap_line = (
+                f"{graph_gap_line.rstrip('.')} (graph_completeness={graph_completeness:.2f}, open_graph_gaps={graph_gap_count})."
+            )
         if graph_gap_line not in factual_gaps:
             factual_gaps.append(graph_gap_line)
 
-    if _safe_float(readiness.get("coverage"), 0.0) < 0.98 and "graph_analysis_not_ready" not in blockers:
+    if _safe_float(readiness.get("coverage"), 0.0) < graph_ready_threshold and "graph_analysis_not_ready" not in blockers:
         blockers.append("graph_analysis_not_ready")
 
+    document_phase_status = _normalize_readiness_status(
+        document_signals.get("phase_status") or document_signals.get("status") or ""
+    )
+    document_coverage = max(
+        _safe_float(readiness.get("coverage"), 0.0),
+        _safe_float(document_signals.get("coverage"), 0.0),
+        _safe_float(document_signals.get("document_generation_coverage"), 0.0),
+    )
     for item in list(document_signals.get("blockers") or []) + list(document_signals.get("blocking_codes") or []):
         text = str(item).strip()
         if text and text not in blockers:
@@ -2394,6 +2413,22 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
         if theory_gap not in legal_gaps:
             legal_gaps.append(theory_gap)
 
+    if document_phase_status in {"warning", "blocked"}:
+        if "document_generation_not_ready" not in blockers:
+            blockers.append("document_generation_not_ready")
+        document_gap_line = (
+            f"Document generation remains {document_phase_status} at drafting handoff"
+            + (f" (coverage {document_coverage:.2f})" if document_coverage > 0 else "")
+            + "; unresolved factual/legal gaps should be closed before formalization."
+        )
+        if document_gap_line not in factual_gaps:
+            factual_gaps.append(document_gap_line)
+
+    if "uncovered_intake_objectives" in blockers:
+        intake_gap_line = "Uncovered intake objectives remain open; blocker-closing answers must be incorporated into allegations, claim support, and exhibit descriptions before formalization."
+        if intake_gap_line not in factual_gaps:
+            factual_gaps.append(intake_gap_line)
+
     if (factual_gaps or legal_gaps) and "document_generation_not_ready" not in blockers:
         blockers.append("document_generation_not_ready")
 
@@ -2414,6 +2449,63 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
     key_facts["drafting_readiness"] = readiness
     merged["key_facts"] = key_facts
     return merged
+
+
+def _intake_objective_label(objective: str) -> str:
+    labels = {
+        "exact_dates": "date anchors",
+        "timeline": "timeline sequence",
+        "response_dates": "response dates",
+        "hearing_request_timing": "hearing-request timing",
+        "staff_names_titles": "staff identity",
+        "actors": "actor identity",
+        "causation_link": "causation sequence",
+        "anchor_adverse_action": "adverse-action anchor",
+        "anchor_appeal_rights": "appeal-rights anchor",
+        "harm_remedy": "harm and remedy",
+        "intake_follow_up": "intake follow-up detail",
+    }
+    return labels.get(objective, objective.replace("_", " ").strip() or "intake detail")
+
+
+def _short_intake_answer(text: str, max_chars: int = 220) -> str:
+    summary = _summarize_intake_fact(text, max_sentences=2) or " ".join(str(text or "").split()).strip()
+    if len(summary) > max_chars:
+        return summary[: max_chars - 3].rstrip(" ,;:.") + "..."
+    return summary
+
+
+def _blocker_closing_intake_answers(session: Dict[str, Any], limit: int = 4) -> List[Dict[str, str]]:
+    blocker_objectives = {
+        _normalize_intake_objective(item.get("primary_objective") or "")
+        for item in _session_blocker_follow_up_items(session)
+        if _normalize_intake_objective(item.get("primary_objective") or "")
+    }
+    answers: List[Dict[str, str]] = []
+    for entry in list(session.get("conversation_history") or []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("role") or "").strip().lower() != "complainant":
+            continue
+        if str(entry.get("source") or "").strip().lower() != "completed_intake_follow_up_worksheet":
+            continue
+        answer = " ".join(str(entry.get("content") or "").split()).strip()
+        question = " ".join(str(entry.get("question") or "").split()).strip()
+        if not answer:
+            continue
+        objective = _normalize_intake_objective(_classify_intake_question_objective(question or answer))
+        if blocker_objectives and objective not in blocker_objectives:
+            continue
+        answers.append(
+            {
+                "objective": objective or "intake_follow_up",
+                "question": question,
+                "answer": answer,
+            }
+        )
+        if len(answers) >= limit:
+            break
+    return answers
 
 
 def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
@@ -2491,6 +2583,15 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegations.append(
             "Unresolved legal gaps are still open at drafting handoff, including "
             + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:2])
+        )
+    blocker_answers = _blocker_closing_intake_answers(session, limit=3)
+    for item in blocker_answers:
+        allegations.append(
+            f"Blocker-closing intake answer for {_intake_objective_label(item['objective'])}: {_short_intake_answer(item['answer'])}"
+        )
+    if blocker_answers:
+        allegations.append(
+            "These blocker-closing answers should be mirrored in exhibit descriptions so actor identity, timing anchors, and causation sequence remain consistent through formalization."
         )
     evidence_titles = [
         str(item.get("title") or "").strip()
@@ -2570,12 +2671,34 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
             + ", ".join(weak_modalities)
             + "); strengthen policy_document and file_evidence exhibits before locking legal theory."
         )
+    blocker_answers = _blocker_closing_intake_answers(session, limit=3)
+    if blocker_answers:
+        objective_labels = [_intake_objective_label(str(item.get("objective") or "")) for item in blocker_answers]
+        objective_labels = [label for label in objective_labels if label]
+        claims.append(
+            "Claim support now carries blocker-closing intake answers for "
+            + ", ".join(list(dict.fromkeys(objective_labels))[:3])
+            + "; preserve the same actor identity, date sequencing, and causation linkage in each claim element and its exhibit citation."
+        )
+        for item in blocker_answers[:2]:
+            claims.append(
+                f"Intake support detail ({_intake_objective_label(str(item.get('objective') or ''))}): {_short_intake_answer(str(item.get('answer') or ''))}"
+            )
+    elif "uncovered_intake_objectives" in [str(item) for item in list(readiness.get("blockers") or []) if str(item)]:
+        claims.append(
+            "Claim support remains incomplete because uncovered_intake_objectives are still open; close those objectives before finalizing legal theory."
+        )
     complaint_type = str(seed.get("type") or "").strip().lower()
     if complaint_type in {"housing_discrimination", "hacc_research_engine"}:
         claims.append(
             "This theory is framed to generalize across housing_discrimination and hacc_research_engine by tying each claim to both policy language and case-specific evidence artifacts."
         )
-    weak_types = [str(item) for item in list(readiness.get("weak_complaint_types") or []) if str(item)]
+    key_facts_readiness = dict(key_facts.get("drafting_readiness") or {})
+    weak_types = [
+        str(item)
+        for item in list(readiness.get("weak_complaint_types") or []) + list(key_facts_readiness.get("weak_complaint_types") or [])
+        if str(item)
+    ]
     if any(item in {"housing_discrimination", "hacc_research_engine"} for item in weak_types):
         claims.append(
             "Drafting readiness flags weak complaint-type support for housing_discrimination/hacc_research_engine, so each claim should remain explicitly mapped to chronology facts, policy text, and exhibit citations before formalization."

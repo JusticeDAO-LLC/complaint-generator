@@ -1248,7 +1248,7 @@ class ComplaintDenoiser:
             'expected_update_kind': str(question_payload.get('expected_update_kind') or ''),
             'recommended_resolution_lane': str(question_payload.get('recommended_resolution_lane') or ''),
             'workflow_phase': str(question_payload.get('workflow_phase') or ''),
-            'workflow_phase_rank': int(question_payload.get('workflow_phase_rank', 99) or 99),
+            'workflow_phase_rank': int(question_payload.get('workflow_phase_rank')) if question_payload.get('workflow_phase_rank') is not None else 99,
             'extraction_targets': list(question_payload.get('extraction_targets') or []),
             'patchability_markers': list(question_payload.get('patchability_markers') or []),
             'follow_up_tags': list(follow_up_tags),
@@ -1599,6 +1599,259 @@ class ComplaintDenoiser:
 
         return questions
 
+    def _temporal_issue_question_type(self, issue_type: str) -> str:
+        normalized_issue_type = str(issue_type or '').strip().lower()
+        if normalized_issue_type in {'missing_staff_identity', 'missing_staff_title'}:
+            return 'responsible_party'
+        if normalized_issue_type in {'missing_written_notice'}:
+            return 'evidence'
+        return 'timeline'
+
+    def _temporal_issue_extraction_targets(
+        self,
+        issue_type: str,
+        *,
+        element_tags: List[str],
+        question_type: str,
+    ) -> List[str]:
+        normalized_issue_type = str(issue_type or '').strip().lower()
+        normalized_element_tags = [str(tag or '').strip().lower() for tag in (element_tags or []) if str(tag or '').strip()]
+        targets = self._derive_extraction_targets(question_type, context={'gap_type': normalized_issue_type})
+        if normalized_issue_type == 'relative_only_ordering' or normalized_issue_type.startswith('temporal_reverse_'):
+            targets.extend(['exact_dates', 'event_order'])
+        if normalized_issue_type in {
+            'retaliation_missing_causation',
+            'retaliation_missing_causation_link',
+            'retaliation_missing_sequence',
+            'retaliation_missing_sequencing_dates',
+        } or 'causation' in normalized_element_tags:
+            targets.extend(['protected_activity', 'adverse_action', 'causation_link', 'exact_dates', 'event_order'])
+        if normalized_issue_type in {'missing_hearing_request_date', 'missing_hearing_timing'}:
+            targets.extend(['exact_dates', 'response_timing', 'notice_chain', 'actor_name', 'actor_role'])
+        if normalized_issue_type in {'missing_response_dates', 'missing_decision_timeline'}:
+            targets.extend(['exact_dates', 'response_timing', 'notice_chain', 'document_date', 'document_owner'])
+        if normalized_issue_type == 'missing_written_notice':
+            targets.extend(['document_type', 'document_date', 'document_owner', 'notice_chain'])
+        if normalized_issue_type in {'missing_staff_identity', 'missing_staff_title'}:
+            targets.extend(['actor_name', 'actor_role', 'decision_maker', 'adverse_action'])
+        deduped: List[str] = []
+        for target in targets:
+            if target and target not in deduped:
+                deduped.append(target)
+        return deduped
+
+    def _temporal_issue_patchability_markers(
+        self,
+        issue_type: str,
+        *,
+        element_tags: List[str],
+        question_type: str,
+    ) -> List[str]:
+        normalized_issue_type = str(issue_type or '').strip().lower()
+        normalized_element_tags = [str(tag or '').strip().lower() for tag in (element_tags or []) if str(tag or '').strip()]
+        markers = self._derive_patchability_markers(question_type, context={'gap_type': normalized_issue_type})
+        if normalized_issue_type == 'relative_only_ordering' or normalized_issue_type.startswith('temporal_reverse_'):
+            markers.extend(['chronology_patch_anchor', 'adverse_action_patch_anchor'])
+        if normalized_issue_type in {
+            'retaliation_missing_causation',
+            'retaliation_missing_causation_link',
+            'retaliation_missing_sequence',
+            'retaliation_missing_sequencing_dates',
+        } or 'causation' in normalized_element_tags:
+            markers.extend(['chronology_patch_anchor', 'adverse_action_patch_anchor'])
+        if normalized_issue_type in {'missing_hearing_request_date', 'missing_hearing_timing', 'missing_response_dates', 'missing_decision_timeline'}:
+            markers.extend(['chronology_response_patch_anchor', 'notice_chain_patch_anchor'])
+        if normalized_issue_type in {'missing_staff_identity', 'missing_staff_title'}:
+            markers.extend(['actor_link_patch_anchor', 'decision_actor_patch_anchor'])
+        if normalized_issue_type == 'missing_written_notice':
+            markers.extend(['support_patch_anchor', 'documentary_artifact_patch_anchor', 'notice_chain_patch_anchor'])
+        deduped: List[str] = []
+        for marker in markers:
+            if marker and marker not in deduped:
+                deduped.append(marker)
+        return deduped
+
+    def _build_claim_temporal_gap_question_text(
+        self,
+        issue_type: str,
+        *,
+        claim_label: str,
+        summary: str,
+        left_node_name: str,
+        right_node_name: str,
+        relative_markers: List[str],
+    ) -> str:
+        normalized_issue_type = str(issue_type or '').strip().lower()
+        claim_reference = claim_label or 'this claim'
+        if normalized_issue_type == 'relative_only_ordering':
+            relative_phrase = ''
+            if relative_markers:
+                relative_phrase = f" using the reported {', '.join(relative_markers)} sequence"
+            anchor_subject = left_node_name or 'the event you described'
+            return (
+                f"For your {claim_reference} claim, what is the most specific date or timeframe for {anchor_subject}, "
+                f"and what happened immediately before and after it{relative_phrase}?"
+            )
+        if normalized_issue_type.startswith('temporal_reverse_'):
+            left_label = left_node_name or 'the first event'
+            right_label = right_node_name or 'the second event'
+            return (
+                f"For your {claim_reference} claim, which happened first: {left_label} or {right_label}, "
+                "and what is the most specific date or timeframe for each event?"
+            )
+        if normalized_issue_type in {
+            'retaliation_missing_causation',
+            'retaliation_missing_causation_link',
+            'retaliation_missing_sequence',
+            'retaliation_missing_sequencing_dates',
+        }:
+            return (
+                f"For your {claim_reference} claim, what protected activity happened first, what adverse action followed, "
+                "who was involved in each step, and on what exact dates or timeframes did those events occur?"
+            )
+        if normalized_issue_type in {'missing_hearing_request_date', 'missing_hearing_timing'}:
+            return (
+                f"For your {claim_reference} claim, on what date did you request the hearing, grievance, or review, "
+                "who received it, and do you have any notice, email, or letter confirming that request?"
+            )
+        if normalized_issue_type in {'missing_response_dates', 'missing_decision_timeline'}:
+            return (
+                f"For your {claim_reference} claim, when did you receive each response or decision, who sent it, "
+                "and do you have any notice, email, or letter showing that timeline?"
+            )
+        if normalized_issue_type == 'missing_written_notice':
+            return (
+                f"For your {claim_reference} claim, do you have any written notice, email, text, letter, or upload "
+                "showing the decision, including the date and sender?"
+            )
+        if normalized_issue_type in {'missing_staff_identity', 'missing_staff_title'}:
+            return (
+                f"For your {claim_reference} claim, who specifically made or communicated the decision, "
+                "and what were that person's full name, title, and role?"
+            )
+        summary_clause = f" This appears unresolved because {summary}" if summary else ''
+        return (
+            f"For your {claim_reference} claim, what exact dates, sequence details, and decision-maker information "
+            f"would anchor this timeline gap clearly?{summary_clause}"
+        )
+
+    def _build_claim_temporal_gap_questions(
+        self,
+        intake_case_file: Optional[Dict[str, Any]],
+        max_questions: int,
+    ) -> List[Dict[str, Any]]:
+        if not isinstance(intake_case_file, dict) or max_questions <= 0:
+            return []
+
+        temporal_issue_registry = intake_case_file.get('temporal_issue_registry', [])
+        if not isinstance(temporal_issue_registry, list) or not temporal_issue_registry:
+            return []
+
+        claim_label_map: Dict[str, str] = {}
+        for claim in intake_case_file.get('candidate_claims', []) or []:
+            if not isinstance(claim, dict):
+                continue
+            claim_type = normalize_claim_type(str(claim.get('claim_type') or '').strip())
+            if not claim_type:
+                continue
+            claim_label_map[claim_type] = str(claim.get('label') or claim_type).strip()
+
+        questions: List[Dict[str, Any]] = []
+        seen_keys: Set[str] = set()
+        for issue in temporal_issue_registry:
+            if len(questions) >= max_questions:
+                break
+            if not isinstance(issue, dict):
+                continue
+            status = str(issue.get('status') or '').strip().lower()
+            if status in {'resolved', 'closed', 'fixed'}:
+                continue
+            claim_types = [
+                normalize_claim_type(str(value or '').strip())
+                for value in (issue.get('claim_types') or issue.get('affected_claim_types') or [])
+                if str(value or '').strip()
+            ]
+            claim_types = [claim_type for claim_type in claim_types if claim_type]
+            claim_type = claim_types[0] if claim_types else ''
+            claim_label = claim_label_map.get(claim_type) or (claim_type.replace('_', ' ') if claim_type else 'this claim')
+            issue_id = str(issue.get('issue_id') or issue.get('source_ref') or issue.get('issue_type') or '').strip()
+            issue_type = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+            element_tags = [str(tag or '').strip() for tag in (issue.get('element_tags') or issue.get('affected_element_ids') or []) if str(tag or '').strip()]
+            target_element_id = str(element_tags[0] or '').strip().lower() if element_tags else ''
+            question_key = '|'.join(filter(None, [issue_id.lower(), claim_type, issue_type, target_element_id]))
+            if question_key in seen_keys:
+                continue
+            seen_keys.add(question_key)
+            question_type = self._temporal_issue_question_type(issue_type)
+            relative_markers = [str(marker or '').strip().lower() for marker in (issue.get('relative_markers') or []) if str(marker or '').strip()]
+            question_text = self._build_claim_temporal_gap_question_text(
+                issue_type,
+                claim_label=claim_label,
+                summary=self._short_description(str(issue.get('summary') or '').strip(), limit=120),
+                left_node_name=str(issue.get('left_node_name') or '').strip(),
+                right_node_name=str(issue.get('right_node_name') or '').strip(),
+                relative_markers=relative_markers,
+            )
+            if self._already_asked(question_text):
+                continue
+            extraction_targets = self._temporal_issue_extraction_targets(
+                issue_type,
+                element_tags=element_tags,
+                question_type=question_type,
+            )
+            patchability_markers = self._temporal_issue_patchability_markers(
+                issue_type,
+                element_tags=element_tags,
+                question_type=question_type,
+            )
+            question = self._question_candidate(
+                source='intake_claim_temporal_gap',
+                question_type=question_type,
+                question_text=question_text,
+                context={
+                    'claim_type': claim_type,
+                    'claim_name': claim_label,
+                    'gap_id': issue_id or f'{claim_type}:{issue_type}',
+                    'gap_type': issue_type,
+                    'requirement_id': target_element_id,
+                    'target_element_id': target_element_id,
+                    'temporal_issue_id': issue_id,
+                    'temporal_issue_category': str(issue.get('category') or issue_type),
+                    'temporal_issue_summary': str(issue.get('summary') or ''),
+                    'temporal_issue_status': status or 'open',
+                    'left_node_name': str(issue.get('left_node_name') or ''),
+                    'right_node_name': str(issue.get('right_node_name') or ''),
+                    'fact_ids': list(issue.get('fact_ids') or []),
+                    'relative_markers': list(relative_markers),
+                    'deterministic_update_key': issue_id or f'{claim_type}:{issue_type}:{target_element_id}',
+                    'workflow_phase': 'document_generation' if question_type == 'evidence' else 'graph_analysis',
+                    'recommended_resolution_lane': str(issue.get('recommended_resolution_lane') or 'clarify_with_complainant'),
+                    'extraction_targets': extraction_targets,
+                    'patchability_markers': patchability_markers,
+                },
+                priority='high' if bool(issue.get('blocking')) or str(issue.get('severity') or '').strip().lower() == 'blocking' else 'medium',
+            )
+            question_objective = 'identify_supporting_proof' if question_type == 'evidence' else 'establish_chronology'
+            question_goal = 'identify_supporting_proof' if question_type == 'evidence' else 'establish_element'
+            if issue_type in {
+                'retaliation_missing_causation',
+                'retaliation_missing_causation_link',
+                'retaliation_missing_sequence',
+                'retaliation_missing_sequencing_dates',
+            }:
+                question_objective = 'establish_causation'
+            elif question_type == 'responsible_party':
+                question_objective = 'identify_responsible_actor'
+            question['question_objective'] = question_objective
+            question['question_goal'] = question_goal
+            ranking_explanation = question.get('ranking_explanation') if isinstance(question.get('ranking_explanation'), dict) else {}
+            ranking_explanation['question_objective'] = question_objective
+            ranking_explanation['question_goal'] = question_goal
+            question['ranking_explanation'] = ranking_explanation
+            questions.append(question)
+
+        return questions[:max_questions]
+
     def _build_history_follow_up_questions(
         self,
         max_questions: int,
@@ -1836,6 +2089,12 @@ class ComplaintDenoiser:
             max(0, max_questions - len(questions)),
         )
         questions.extend(proof_lead_questions[:max(0, max_questions - len(questions))])
+
+        temporal_gap_questions = self._build_claim_temporal_gap_questions(
+            intake_case_file,
+            max(0, max_questions - len(questions)),
+        )
+        questions.extend(temporal_gap_questions[:max(0, max_questions - len(questions))])
 
         history_follow_up_questions = self._build_history_follow_up_questions(
             max(0, max_questions - len(questions)),
@@ -2665,6 +2924,45 @@ class ComplaintDenoiser:
         context = question.get('context', {})
         context = context if isinstance(context, dict) else {}
         answer_text = str(answer or '').strip()
+        workflow_phase = str(
+            context.get('workflow_phase')
+            or question.get('workflow_phase')
+            or self._workflow_phase_for_question(question_type, context, str(question.get('candidate_source') or ''))
+        ).strip().lower()
+        question_objective = str(
+            question.get('question_objective')
+            or context.get('question_objective')
+            or ''
+        ).strip().lower()
+        expected_update_kind = str(
+            question.get('expected_update_kind')
+            or context.get('expected_update_kind')
+            or ''
+        ).strip().lower()
+        target_element_id = str(
+            question.get('target_element_id')
+            or context.get('target_element_id')
+            or context.get('requirement_id')
+            or ''
+        ).strip().lower()
+        extraction_targets = {
+            str(item).strip().lower()
+            for item in (
+                context.get('extraction_targets')
+                or question.get('extraction_targets')
+                or []
+            )
+            if str(item).strip()
+        }
+        patchability_markers = {
+            str(item).strip().lower()
+            for item in (
+                context.get('patchability_markers')
+                or question.get('patchability_markers')
+                or []
+            )
+            if str(item).strip()
+        }
         timeline_enrichment_types = {'clarification', 'evidence', 'impact', 'relationship', 'remedy', 'requirement', 'responsible_party', 'timeline'}
         responsible_party_enrichment_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}
         fallback_timeline_fact_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}
@@ -2694,6 +2992,7 @@ class ComplaintDenoiser:
         has_causation_signal = self._contains_causation_signal(answer_text)
         has_adverse_action_signal = self._contains_adverse_action_signal(answer_text)
         has_document_precision_signal = self._contains_document_precision_signal(answer_text)
+        deterministic_fields_updated: Set[str] = set()
 
         def _single_claim_id() -> Optional[str]:
             claims = knowledge_graph.get_entities_by_type('claim')
@@ -2751,6 +3050,19 @@ class ComplaintDenoiser:
         extracted_policy_refs = _extract_policy_references(answer_text)
         policy_signal = any(token in answer_lower for token in ('policy', 'handbook', 'rule', 'criteria', 'section', 'guideline')) or bool(extracted_policy_refs)
         file_signal = bool(extracted_file_refs) or bool(document_mentions) or any(token in answer_lower for token in ('file', 'upload', 'attachment', 'exhibit', 'pdf', 'screenshot', 'scan'))
+        staff_signal = bool(named_role_people or named_title_people or generic_roles)
+
+        def _has_structured_signal() -> bool:
+            return bool(
+                extracted_dates
+                or response_timing_phrases
+                or staff_signal
+                or has_sequence_signal
+                or has_causation_signal
+                or has_adverse_action_signal
+                or policy_signal
+                or file_signal
+            )
 
         def _find_claim_entity_from_context() -> Optional[Entity]:
             for key in ('claim_entity_id', 'claim_id'):
@@ -2799,6 +3111,46 @@ class ComplaintDenoiser:
             if _append_attr_list(claim_entity, key, value):
                 updates['entities_updated'] += 1
 
+        def _required_fields_for_gap(current_gap_type: str) -> List[str]:
+            mapping = {
+                'missing_exact_action_dates': ['event_date', 'adverse_action'],
+                'missing_hearing_request_date': ['hearing_request_date', 'hearing_request_actor'],
+                'missing_response_dates': ['response_date', 'response_actor'],
+                'missing_hearing_timing': ['adverse_action_date', 'hearing_request_date'],
+                'missing_staff_identity': ['staff_name', 'staff_role'],
+                'missing_staff_title': ['staff_name', 'staff_title'],
+                'retaliation_missing_causation': ['protected_activity', 'adverse_action', 'causation_link'],
+                'retaliation_missing_causation_link': ['protected_activity', 'adverse_action', 'causation_link'],
+                'retaliation_missing_sequence': ['protected_activity_date', 'adverse_action_date'],
+                'retaliation_missing_sequencing_dates': ['protected_activity_date', 'adverse_action_date'],
+                'missing_written_notice': ['document_name', 'document_date', 'issuing_actor'],
+                'missing_decision_timeline': ['decision_date', 'decision_actor'],
+                'missing_claim_element': ['supporting_fact'],
+                'missing_proof_leads': ['supporting_fact'],
+            }
+            return list(mapping.get(str(current_gap_type or '').strip().lower(), []))
+
+        def _store_required_field_value(claim_entity: Optional[Entity], field_name: str, value: str) -> None:
+            nonlocal updates
+            if not claim_entity:
+                return
+            normalized_field = str(field_name or '').strip().lower()
+            normalized_value = str(value or '').strip()
+            if not normalized_field or not normalized_value:
+                return
+            attrs = claim_entity.attributes if isinstance(claim_entity.attributes, dict) else {}
+            field_values = attrs.get('required_field_values')
+            field_values = dict(field_values) if isinstance(field_values, dict) else {}
+            existing_values = field_values.get(normalized_field)
+            updated_values = self._append_unique_text_item(existing_values, normalized_value)
+            if existing_values != updated_values:
+                field_values[normalized_field] = updated_values
+                attrs['required_field_values'] = field_values
+                claim_entity.attributes = attrs
+                updates['entities_updated'] += 1
+                deterministic_fields_updated.add(normalized_field)
+                _append_claim_signal(claim_entity, 'satisfied_requirements', normalized_field)
+
         def _link_claim_to_entity(claim_entity: Optional[Entity], target_entity: Optional[Entity], relation_type: str, confidence: float = 0.62) -> None:
             nonlocal updates
             if not claim_entity or not target_entity or not relation_type:
@@ -2812,6 +3164,127 @@ class ComplaintDenoiser:
             )
             if rel_created:
                 updates['relationships_added'] += 1
+
+        def _deterministic_gap_field_updates(claim_entity: Optional[Entity]) -> None:
+            if not claim_entity or not _answer_is_substantive(answer_text):
+                return
+
+            required_fields = _required_fields_for_gap(gap_type)
+            if not required_fields:
+                # Fall back to extraction targets to keep updates deterministic for registry-driven gaps.
+                target_map = {
+                    'exact_dates': 'event_date',
+                    'event_order': 'supporting_fact',
+                    'actor_name': 'staff_name',
+                    'actor_role': 'staff_role',
+                    'decision_maker': 'decision_actor',
+                    'document_type': 'document_name',
+                    'document_date': 'document_date',
+                    'document_owner': 'issuing_actor',
+                    'protected_activity': 'protected_activity',
+                    'adverse_action': 'adverse_action',
+                    'causation_link': 'causation_link',
+                    'response_timing': 'response_date',
+                }
+                required_fields = [
+                    target_map[target]
+                    for target in extraction_targets
+                    if target in target_map
+                ]
+                deduped_fields: List[str] = []
+                for field_name in required_fields:
+                    if field_name not in deduped_fields:
+                        deduped_fields.append(field_name)
+                required_fields = deduped_fields
+
+            if extracted_dates:
+                primary_date = extracted_dates[0]
+                if 'event_date' in required_fields:
+                    _store_required_field_value(claim_entity, 'event_date', primary_date)
+                if 'hearing_request_date' in required_fields:
+                    _store_required_field_value(claim_entity, 'hearing_request_date', primary_date)
+                if 'response_date' in required_fields:
+                    _store_required_field_value(claim_entity, 'response_date', primary_date)
+                if 'adverse_action_date' in required_fields:
+                    _store_required_field_value(claim_entity, 'adverse_action_date', primary_date)
+                if 'decision_date' in required_fields:
+                    _store_required_field_value(claim_entity, 'decision_date', primary_date)
+                if 'protected_activity_date' in required_fields:
+                    _store_required_field_value(claim_entity, 'protected_activity_date', primary_date)
+
+            staff_pairs: List[Tuple[str, str]] = []
+            staff_pairs.extend(named_role_people)
+            staff_pairs.extend(named_title_people)
+            if staff_pairs:
+                if 'staff_name' in required_fields:
+                    _store_required_field_value(claim_entity, 'staff_name', staff_pairs[0][0])
+                if 'staff_role' in required_fields:
+                    _store_required_field_value(claim_entity, 'staff_role', staff_pairs[0][1])
+                if 'staff_title' in required_fields:
+                    _store_required_field_value(claim_entity, 'staff_title', staff_pairs[0][1])
+                if 'decision_actor' in required_fields:
+                    _store_required_field_value(claim_entity, 'decision_actor', f"{staff_pairs[0][0]} ({staff_pairs[0][1]})")
+                if 'issuing_actor' in required_fields:
+                    _store_required_field_value(claim_entity, 'issuing_actor', f"{staff_pairs[0][0]} ({staff_pairs[0][1]})")
+            elif org_candidates and ('decision_actor' in required_fields or 'issuing_actor' in required_fields):
+                if 'decision_actor' in required_fields:
+                    _store_required_field_value(claim_entity, 'decision_actor', org_candidates[0])
+                if 'issuing_actor' in required_fields:
+                    _store_required_field_value(claim_entity, 'issuing_actor', org_candidates[0])
+
+            if ('document_name' in required_fields or 'supporting_fact' in required_fields) and (document_mentions or extracted_file_refs or extracted_policy_refs):
+                document_value = (
+                    document_mentions[0]
+                    if document_mentions
+                    else extracted_file_refs[0]
+                    if extracted_file_refs
+                    else extracted_policy_refs[0]
+                )
+                if 'document_name' in required_fields:
+                    _store_required_field_value(claim_entity, 'document_name', document_value)
+                if 'supporting_fact' in required_fields:
+                    _store_required_field_value(claim_entity, 'supporting_fact', self._short_description(answer_text, 160))
+
+            if 'document_date' in required_fields and extracted_dates:
+                _store_required_field_value(claim_entity, 'document_date', extracted_dates[0])
+
+            if 'response_actor' in required_fields and (staff_pairs or org_candidates):
+                if staff_pairs:
+                    _store_required_field_value(claim_entity, 'response_actor', f"{staff_pairs[0][0]} ({staff_pairs[0][1]})")
+                elif org_candidates:
+                    _store_required_field_value(claim_entity, 'response_actor', org_candidates[0])
+
+            if 'hearing_request_actor' in required_fields and (staff_pairs or org_candidates):
+                if staff_pairs:
+                    _store_required_field_value(claim_entity, 'hearing_request_actor', f"{staff_pairs[0][0]} ({staff_pairs[0][1]})")
+                elif org_candidates:
+                    _store_required_field_value(claim_entity, 'hearing_request_actor', org_candidates[0])
+
+            if 'protected_activity' in required_fields and has_causation_signal:
+                _store_required_field_value(claim_entity, 'protected_activity', self._short_description(answer_text, 160))
+            if 'adverse_action' in required_fields and (has_adverse_action_signal or has_causation_signal):
+                _store_required_field_value(claim_entity, 'adverse_action', self._short_description(answer_text, 160))
+            if 'causation_link' in required_fields and has_causation_signal:
+                _store_required_field_value(claim_entity, 'causation_link', self._short_description(answer_text, 160))
+
+            if 'supporting_fact' in required_fields and _has_structured_signal():
+                _store_required_field_value(claim_entity, 'supporting_fact', self._short_description(answer_text, 180))
+
+            # Promote concrete hearing/response/causation sequencing fields even when not explicitly required.
+            if gap_type in {'missing_hearing_request_date', 'missing_hearing_timing'} and extracted_dates:
+                _store_required_field_value(claim_entity, 'hearing_request_date', extracted_dates[0])
+            if gap_type in {'missing_response_dates', 'missing_decision_timeline'} and (extracted_dates or response_timing_phrases):
+                if extracted_dates:
+                    _store_required_field_value(claim_entity, 'response_date', extracted_dates[0])
+                elif response_timing_phrases:
+                    _store_required_field_value(claim_entity, 'response_date', response_timing_phrases[0])
+            if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequence', 'retaliation_missing_sequencing_dates'}:
+                if has_causation_signal:
+                    _store_required_field_value(claim_entity, 'causation_link', self._short_description(answer_text, 160))
+                if extracted_dates:
+                    _store_required_field_value(claim_entity, 'protected_activity_date', extracted_dates[0])
+                    if len(extracted_dates) > 1:
+                        _store_required_field_value(claim_entity, 'adverse_action_date', extracted_dates[1])
 
         def _deterministic_requirement_fact(claim_entity: Optional[Entity]) -> None:
             nonlocal updates
@@ -2900,6 +3373,9 @@ class ComplaintDenoiser:
             nonlocal updates
             if not dependency_graph or not _answer_is_substantive(answer_text):
                 return
+            required_fields = _required_fields_for_gap(gap_type)
+            if required_fields and not deterministic_fields_updated.intersection(set(required_fields)):
+                return
             candidate_ids = {
                 str(context.get('requirement_id') or '').strip(),
                 str(context.get('node_id') or '').strip(),
@@ -2987,11 +3463,296 @@ class ComplaintDenoiser:
                     attrs['gap_type'] = gap_type
                 node.attributes = attrs
 
+        def _add_structured_graph_analysis_updates(claim_entity: Optional[Entity]) -> None:
+            nonlocal updates
+            if not claim_entity or not _answer_is_substantive(answer_text):
+                return
+            claim_id = claim_entity.id
+
+            if extracted_dates:
+                for date_str in extracted_dates[:5]:
+                    date_entity, created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'date',
+                        date_str,
+                        {
+                            'date_context_gap_type': gap_type,
+                            'source_question_type': question_type,
+                        },
+                        0.74,
+                    )
+                    if created:
+                        updates['entities_updated'] += 1
+                    if date_entity:
+                        _, rel_created = self._add_relationship_if_missing(
+                            knowledge_graph,
+                            claim_id,
+                            date_entity.id,
+                            'occurred_on',
+                            0.66,
+                        )
+                        if rel_created:
+                            updates['relationships_added'] += 1
+                _append_claim_signal(claim_entity, 'exact_dates', ", ".join(extracted_dates[:5]))
+
+            if response_timing_phrases:
+                timing_fact, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Response timing: {self._short_description(answer_text, 72)}",
+                    {
+                        'fact_type': 'response_timing',
+                        'timing_phrases': list(response_timing_phrases[:4]),
+                        'gap_type': gap_type,
+                        'target_element_id': target_element_id,
+                        'description': self._short_description(answer_text, 160),
+                    },
+                    0.72,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, timing_fact, 'has_timeline_detail', 0.64)
+                for phrase in response_timing_phrases[:4]:
+                    _append_claim_signal(claim_entity, 'response_timing_phrases', phrase)
+
+            for name, title in named_title_people[:6]:
+                person, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'person',
+                    name,
+                    {'role': title, 'title': title, 'source': 'denoiser_answer'},
+                    0.74,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                elif person:
+                    previous_title = str((person.attributes or {}).get('title') or '').strip().lower()
+                    if not previous_title and title:
+                        person.attributes['title'] = title
+                        updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, person, 'involves', 0.64)
+                if person and any(token in title for token in ('manager', 'director', 'officer', 'landlord', 'owner', 'supervisor', 'agent')):
+                    _link_claim_to_entity(claim_entity, person, 'has_decision_maker', 0.62)
+                    _append_claim_signal(claim_entity, 'decision_makers', f"{name} ({title})")
+
+            if has_causation_signal or has_sequence_signal:
+                causation_fact, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Causation sequence: {self._short_description(answer_text, 72)}",
+                    {
+                        'fact_type': 'causation_sequence',
+                        'has_causation_signal': bool(has_causation_signal),
+                        'has_sequence_signal': bool(has_sequence_signal),
+                        'has_adverse_action_signal': bool(has_adverse_action_signal),
+                        'captured_dates': list(extracted_dates[:4]),
+                        'target_element_id': target_element_id,
+                        'description': self._short_description(answer_text, 160),
+                    },
+                    0.7,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, causation_fact, 'has_causation_detail', 0.63)
+                if has_causation_signal:
+                    _append_claim_signal(claim_entity, 'causation_sequences', self._short_description(answer_text, 180))
+
+            should_force_policy = (
+                'documentary_artifact_patch_anchor' in patchability_markers
+                or 'document_type' in extraction_targets
+                or gap_type in {'missing_claim_element', 'missing_proof_leads', 'missing_written_notice'}
+                or expected_update_kind in {'proof_lead', 'documentary_support'}
+            )
+            should_force_file = should_force_policy or 'document_owner' in extraction_targets
+            if policy_signal and should_force_policy:
+                _upsert_structured_evidence(
+                    claim_entity,
+                    claim_id,
+                    'policy_document',
+                    0.72,
+                    {
+                        'policy_refs': list(extracted_policy_refs[:4]),
+                        'document_mentions': list(document_mentions[:4]),
+                        'question_objective': question_objective,
+                        'expected_update_kind': expected_update_kind,
+                    },
+                )
+            if file_signal and should_force_file:
+                _upsert_structured_evidence(
+                    claim_entity,
+                    claim_id,
+                    'file_evidence',
+                    0.72,
+                    {
+                        'file_refs': list(extracted_file_refs[:4]),
+                        'document_mentions': list(document_mentions[:4]),
+                        'question_objective': question_objective,
+                        'expected_update_kind': expected_update_kind,
+                    },
+                )
+
+            if gap_type in {'missing_hearing_request_date', 'missing_hearing_timing'} and (extracted_dates or response_timing_phrases):
+                _append_claim_signal(claim_entity, 'hearing_request_timing', self._short_description(answer_text, 180))
+                _append_claim_signal(claim_entity, 'satisfied_requirements', 'hearing_request_timing')
+                hearing_fact, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Hearing request timing: {self._short_description(answer_text, 70)}",
+                    {
+                        'fact_type': 'hearing_request_timing',
+                        'captured_dates': list(extracted_dates[:3]),
+                        'response_timing': list(response_timing_phrases[:3]),
+                        'description': self._short_description(answer_text, 180),
+                    },
+                    0.73,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, hearing_fact, 'has_timeline_detail', 0.66)
+            if gap_type in {'missing_response_dates', 'missing_decision_timeline'} and (extracted_dates or response_timing_phrases):
+                _append_claim_signal(claim_entity, 'response_dates', ", ".join(extracted_dates[:5]) or "; ".join(response_timing_phrases[:4]))
+                _append_claim_signal(claim_entity, 'satisfied_requirements', 'response_dates')
+                response_fact, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Response dates: {self._short_description(answer_text, 70)}",
+                    {
+                        'fact_type': 'response_dates',
+                        'captured_dates': list(extracted_dates[:4]),
+                        'response_timing': list(response_timing_phrases[:4]),
+                        'description': self._short_description(answer_text, 180),
+                    },
+                    0.74,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, response_fact, 'has_timeline_detail', 0.66)
+            if gap_type in {'missing_staff_identity', 'missing_staff_title'} and staff_signal:
+                _append_claim_signal(claim_entity, 'staff_names_titles', self._short_description(answer_text, 180))
+                _append_claim_signal(claim_entity, 'satisfied_requirements', 'staff_identity')
+                for name, role in (named_title_people or named_role_people)[:4]:
+                    person, created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'person',
+                        name,
+                        {'role': role, 'title': role, 'source': 'denoiser_answer'},
+                        0.76,
+                    )
+                    if created:
+                        updates['entities_updated'] += 1
+                    _link_claim_to_entity(claim_entity, person, 'has_decision_maker', 0.68)
+            if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequence', 'retaliation_missing_sequencing_dates'} and (has_causation_signal or has_sequence_signal):
+                _append_claim_signal(claim_entity, 'causation_timeline', self._short_description(answer_text, 180))
+                _append_claim_signal(claim_entity, 'satisfied_requirements', 'causation_sequence')
+                sequence_fact, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"Causation sequencing: {self._short_description(answer_text, 70)}",
+                    {
+                        'fact_type': 'causation_sequence',
+                        'captured_dates': list(extracted_dates[:4]),
+                        'has_causation_signal': bool(has_causation_signal),
+                        'has_sequence_signal': bool(has_sequence_signal),
+                        'description': self._short_description(answer_text, 180),
+                    },
+                    0.74,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, sequence_fact, 'has_causation_detail', 0.67)
+
+        def _actor_critic_gap_confidence() -> float:
+            if not _answer_is_substantive(answer_text):
+                return 0.0
+            target_checks = {
+                'exact_dates': bool(extracted_dates),
+                'event_order': bool(has_sequence_signal),
+                'response_timing': bool(response_timing_phrases),
+                'decision_maker': bool(staff_signal),
+                'actor_name': bool(staff_signal),
+                'actor_role': bool(staff_signal),
+                'adverse_action': bool(has_adverse_action_signal),
+                'causation_link': bool(has_causation_signal),
+                'document_type': bool(document_mentions),
+                'document_date': bool(extracted_dates),
+                'document_owner': bool(named_title_people or named_role_people or org_candidates),
+            }
+            requested_targets = set(extraction_targets)
+            if not requested_targets and target_element_id:
+                if 'timing' in target_element_id or 'date' in target_element_id:
+                    requested_targets.update({'exact_dates', 'event_order'})
+                if any(token in target_element_id for token in ('actor', 'staff', 'identity', 'title', 'party')):
+                    requested_targets.update({'actor_name', 'actor_role'})
+                if any(token in target_element_id for token in ('causation', 'retaliation', 'sequence')):
+                    requested_targets.update({'causation_link', 'event_order'})
+            if requested_targets:
+                hits = sum(1 for target in requested_targets if target_checks.get(target, False))
+                actor_score = hits / max(len(requested_targets), 1)
+            else:
+                actor_score = 1.0 if _has_structured_signal() else 0.35
+            critic_components = [
+                1.0 if _has_structured_signal() else 0.0,
+                1.0 if (policy_signal or file_signal) else 0.0,
+                1.0 if (has_sequence_signal or has_causation_signal) else 0.0,
+                1.0 if (extracted_dates or response_timing_phrases) else 0.0,
+            ]
+            critic_score = sum(critic_components) / float(len(critic_components))
+            weighted = (
+                float(self.actor_weight or 1.0) * float(actor_score)
+                + float(self.critic_weight or 1.0) * float(critic_score)
+            ) / max(float(self.actor_weight or 1.0) + float(self.critic_weight or 1.0), 1e-6)
+            return max(0.0, min(1.0, weighted))
+
         def _context_gap_is_closed() -> bool:
             if not _answer_is_substantive(answer_text):
                 return False
+            closure_confidence = _actor_critic_gap_confidence()
+            if bool(self.actor_critic_enabled) and workflow_phase == 'graph_analysis' and closure_confidence < 0.5:
+                return False
+
+            claim_entity = _find_claim_entity_from_context()
+            claim_attrs = claim_entity.attributes if (claim_entity and isinstance(claim_entity.attributes, dict)) else {}
+            field_values = claim_attrs.get('required_field_values')
+            field_values = field_values if isinstance(field_values, dict) else {}
+
+            def _field_has_value(field_name: str) -> bool:
+                value = field_values.get(field_name)
+                if isinstance(value, list):
+                    return any(str(item).strip() for item in value)
+                return bool(str(value or '').strip())
+
+            required_fields = _required_fields_for_gap(gap_type)
+            if required_fields:
+                matched_fields = 0
+                for field_name in required_fields:
+                    if field_name in deterministic_fields_updated or _field_has_value(field_name):
+                        matched_fields += 1
+                coverage = matched_fields / max(len(required_fields), 1)
+                strict_gaps = {
+                    'missing_staff_identity',
+                    'missing_staff_title',
+                    'missing_written_notice',
+                    'missing_response_dates',
+                    'missing_hearing_request_date',
+                    'missing_decision_timeline',
+                    'retaliation_missing_causation_link',
+                    'retaliation_missing_sequencing_dates',
+                }
+                if gap_type in strict_gaps:
+                    return coverage >= 1.0
+                # For non-strict gaps, require at least one concrete newly captured field.
+                return bool(deterministic_fields_updated.intersection(set(required_fields))) and coverage >= 0.5
+
             if not gap_type:
-                return question_type in {'requirement', 'evidence', 'timeline', 'responsible_party', 'relationship'}
+                return bool(_has_structured_signal() or question_type in {'requirement', 'evidence', 'timeline', 'responsible_party', 'relationship'})
+            missing_claim_element_closed = bool(_has_structured_signal() or target_element_id)
+            if target_element_id:
+                if any(token in target_element_id for token in ('date', 'timeline', 'timing')):
+                    missing_claim_element_closed = missing_claim_element_closed and bool(extracted_dates or response_timing_phrases)
+                if any(token in target_element_id for token in ('staff', 'actor', 'party', 'title', 'identity')):
+                    missing_claim_element_closed = missing_claim_element_closed and bool(staff_signal)
+                if any(token in target_element_id for token in ('causation', 'retaliation', 'sequence')):
+                    missing_claim_element_closed = missing_claim_element_closed and bool(has_causation_signal or has_sequence_signal)
             checks = {
                 'missing_exact_action_dates': bool(extracted_dates),
                 'missing_hearing_request_date': bool(extracted_dates),
@@ -3005,7 +3766,7 @@ class ComplaintDenoiser:
                 'retaliation_missing_causation_link': bool(has_causation_signal) and bool(has_adverse_action_signal or has_sequence_signal or extracted_dates),
                 'retaliation_missing_sequence': bool(has_sequence_signal) and bool(extracted_dates or response_timing_phrases),
                 'retaliation_missing_sequencing_dates': bool(has_sequence_signal) and bool(extracted_dates or response_timing_phrases),
-                'missing_claim_element': True,
+                'missing_claim_element': missing_claim_element_closed,
                 'missing_proof_leads': bool(policy_signal or file_signal or extracted_file_refs or extracted_policy_refs),
             }
             return bool(checks.get(gap_type, True))
@@ -3292,6 +4053,9 @@ class ComplaintDenoiser:
             _apply_timeline_enrichment()
 
         claim_entity_for_gap = _find_claim_entity_from_context()
+        _deterministic_gap_field_updates(claim_entity_for_gap)
+        _add_structured_graph_analysis_updates(claim_entity_for_gap)
+
         if _context_gap_is_closed():
             _record_gap_resolution(claim_entity_for_gap)
             _mark_resolved_gap(claim_entity_for_gap)

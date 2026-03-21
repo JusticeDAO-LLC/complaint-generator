@@ -1542,6 +1542,32 @@ class AdversarialSession:
         weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
         weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
         key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        unresolved_intake_objectives: Set[str] = set()
+        unresolved_objective_keys = ('unresolved_intake_objectives', 'uncovered_objectives', 'focus_areas')
+        context_payloads = [
+            seed_complaint,
+            key_facts,
+            seed_complaint.get('_meta') if isinstance(seed_complaint.get('_meta'), dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint.get('actor_critic_optimizer'), dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint.get('optimization_guidance'), dict) else None,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint.get('document_optimization'), dict) else None,
+        ]
+        for payload in context_payloads:
+            if not isinstance(payload, dict):
+                continue
+            nested_payloads = [
+                payload,
+                payload.get('intake_priorities') if isinstance(payload.get('intake_priorities'), dict) else None,
+                payload.get('document_handoff_summary') if isinstance(payload.get('document_handoff_summary'), dict) else None,
+            ]
+            for nested in nested_payloads:
+                if not isinstance(nested, dict):
+                    continue
+                for key in unresolved_objective_keys:
+                    for value in list(nested.get(key) or []):
+                        objective = str(value or '').strip().lower()
+                        if objective:
+                            unresolved_intake_objectives.add(objective)
         signal_values = [
             float(value)
             for value in (
@@ -1610,6 +1636,29 @@ class AdversarialSession:
         strict_stability_mode = no_successful_sessions or explicit_recovery_hint
         signal_strength = max(signal_values) if signal_values else 0.0
         seed_boosted_probes: List[tuple[str, str]] = []
+        should_frontload_anchor_selection = bool(
+            weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            or 'anchor_selection_criteria' in unresolved_intake_objectives
+        )
+        should_frontload_causation_sequence = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'causation_sequence' in unresolved_intake_objectives
+        )
+
+        if should_frontload_anchor_selection:
+            seed_boosted_probes.append(
+                (
+                    "What exact screening, selection, or evaluation criteria were used in your case, where are those criteria written, and how were they applied to you?",
+                    "anchor_selection_criteria",
+                )
+            )
+        if should_frontload_causation_sequence:
+            seed_boosted_probes.append(
+                (
+                    "Please walk through this step by step: protected activity, HACC response, and adverse action, including who knew each step and when.",
+                    "causation_sequence",
+                )
+            )
 
         if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             seed_boosted_probes.extend(
@@ -1656,6 +1705,13 @@ class AdversarialSession:
                     'anchor_selection_criteria',
                 }
             )
+        forced_objectives.update(
+            {
+                objective
+                for objective in ('anchor_selection_criteria', 'causation_sequence')
+                if objective in unresolved_intake_objectives
+            }
+        )
         for objective in sorted(forced_objectives):
             objective_priority.setdefault(objective, len(objective_priority))
 
@@ -1766,6 +1822,10 @@ class AdversarialSession:
             weight = cls._intake_objective_weight(probe_type, optimizer_context)
             if probe_type in forced_objectives:
                 weight += 0.75
+            if probe_type == 'anchor_selection_criteria' and should_frontload_anchor_selection:
+                weight += 0.95
+            if probe_type == 'causation_sequence' and should_frontload_causation_sequence:
+                weight += 0.75
             group = cls._intake_objective_group(probe_type)
             if group in group_targets:
                 remaining = max(0, group_targets[group] - objective_group_coverage.get(group, 0))
@@ -1783,6 +1843,8 @@ class AdversarialSession:
             'actors',
             'adverse_action_details',
             'documents',
+            'anchor_selection_criteria',
+            'causation_sequence',
             'harm_remedy',
             'exact_dates',
             'staff_names_titles',
@@ -1913,6 +1975,33 @@ class AdversarialSession:
             return list(candidates or [])[:max_questions]
 
         optimizer_context = cls._extract_actor_critic_intake_context(seed_complaint)
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        unresolved_intake_objectives: Set[str] = set()
+        unresolved_objective_keys = ('unresolved_intake_objectives', 'uncovered_objectives', 'focus_areas')
+        context_payloads = [
+            seed_complaint,
+            key_facts,
+            seed_complaint.get('_meta') if isinstance(seed_complaint.get('_meta'), dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint.get('actor_critic_optimizer'), dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint.get('optimization_guidance'), dict) else None,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint.get('document_optimization'), dict) else None,
+        ]
+        for payload in context_payloads:
+            if not isinstance(payload, dict):
+                continue
+            nested_payloads = [
+                payload,
+                payload.get('intake_priorities') if isinstance(payload.get('intake_priorities'), dict) else None,
+                payload.get('document_handoff_summary') if isinstance(payload.get('document_handoff_summary'), dict) else None,
+            ]
+            for nested in nested_payloads:
+                if not isinstance(nested, dict):
+                    continue
+                for key in unresolved_objective_keys:
+                    for value in list(nested.get(key) or []):
+                        objective = str(value or '').strip().lower()
+                        if objective:
+                            unresolved_intake_objectives.add(objective)
         signal_values = [
             float(value)
             for value in (
@@ -1930,6 +2019,14 @@ class AdversarialSession:
         forced_objectives: Set[str] = set()
         weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
         weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
+        should_frontload_anchor_selection = bool(
+            weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            or 'anchor_selection_criteria' in unresolved_intake_objectives
+        )
+        should_frontload_causation_sequence = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'causation_sequence' in unresolved_intake_objectives
+        )
         if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             forced_objectives.update({'documents', 'anchor_selection_criteria'})
         if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
@@ -1942,8 +2039,19 @@ class AdversarialSession:
                     'anchor_selection_criteria',
                 }
             )
+        forced_objectives.update(
+            {
+                objective
+                for objective in ('anchor_selection_criteria', 'causation_sequence')
+                if objective in unresolved_intake_objectives
+            }
+        )
         for objective in sorted(forced_objectives):
             objective_priority.setdefault(objective, len(objective_priority))
+        if should_frontload_anchor_selection and 'anchor_selection_criteria' in objective_priority:
+            objective_priority['anchor_selection_criteria'] = min(-3, objective_priority['anchor_selection_criteria'])
+        if should_frontload_causation_sequence and 'causation_sequence' in objective_priority:
+            objective_priority['causation_sequence'] = min(-2, objective_priority['causation_sequence'])
 
         for objective in list(objective_priority):
             if objective == 'documents' and set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'}):
@@ -1953,6 +2061,8 @@ class AdversarialSession:
             ):
                 objective_priority[objective] = max(0, objective_priority[objective] - 1)
             if objective in forced_objectives:
+                objective_priority[objective] = max(0, objective_priority[objective] - 2)
+            if objective in unresolved_intake_objectives:
                 objective_priority[objective] = max(0, objective_priority[objective] - 2)
 
         ranked: List[tuple[tuple[Any, ...], Any, List[str]]] = []
@@ -1965,6 +2075,8 @@ class AdversarialSession:
                     objective_weight = cls._intake_objective_weight(objective, optimizer_context)
                     if objective in forced_objectives:
                         objective_weight += 0.7
+                    if objective in unresolved_intake_objectives:
+                        objective_weight += 0.55
                     boost_scale = 0.2 if stability_recovery_mode else 0.5
                     weighted_priority = max(0.0, float(priority) - min(0.8, (objective_weight - 1.0) * boost_scale))
                     if weighted_priority < best_priority:
@@ -1989,6 +2101,7 @@ class AdversarialSession:
                     'hearing_request_timing',
                     'response_dates',
                     'causation_sequence',
+                    'anchor_selection_criteria',
                 }:
                     blocker_match_count += 1
             objective_weight_sum = sum(
@@ -2014,6 +2127,7 @@ class AdversarialSession:
             annotated_candidate = candidate
             if isinstance(candidate, dict):
                 annotated_candidate = dict(candidate)
+                annotated_priority_match = matched_objectives[:1] if matched_objectives else []
                 explanation = dict(
                     annotated_candidate.get('ranking_explanation', {})
                     if isinstance(annotated_candidate.get('ranking_explanation'), dict)
@@ -2024,7 +2138,7 @@ class AdversarialSession:
                     if isinstance(annotated_candidate.get('selector_signals'), dict)
                     else {}
                 )
-                selector_signals['intake_priority_match'] = matched_objectives
+                selector_signals['intake_priority_match'] = annotated_priority_match
                 selector_signals['intake_priority_rank'] = None if not matched_objectives else best_priority
                 selector_signals['phase_focus_rank'] = phase_focus_rank
                 selector_signals['actor_critic_score'] = actor_critic_score
@@ -2036,7 +2150,7 @@ class AdversarialSession:
                 selector_signals['intake_group_priority'] = group_priority
                 selector_signals['question_quality_score'] = quality_score
                 annotated_candidate['selector_signals'] = selector_signals
-                explanation['intake_priority_match'] = matched_objectives
+                explanation['intake_priority_match'] = annotated_priority_match
                 explanation['intake_priority_rank'] = None if not matched_objectives else best_priority
                 explanation['phase_focus_rank'] = phase_focus_rank
                 explanation['actor_critic_score'] = actor_critic_score
@@ -2194,6 +2308,33 @@ class AdversarialSession:
     ) -> Dict[str, Any]:
         intake_candidates = cls._extract_intake_prompt_candidates(seed_complaint)
         optimizer_context = cls._extract_actor_critic_intake_context(seed_complaint)
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        unresolved_intake_objectives: Set[str] = set()
+        unresolved_objective_keys = ('unresolved_intake_objectives', 'uncovered_objectives', 'focus_areas')
+        context_payloads = [
+            seed_complaint,
+            key_facts,
+            seed_complaint.get('_meta') if isinstance(seed_complaint.get('_meta'), dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint.get('actor_critic_optimizer'), dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint.get('optimization_guidance'), dict) else None,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint.get('document_optimization'), dict) else None,
+        ]
+        for payload in context_payloads:
+            if not isinstance(payload, dict):
+                continue
+            nested_payloads = [
+                payload,
+                payload.get('intake_priorities') if isinstance(payload.get('intake_priorities'), dict) else None,
+                payload.get('document_handoff_summary') if isinstance(payload.get('document_handoff_summary'), dict) else None,
+            ]
+            for nested in nested_payloads:
+                if not isinstance(nested, dict):
+                    continue
+                for key in unresolved_objective_keys:
+                    for value in list(nested.get(key) or []):
+                        objective = str(value or '').strip().lower()
+                        if objective:
+                            unresolved_intake_objectives.add(objective)
         signal_values = [
             float(value)
             for value in (
@@ -2211,6 +2352,14 @@ class AdversarialSession:
 
         weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
         weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
+        should_frontload_anchor_selection = bool(
+            weak_evidence_modalities.intersection({'policy_document', 'file_evidence'})
+            or 'anchor_selection_criteria' in unresolved_intake_objectives
+        )
+        should_frontload_causation_sequence = bool(
+            weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'})
+            or 'causation_sequence' in unresolved_intake_objectives
+        )
         forced_objectives: Set[str] = set()
         if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
             forced_objectives.update({'documents', 'anchor_selection_criteria'})
@@ -2224,9 +2373,27 @@ class AdversarialSession:
                     'anchor_selection_criteria',
                 }
             )
+        forced_objectives.update(
+            {
+                objective
+                for objective in ('anchor_selection_criteria', 'causation_sequence')
+                if objective in unresolved_intake_objectives
+            }
+        )
         for objective in sorted(forced_objectives):
             if objective not in expected_objectives:
                 expected_objectives.append(objective)
+
+        # When an anchor-specific adverse-action objective is present, treat it as the
+        # preferred intake target unless factual adverse-action detail coverage is explicitly forced.
+        if (
+            'anchor_adverse_action' in expected_objectives
+            and 'adverse_action_details' in expected_objectives
+            and 'adverse_action_details' not in forced_objectives
+        ):
+            expected_objectives = [
+                objective for objective in expected_objectives if objective != 'adverse_action_details'
+            ]
 
         if (
             set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'})
@@ -2294,6 +2461,11 @@ class AdversarialSession:
             objective for objective in sorted(forced_objectives)
             if coverage_counts.get(objective, 0) <= 0
         ]
+        priority_uncovered: List[str] = []
+        if should_frontload_anchor_selection and coverage_counts.get('anchor_selection_criteria', 0) <= 0:
+            priority_uncovered.append('anchor_selection_criteria')
+        if should_frontload_causation_sequence and coverage_counts.get('causation_sequence', 0) <= 0:
+            priority_uncovered.append('causation_sequence')
         recovery_actions: List[str] = []
         if stability_recovery_mode:
             recovery_actions = [
@@ -2305,6 +2477,7 @@ class AdversarialSession:
         weighted_coverage = 0.0 if expected_weight <= 0.0 else covered_weight / expected_weight
         exit_ready = (
             (not forced_uncovered)
+            and (not priority_uncovered)
             and all(group_target_met.values())
             and (weighted_coverage >= 0.72 or stability_recovery_mode)
         )
@@ -2323,6 +2496,7 @@ class AdversarialSession:
             "group_target_met": group_target_met,
             "forced_objectives": sorted(forced_objectives),
             "forced_uncovered_objectives": forced_uncovered,
+            "priority_uncovered_objectives": priority_uncovered,
             "weighted_coverage_score": weighted_coverage,
             "weighted_expected_total": expected_weight,
             "weighted_covered_total": covered_weight,

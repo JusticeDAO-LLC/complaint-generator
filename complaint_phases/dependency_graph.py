@@ -219,20 +219,276 @@ class DependencyGraph:
             normalized = re.sub(r"_+", "_", normalized).strip("_")
             return normalized
 
+        def _as_text(value: Any) -> str:
+            return str(value or "").strip()
+
+        def _is_unspecified_value(value: Any) -> bool:
+            text = _as_text(value)
+            if not text:
+                return True
+            return bool(_CONFIRMATION_PLACEHOLDER_PATTERN.search(text))
+
+        def _contains_name(text: str) -> bool:
+            if not text:
+                return False
+            if _NAME_PATTERN.search(text):
+                return True
+            if any(token in text.lower() for token in {"manager", "director", "officer", "agent", "supervisor"}):
+                return True
+            return False
+
+        def _contains_date_token(text: str) -> bool:
+            if not text:
+                return False
+            return bool(_DATE_TOKEN_PATTERN.search(text))
+
+        def _infer_gap_type(
+            claim_type: str,
+            source_name: str,
+            source_description: str,
+            source_attrs: Dict[str, Any],
+            requirement_key: str,
+            evidence_modality: str,
+        ) -> str:
+            explicit = _as_text(source_attrs.get("gap_type")).lower()
+            if explicit:
+                return explicit
+            corpus = " ".join(
+                [
+                    claim_type,
+                    source_name,
+                    source_description,
+                    requirement_key,
+                    _as_text(source_attrs.get("requirement_label")),
+                    _as_text(source_attrs.get("question_hint")),
+                ]
+            ).lower()
+            if "hearing request" in corpus and "date" in corpus:
+                return "missing_hearing_request_date"
+            if "hearing" in corpus and any(token in corpus for token in {"timing", "deadline", "within", "days", "date"}):
+                return "missing_hearing_timing"
+            if any(token in corpus for token in {"response date", "response timing", "reply date", "date of response", "responded on"}):
+                return "missing_response_dates"
+            if "written notice" in corpus or ("notice" in corpus and "written" in corpus):
+                return "missing_written_notice"
+            if any(token in corpus for token in {"staff name", "decision maker", "who denied", "who approved", "who decided", "responsible staff"}):
+                return "missing_staff_identity"
+            if any(token in corpus for token in {"staff title", "job title", "position title", "role of"}):
+                return "missing_staff_title"
+            if "retaliat" in corpus and any(token in corpus for token in {"causation", "because", "in response to", "motivated by"}):
+                return "retaliation_missing_causation_link"
+            if "retaliat" in corpus and any(token in corpus for token in {"sequence", "timeline", "before", "after", "chronology"}):
+                return "retaliation_missing_sequencing_dates"
+            if any(token in corpus for token in {"timeline", "chronology", "date", "dated", "when", "before", "after"}):
+                return "missing_exact_action_dates"
+            if evidence_modality == "policy_document":
+                return "missing_written_notice"
+            if evidence_modality == "file_evidence":
+                return "missing_response_dates"
+            return "missing_claim_element"
+
+        def _required_fields_for_gap(gap_type: str) -> List[str]:
+            mapping = {
+                "missing_exact_action_dates": ["event_date", "adverse_action"],
+                "missing_hearing_request_date": ["hearing_request_date", "hearing_request_actor"],
+                "missing_response_dates": ["response_date", "response_actor"],
+                "missing_hearing_timing": ["adverse_action_date", "hearing_request_date"],
+                "missing_staff_identity": ["staff_name", "staff_role"],
+                "missing_staff_title": ["staff_name", "staff_title"],
+                "retaliation_missing_causation": ["protected_activity", "adverse_action", "causation_link"],
+                "retaliation_missing_causation_link": ["protected_activity", "adverse_action", "causation_link"],
+                "retaliation_missing_sequence": ["protected_activity_date", "adverse_action_date"],
+                "retaliation_missing_sequencing_dates": ["protected_activity_date", "adverse_action_date"],
+                "missing_written_notice": ["document_name", "document_date", "issuing_actor"],
+                "missing_decision_timeline": ["decision_date", "decision_actor"],
+                "missing_claim_element": ["supporting_fact"],
+            }
+            return list(mapping.get(gap_type, ["supporting_fact"]))
+
+        def _field_aliases(field_name: str) -> List[str]:
+            aliases = {
+                "event_date": ["event_date", "date", "incident_date", "action_date"],
+                "adverse_action": ["adverse_action", "action", "decision", "denial_reason"],
+                "hearing_request_date": ["hearing_request_date", "appeal_date", "hearing_date_requested"],
+                "hearing_request_actor": ["hearing_request_actor", "requestor", "requesting_party"],
+                "response_date": ["response_date", "reply_date", "decision_date", "response_timing_date"],
+                "response_actor": ["response_actor", "responding_staff", "decision_maker", "staff_name"],
+                "adverse_action_date": ["adverse_action_date", "adverse_date", "denial_date", "decision_date"],
+                "staff_name": ["staff_name", "decision_maker", "actor_name", "employee_name"],
+                "staff_role": ["staff_role", "role", "position", "job_title", "staff_title"],
+                "staff_title": ["staff_title", "job_title", "position_title", "title"],
+                "protected_activity": ["protected_activity", "complaint_activity", "report_activity"],
+                "causation_link": ["causation_link", "causal_statement", "retaliation_link", "motive"],
+                "protected_activity_date": ["protected_activity_date", "activity_date", "complaint_date"],
+                "document_name": ["document_name", "file_name", "policy_name", "notice_name"],
+                "document_date": ["document_date", "notice_date", "file_date", "issued_date"],
+                "issuing_actor": ["issuing_actor", "issuer", "author", "issuing_staff"],
+                "decision_date": ["decision_date", "adverse_action_date", "response_date"],
+                "decision_actor": ["decision_actor", "decision_maker", "staff_name", "actor_name"],
+                "supporting_fact": ["supporting_fact", "fact", "detail", "narrative_detail"],
+            }
+            canonical = str(field_name or "").strip()
+            return list(dict.fromkeys([canonical, *aliases.get(canonical, [])]))
+
+        def _first_value(attrs: Dict[str, Any], keys: List[str]) -> str:
+            for key in keys:
+                if key in attrs and not _is_unspecified_value(attrs.get(key)):
+                    return _as_text(attrs.get(key))
+            return ""
+
+        def _missing_required_fields(required_fields: List[str], source_attrs: Dict[str, Any]) -> List[str]:
+            missing: List[str] = []
+            for field_name in required_fields:
+                aliases = _field_aliases(field_name)
+                if not _first_value(source_attrs, aliases):
+                    missing.append(field_name)
+            return missing
+
+        def _satisfaction_rules_for_gap(gap_type: str, requirement_key: str) -> Dict[str, Any]:
+            rules = {
+                "satisfy_when": "all_required_fields_present",
+                "mark_requirement_keys": [requirement_key] if requirement_key else [],
+                "mark_evidence_modalities": [],
+                "promote_to_graph_first": [],
+                "sequence_checks": [],
+            }
+            if gap_type in {"missing_exact_action_dates", "missing_hearing_request_date", "missing_response_dates", "missing_hearing_timing", "retaliation_missing_sequence", "retaliation_missing_sequencing_dates", "missing_decision_timeline"}:
+                rules["promote_to_graph_first"].append("timeline")
+                rules["sequence_checks"].append("validate_chronology")
+            if gap_type in {"missing_staff_identity", "missing_staff_title", "missing_decision_timeline"}:
+                rules["promote_to_graph_first"].append("staff_identity")
+            if gap_type in {"missing_written_notice", "missing_response_dates"}:
+                rules["mark_evidence_modalities"].append("policy_document_or_file_evidence")
+            if gap_type in {"retaliation_missing_causation", "retaliation_missing_causation_link"}:
+                rules["promote_to_graph_first"].append("causation_edge")
+                rules["sequence_checks"].append("protected_activity_before_adverse_action")
+            return rules
+
+        def _critical_gap_signal(gap_type: str) -> float:
+            critical = {
+                "missing_exact_action_dates": 1.0,
+                "missing_hearing_request_date": 1.0,
+                "missing_response_dates": 1.0,
+                "missing_hearing_timing": 0.95,
+                "missing_staff_identity": 0.95,
+                "missing_staff_title": 0.85,
+                "retaliation_missing_causation_link": 1.0,
+                "retaliation_missing_causation": 0.95,
+                "retaliation_missing_sequencing_dates": 0.95,
+                "retaliation_missing_sequence": 0.9,
+                "missing_decision_timeline": 0.9,
+                "missing_written_notice": 0.85,
+            }
+            return float(critical.get(gap_type, 0.6))
+
+        def _extraction_targets_for_gap(gap_type: str) -> List[str]:
+            mapping = {
+                "missing_exact_action_dates": ["exact_dates", "event_order", "adverse_action"],
+                "missing_hearing_request_date": ["exact_dates", "hearing_request", "decision_maker"],
+                "missing_response_dates": ["exact_dates", "response_timing", "notice_chain"],
+                "missing_hearing_timing": ["exact_dates", "event_order", "response_timing"],
+                "missing_staff_identity": ["actor_name", "actor_role", "decision_maker"],
+                "missing_staff_title": ["actor_name", "actor_role"],
+                "retaliation_missing_causation": ["protected_activity", "adverse_action", "causation_link"],
+                "retaliation_missing_causation_link": ["protected_activity", "adverse_action", "causation_link"],
+                "retaliation_missing_sequence": ["exact_dates", "event_order", "causation_link"],
+                "retaliation_missing_sequencing_dates": ["exact_dates", "event_order", "causation_link"],
+                "missing_written_notice": ["document_type", "document_date", "document_owner"],
+                "missing_decision_timeline": ["exact_dates", "event_order", "decision_maker"],
+                "missing_claim_element": ["supporting_fact"],
+            }
+            return list(mapping.get(gap_type, ["supporting_fact"]))
+
+        def _gap_type_rank(gap_type: str) -> int:
+            order = [
+                "missing_exact_action_dates",
+                "missing_hearing_request_date",
+                "missing_response_dates",
+                "missing_hearing_timing",
+                "missing_staff_identity",
+                "missing_staff_title",
+                "retaliation_missing_causation_link",
+                "retaliation_missing_causation",
+                "retaliation_missing_sequencing_dates",
+                "retaliation_missing_sequence",
+                "missing_decision_timeline",
+                "missing_written_notice",
+                "missing_claim_element",
+                "missing_proof_leads",
+            ]
+            if gap_type in order:
+                return order.index(gap_type)
+            return len(order)
+
+        def _build_answer_contract(
+            gap_type: str,
+            deterministic_update_key: str,
+            requirement_key: str,
+            source_attrs: Dict[str, Any],
+        ) -> Dict[str, Any]:
+            required_fields = _required_fields_for_gap(gap_type)
+            missing_fields = _missing_required_fields(required_fields, source_attrs)
+            present_fields = [field_name for field_name in required_fields if field_name not in missing_fields]
+            relationship_updates: List[str] = []
+            if "actor_name" in _extraction_targets_for_gap(gap_type):
+                relationship_updates.append("link_staff_to_action")
+            if "exact_dates" in _extraction_targets_for_gap(gap_type):
+                relationship_updates.append("link_event_sequence")
+            if "document_type" in _extraction_targets_for_gap(gap_type):
+                relationship_updates.append("link_document_to_claim")
+            if "causation_link" in _extraction_targets_for_gap(gap_type):
+                relationship_updates.append("link_causation_chain")
+            if "event_order" in _extraction_targets_for_gap(gap_type):
+                relationship_updates.append("validate_temporal_order")
+            if "response_timing" in _extraction_targets_for_gap(gap_type):
+                relationship_updates.append("link_response_to_hearing_or_action")
+
+            entity_updates = ["claim_fact"]
+            if "exact_dates" in _extraction_targets_for_gap(gap_type):
+                entity_updates.append("timeline_fact")
+            if "actor_name" in _extraction_targets_for_gap(gap_type):
+                entity_updates.append("staff_actor")
+            if "document_type" in _extraction_targets_for_gap(gap_type):
+                entity_updates.append("document_evidence")
+
+            satisfaction_rules = _satisfaction_rules_for_gap(gap_type=gap_type, requirement_key=requirement_key)
+            closure_confidence = 0.0
+            if required_fields:
+                closure_confidence = max(0.0, min(1.0, len(present_fields) / len(required_fields)))
+
+            return {
+                "required_fields": required_fields,
+                "missing_required_fields": missing_fields,
+                "present_required_fields": present_fields,
+                "entity_updates": entity_updates,
+                "relationship_updates": relationship_updates,
+                "requirement_updates": [requirement_key] if requirement_key else [],
+                "resolution_key": deterministic_update_key,
+                "satisfaction_rules": satisfaction_rules,
+                "closure_confidence": round(closure_confidence, 4),
+                "single_turn_closable": len(missing_fields) <= 2,
+            }
+
         def _build_deterministic_update_key(
             claim_id: str,
             claim_type: str,
             source_node: Optional[DependencyNode],
             source_attrs: Dict[str, Any],
+            gap_type: str = "",
+            requirement_key: str = "",
         ) -> str:
             explicit_gap_key = str(source_attrs.get("gap_key") or "").strip()
             if explicit_gap_key:
                 return explicit_gap_key
-            requirement_key = str(source_attrs.get("requirement_key") or "").strip()
-            if requirement_key:
+            req_key = str(requirement_key or source_attrs.get("requirement_key") or "").strip()
+            if req_key:
                 type_fragment = _normalize_key_fragment(claim_type) or "claim"
-                req_fragment = _normalize_key_fragment(requirement_key) or "requirement"
+                req_fragment = _normalize_key_fragment(req_key) or "requirement"
                 return f"{type_fragment}:{req_fragment}"
+            if gap_type:
+                type_fragment = _normalize_key_fragment(claim_type) or "claim"
+                gap_fragment = _normalize_key_fragment(gap_type) or "gap"
+                return f"{type_fragment}:{gap_fragment}"
 
             source_fragment = _normalize_key_fragment(source_node.id if source_node else "") or "unknown_source"
             claim_fragment = _normalize_key_fragment(claim_type) or _normalize_key_fragment(claim_id) or "claim"
@@ -300,7 +556,7 @@ class DependencyGraph:
                 source_node = nodes_by_id.get(dep.source_id)
                 source_attrs = source_node.attributes if source_node and isinstance(source_node.attributes, dict) else {}
                 source_node_type = source_node.node_type.value if source_node else "unknown"
-                requirement_key = str(source_attrs.get("requirement_key") or "").strip()
+                requirement_key = str(source_attrs.get("requirement_key") or "").strip().lower()
                 expected_modality = str(source_attrs.get("expected_evidence_modality") or "").strip().lower()
                 has_structured_target = bool(
                     requirement_key
@@ -309,11 +565,21 @@ class DependencyGraph:
                 )
                 if has_structured_target:
                     claim_structured_required_count += 1
+                inferred_gap_type = _infer_gap_type(
+                    claim_type=claim_type,
+                    source_name=source_node.name if source_node else "",
+                    source_description=source_node.description if source_node else "",
+                    source_attrs=source_attrs,
+                    requirement_key=requirement_key,
+                    evidence_modality=expected_modality,
+                )
                 deterministic_key = _build_deterministic_update_key(
                     claim_id=claim.id,
                     claim_type=claim_type,
                     source_node=source_node,
                     source_attrs=source_attrs,
+                    gap_type=inferred_gap_type,
+                    requirement_key=requirement_key,
                 )
                 has_deterministic_key = bool(deterministic_key)
                 if has_deterministic_key:
@@ -334,13 +600,23 @@ class DependencyGraph:
                 source_attrs = source_node.attributes if source_node and isinstance(source_node.attributes, dict) else {}
                 blocking = bool(source_attrs.get('blocking', source_node.node_type in {NodeType.REQUIREMENT, NodeType.LEGAL_ELEMENT} if source_node else False))
                 source_node_type = source_node.node_type.value if source_node else 'unknown'
-                requirement_key = str(source_attrs.get('requirement_key') or '')
+                requirement_key = str(source_attrs.get('requirement_key') or '').strip().lower()
                 evidence_modality = str(source_attrs.get('expected_evidence_modality') or '').strip().lower()
+                gap_type = _infer_gap_type(
+                    claim_type=claim_type,
+                    source_name=source_node.name if source_node else "",
+                    source_description=source_node.description if source_node else "",
+                    source_attrs=source_attrs,
+                    requirement_key=requirement_key,
+                    evidence_modality=evidence_modality,
+                )
                 deterministic_update_key = _build_deterministic_update_key(
                     claim_id=claim.id,
                     claim_type=claim_type,
                     source_node=source_node,
                     source_attrs=source_attrs,
+                    gap_type=gap_type,
+                    requirement_key=requirement_key,
                 )
                 gap_id = deterministic_update_key or str(source_attrs.get('gap_key') or f"{claim.id}:{dep.get('source_node_id')}")
                 structured_gap = bool(
@@ -350,6 +626,65 @@ class DependencyGraph:
                 )
                 weak_claim_focus = claim_type in _ACTOR_CRITIC_WEAK_CLAIM_TYPES
                 weak_modality_focus = evidence_modality in _ACTOR_CRITIC_WEAK_EVIDENCE_MODALITIES
+                source_text = " ".join(
+                    [
+                        source_node.name if source_node else "",
+                        source_node.description if source_node else "",
+                        requirement_key,
+                        str(source_attrs.get("question_hint") or ""),
+                    ]
+                )
+                contains_date = _contains_date_token(source_text)
+                contains_name = _contains_name(source_text)
+                extraction_targets = _extraction_targets_for_gap(gap_type)
+                answer_contract = _build_answer_contract(
+                    gap_type=gap_type,
+                    deterministic_update_key=deterministic_update_key,
+                    requirement_key=requirement_key,
+                    source_attrs=source_attrs,
+                )
+                missing_required_fields = list(answer_contract.get("missing_required_fields") or [])
+                required_fields = list(answer_contract.get("required_fields") or [])
+                completion_ratio = (
+                    1.0 - (len(missing_required_fields) / len(required_fields))
+                    if required_fields
+                    else 1.0
+                )
+                actor_score = 0.0
+                if blocking:
+                    actor_score += 4.0
+                if weak_claim_focus:
+                    actor_score += 2.5
+                if weak_modality_focus:
+                    actor_score += 2.0
+                actor_score += max(0.0, 2.5 - (0.2 * _gap_type_rank(gap_type)))
+                if structured_gap:
+                    actor_score += 1.5
+                if contains_date:
+                    actor_score += 1.1
+                if contains_name:
+                    actor_score += 0.9
+                actor_score += _critical_gap_signal(gap_type) * 1.8
+                critic_score = 0.0
+                if structured_gap:
+                    critic_score += 3.5
+                if deterministic_update_key:
+                    critic_score += 3.0
+                if source_node_type in {'legal_element', 'requirement'}:
+                    critic_score += 1.8
+                if evidence_modality in _ACTOR_CRITIC_WEAK_EVIDENCE_MODALITIES:
+                    critic_score += 1.2
+                if dep.get('dependency_type') == DependencyType.REQUIRES.value:
+                    critic_score += 0.8
+                if completion_ratio >= 0.5:
+                    critic_score += 1.2
+                if answer_contract.get("single_turn_closable"):
+                    critic_score += 1.0
+                combined_priority = (actor_score * 0.55) + (critic_score * 0.45)
+                concretely_answerable = not any(
+                    _is_unspecified_value(source_attrs.get(field_name))
+                    for field_name in ("question_hint", "placeholder", "expected_value")
+                )
                 if weak_claim_focus:
                     weak_claim_gap_count += 1
                 if weak_modality_focus:
@@ -362,11 +697,23 @@ class DependencyGraph:
                         'source_node_type': source_node_type,
                         'source_description': source_node.description if source_node else '',
                         'requirement_key': requirement_key,
+                        'gap_type': gap_type,
                         'evidence_modality': evidence_modality,
                         'structured_gap': structured_gap,
                         'deterministic_update_key': deterministic_update_key,
                         'weak_claim_focus': weak_claim_focus,
                         'weak_modality_focus': weak_modality_focus,
+                        'contains_date_signal': contains_date,
+                        'contains_name_signal': contains_name,
+                        'extraction_targets': extraction_targets,
+                        'required_fields': required_fields,
+                        'missing_required_fields': missing_required_fields,
+                        'field_completion_ratio': round(max(0.0, min(1.0, completion_ratio)), 4),
+                        'answer_contract': answer_contract,
+                        'concretely_answerable': concretely_answerable,
+                        'actor_score': round(actor_score, 4),
+                        'critic_score': round(critic_score, 4),
+                        'priority_score': round(combined_priority, 4),
                         'blocking': blocking,
                     }
                 )
@@ -377,6 +724,11 @@ class DependencyGraph:
                     0 if item.get('weak_claim_focus') else 1,
                     0 if item.get('weak_modality_focus') else 1,
                     0 if item.get('structured_gap') else 1,
+                    _gap_type_rank(str(item.get('gap_type') or '').strip().lower()),
+                    0 if item.get('answer_contract', {}).get('single_turn_closable') else 1,
+                    -float(item.get('field_completion_ratio') or 0.0),
+                    0 if item.get('concretely_answerable') else 1,
+                    -float(item.get('priority_score') or 0.0),
                     0 if str(item.get('source_node_type') or '') in {'legal_element', 'requirement'} else 1,
                     str(item.get('source_name') or '').lower(),
                 )
@@ -517,6 +869,10 @@ class DependencyGraph:
                 0 if item.get('weak_claim_focus') else 1,
                 0 if item.get('weak_modality_focus') else 1,
                 0 if item.get('structured_gap') else 1,
+                _gap_type_rank(str(item.get('gap_type') or '').strip().lower()),
+                0 if item.get('answer_contract', {}).get('single_turn_closable') else 1,
+                -float(item.get('field_completion_ratio') or 0.0),
+                -float(item.get('priority_score') or 0.0),
                 str(item.get('claim_name') or '').lower(),
                 str(item.get('source_name') or '').lower(),
             )

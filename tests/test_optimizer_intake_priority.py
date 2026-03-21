@@ -286,6 +286,13 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "phase_signal_context" in graph_task.metadata
     assert "dg_avg_satisfaction_rate" in graph_task.metadata["phase_signal_context"]
     assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
+    document_optimization_symbols = [
+        symbols
+        for path, symbols in document_task.constraints["target_symbols"].items()
+        if path.endswith("document_optimization.py")
+    ]
+    if document_optimization_symbols:
+        assert document_optimization_symbols[0] == ["optimize_draft"]
     assert len(document_task.target_files) == 2
     assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)
     assert any(path.name == "document_pipeline.py" for path in document_task.target_files)

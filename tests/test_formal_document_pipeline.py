@@ -511,7 +511,21 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
                     }
                 ],
             },
-            'document_optimization': {},
+            'document_optimization': {
+                'intake_priorities': {
+                    'claim_temporal_gap_count': 2,
+                    'claim_temporal_gap_summary': [
+                        {
+                            'claim_type': 'retaliation',
+                            'gap_count': 2,
+                            'gaps': [
+                                'Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+                                'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.',
+                            ],
+                        }
+                    ],
+                }
+            },
         },
         mediator=mediator,
         user_id='Jane Doe',
@@ -524,6 +538,17 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
     assert payload['review_links']['intake_case_summary']['intake_summary_handoff'] == payload['intake_summary_handoff']
     assert payload['review_links']['intake_case_summary']['blocker_follow_up_summary']['blocking_objectives'] == ['exact_dates', 'response_dates']
     assert payload['review_links']['intake_case_summary']['open_items'][0]['primary_objective'] == 'response_dates'
+    assert payload['review_links']['intake_case_summary']['claim_temporal_gap_count'] == 2
+    assert payload['review_links']['intake_case_summary']['claim_temporal_gap_summary'] == [
+        {
+            'claim_type': 'retaliation',
+            'gap_count': 2,
+            'gaps': [
+                'Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+                'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.',
+            ],
+        }
+    ]
     assert payload['review_links']['workflow_priority'] == {
         'status': 'warning',
         'title': 'Review matching inputs before drafting',
@@ -535,6 +560,8 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
         'chip_labels': [
             'recommended action: perform_neurosymbolic_matching',
             'focus claim: Retaliation',
+            'claim chronology gaps: 2',
+            'chronology focus: Retaliation',
         ],
     }
     assert payload['review_links']['workflow_phase_priority'] == {

@@ -647,6 +647,74 @@ class AgenticDocumentOptimizer:
             drafting_readiness=readiness,
             config=config or {},
         )
+        structured_handoff = (
+            support_context.get("structured_handoff")
+            if isinstance(support_context.get("structured_handoff"), dict)
+            else {}
+        )
+        if structured_handoff:
+            promoted_factual_lines = self._normalize_lines(
+                list(structured_handoff.get("factual_allegation_lines") or [])
+                + list(structured_handoff.get("blocker_closing_answers") or [])
+                + list(working_draft.get("factual_allegations") or [])
+            )
+            if promoted_factual_lines:
+                working_draft["factual_allegations"] = promoted_factual_lines[:16]
+
+            promoted_summary_lines = self._normalize_lines(
+                list(structured_handoff.get("summary_of_facts_lines") or [])
+                + list(working_draft.get("summary_of_facts") or [])
+            )
+            if promoted_summary_lines:
+                working_draft["summary_of_facts"] = promoted_summary_lines[:14]
+
+            claim_support_by_type = (
+                structured_handoff.get("claim_support_lines_by_type")
+                if isinstance(structured_handoff.get("claim_support_lines_by_type"), dict)
+                else {}
+            )
+            shared_claim_support = self._normalize_lines(
+                list(structured_handoff.get("claim_support_lines_shared") or [])
+            )
+            claims_for_relief = (
+                working_draft.get("claims_for_relief")
+                if isinstance(working_draft.get("claims_for_relief"), list)
+                else []
+            )
+            for claim in claims_for_relief:
+                if not isinstance(claim, dict):
+                    continue
+                claim_type = str(claim.get("claim_type") or "").strip()
+                claim_specific = self._normalize_lines(
+                    claim_support_by_type.get(claim_type) or claim_support_by_type.get(claim_type.lower()) or []
+                )
+                claim["supporting_facts"] = self._normalize_lines(
+                    list(claim.get("supporting_facts") or []) + shared_claim_support + claim_specific
+                )[:10]
+
+            exhibits = working_draft.get("exhibits") if isinstance(working_draft.get("exhibits"), list) else []
+            exhibit_lines = self._normalize_lines(list(structured_handoff.get("exhibit_description_lines") or []))
+            if exhibits and exhibit_lines:
+                for index, exhibit in enumerate(exhibits):
+                    if not isinstance(exhibit, dict):
+                        continue
+                    existing_description = str(exhibit.get("description") or exhibit.get("summary") or "").strip()
+                    merged_description = self._normalize_lines(
+                        [existing_description, exhibit_lines[index % len(exhibit_lines)]]
+                    )
+                    if merged_description:
+                        exhibit["description"] = merged_description[0]
+            elif exhibit_lines and not exhibits:
+                working_draft["exhibits"] = [
+                    {
+                        "label": f"Exhibit {chr(65 + idx)}",
+                        "title": "Intake and evidence handoff",
+                        "summary": line,
+                        "description": line,
+                    }
+                    for idx, line in enumerate(exhibit_lines[:4])
+                ]
+            support_context["packet_projection"] = self._build_packet_projection(working_draft)
         initial_review = self._run_critic(
             draft=working_draft,
             drafting_readiness=readiness,
@@ -1244,6 +1312,35 @@ class AgenticDocumentOptimizer:
             for warning in (drafting_readiness.get("warnings") or [])
             if isinstance(warning, dict)
         ]
+        readiness_blockers = _dedupe_text_values(
+            str(item).strip()
+            for item in list(drafting_readiness.get("blockers") or [])
+            if str(item).strip()
+        )
+        unresolved_factual_gaps = self._normalize_lines(
+            list(drafting_readiness.get("unresolved_factual_gaps") or [])
+        )
+        unresolved_legal_gaps = self._normalize_lines(
+            list(drafting_readiness.get("unresolved_legal_gaps") or [])
+        )
+        graph_signals = (
+            dict(drafting_readiness.get("graph_completeness_signals") or {})
+            if isinstance(drafting_readiness.get("graph_completeness_signals"), dict)
+            else {}
+        )
+        graph_status = str(graph_signals.get("status") or "ready").strip().lower() or "ready"
+        graph_remaining_gap_count = max(
+            int(graph_signals.get("remaining_gap_count", 0) or 0),
+            int(graph_signals.get("current_gap_count", 0) or 0),
+        )
+        graph_gate_active = any(
+            (
+                graph_status != "ready",
+                graph_remaining_gap_count > 0,
+                graph_signals and not bool(graph_signals.get("knowledge_graph_available", True)),
+                graph_signals and not bool(graph_signals.get("dependency_graph_available", True)),
+            )
+        )
         workflow_phase_plan = (
             config_payload.get("workflow_phase_plan")
             if isinstance(config_payload.get("workflow_phase_plan"), dict)
@@ -1328,6 +1425,24 @@ class AgenticDocumentOptimizer:
                 or not session_flow_stable
             )
         )
+        if graph_gate_active or unresolved_factual_gaps or unresolved_legal_gaps:
+            assessment_blocked = True
+        gating_blockers = _dedupe_text_values(
+            list(readiness_blockers)
+            + (["uncovered_intake_objectives"] if unresolved_objectives else [])
+            + (["graph_analysis_not_ready"] if graph_gate_active else [])
+            + (
+                ["document_generation_not_ready"]
+                if (
+                    phase_status in {"warning", "blocked", "critical"}
+                    or unresolved_objectives
+                    or unresolved_factual_gaps
+                    or unresolved_legal_gaps
+                    or assessment_blocked
+                )
+                else []
+            )
+        )
         recommended_actions = _dedupe_text_values(
             [
                 *[
@@ -1340,6 +1455,15 @@ class AgenticDocumentOptimizer:
                     for action in list(config_payload.get("recommended_actions") or [])
                     if str(action).strip()
                 ],
+                "Promote blocker-closing intake answers into factual allegations, claim support, and exhibit descriptions before formalization."
+                if unresolved_objectives
+                else "",
+                "Close graph completeness blockers and unresolved chronology dependencies before document-generation optimization."
+                if graph_gate_active
+                else "",
+                "Resolve unresolved factual and legal readiness gaps before formalization."
+                if (unresolved_factual_gaps or unresolved_legal_gaps)
+                else "",
                 "Restore a stable adversarial session flow before tuning document-generation handoffs."
                 if assessment_blocked
                 else "",
@@ -1352,12 +1476,80 @@ class AgenticDocumentOptimizer:
             "coverage": _clamp(baseline_metrics.get("coverage", coverage)),
             "efficiency": _clamp(baseline_metrics.get("efficiency", 0.0)),
         }
+        canonical_facts = [
+            dict(item)
+            for item in list(intake_case_file.get("canonical_facts") or [])
+            if isinstance(item, dict)
+        ]
+        timeline_fact_lines: List[str] = []
+        claim_support_lines_by_type: Dict[str, List[str]] = {}
+        claim_support_shared: List[str] = []
+        blocker_closing_answers: List[str] = []
+        for fact in canonical_facts:
+            fact_text = str(fact.get("text") or "").strip()
+            if not fact_text:
+                continue
+            timeline_fact_lines.append(fact_text)
+            lower_text = fact_text.lower()
+            if any(token in lower_text for token in ("because", "after", "as a result", "retaliat", "responded", "hearing", "review")):
+                claim_support_shared.append(fact_text)
+            claim_types_for_fact = _dedupe_text_values(
+                list(fact.get("claim_types") or [])
+                + [fact.get("claim_type")]
+                + [fact.get("supports_claim_type")]
+            )
+            for claim_type in claim_types_for_fact:
+                key = str(claim_type).strip().lower()
+                if not key:
+                    continue
+                claim_support_lines_by_type.setdefault(key, [])
+                claim_support_lines_by_type[key].append(fact_text)
+        blocker_closing_answers.extend(blocker_follow_up_prompts)
+        blocker_closing_answers.extend(
+            str(item.get("reason") or "").strip()
+            for item in blocker_items
+            if str(item.get("reason") or "").strip()
+        )
+        blocker_closing_answers.extend(anchored_chronology_summary)
+        evidence_reference_lines = self._normalize_lines(
+            [
+                (
+                    f"Exhibit evidence ({row.get('type') or 'evidence'}; cid {row.get('cid')}) supports the chronology and actor sequence: {row.get('text')}."
+                    if row.get("cid")
+                    else f"Exhibit evidence ({row.get('type') or 'evidence'}) supports the chronology and actor sequence: {row.get('text')}."
+                )
+                for row in evidence_summaries[:8]
+                if isinstance(row, dict) and str(row.get("text") or "").strip()
+            ]
+        )
+        structured_handoff = {
+            "factual_allegation_lines": self._normalize_lines(
+                timeline_fact_lines + anchored_chronology_summary + blocker_closing_answers + evidence_reference_lines
+            )[:14],
+            "summary_of_facts_lines": self._normalize_lines(
+                anchored_chronology_summary + timeline_fact_lines + evidence_reference_lines
+            )[:12],
+            "claim_support_lines_by_type": {
+                key: self._normalize_lines(values)[:8]
+                for key, values in claim_support_lines_by_type.items()
+                if key
+            },
+            "claim_support_lines_shared": self._normalize_lines(
+                claim_support_shared + anchored_chronology_summary + evidence_reference_lines
+            )[:10],
+            "blocker_closing_answers": self._normalize_lines(blocker_closing_answers)[:10],
+            "exhibit_description_lines": evidence_reference_lines[:8],
+            "unresolved_objectives": unresolved_objectives[:8],
+            "unresolved_factual_gaps": unresolved_factual_gaps[:6],
+            "unresolved_legal_gaps": unresolved_legal_gaps[:6],
+        }
 
         return {
             "claims": claim_contexts,
             "evidence": evidence_summaries[:10],
             "sections": dict(drafting_readiness.get("sections") or {}) if isinstance(drafting_readiness, dict) else {},
             "packet_projection": self._build_packet_projection(draft),
+            "structured_handoff": structured_handoff,
             "actor_critic": {
                 "priority": actor_critic_priority,
                 "baseline_metrics": baseline_metrics,
@@ -1369,8 +1561,14 @@ class AgenticDocumentOptimizer:
                 "successful_session_count": successful_session_count,
                 "session_count": session_count,
                 "assessment_blocked": assessment_blocked,
+                "gate_on_graph_completeness": bool(graph_gate_active),
+                "graph_phase_status": graph_status,
+                "graph_remaining_gap_count": int(graph_remaining_gap_count),
+                "blockers": gating_blockers,
+                "unresolved_factual_gaps": unresolved_factual_gaps[:6],
+                "unresolved_legal_gaps": unresolved_legal_gaps[:6],
                 "summary": (
-                    "No successful sessions were available to assess drafting handoff quality."
+                    "Formalization gate is active: unresolved graph/document blockers must be closed before complaint generation."
                     if assessment_blocked
                     else ""
                 ),
@@ -1990,6 +2188,33 @@ class AgenticDocumentOptimizer:
         assessment_blocked = bool(guardrail.get("assessment_blocked"))
         guardrail_phase_status = str(guardrail.get("phase_status") or "").strip().lower()
         guardrail_coverage = _safe_float(guardrail.get("coverage"), 0.0)
+        graph_gate_active = bool(guardrail.get("gate_on_graph_completeness"))
+        guardrail_blockers = _dedupe_text_values(guardrail.get("blockers") or [])
+        unresolved_factual_gaps = self._normalize_lines(guardrail.get("unresolved_factual_gaps") or [])
+        unresolved_legal_gaps = self._normalize_lines(guardrail.get("unresolved_legal_gaps") or [])
+        structured_handoff = (
+            support_context.get("structured_handoff")
+            if isinstance(support_context.get("structured_handoff"), dict)
+            else {}
+        )
+        promoted_factual_lines = self._normalize_lines(
+            list(structured_handoff.get("factual_allegation_lines") or [])
+        )
+        promoted_claim_support_map = (
+            structured_handoff.get("claim_support_lines_by_type")
+            if isinstance(structured_handoff.get("claim_support_lines_by_type"), dict)
+            else {}
+        )
+        promoted_exhibit_lines = self._normalize_lines(
+            list(structured_handoff.get("exhibit_description_lines") or [])
+        )
+        if promoted_factual_lines:
+            section_scores["factual_allegations"] = _clamp(float(section_scores.get("factual_allegations") or 0.0) + 0.08)
+        if promoted_claim_support_map:
+            section_scores["claims_for_relief"] = _clamp(float(section_scores.get("claims_for_relief") or 0.0) + 0.07)
+        if promoted_exhibit_lines:
+            section_scores["affidavit"] = _clamp(float(section_scores.get("affidavit") or 0.0) + 0.04)
+            section_scores["packet_projection"] = _clamp(float(section_scores.get("packet_projection") or 0.0) + 0.03)
         if assessment_blocked:
             document_cap = 0.4 if guardrail_phase_status == "critical" or guardrail_coverage <= 0.0 else 0.55
             for section_name in (
@@ -2000,6 +2225,9 @@ class AgenticDocumentOptimizer:
                 "packet_projection",
             ):
                 section_scores[section_name] = min(float(section_scores.get(section_name) or 0.0), document_cap)
+        if graph_gate_active:
+            section_scores["factual_allegations"] = min(float(section_scores.get("factual_allegations") or 0.0), 0.62)
+            section_scores["claims_for_relief"] = min(float(section_scores.get("claims_for_relief") or 0.0), 0.58)
         ordered_sections = sorted(
             ((name, score) for name, score in section_scores.items() if name in self.VALID_FOCUS_SECTIONS),
             key=lambda item: item[1],
@@ -2064,6 +2292,24 @@ class AgenticDocumentOptimizer:
             suggestions.append(
                 "Ask targeted follow-up questions to lock dates, each HACC actor decision, hearing and response timing, and direct causation facts linking protected activity to adverse treatment."
             )
+        if guardrail_blockers:
+            weaknesses.append(
+                "Drafting readiness still has active blockers that must be reflected in formalization gating."
+            )
+            suggestions.append(
+                "Carry unresolved blockers into drafting readiness and pause final formalization until blockers are closed."
+            )
+        if unresolved_factual_gaps:
+            weaknesses.append("Unresolved factual gaps remain in the drafting handoff and weaken complaint specificity.")
+            suggestions.append(
+                "Promote structured intake facts and blocker-closing answers directly into factual allegations and claim support."
+            )
+        if unresolved_legal_gaps:
+            weaknesses.append("Unresolved legal gaps remain in the drafting handoff and weaken claim formalization readiness.")
+            suggestions.append("Address unresolved legal gaps before final complaint export.")
+        if graph_gate_active:
+            weaknesses.append("Graph completeness signals indicate unresolved dependencies that should block formalization.")
+            suggestions.append("Close graph-analysis dependencies before running final document generation.")
         if assessment_blocked:
             weaknesses.append(
                 str(guardrail.get("summary") or "No successful sessions were available to assess drafting handoff quality.")
@@ -2081,6 +2327,12 @@ class AgenticDocumentOptimizer:
                 procedural_score,
                 0.35 if guardrail_phase_status == "critical" or guardrail_coverage <= 0.0 else 0.6,
             )
+        if graph_gate_active:
+            procedural_score = min(procedural_score, 0.45)
+        if unresolved_factual_gaps:
+            procedural_score = max(0.0, procedural_score - min(0.18, 0.04 * len(unresolved_factual_gaps)))
+        if unresolved_legal_gaps:
+            procedural_score = max(0.0, procedural_score - min(0.12, 0.04 * len(unresolved_legal_gaps)))
         completeness_score = sum(section_scores.values()) / max(len(section_scores), 1)
         grounding_score = self._score_grounding(support_context)
         coherence_score = self._score_coherence(factual_allegations)

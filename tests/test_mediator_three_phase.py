@@ -2306,6 +2306,131 @@ class TestMediatorThreePhaseIntegration:
         assert selected[0]['selector_signals']['hearing_request_timing_closure_match'] is True
         assert selected[0]['selector_signals']['response_dates_closure_match'] is True
         assert selected[0]['selector_signals']['blocker_closure_match_count'] >= 2
+
+    def test_collect_question_candidates_adds_claim_temporal_gap_candidates_from_intake_registry(self):
+        """Temporal issue registry entries should produce mediator-native claim chronology questions."""
+        from complaint_phases.knowledge_graph import KnowledgeGraph
+        from complaint_phases.dependency_graph import DependencyGraph
+
+        denoiser = ComplaintDenoiser()
+        intake_case_file = {
+            'candidate_claims': [
+                {
+                    'claim_type': 'retaliation',
+                    'label': 'Retaliation',
+                    'required_elements': [],
+                }
+            ],
+            'proof_leads': [],
+            'temporal_issue_registry': [
+                {
+                    'issue_id': 'temporal_issue:relative_only_ordering:fact_3',
+                    'issue_type': 'relative_only_ordering',
+                    'category': 'relative_only_ordering',
+                    'summary': 'Timeline fact fact_3 only has relative ordering (after) and still needs anchoring.',
+                    'severity': 'blocking',
+                    'blocking': True,
+                    'recommended_resolution_lane': 'clarify_with_complainant',
+                    'fact_ids': ['fact_3'],
+                    'claim_types': ['retaliation'],
+                    'element_tags': ['causation'],
+                    'left_node_name': 'Supervisor acted after the complaint.',
+                    'right_node_name': None,
+                    'status': 'open',
+                    'relative_markers': ['after'],
+                }
+            ],
+        }
+
+        candidates = denoiser.collect_question_candidates(
+            KnowledgeGraph(),
+            DependencyGraph(),
+            max_questions=5,
+            intake_case_file=intake_case_file,
+        )
+
+        temporal_candidates = [
+            candidate for candidate in candidates
+            if candidate.get('candidate_source') == 'intake_claim_temporal_gap'
+        ]
+
+        assert temporal_candidates
+        first_candidate = temporal_candidates[0]
+        assert first_candidate['type'] == 'timeline'
+        assert first_candidate['target_claim_type'] == 'retaliation'
+        assert first_candidate['target_element_id'] == 'causation'
+        assert first_candidate['workflow_phase'] == 'graph_analysis'
+        assert 'chronology_gap' in first_candidate['follow_up_tags']
+        assert 'exact date' in first_candidate['question'].lower() or 'timeframe' in first_candidate['question'].lower()
+
+    def test_default_selector_prefers_claim_temporal_gap_candidate_over_generic_prompt(self):
+        """Claim-temporal-gap prompts should outrank generic intake prompts when chronology and causation remain unresolved."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'adversarial_intake_priority_summary',
+            {
+                'expected_objectives': ['causation_sequence'],
+                'covered_objectives': [],
+                'uncovered_objectives': ['causation_sequence'],
+            },
+        )
+        chronology_candidate = mediator.denoiser._question_candidate(
+            source='intake_claim_temporal_gap',
+            question_type='timeline',
+            question_text=(
+                'For your retaliation claim, what protected activity happened first, what adverse action followed, '
+                'who was involved in each step, and on what exact dates did those events occur?'
+            ),
+            context={
+                'claim_type': 'retaliation',
+                'claim_name': 'Retaliation',
+                'gap_id': 'retaliation:causation',
+                'gap_type': 'retaliation_missing_causation_link',
+                'requirement_id': 'causation',
+                'target_element_id': 'causation',
+                'workflow_phase': 'graph_analysis',
+                'recommended_resolution_lane': 'clarify_with_complainant',
+                'extraction_targets': ['protected_activity', 'adverse_action', 'causation_link', 'exact_dates', 'event_order'],
+                'patchability_markers': ['chronology_patch_anchor', 'adverse_action_patch_anchor'],
+            },
+            priority='high',
+        )
+        chronology_candidate['question_objective'] = 'establish_causation'
+        chronology_candidate['question_goal'] = 'establish_element'
+        chronology_candidate['ranking_explanation']['question_objective'] = 'establish_causation'
+        chronology_candidate['ranking_explanation']['question_goal'] = 'establish_element'
+
+        generic_candidate = mediator.denoiser._question_candidate(
+            source='intake_proof_gap',
+            question_type='remedy',
+            question_text='What outcome are you hoping for?',
+            context={
+                'claim_type': 'retaliation',
+                'claim_name': 'Retaliation',
+                'workflow_phase': 'intake_questioning',
+            },
+            priority='high',
+        )
+
+        selected = mediator.select_intake_question_candidates(
+            [generic_candidate, chronology_candidate],
+            max_questions=2,
+        )
+
+        assert selected[0]['candidate_source'] == 'intake_claim_temporal_gap'
+        assert selected[0]['selector_signals']['causation_sequence_match'] is True
+        assert selected[0]['selector_signals']['exact_dates_closure_match'] is True
+        assert selected[0]['selector_signals']['intake_priority_match_count'] >= 1
+        assert selected[0]['selector_score'] > selected[1]['selector_score']
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""
