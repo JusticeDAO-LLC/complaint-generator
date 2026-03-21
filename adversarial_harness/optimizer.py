@@ -82,6 +82,7 @@ class OptimizationReport:
     document_workflow_execution_summary: Dict[str, Any] | None = None
     document_execution_drift_summary: Dict[str, Any] | None = None
     document_grounding_improvement_summary: Dict[str, Any] | None = None
+    document_grounding_lane_outcome_summary: Dict[str, Any] | None = None
     cross_phase_findings: List[str] | None = None
     workflow_action_queue: List[Dict[str, Any]] | None = None
     document_provenance_summary: Dict[str, Any] | None = None
@@ -1771,6 +1772,7 @@ class Optimizer:
         document_evidence_targeting_summary: Dict[str, Any],
         document_provenance_summary: Dict[str, Any],
         document_grounding_improvement_summary: Dict[str, Any],
+        document_grounding_lane_outcome_summary: Dict[str, Any],
         document_workflow_execution_summary: Dict[str, Any],
         document_execution_drift_summary: Dict[str, Any],
     ) -> Dict[str, Dict[str, Any]]:
@@ -1883,6 +1885,7 @@ class Optimizer:
                 "document_low_grounding_flag": bool((document_provenance_summary or {}).get("low_grounding_flag")),
                 "document_provenance_summary": dict(document_provenance_summary or {}),
                 "document_grounding_improvement_summary": dict(document_grounding_improvement_summary or {}),
+                "document_grounding_lane_outcome_summary": dict(document_grounding_lane_outcome_summary or {}),
                 "document_grounding_improved_flag": bool((document_grounding_improvement_summary or {}).get("improved_flag")),
                 "execution_mismatch_flag": execution_mismatch_flag,
                 "execution_drift_summary": dict(document_execution_drift_summary or {}),
