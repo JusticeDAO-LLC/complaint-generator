@@ -2120,16 +2120,25 @@ class Optimizer:
                 phase_name,
                 phase_payload,
                 report,
-                max_targets=2,
+                max_targets=3,
             )
             secondary_target_paths = [
-                path for path in expanded_target_paths
+                path for path in expanded_target_paths[:2]
                 if path not in target_paths
+            ]
+            tertiary_target_paths = [
+                path for path in expanded_target_paths[2:3]
+                if path not in target_paths and path not in secondary_target_paths
             ]
             phase_constraints = self._workflow_phase_constraints(phase_name, target_paths)
             secondary_phase_constraints = (
                 self._workflow_phase_constraints(phase_name, secondary_target_paths)
                 if secondary_target_paths
+                else {}
+            )
+            tertiary_phase_constraints = (
+                self._workflow_phase_constraints(phase_name, tertiary_target_paths)
+                if tertiary_target_paths
                 else {}
             )
             if str(phase_name) == "intake_questioning" and int(report.num_sessions_analyzed or 0) == 0:
@@ -2246,6 +2255,8 @@ class Optimizer:
                         "workflow_phase_actions": phase_actions,
                         "workflow_phase_secondary_target_files": [str(path) for path in secondary_target_paths],
                         "workflow_phase_secondary_constraints": dict(secondary_phase_constraints or {}),
+                        "workflow_phase_tertiary_target_files": [str(path) for path in tertiary_target_paths],
+                        "workflow_phase_tertiary_constraints": dict(tertiary_phase_constraints or {}),
                         "workflow_capabilities": self._workflow_phase_capabilities(phase_name),
                         "weak_complaint_types": weak_complaint_types,
                         "weak_evidence_modalities": weak_evidence_modalities,

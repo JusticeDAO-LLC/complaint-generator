@@ -313,6 +313,9 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
         if path.endswith("synthesize_hacc_complaint.py")
     )
     assert synth_symbols == ["_merge_seed_with_grounding"]
+    tertiary_constraints = document_task.metadata["workflow_phase_tertiary_constraints"]
+    assert "target_symbols" in tertiary_constraints
+    assert document_task.metadata["workflow_phase_tertiary_target_files"]
     intake_secondary_constraints = intake_task.metadata["workflow_phase_secondary_constraints"]
     complainant_symbols = next(
         symbols
@@ -320,6 +323,9 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
         if path.endswith("complainant.py")
     )
     assert complainant_symbols == ["_build_actor_critic_guidance"]
+    intake_tertiary_constraints = intake_task.metadata["workflow_phase_tertiary_constraints"]
+    assert "target_symbols" in intake_tertiary_constraints
+    assert intake_task.metadata["workflow_phase_tertiary_target_files"]
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 
