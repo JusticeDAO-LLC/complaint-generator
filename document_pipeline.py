@@ -5801,7 +5801,103 @@ class FormalComplaintDocumentBuilder:
                 if has_authority_notice_review:
                     continue
             pruned.append(entry)
-        return pruned
+        return self._merge_claim_support_policy_entries(pruned)
+
+    def _merge_claim_support_policy_entries(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        ordered_entries = [dict(entry) for entry in entries if isinstance(entry, dict)]
+        if not ordered_entries:
+            return []
+
+        notice_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "notice to the applicant requires" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
+        review_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "scheduling an informal review requires" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
+        authority_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "requires written notice and an opportunity for informal review" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
+        if not (notice_entry and review_entry and authority_entry):
+            return ordered_entries
+
+        merged_entry = {
+            "text": (
+                "HACC policy required prompt written notice of a decision denying assistance and a written "
+                "opportunity to request informal review before a final adverse housing decision was enforced "
+                f"({self._merge_support_exhibit_labels(notice_entry, review_entry, authority_entry)})."
+            ),
+            "fact_ids": _normalize_identifier_list(
+                list(notice_entry.get("fact_ids") or [])
+                + list(review_entry.get("fact_ids") or [])
+                + list(authority_entry.get("fact_ids") or [])
+            ),
+            "source_artifact_ids": _normalize_identifier_list(
+                list(notice_entry.get("source_artifact_ids") or [])
+                + list(review_entry.get("source_artifact_ids") or [])
+                + list(authority_entry.get("source_artifact_ids") or [])
+            ),
+            "claim_types": _normalize_identifier_list(
+                list(notice_entry.get("claim_types") or [])
+                + list(review_entry.get("claim_types") or [])
+                + list(authority_entry.get("claim_types") or [])
+            ),
+            "claim_element_ids": _normalize_identifier_list(
+                list(notice_entry.get("claim_element_ids") or [])
+                + list(review_entry.get("claim_element_ids") or [])
+                + list(authority_entry.get("claim_element_ids") or [])
+            ),
+            "support_trace_ids": _normalize_identifier_list(
+                list(notice_entry.get("support_trace_ids") or [])
+                + list(review_entry.get("support_trace_ids") or [])
+                + list(authority_entry.get("support_trace_ids") or [])
+            ),
+            "source_kind": "claim_support_merged",
+            "exhibit_label": self._merge_support_exhibit_labels(notice_entry, review_entry, authority_entry),
+        }
+
+        merged_entries: List[Dict[str, Any]] = []
+        merged_inserted = False
+        for entry in ordered_entries:
+            text = str(entry.get("text") or "").lower()
+            if (
+                "notice to the applicant requires" in text
+                or "scheduling an informal review requires" in text
+                or "requires written notice and an opportunity for informal review" in text
+            ):
+                if not merged_inserted:
+                    merged_entries.append(merged_entry)
+                    merged_inserted = True
+                continue
+            merged_entries.append(entry)
+        return merged_entries
+
+    def _merge_support_exhibit_labels(self, *entries: Dict[str, Any]) -> str:
+        labels = [
+            str(entry.get("exhibit_label") or "").strip()
+            for entry in entries
+            if isinstance(entry, dict) and str(entry.get("exhibit_label") or "").strip()
+        ]
+        labels = _unique_preserving_order(labels)
+        if not labels:
+            return ""
+        if len(labels) == 1:
+            return f"See {labels[0]}"
+        return "See " + " and ".join(labels[:2])
 
     def _select_related_exhibits_for_claim(
         self,

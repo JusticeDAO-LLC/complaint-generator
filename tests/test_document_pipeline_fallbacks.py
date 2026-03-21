@@ -704,10 +704,10 @@ def test_due_process_claim_support_entries_inherit_process_fact_ids():
     process_entry = next(
         entry
         for entry in due_process_claim["supporting_fact_entries"]
-        if "Scheduling an Informal Review requires a written request for review" in entry["text"]
+        if "HACC policy required prompt written notice of a decision denying assistance" in entry["text"]
     )
     assert process_entry["fact_ids"]
-    assert process_entry["fact_ids"] == ["fact-303-5"]
+    assert process_entry["fact_ids"] == ["fact-303-4", "fact-303-5"]
 
 
 def test_due_process_claim_support_entries_prefer_evidence_exhibit_for_uploaded_facts():
@@ -762,16 +762,16 @@ def test_due_process_claim_support_entries_prefer_evidence_exhibit_for_uploaded_
         for entry in due_process_claim["supporting_fact_entries"]
         if "On March 3, 2026, HACC sent Plaintiff a written denial notice" in entry["text"]
     )
-    authority_entry = next(
+    merged_support_entry = next(
         entry
         for entry in due_process_claim["supporting_fact_entries"]
-        if "Requires written notice and an opportunity for informal review" in entry["text"]
+        if "HACC policy required prompt written notice of a decision denying assistance" in entry["text"]
     )
 
     assert uploaded_entry["exhibit_label"] == "Exhibit A"
     assert "(See Exhibit A)" in uploaded_entry["text"]
-    assert authority_entry["exhibit_label"] == "Exhibit B"
-    assert "(See Exhibit B)" in authority_entry["text"]
+    assert merged_support_entry["exhibit_label"] == "See Exhibit A and Exhibit B"
+    assert "(See Exhibit A and Exhibit B)" in merged_support_entry["text"]
 
 
 def test_due_process_claim_support_entries_lead_with_dated_evidence_sequence():
@@ -879,4 +879,8 @@ def test_due_process_claim_support_entries_prune_redundant_abstract_rows():
 
     assert not any(text.startswith("Element supported: Required notice and review process") for text in texts)
     assert not any("Informal review for denial of assistance" in text for text in texts)
-    assert any("Requires written notice and an opportunity for informal review" in text for text in texts)
+    assert any(
+        "HACC policy required prompt written notice of a decision denying assistance and a written opportunity to request informal review"
+        in text
+        for text in texts
+    )
