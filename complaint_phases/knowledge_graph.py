@@ -8,6 +8,7 @@ a knowledge graph representation for denoising and evidence gathering.
 import json
 import logging
 import re
+import os
 from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, UTC
@@ -641,6 +642,252 @@ class KnowledgeGraphBuilder:
         # Batch 220: Track graph building operations
         self._built_graphs: List[KnowledgeGraph] = []
         self._text_processed_count = 0
+        self.actor_critic_enabled = self._env_bool("CG_KG_ACTOR_CRITIC_ENABLED", True)
+        self.entity_actor_weight = self._env_float("CG_KG_ENTITY_ACTOR_WEIGHT", 1.0)
+        self.entity_critic_weight = self._env_float("CG_KG_ENTITY_CRITIC_WEIGHT", 1.0)
+        self.relationship_actor_weight = self._env_float("CG_KG_REL_ACTOR_WEIGHT", 1.0)
+        self.relationship_critic_weight = self._env_float("CG_KG_REL_CRITIC_WEIGHT", 1.0)
+        self.min_entity_actor_critic_score = self._env_float("CG_KG_ENTITY_SCORE_FLOOR", -0.30)
+        self.min_relationship_actor_critic_score = self._env_float("CG_KG_REL_SCORE_FLOOR", -0.10)
+        self.max_relationships_per_entity = max(2, int(self._env_float("CG_KG_REL_PER_ENTITY_CAP", 8)))
+        self.max_relationships_per_type = max(1, int(self._env_float("CG_KG_REL_PER_TYPE_CAP", 6)))
+
+    def _env_bool(self, key: str, default: bool) -> bool:
+        raw = os.getenv(key)
+        if raw is None:
+            return default
+        value = raw.strip().lower()
+        if value in {"1", "true", "yes", "y", "on"}:
+            return True
+        if value in {"0", "false", "no", "n", "off"}:
+            return False
+        return default
+
+    def _env_float(self, key: str, default: float) -> float:
+        raw = os.getenv(key)
+        if raw is None:
+            return default
+        try:
+            return float(raw.strip())
+        except Exception:
+            return default
+
+    def _clamp(self, value: float, low: float, high: float) -> float:
+        return max(low, min(high, float(value)))
+
+    def _entity_actor_score(self, candidate: Dict[str, Any], text_lower: str) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        etype = str(candidate.get("type") or "").strip().lower()
+        name = str(candidate.get("name") or "").strip()
+        attrs = candidate.get("attributes") if isinstance(candidate.get("attributes"), dict) else {}
+        confidence = float(candidate.get("confidence", 0.0) or 0.0)
+        type_bonus = {
+            "claim": 1.25,
+            "fact": 1.10,
+            "date": 1.05,
+            "evidence": 0.95,
+            "person": 0.90,
+            "organization": 0.90,
+        }.get(etype, 0.55)
+        score = type_bonus + confidence
+        if attrs.get("claim_type"):
+            score += 0.35
+        if attrs.get("predicate_family"):
+            score += 0.30
+        if attrs.get("event_date_or_range"):
+            score += 0.35
+        if attrs.get("role"):
+            score += 0.20
+        if len(name.split()) >= 2:
+            score += 0.12
+        if name and name.lower() in text_lower:
+            score += 0.15
+        return float(score)
+
+    def _entity_critic_penalty(self, candidate: Dict[str, Any]) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        etype = str(candidate.get("type") or "").strip().lower()
+        name = str(candidate.get("name") or "").strip()
+        attrs = candidate.get("attributes") if isinstance(candidate.get("attributes"), dict) else {}
+        confidence = float(candidate.get("confidence", 0.0) or 0.0)
+        penalty = 0.0
+        generic_names = {
+            "organization",
+            "employer",
+            "complainant",
+            "complaint claim",
+            "property management",
+            "landlord",
+        }
+        if not name:
+            penalty += 0.80
+        elif name.lower() in generic_names:
+            penalty += 0.35
+        if len(name) <= 2:
+            penalty += 0.45
+        if confidence < 0.60:
+            penalty += 0.35
+        if etype == "person" and not any(part[:1].isupper() for part in name.split() if part):
+            penalty += 0.35
+        if etype == "organization" and attrs.get("role") is None:
+            penalty += 0.10
+        return float(penalty)
+
+    def _apply_entity_actor_critic(self, text: str, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not self.actor_critic_enabled:
+            return entities
+        text_lower = (text or "").lower()
+        scored: List[Dict[str, Any]] = []
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+            actor_score = self._entity_actor_score(entity, text_lower)
+            critic_penalty = self._entity_critic_penalty(entity)
+            actor_critic_score = (
+                float(self.entity_actor_weight) * actor_score
+                - float(self.entity_critic_weight) * critic_penalty
+            )
+            enriched = dict(entity)
+            attributes = dict(enriched.get("attributes") or {})
+            attributes["actor_score"] = float(actor_score)
+            attributes["critic_penalty"] = float(critic_penalty)
+            attributes["actor_critic_score"] = float(actor_critic_score)
+            enriched["attributes"] = attributes
+            original_conf = float(enriched.get("confidence", 0.0) or 0.0)
+            normalized_score = self._clamp((actor_critic_score + 1.0) / 3.5, 0.0, 1.0)
+            calibrated = max(original_conf * 0.90, normalized_score)
+            enriched["confidence"] = self._clamp(calibrated, 0.30, 0.98)
+            scored.append(enriched)
+        scored.sort(
+            key=lambda item: (
+                -float((item.get("attributes") or {}).get("actor_critic_score", 0.0)),
+                -float(item.get("confidence", 0.0) or 0.0),
+                str(item.get("type", "")),
+                str(item.get("name", "")),
+            )
+        )
+        selected: List[Dict[str, Any]] = []
+        for entity in scored:
+            etype = str(entity.get("type") or "").strip().lower()
+            score = float((entity.get("attributes") or {}).get("actor_critic_score", 0.0) or 0.0)
+            confidence = float(entity.get("confidence", 0.0) or 0.0)
+            if (
+                score >= float(self.min_entity_actor_critic_score)
+                or confidence >= 0.72
+                or etype in {"claim", "date"}
+            ):
+                selected.append(entity)
+        return selected or scored[:1]
+
+    def _relation_actor_score(self, relation: Dict[str, Any], text_lower: str) -> float:
+        if not isinstance(relation, dict):
+            return 0.0
+        rel_type = str(relation.get("type") or "").strip().lower()
+        confidence = float(relation.get("confidence", 0.0) or 0.0)
+        type_bonus = {
+            "makes_claim": 1.25,
+            "supported_by": 1.20,
+            "occurred_on": 1.15,
+            "employed_by": 1.10,
+            "follows_protected_activity": 1.20,
+            "occurred_after": 1.15,
+            "causal_link": 1.15,
+            "involves": 0.95,
+            "associated_with": 0.85,
+            "communicated_with": 0.85,
+        }.get(rel_type, 0.55)
+        score = type_bonus + confidence
+        relation_cues = {
+            "makes_claim": ("claim", "complaint"),
+            "supported_by": ("email", "notice", "letter", "message", "document"),
+            "occurred_on": ("on", "in", "date", "after", "before"),
+            "follows_protected_activity": ("after", "complained", "reported", "grievance"),
+            "occurred_after": ("after", "later", "soon after"),
+            "causal_link": ("because", "due to", "in response to", "after"),
+            "communicated_with": ("email", "text", "message", "called", "told"),
+        }
+        if any(token in text_lower for token in relation_cues.get(rel_type, ())):
+            score += 0.20
+        return float(score)
+
+    def _relation_critic_penalty(self, relation: Dict[str, Any]) -> float:
+        if not isinstance(relation, dict):
+            return 0.0
+        source_id = str(relation.get("source_id") or "").strip()
+        target_id = str(relation.get("target_id") or "").strip()
+        rel_type = str(relation.get("type") or "").strip().lower()
+        confidence = float(relation.get("confidence", 0.0) or 0.0)
+        penalty = 0.0
+        if not source_id or not target_id or not rel_type:
+            penalty += 1.0
+        if source_id and source_id == target_id:
+            penalty += 2.0
+        if confidence < 0.55:
+            penalty += 0.40
+        if rel_type in {"associated_with", "communicated_with"} and confidence <= 0.55:
+            penalty += 0.20
+        return float(penalty)
+
+    def _apply_relationship_actor_critic(
+        self,
+        text: str,
+        graph: KnowledgeGraph,
+        relationships: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not self.actor_critic_enabled:
+            return relationships
+        text_lower = (text or "").lower()
+        scored: List[Dict[str, Any]] = []
+        for relationship in relationships:
+            if not isinstance(relationship, dict):
+                continue
+            actor_score = self._relation_actor_score(relationship, text_lower)
+            critic_penalty = self._relation_critic_penalty(relationship)
+            actor_critic_score = (
+                float(self.relationship_actor_weight) * actor_score
+                - float(self.relationship_critic_weight) * critic_penalty
+            )
+            enriched = dict(relationship)
+            attrs = dict(enriched.get("attributes") or {})
+            attrs["actor_score"] = float(actor_score)
+            attrs["critic_penalty"] = float(critic_penalty)
+            attrs["actor_critic_score"] = float(actor_critic_score)
+            enriched["attributes"] = attrs
+            original_conf = float(enriched.get("confidence", 0.0) or 0.0)
+            normalized_score = self._clamp((actor_critic_score + 1.0) / 3.5, 0.0, 1.0)
+            enriched["confidence"] = self._clamp(max(original_conf * 0.90, normalized_score), 0.30, 0.98)
+            scored.append(enriched)
+        scored.sort(
+            key=lambda item: (
+                -float((item.get("attributes") or {}).get("actor_critic_score", 0.0)),
+                -float(item.get("confidence", 0.0) or 0.0),
+                str(item.get("type", "")),
+            )
+        )
+        per_source_count: Dict[str, int] = {}
+        per_source_type_count: Dict[Tuple[str, str], int] = {}
+        selected: List[Dict[str, Any]] = []
+        for relation in scored:
+            source_id = str(relation.get("source_id") or "")
+            rel_type = str(relation.get("type") or "").strip().lower()
+            score = float((relation.get("attributes") or {}).get("actor_critic_score", 0.0) or 0.0)
+            confidence = float(relation.get("confidence", 0.0) or 0.0)
+            source_count = int(per_source_count.get(source_id, 0))
+            source_type_count = int(per_source_type_count.get((source_id, rel_type), 0))
+            if source_count >= self.max_relationships_per_entity:
+                continue
+            if source_type_count >= self.max_relationships_per_type:
+                continue
+            if score < float(self.min_relationship_actor_critic_score) and confidence < 0.70:
+                continue
+            selected.append(relation)
+            per_source_count[source_id] = source_count + 1
+            per_source_type_count[(source_id, rel_type)] = source_type_count + 1
+        if selected:
+            return selected
+        return scored[:1] if scored else []
     
     def build_from_text(self, text: str) -> KnowledgeGraph:
         """
@@ -680,6 +927,29 @@ class KnowledgeGraphBuilder:
                 source='complaint'
             )
             graph.add_relationship(rel)
+
+        if self.actor_critic_enabled:
+            entity_scores = [
+                float((entity.attributes or {}).get("actor_critic_score", 0.0) or 0.0)
+                for entity in graph.entities.values()
+            ]
+            relationship_scores = [
+                float((rel.attributes or {}).get("actor_critic_score", 0.0) or 0.0)
+                for rel in graph.relationships.values()
+            ]
+            graph.metadata["actor_critic"] = {
+                "enabled": True,
+                "entity_count": len(entity_scores),
+                "relationship_count": len(relationship_scores),
+                "avg_entity_score": (
+                    round(sum(entity_scores) / len(entity_scores), 4) if entity_scores else 0.0
+                ),
+                "avg_relationship_score": (
+                    round(sum(relationship_scores) / len(relationship_scores), 4) if relationship_scores else 0.0
+                ),
+                "entity_score_floor": float(self.min_entity_actor_critic_score),
+                "relationship_score_floor": float(self.min_relationship_actor_critic_score),
+            }
         
         logger.info(f"Built knowledge graph: {graph.summary()}")
         
@@ -1419,8 +1689,8 @@ class KnowledgeGraphBuilder:
                     "confidence": 0.5,
                 }
             )
-        
-        return entities
+
+        return self._apply_entity_actor_critic(text, entities)
     
     def _extract_relationships(self, text: str, graph: KnowledgeGraph) -> List[Dict[str, Any]]:
         """
@@ -1648,7 +1918,8 @@ class KnowledgeGraphBuilder:
             if current is None or rel.get('confidence', 0.0) > current.get('confidence', 0.0):
                 unique_relationships[key] = rel
 
-        return list(unique_relationships.values())
+        deduped_relationships = list(unique_relationships.values())
+        return self._apply_relationship_actor_critic(text, graph, deduped_relationships)
     
     def _llm_extract_entities(self, text: str) -> List[Dict[str, Any]]:
         """Use LLM to extract entities (placeholder for LLM integration)."""

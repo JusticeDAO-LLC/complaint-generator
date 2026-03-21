@@ -167,6 +167,108 @@ def test_proposed_allegations_use_blocker_follow_up_summary_when_available():
     assert any("Response or non-response events are described without date anchors." in item for item in allegations)
 
 
+def test_factual_and_proposed_allegations_use_anchored_intake_chronology_when_available():
+    seed = {
+        "description": "Retaliation complaint anchored to HACC core housing policies.",
+        "key_facts": {
+            "anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            "evidence_summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+        },
+    }
+    session = {
+        "conversation_history": [],
+        "final_state": {
+            "intake_case_file": {
+                "canonical_facts": [
+                    {
+                        "fact_id": "fact:1",
+                        "predicate_family": "protected_activity",
+                        "event_label": "Protected activity",
+                        "temporal_context": {"start_date": "2025-03-01"},
+                    },
+                    {
+                        "fact_id": "fact:2",
+                        "predicate_family": "adverse_action",
+                        "event_label": "Adverse action",
+                        "temporal_context": {
+                            "start_date": "2025-03-15",
+                            "derived_from_relative_anchor": True,
+                            "relative_markers": ["two weeks after", "after"],
+                        },
+                    },
+                ],
+                "timeline_relations": [
+                    {
+                        "relation_type": "before",
+                        "source_fact_id": "fact:1",
+                        "target_fact_id": "fact:2",
+                        "source_start_date": "2025-03-01",
+                        "target_start_date": "2025-03-15",
+                    }
+                ],
+            }
+        },
+    }
+
+    factual = MODULE._factual_allegations(seed, session)
+    proposed = MODULE._proposed_allegations(seed, session, "hud")
+
+    expected = "The intake chronology places protected activity on March 1, 2025 before adverse action on March 15, 2025. The later date is derived from reported timing (two weeks after)."
+    assert expected in factual
+    assert expected in proposed
+
+
+def test_anchored_chronology_lines_generalize_to_notice_hearing_and_response_sequences():
+    session = {
+        "final_state": {
+            "intake_case_file": {
+                "canonical_facts": [
+                    {
+                        "fact_id": "fact:notice",
+                        "predicate_family": "notice_chain",
+                        "event_label": "Notice communication",
+                        "temporal_context": {"start_date": "2025-01-05"},
+                    },
+                    {
+                        "fact_id": "fact:hearing",
+                        "predicate_family": "hearing_process",
+                        "event_label": "Hearing request event",
+                        "temporal_context": {"start_date": "2025-01-08"},
+                    },
+                    {
+                        "fact_id": "fact:response",
+                        "predicate_family": "response_timeline",
+                        "event_label": "Response event",
+                        "temporal_context": {"start_date": "2025-01-20"},
+                    },
+                ],
+                "timeline_relations": [
+                    {
+                        "relation_type": "before",
+                        "source_fact_id": "fact:notice",
+                        "target_fact_id": "fact:hearing",
+                        "source_start_date": "2025-01-05",
+                        "target_start_date": "2025-01-08",
+                    },
+                    {
+                        "relation_type": "before",
+                        "source_fact_id": "fact:hearing",
+                        "target_fact_id": "fact:response",
+                        "source_start_date": "2025-01-08",
+                        "target_start_date": "2025-01-20",
+                    },
+                ],
+            }
+        },
+    }
+
+    chronology = MODULE._anchored_chronology_lines(session, limit=3)
+
+    assert chronology == [
+        "The intake chronology places notice communication on January 5, 2025, hearing request event on January 8, 2025, and response event on January 20, 2025 in sequence.",
+    ]
+
+
 def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
     session = {
         "final_state": {
@@ -312,6 +414,66 @@ def test_outstanding_intake_follow_up_questions_use_blocker_strategies_when_avai
     ]
 
 
+def test_actor_critic_follow_up_questions_include_closed_chronology_and_patchable_router_format():
+    seed = {"key_facts": {"synthetic_prompts": {"intake_questions": []}}}
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["timeline", "response_dates", "staff_names_titles"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["timeline", "response_dates", "staff_names_titles"],
+                "objective_question_counts": {
+                    "timeline": 0,
+                    "response_dates": 0,
+                    "staff_names_titles": 0,
+                },
+            }
+        }
+    }
+    metrics = {
+        "empathy": 0.6,
+        "question_quality": 0.55,
+        "information_extraction": 0.45,
+        "coverage": 0.5,
+        "efficiency": 0.6,
+    }
+
+    questions = MODULE._outstanding_intake_follow_up_questions(
+        seed,
+        session,
+        limit=8,
+        actor_critic_metrics=metrics,
+        phase_focus_order=["graph_analysis", "document_generation", "intake_questioning"],
+        router_backed_question_quality=True,
+    )
+
+    assert any("closed chronology" in question.lower() for question in questions)
+    assert any("event_id | exact/estimated date" in question for question in questions)
+
+
+def test_actor_critic_ranking_prefers_graph_analysis_for_chronology_objectives():
+    questions = [
+        "Who at HACC made or communicated each decision, and what were their names and titles?",
+        "Please list the key events with dates (or closest date anchors): protected activity, notices, hearing/review requests, and adverse action outcomes.",
+    ]
+    ranked = MODULE._rank_actor_critic_follow_up_questions(
+        questions,
+        uncovered=["timeline", "actors"],
+        metrics={
+            "empathy": 0.6,
+            "question_quality": 0.7,
+            "information_extraction": 0.7,
+            "coverage": 0.7,
+            "efficiency": 0.8,
+        },
+        phase_focus_order=["graph_analysis", "document_generation", "intake_questioning"],
+        router_backed_question_quality=False,
+        limit=2,
+    )
+
+    assert "key events with dates" in ranked[0].lower()
+
+
 def test_render_markdown_includes_outstanding_intake_gaps_section():
     package = {
         "generated_at": "2026-03-17T00:00:00+00:00",
@@ -329,6 +491,9 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "policy_basis": [],
         "causes_of_action": [],
         "proposed_allegations": ["Narrative line."],
+        "anchored_chronology_summary": [
+            "The intake chronology places notice communication on January 5, 2025, hearing request event on January 8, 2025, and response event on January 20, 2025 in sequence.",
+        ],
         "intake_blocker_summary": {
             "blocking_items": [
                 {
@@ -368,6 +533,8 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
 
     markdown = MODULE._render_markdown(package)
 
+    assert "## Anchored Chronology" in markdown
+    assert "- The intake chronology places notice communication on January 5, 2025, hearing request event on January 8, 2025, and response event on January 20, 2025 in sequence." in markdown
     assert "## Outstanding Intake Gaps" in markdown
     assert "## Intake Blockers" in markdown
     assert "missing_response_timing: Response or non-response events are described without date anchors. (objective: response_dates)" in markdown

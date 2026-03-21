@@ -317,6 +317,40 @@ class TestDependencyGraph:
         assert 'temporal_cycle' in issue_types
         assert 'temporal_reverse_before' in issue_types
 
+    def test_dependency_graph_blocker_follow_up_issues_cover_chronology_and_precision(self):
+        graph = DependencyGraph()
+        graph.add_node(DependencyNode(id="n1", node_type=NodeType.FACT, name="Hearing request", description="Appeal hearing request submitted."))
+        graph.add_node(DependencyNode(id="n2", node_type=NodeType.FACT, name="Termination step", description="Employer terminated me as an adverse action."))
+        graph.add_node(DependencyNode(id="n3", node_type=NodeType.FACT, name="Notice mention", description="Email notice about outcome."))
+
+        issues = graph.get_blocker_follow_up_issues()
+        issue_map = {issue["issue_type"]: issue for issue in issues}
+
+        assert "chronology_exact_dates_missing" in issue_map
+        assert "adverse_action_decision_precision_missing" in issue_map
+        assert "document_artifact_precision_missing" in issue_map
+        chronology_issue = issue_map["chronology_exact_dates_missing"]
+        assert "response_timing" in chronology_issue["extraction_targets"]
+        assert "how long" in chronology_issue["suggested_question"].lower()
+
+    def test_dependency_graph_blocker_issues_use_updated_actor_critic_phase_order(self):
+        graph = DependencyGraph()
+        graph.add_node(DependencyNode(
+            id="n1",
+            node_type=NodeType.FACT,
+            name="Timeline placeholder",
+            description="Date needs confirmation and actor unknown.",
+        ))
+
+        issues = graph.get_blocker_follow_up_issues()
+        issue_by_id = {issue["issue_id"]: issue for issue in issues}
+
+        document_issue = issue_by_id["blocker_confirmation_placeholders_document_anchor"]
+        intake_issue = issue_by_id["blocker_confirmation_placeholders_intake_closure"]
+
+        assert document_issue["phase_focus_order"] == ["graph_analysis", "document_generation", "intake_questioning"]
+        assert document_issue["workflow_phase_rank"] < intake_issue["workflow_phase_rank"]
+
 
 class TestComplaintDenoiser:
     """Tests for ComplaintDenoiser."""

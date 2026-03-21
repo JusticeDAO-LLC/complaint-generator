@@ -752,14 +752,11 @@ class Optimizer:
                     ]
                 elif path.name == "dependency_graph.py":
                     target_map[key] = [
-                        "build_from_claims",
                         "get_claim_readiness",
                     ]
                 elif path.name == "denoiser.py":
                     target_map[key] = [
                         "process_answer",
-                        "_build_claim_element_questions",
-                        "_build_proof_lead_questions",
                     ]
                 elif path.name == "intake_case_file.py":
                     target_map[key] = [
@@ -871,6 +868,11 @@ class Optimizer:
             return selected or target_paths[:2]
 
         if str(phase_name) == "intake_questioning":
+            if int(report.num_sessions_analyzed or 0) == 0:
+                for path in target_paths:
+                    if path.name == "session.py":
+                        return [path]
+                return target_paths[:1]
             priorities = (
                 ["session.py", "mediator.py", "complainant.py"]
                 if blocker_objectives
@@ -1177,6 +1179,27 @@ class Optimizer:
         timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
         complaint_type_performance = dict(report.complaint_type_performance or {})
         evidence_modality_performance = dict(report.evidence_modality_performance or {})
+        graph_signal_context = {
+            "kg_avg_gaps": float(report.kg_avg_gaps or 0.0),
+            "kg_avg_gaps_delta_per_iter": float(report.kg_avg_gaps_delta_per_iter or 0.0),
+            "dg_avg_satisfaction_rate": float(report.dg_avg_satisfaction_rate or 0.0),
+            "kg_sessions_gaps_not_reducing": int(report.kg_sessions_gaps_not_reducing or 0),
+        }
+        intake_signal_context = {
+            "question_quality_avg": float(report.question_quality_avg or 0.0),
+            "empathy_avg": float(report.empathy_avg or 0.0),
+            "efficiency_avg": float(report.efficiency_avg or 0.0),
+            "uncovered_intake_objectives": list(
+                (report.document_handoff_summary or {}).get("unresolved_intake_objectives") or []
+            ),
+        }
+        document_signal_context = {
+            "coverage_avg": float(report.coverage_avg or 0.0),
+            "document_generation_status": str(
+                (report.workflow_phase_plan or {}).get("phases", {}).get("document_generation", {}).get("status") or ""
+            ),
+            "document_blockers": list((report.document_handoff_summary or {}).get("blockers") or []),
+        }
 
         weak_complaint_types = [
             name
@@ -1201,6 +1224,17 @@ class Optimizer:
                 continue
             target_paths = self._select_workflow_phase_targets(phase_name, phase_payload, report)
             phase_constraints = self._workflow_phase_constraints(phase_name, target_paths)
+            if str(phase_name) == "intake_questioning" and int(report.num_sessions_analyzed or 0) == 0:
+                target_map = dict(phase_constraints.get("target_symbols") or {})
+                narrowed_target_map: Dict[str, List[str]] = {}
+                for key, value in target_map.items():
+                    path = Path(key)
+                    if path.name == "session.py":
+                        narrowed_target_map[key] = ["_inject_intake_prompt_questions"]
+                    else:
+                        narrowed_target_map[key] = list(value or [])
+                if narrowed_target_map:
+                    phase_constraints["target_symbols"] = narrowed_target_map
             phase_actions = [
                 str(item.get("recommended_action") or "").strip()
                 for item in list(phase_payload.get("recommended_actions") or [])
@@ -1217,6 +1251,30 @@ class Optimizer:
                 description += " Weak complaint types to generalize for: " + ", ".join(weak_complaint_types[:3]) + "."
             if weak_evidence_modalities:
                 description += " Weak evidence modalities to improve: " + ", ".join(weak_evidence_modalities[:3]) + "."
+            if phase_name == "graph_analysis":
+                description += (
+                    f" Current graph signals: avg_gaps={graph_signal_context['kg_avg_gaps']:.2f}, "
+                    f"gap_delta_per_iter={graph_signal_context['kg_avg_gaps_delta_per_iter']:.2f}, "
+                    f"dependency_satisfaction={graph_signal_context['dg_avg_satisfaction_rate']:.2f}, "
+                    f"gap_stall_sessions={graph_signal_context['kg_sessions_gaps_not_reducing']}."
+                )
+            elif phase_name == "intake_questioning":
+                description += (
+                    f" Current intake signals: question_quality={intake_signal_context['question_quality_avg']:.2f}, "
+                    f"empathy={intake_signal_context['empathy_avg']:.2f}, "
+                    f"efficiency={intake_signal_context['efficiency_avg']:.2f}."
+                )
+                unresolved = ", ".join(str(v) for v in intake_signal_context["uncovered_intake_objectives"][:5])
+                if unresolved:
+                    description += f" Unresolved intake objectives: {unresolved}."
+            elif phase_name == "document_generation":
+                blockers = ", ".join(str(v) for v in document_signal_context["document_blockers"][:5])
+                description += (
+                    f" Current document signals: coverage={document_signal_context['coverage_avg']:.2f}, "
+                    f"phase_status={document_signal_context['document_generation_status']}."
+                )
+                if blockers:
+                    description += f" Current document blockers: {blockers}."
 
             tasks.append(
                 task_cls(
@@ -1240,6 +1298,12 @@ class Optimizer:
                         "weak_complaint_types": weak_complaint_types,
                         "weak_evidence_modalities": weak_evidence_modalities,
                         "phase_scorecard": dict((report.phase_scorecards or {}).get(phase_name) or {}),
+                        "phase_signal_context": (
+                            graph_signal_context if phase_name == "graph_analysis"
+                            else intake_signal_context if phase_name == "intake_questioning"
+                            else document_signal_context if phase_name == "document_generation"
+                            else {}
+                        ),
                         "cross_phase_findings": list(report.cross_phase_findings or []),
                         "report_summary": {
                             "average_score": report.average_score,

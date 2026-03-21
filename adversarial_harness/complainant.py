@@ -39,6 +39,57 @@ _CONFIRMATION_PLACEHOLDER_TERMS = (
     "pending confirmation",
 )
 
+_EMPATHY_HEAVY_STATES = {"distressed", "upset", "angry", "anxious", "overwhelmed"}
+
+_CHRONOLOGY_TERMS = (
+    "when",
+    "date",
+    "timeline",
+    "chronolog",
+    "sequence",
+    "step by step",
+    "before",
+    "after",
+    "notice",
+    "decision",
+)
+_DECISION_MAKER_TERMS = (
+    "who",
+    "decision-maker",
+    "decision maker",
+    "manager",
+    "supervisor",
+    "director",
+    "officer",
+    "specialist",
+    "staff",
+)
+_ROLE_TITLE_TERMS = ("title", "role", "position", "job title", "department", "team")
+_ADVERSE_ACTION_TERMS = (
+    "adverse action",
+    "retaliat",
+    "termination",
+    "denial",
+    "disciplin",
+    "evict",
+    "reduced hours",
+    "cut hours",
+    "transfer",
+    "suspension",
+)
+_DOCUMENT_ARTIFACT_TERMS = (
+    "document id",
+    "notice id",
+    "case number",
+    "tracking number",
+    "email subject",
+    "exhibit",
+    "attachment",
+    "letter",
+    "message id",
+    "ticket id",
+)
+
 
 def _unique_strings(values: List[Any]) -> List[str]:
     items: List[str] = []
@@ -84,16 +135,18 @@ def _contains_confirmation_placeholder(value: Any) -> bool:
 
 def _classify_confirmation_objective(path: str, value: Any) -> str:
     signal_text = f"{path} {value}".lower()
-    if any(token in signal_text for token in ("date", "when", "timeline", "chronolog")):
+    if any(token in signal_text for token in ("date", "when", "timeline", "chronolog", "sequence", "before", "after", "timing")):
         return "exact_dates"
     if any(token in signal_text for token in ("decision-maker", "decision maker", "staff", "manager", "supervisor", "director", "role", "title", "who")):
         return "staff_names_titles"
     if any(token in signal_text for token in ("hearing", "appeal request", "grievance request")):
         return "hearing_request_timing"
-    if any(token in signal_text for token in ("response", "notice", "reply", "decision date", "decision timing")):
+    if any(token in signal_text for token in ("response", "notice", "reply", "decision date", "decision timing", "how long", "days later")):
         return "response_dates"
     if any(token in signal_text for token in ("protected activity", "retaliat", "adverse action", "because", "after")):
         return "causation_sequence"
+    if any(token in signal_text for token in ("adverse action", "termination", "denial", "disciplin", "suspension", "evict", "what happened")):
+        return "adverse_action_specificity"
     if any(token in signal_text for token in ("document", "letter", "email", "record", "id", "tracking")):
         return "evidence_identifiers"
     return ""
@@ -161,11 +214,30 @@ def _order_objectives_for_actor_critic(
     return ordered_unique
 
 
+def _objective_follow_up_prompt(objective: str) -> str:
+    normalized = str(objective or "").strip().lower()
+    if normalized == "exact_dates":
+        return "Can you walk me through the event dates in order, even if some are estimates?"
+    if normalized == "staff_names_titles":
+        return "Who made each decision, and what were their titles or roles?"
+    if normalized == "hearing_request_timing":
+        return "When and how did you request the hearing or appeal?"
+    if normalized == "response_dates":
+        return "When did you receive each response, notice, or decision?"
+    if normalized == "causation_sequence":
+        return "What happened before and after your protected activity that suggests retaliation?"
+    if normalized == "evidence_identifiers":
+        return "Which specific records, notices, or message identifiers support this point?"
+    if normalized == "adverse_action_specificity":
+        return "What exact adverse action was taken, by whom, and when?"
+    return ""
+
+
 def _ordered_workflow_phases(
     phases: List[str],
     explicit_phase_order: List[str] | None = None,
 ) -> List[str]:
-    recognized = ["graph_analysis", "intake_questioning", "document_generation"]
+    recognized = list(_ACTOR_CRITIC_PHASE_FOCUS_ORDER)
     normalized_phases = _unique_strings(phases)
     explicit_order = [
         item for item in _unique_strings(explicit_phase_order or [])
@@ -222,15 +294,25 @@ def _derive_context_signals(
     )
     workflow_phase_priorities = list(explicit_phase_priorities)
 
-    timeline_terms = ("when", "date", "timeline", "chronolog", "sequence", "notice", "decision", "termination")
+    timeline_terms = _CHRONOLOGY_TERMS + ("termination", "critical chronology", "event order")
     hearing_terms = ("hearing", "appeal", "grievance", "review")
-    response_terms = ("response", "responded", "replied", "reply", "denied", "approved", "ignored", "no response")
-    actor_terms = ("who", "staff", "manager", "supervisor", "director", "officer", "specialist", "decision-maker", "decision maker")
-    title_terms = ("title", "role", "position", "job title", "department", "team")
+    response_terms = ("response", "responded", "replied", "reply", "denied", "approved", "ignored", "no response", "days later")
+    actor_terms = _DECISION_MAKER_TERMS
+    title_terms = _ROLE_TITLE_TERMS
     retaliation_terms = ("protected activity", "complain", "reported", "grievance", "accommodation", "appeal")
-    adverse_terms = ("retaliat", "termination", "fired", "denial", "disciplin", "evict", "reduced hours", "cut hours")
-    adverse_specificity_terms = ("adverse action", "what happened", "exact action", "specific action", "discipline", "denied", "termination")
-    document_identifier_terms = ("document id", "notice id", "case number", "tracking number", "email subject", "exhibit")
+    adverse_terms = _ADVERSE_ACTION_TERMS + ("fired",)
+    adverse_specificity_terms = (
+        "adverse action",
+        "what happened",
+        "exact action",
+        "specific action",
+        "discipline",
+        "denied",
+        "termination",
+        "what did they do",
+        "what exactly",
+    )
+    document_identifier_terms = _DOCUMENT_ARTIFACT_TERMS
 
     if any(term in lower_text for term in timeline_terms) or re.search(r"\b(?:19|20)\d{2}\b", lower_text):
         blocker_objectives.append("exact_dates")
@@ -240,6 +322,9 @@ def _derive_context_signals(
         extraction_targets.extend(["timeline_anchors", "hearing_process"])
     if any(term in lower_text for term in response_terms):
         blocker_objectives.append("response_dates")
+        extraction_targets.extend(["timeline_anchors", "response_timeline"])
+    if any(term in lower_text for term in ("critical chronology", "chronology gap", "follow up", "follow-up")):
+        blocker_objectives.extend(["exact_dates", "response_dates"])
         extraction_targets.extend(["timeline_anchors", "response_timeline"])
     has_named_staff = bool(re.search(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b", combined_text))
     if has_named_staff or any(term in lower_text for term in actor_terms):
@@ -257,9 +342,12 @@ def _derive_context_signals(
     if any(term in lower_text for term in document_identifier_terms):
         blocker_objectives.append("evidence_identifiers")
         extraction_targets.append("document_identifier_mapping")
+    if any(term in lower_text for term in ("documentary artifact", "document artifact", "adverse action detail", "decision-maker")):
+        blocker_objectives.extend(["staff_names_titles", "adverse_action_specificity", "evidence_identifiers"])
+        extraction_targets.extend(["actor_role_mapping", "adverse_action_definition", "document_identifier_mapping"])
 
     if blocker_objectives:
-        workflow_phase_priorities.extend(["graph_analysis", "intake_questioning"])
+        workflow_phase_priorities.extend(["graph_analysis", "document_generation", "intake_questioning"])
     if evidence_items or any(token in lower_text for token in ("document", "email", "text", "notice", "letter", "policy", "photo")):
         workflow_phase_priorities.append("document_generation")
 
@@ -268,10 +356,10 @@ def _derive_context_signals(
         [
             "exact_dates",
             "staff_names_titles",
+            "adverse_action_specificity",
             "hearing_request_timing",
             "response_dates",
             "causation_sequence",
-            "adverse_action_specificity",
             "evidence_identifiers",
         ],
     )
@@ -458,36 +546,420 @@ class Complainant:
     def build_default_context(seed: Dict[str, Any], personality: str) -> ComplaintContext:
         p = _normalize_personality(personality)
         profile = _PERSONALITY_PROFILES.get(p) or _PERSONALITY_PROFILES["cooperative"]
-        key_facts = dict(seed.get("key_facts", {}))
-        evidence_items = list(seed.get("hacc_evidence") or key_facts.get("hacc_evidence") or [])
-        synthetic_prompts = dict(key_facts.get("synthetic_prompts") or {})
-        story_facts = list(key_facts.get("complainant_story_facts") or [])
+        seed_payload = dict(seed) if isinstance(seed, dict) else {}
+
+        raw_key_facts = seed_payload.get("key_facts")
+        key_facts = dict(raw_key_facts) if isinstance(raw_key_facts, dict) else {}
+
+        def _as_string_list(value: Any) -> List[str]:
+            if isinstance(value, str):
+                return [value.strip()] if value.strip() else []
+            return [str(item).strip() for item in list(value or []) if str(item).strip()]
+
+        raw_seed_evidence = seed_payload.get("hacc_evidence")
+        raw_key_evidence = key_facts.get("hacc_evidence")
+        evidence_items: List[Dict[str, Any]] = []
+        for item in list(raw_seed_evidence or raw_key_evidence or []):
+            if isinstance(item, dict):
+                evidence_items.append(dict(item))
+
+        raw_prompts = key_facts.get("synthetic_prompts")
+        if not isinstance(raw_prompts, dict):
+            raw_prompts = seed_payload.get("synthetic_prompts")
+        synthetic_prompts: Dict[str, Any] = dict(raw_prompts) if isinstance(raw_prompts, dict) else {}
+
+        raw_story_facts = key_facts.get("complainant_story_facts")
+        if isinstance(raw_story_facts, str):
+            story_facts = [raw_story_facts]
+        else:
+            story_facts = [str(item).strip() for item in list(raw_story_facts or []) if str(item).strip()]
+
+        # Pull actor-critic optimization hints directly into complainant context so the
+        # intake phase can push stronger factual, evidentiary, and anchor coverage.
+        optimizer_containers = [
+            seed_payload,
+            seed_payload.get("_meta") if isinstance(seed_payload.get("_meta"), dict) else None,
+            seed_payload.get("actor_critic_optimizer") if isinstance(seed_payload.get("actor_critic_optimizer"), dict) else None,
+            seed_payload.get("optimization_guidance") if isinstance(seed_payload.get("optimization_guidance"), dict) else None,
+            seed_payload.get("document_optimization") if isinstance(seed_payload.get("document_optimization"), dict) else None,
+            key_facts,
+            key_facts.get("actor_critic_optimizer") if isinstance(key_facts.get("actor_critic_optimizer"), dict) else None,
+        ]
+        weak_complaint_types = set()
+        weak_evidence_modalities = set()
+        question_quality_signal = None
+        empathy_signal = None
+        efficiency_signal = None
+        num_sessions_signal = None
+        successful_sessions_signal = None
+        no_successful_sessions_hint = False
+
+        for payload in optimizer_containers:
+            if not isinstance(payload, dict):
+                continue
+            for key in ("weak_complaint_types", "complaint_type_targets", "generalization_targets"):
+                for value in _as_string_list(payload.get(key)):
+                    weak_complaint_types.add(value.lower())
+            for key in ("weak_evidence_modalities", "evidence_modality_targets"):
+                for value in _as_string_list(payload.get(key)):
+                    weak_evidence_modalities.add(value.lower())
+            for key in ("question_quality_avg", "question_quality"):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    question_quality_signal = float(value)
+            for key in ("empathy_avg", "empathy"):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    empathy_signal = float(value)
+            for key in ("efficiency_avg", "efficiency"):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    efficiency_signal = float(value)
+            for key in ("num_sessions_analyzed", "sessions_analyzed", "num_runs_analyzed"):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    num_sessions_signal = int(value)
+            for key in ("num_successful_sessions", "successful_sessions", "successful_runs"):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    successful_sessions_signal = int(value)
+            if str(payload.get("summary") or "").strip().lower().find("no successful sessions") >= 0:
+                no_successful_sessions_hint = True
+            if str(payload.get("message") or "").strip().lower().find("no successful sessions") >= 0:
+                no_successful_sessions_hint = True
+            phase_signals = payload.get("phase_signal_context")
+            if isinstance(phase_signals, dict):
+                for key in ("question_quality_avg", "question_quality"):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        question_quality_signal = float(value)
+                for key in ("empathy_avg", "empathy"):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        empathy_signal = float(value)
+                for key in ("efficiency_avg", "efficiency"):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        efficiency_signal = float(value)
+                if bool(phase_signals.get("no_successful_sessions")):
+                    no_successful_sessions_hint = True
+                for key in ("num_sessions_analyzed", "sessions_analyzed"):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        num_sessions_signal = int(value)
+                for key in ("num_successful_sessions", "successful_sessions"):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        successful_sessions_signal = int(value)
+
+        signal_values = [question_quality_signal, empathy_signal, efficiency_signal]
+        has_intake_signals = any(isinstance(value, float) for value in signal_values)
+        all_intake_signals_zero = (
+            all(isinstance(value, float) for value in signal_values)
+            and all(float(value) <= 0.01 for value in signal_values)
+        )
+        no_successful_sessions = bool(
+            no_successful_sessions_hint
+            or num_sessions_signal == 0
+            or successful_sessions_signal == 0
+        )
+        stability_recovery_mode = no_successful_sessions or all_intake_signals_zero
+
+        complaint_type = str(seed_payload.get("type") or key_facts.get("complaint_type") or "").strip().lower()
+        source = str(
+            seed_payload.get("source")
+            or (seed_payload.get("_meta") or {}).get("seed_source")
+            or key_facts.get("source")
+            or ""
+        ).strip().lower()
+        if complaint_type:
+            weak_complaint_types.add(complaint_type)
+        if source:
+            weak_complaint_types.add(source)
+
+        for evidence in evidence_items:
+            if not isinstance(evidence, dict):
+                continue
+            source_path = str(
+                evidence.get("source_path")
+                or evidence.get("path")
+                or evidence.get("file_path")
+                or ""
+            ).strip().lower()
+            title = str(evidence.get("title") or evidence.get("document_id") or "").strip().lower()
+            snippet = str(evidence.get("snippet") or "").strip().lower()
+            joined = f"{title} {snippet} {source_path}".strip()
+            if "policy" in joined or "administrative plan" in joined or "acop" in joined:
+                weak_evidence_modalities.add("policy_document")
+            if source_path:
+                weak_evidence_modalities.add("file_evidence")
+        modality_signal_text = " ".join(
+            part
+            for part in [
+                str(seed_payload.get("summary") or ""),
+                str(key_facts.get("incident_summary") or ""),
+                str(key_facts.get("evidence_summary") or ""),
+                str(synthetic_prompts.get("intake_questionnaire_prompt") or ""),
+                " ".join(_as_string_list(synthetic_prompts.get("intake_questions"))),
+                " ".join(story_facts),
+            ]
+            if str(part).strip()
+        ).lower()
+        if any(token in modality_signal_text for token in ("policy", "procedure", "administrative plan", "acop")):
+            weak_evidence_modalities.add("policy_document")
+        if any(token in modality_signal_text for token in ("file", "upload", "attachment", "screenshot", "pdf", "docx")):
+            weak_evidence_modalities.add("file_evidence")
+
+        is_housing_discrimination = "housing_discrimination" in weak_complaint_types
+        is_hacc_research_seed = "hacc_research_engine" in weak_complaint_types
+        weak_policy_or_file_evidence = bool(
+            weak_evidence_modalities.intersection({"policy_document", "file_evidence"})
+        )
+        needs_intake_boost = (
+            is_housing_discrimination
+            or is_hacc_research_seed
+            or weak_policy_or_file_evidence
+            or (isinstance(question_quality_signal, float) and question_quality_signal < 0.86)
+            or stability_recovery_mode
+        )
+        empathy_recovery_mode = isinstance(empathy_signal, float) and empathy_signal < 0.8
+
+        # Normalize frequently-consumed list fields so prompt assembly and scoring logic
+        # don't degrade on malformed optimizer payloads.
+        key_facts["blocker_objectives"] = _unique_strings(_as_string_list(key_facts.get("blocker_objectives")))
+        key_facts["extraction_targets"] = _unique_strings(_as_string_list(key_facts.get("extraction_targets")))
+        key_facts["workflow_phase_priorities"] = _unique_strings(_as_string_list(key_facts.get("workflow_phase_priorities")))
+        key_facts["complainant_story_facts"] = list(story_facts)
+        key_facts["hacc_evidence"] = list(evidence_items)
+        has_seed_intake_prompts = bool(
+            _as_string_list(synthetic_prompts.get("intake_questions"))
+            or str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip()
+        )
+        if stability_recovery_mode or (not has_intake_signals and not has_seed_intake_prompts):
+            key_facts["actor_critic_session_stability"] = {
+                "mode": "recovery",
+                "reason": (
+                    "no_successful_sessions"
+                    if no_successful_sessions
+                    else "missing_intake_signals"
+                ),
+                "num_sessions_analyzed": num_sessions_signal,
+                "num_successful_sessions": successful_sessions_signal,
+                "question_quality": question_quality_signal,
+                "empathy": empathy_signal,
+                "efficiency": efficiency_signal,
+            }
+            stability_prompt = (
+                "Use a stable intake flow: acknowledge impact briefly, gather chronology and decision-maker facts, "
+                "capture document anchors, then confirm requested remedy."
+            )
+            existing_intake_prompt = str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip()
+            if not existing_intake_prompt:
+                synthetic_prompts["intake_questionnaire_prompt"] = stability_prompt
+            elif stability_prompt.lower() not in existing_intake_prompt.lower():
+                synthetic_prompts["intake_questionnaire_prompt"] = f"{existing_intake_prompt} {stability_prompt}".strip()
+            existing_questions = _as_string_list(synthetic_prompts.get("intake_questions"))
+            stability_questions = [
+                "Before we get into details, what impact has this had on your housing, finances, health, or family?",
+                "What happened first, what happened next, and what happened most recently? Include date anchors even if approximate.",
+                "Who made or communicated each decision, and what were their roles?",
+                "What exact adverse action happened, what reason was given, and when did you learn about it?",
+                "What notices, emails, texts, letters, or other files support your account, and what does each one show?",
+                "What remedy are you asking for right now?",
+            ]
+            synthetic_prompts["intake_questions"] = _unique_strings(existing_questions + stability_questions)[:8]
+            key_facts["workflow_phase_priorities"] = _ordered_workflow_phases(
+                list(key_facts.get("workflow_phase_priorities") or [])
+                + ["intake_questioning", "graph_analysis", "document_generation"],
+                explicit_phase_order=["intake_questioning", "graph_analysis", "document_generation"],
+            )
+        if needs_intake_boost:
+            key_facts["actor_critic_intake_focus"] = {
+                "weak_complaint_types": sorted(weak_complaint_types),
+                "weak_evidence_modalities": sorted(weak_evidence_modalities),
+                "question_quality": question_quality_signal,
+                "empathy": empathy_signal,
+                "efficiency": efficiency_signal,
+                "priority": "intake_questioning",
+            }
+            anchor_sections: List[str] = [
+                "adverse_action",
+                "selection_criteria",
+            ]
+            if is_housing_discrimination or is_hacc_research_seed:
+                anchor_sections.extend(
+                    [
+                        "grievance_hearing",
+                        "appeal_rights",
+                        "reasonable_accommodation",
+                    ]
+                )
+            key_facts["anchor_sections"] = _unique_strings(
+                list(key_facts.get("anchor_sections") or []) + anchor_sections
+            )
+            boosted_objectives = [
+                "exact_dates",
+                "staff_names_titles",
+                "causation_sequence",
+                "response_dates",
+                "adverse_action_specificity",
+                "adverse_action_details",
+                "evidence_identifiers",
+            ]
+            if is_housing_discrimination or is_hacc_research_seed:
+                boosted_objectives.insert(3, "hearing_request_timing")
+            key_facts["blocker_objectives"] = _ordered_priority_subset(
+                list(key_facts.get("blocker_objectives") or []) + boosted_objectives,
+                _ACTOR_CRITIC_OBJECTIVE_PRIORITY,
+            )
+            key_facts["extraction_targets"] = _ordered_priority_subset(
+                list(key_facts.get("extraction_targets") or [])
+                + [
+                    "timeline_anchors",
+                    "actor_role_mapping",
+                    "hearing_process",
+                    "response_timeline",
+                    "retaliation_sequence",
+                    "adverse_action_details",
+                    "adverse_action_definition",
+                    "document_identifier_mapping",
+                ],
+                [
+                    "timeline_anchors",
+                    "actor_role_mapping",
+                    "hearing_process",
+                    "response_timeline",
+                    "retaliation_sequence",
+                    "adverse_action_definition",
+                    "document_identifier_mapping",
+                ],
+            )
+            key_facts["workflow_phase_priorities"] = _ordered_workflow_phases(
+                list(key_facts.get("workflow_phase_priorities") or [])
+                + ["intake_questioning", "graph_analysis", "document_generation"],
+                explicit_phase_order=["intake_questioning", "graph_analysis", "document_generation"],
+            )
+
+            existing_intake_questions = _as_string_list(synthetic_prompts.get("intake_questions"))
+            boosted_questions = [
+                "Walk me through the event timeline with an exact date anchor for each step, or at least month and year when exact dates are unknown.",
+                "Who made or communicated each housing decision, and what were their roles, titles, or job positions?",
+                "What exact adverse action occurred, when did you first learn about it, and what reason was given in writing or verbally?",
+                "Which policy/procedure document was cited, what section was applied, and how did staff describe that rule?",
+                "List each supporting document or file (notice, email, text, letter, screenshot, upload) with date, sender, file name, and what fact it proves.",
+                "When did you request any grievance, hearing, appeal, or review, and what response date or deadline were you given?",
+                "What protected activity, accommodation request, or complaint happened before the adverse action, and what happened first and after?",
+                "What selection criteria, policy factors, or screening rules were applied to you versus similarly situated people?",
+                "What harm did this cause and what remedy are you asking for right now?",
+            ]
+            if empathy_recovery_mode:
+                boosted_questions.insert(
+                    0,
+                    "Before details, what impact has this had on your housing stability, finances, health, or family?",
+                )
+            synthetic_prompts["intake_questions"] = _unique_strings(existing_intake_questions + boosted_questions)[:12]
+
+            intake_prompt_seed = str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip()
+            boost_clause = (
+                "Prioritize unresolved factual blockers (dates, decision-makers, adverse action details), "
+                "policy/file evidence precision, and remedy anchors before draft-ready synthesis."
+            )
+            if not intake_prompt_seed:
+                synthetic_prompts["intake_questionnaire_prompt"] = boost_clause
+            elif boost_clause.lower() not in intake_prompt_seed.lower():
+                synthetic_prompts["intake_questionnaire_prompt"] = f"{intake_prompt_seed} {boost_clause}".strip()
+
+            chatbot_prompt_seed = str(synthetic_prompts.get("complaint_chatbot_prompt") or "").strip()
+            chatbot_clause = (
+                "Keep responses concise but fact-dense: who, action, date, policy/file artifact, and requested remedy."
+            )
+            if not chatbot_prompt_seed:
+                synthetic_prompts["complaint_chatbot_prompt"] = chatbot_clause
+            elif chatbot_clause.lower() not in chatbot_prompt_seed.lower():
+                synthetic_prompts["complaint_chatbot_prompt"] = f"{chatbot_prompt_seed} {chatbot_clause}".strip()
+
         derived_signals = _derive_context_signals(
-            seed,
+            seed_payload,
             key_facts,
             evidence_items,
             synthetic_prompts,
             story_facts,
         )
+
+        blocker_objectives = list(derived_signals.get("blocker_objectives") or [])
+        extraction_targets = list(derived_signals.get("extraction_targets") or [])
+        workflow_phase_priorities = list(derived_signals.get("workflow_phase_priorities") or [])
+
+        if blocker_objectives:
+            key_facts["blocker_objectives"] = _ordered_priority_subset(
+                list(key_facts.get("blocker_objectives") or []) + blocker_objectives,
+                _ACTOR_CRITIC_OBJECTIVE_PRIORITY,
+            )
+        if extraction_targets:
+            key_facts["extraction_targets"] = _unique_strings(
+                list(key_facts.get("extraction_targets") or []) + extraction_targets
+            )
+        if workflow_phase_priorities:
+            key_facts["workflow_phase_priorities"] = _ordered_workflow_phases(
+                list(key_facts.get("workflow_phase_priorities") or []) + workflow_phase_priorities,
+                explicit_phase_order=_ACTOR_CRITIC_PHASE_FOCUS_ORDER,
+            )
+
+        # If optimizer signals produced blocker objectives but no intake prompt artifacts,
+        # synthesize lightweight follow-up guidance to keep intake flow actionable.
+        intake_prompt_text = str(synthetic_prompts.get("intake_questionnaire_prompt") or "").strip()
+        raw_intake_questions = synthetic_prompts.get("intake_questions")
+        if isinstance(raw_intake_questions, str):
+            intake_questions = [raw_intake_questions.strip()] if raw_intake_questions.strip() else []
+        else:
+            intake_questions = [
+                str(item).strip()
+                for item in list(raw_intake_questions or [])
+                if str(item).strip()
+            ]
+        if blocker_objectives and not intake_prompt_text:
+            synthetic_prompts["intake_questionnaire_prompt"] = (
+                "Prioritize missing chronology, decision-maker identity, and documentary anchors before drafting."
+            )
+        if blocker_objectives and not intake_questions:
+            synthesized_questions = [
+                prompt
+                for prompt in (_objective_follow_up_prompt(objective) for objective in blocker_objectives)
+                if prompt
+            ]
+            if synthesized_questions:
+                synthetic_prompts["intake_questions"] = synthesized_questions[:6]
+
         evidence_summary = str(
             key_facts.get("evidence_summary")
-            or seed.get("summary")
+            or seed_payload.get("summary")
             or ""
         )
+
+        cooperation_level = float(profile.get("cooperation_level", 0.8))
+        context_depth = int(profile.get("context_depth", 1))
+        if stability_recovery_mode:
+            # Keep adversarial personas realistic, but avoid dead-end responses when
+            # recovering from zero-signal/no-session optimizer runs.
+            cooperation_level = max(cooperation_level, 0.62)
+            context_depth = max(context_depth, 2)
+        cooperation_level = min(1.0, max(0.0, cooperation_level))
+        context_depth = max(1, context_depth)
+
         return ComplaintContext(
-            complaint_type=seed.get("type", "unknown"),
+            complaint_type=str(seed_payload.get("type", "unknown") or "unknown"),
             key_facts=key_facts,
             emotional_state=str(profile.get("emotional_state", "distressed")),
-            cooperation_level=float(profile.get("cooperation_level", 0.8)),
-            context_depth=int(profile.get("context_depth", 1)),
+            cooperation_level=cooperation_level,
+            context_depth=context_depth,
             evidence_items=evidence_items,
             evidence_summary=evidence_summary,
             repository_evidence_candidates=list(key_facts.get("repository_evidence_candidates") or []),
             synthetic_prompts=synthetic_prompts,
             complainant_story_facts=story_facts,
-            blocker_objectives=derived_signals.get("blocker_objectives") or [],
-            extraction_targets=derived_signals.get("extraction_targets") or [],
-            workflow_phase_priorities=derived_signals.get("workflow_phase_priorities") or [],
+            blocker_objectives=blocker_objectives,
+            extraction_targets=extraction_targets,
+            workflow_phase_priorities=workflow_phase_priorities,
         )
     
     def set_context(self, context: ComplaintContext):
@@ -612,7 +1084,7 @@ Complaint:"""
         evidence_text = self._format_context_evidence()
         question_lower = str(question or "").lower()
         focus_guidance: List[str] = []
-        if any(token in question_lower for token in ("when", "date", "timeline", "chronolog", "sequence", "step by step", "decision timeline")):
+        if any(token in question_lower for token in _CHRONOLOGY_TERMS + ("decision timeline",)):
             focus_guidance.append(
                 "Give the most specific date anchors you know (exact date, month/year, or relative anchors) and keep events in order."
             )
@@ -624,8 +1096,8 @@ Complaint:"""
                 "Prefer exact dates. If you do not know an exact date, give your best month/year estimate and explain why it is approximate."
             )
         if (
-            any(token in question_lower for token in ("staff", "name", "who", "decision-maker", "decision maker", "manager", "supervisor"))
-            and any(token in question_lower for token in ("title", "role", "position", "job title"))
+            any(token in question_lower for token in _DECISION_MAKER_TERMS + ("name",))
+            and any(token in question_lower for token in _ROLE_TITLE_TERMS)
         ):
             focus_guidance.append(
                 "Name each person involved and include their title or role; if a name is unknown, give the best-known title."
@@ -641,6 +1113,14 @@ Complaint:"""
         ):
             focus_guidance.append(
                 "Include response dates for notices, hearing/review requests, and final decision communications when known."
+            )
+        if any(token in question_lower for token in _ADVERSE_ACTION_TERMS):
+            focus_guidance.append(
+                "Specify the exact adverse action (what changed), who authorized it, and the first date you learned of it."
+            )
+        if any(token in question_lower for token in _DOCUMENT_ARTIFACT_TERMS):
+            focus_guidance.append(
+                "Identify documentary artifacts precisely: document type, date, sender/recipient, and any ID or subject line."
             )
         if (
             any(token in question_lower for token in ("protected activity", "complaint", "reported", "accommodation", "grievance", "appeal"))
@@ -661,7 +1141,8 @@ Complaint:"""
                 "Answer in sequence: protected activity, who learned about it, adverse action, and what timing or statements link them."
             )
         focus_guidance_text = "\n".join([f"- {item}" for item in focus_guidance]) if focus_guidance else "- Answer naturally in your own words."
-        response_schema_guidance_text = self._build_response_schema_guidance(question_lower)
+        response_schema_guidance_text = self._build_response_schema_guidance(question)
+        actor_critic_guidance_text = self._build_actor_critic_guidance(question)
         grounded_facts_text = self._format_grounded_case_digest(
             key_facts=self.context.key_facts if isinstance(self.context.key_facts, dict) else {},
             story_facts=self.context.complainant_story_facts,
@@ -694,6 +1175,9 @@ Question focus guidance:
 Response packaging guidance:
 {response_schema_guidance_text}
 
+Actor-critic optimization guidance:
+{actor_critic_guidance_text}
+
 Respond naturally as this person would. Your response should:
 1. Answer the question based on your knowledge
 2. Match your personality ({self.personality}) and cooperation level ({cooperation_desc})
@@ -712,26 +1196,96 @@ If you don't know something, say so. If your cooperation level is low, it's okay
 Response:"""
         return prompt
 
-    def _build_response_schema_guidance(self, question_lower: str) -> str:
+    def _build_response_schema_guidance(self, question: str) -> str:
+        question_lower = str(question or "").lower()
         guidance: List[str] = [
             "Start with a direct answer sentence, then add short supporting facts.",
             "Prefer concrete facts over general impressions (dates, names/roles, actions, notices, documents).",
             "If a detail is uncertain, label it clearly as an estimate or memory gap.",
             "Do not repeat unrelated background; focus on the unresolved factual gap in the question.",
-            "When multiple topics are requested, prioritize in this order: graph analysis facts first, then intake blockers, then document/drafting details.",
+            "When multiple topics are requested, prioritize in this order: graph analysis facts first, then document artifacts, then intake blockers.",
+            "Keep facts patchable by using compact fact slots: who, action, date, artifact.",
         ]
-        if any(token in question_lower for token in ("when", "date", "timeline", "chronolog", "sequence")):
+        if any(token in question_lower for token in _CHRONOLOGY_TERMS):
             guidance.append("Use chronological order and include one date anchor per event when possible.")
-        if any(token in question_lower for token in ("who", "name", "staff", "manager", "supervisor", "decision-maker", "decision maker")):
+        if any(token in question_lower for token in _DECISION_MAKER_TERMS + ("name",)):
             guidance.append("List each person with their role/title and what they did.")
         if any(token in question_lower for token in ("document", "email", "notice", "message", "record", "paperwork")):
             guidance.append("Identify the strongest document first, then add one to two secondary records if relevant.")
+        if any(token in question_lower for token in _DOCUMENT_ARTIFACT_TERMS):
+            guidance.append("For each document, include one precision marker (ID, subject line, exhibit label, or send date).")
+        if any(token in question_lower for token in _ADVERSE_ACTION_TERMS):
+            guidance.append("Describe the adverse action with one concrete operational detail (status change, benefit loss, restriction, or penalty).")
         if (
             any(token in question_lower for token in ("protected activity", "complaint", "reported", "accommodation", "grievance", "appeal"))
             and any(token in question_lower for token in ("adverse", "retaliat", "termination", "denial", "disciplin"))
         ):
             guidance.append("Explicitly connect protected activity to adverse action using timing, statements, or decision-maker behavior.")
+        if "?" in question and question.count("?") > 1:
+            guidance.append("If the mediator asked multiple questions at once, answer in numbered order to keep facts patchable.")
+        if len(question.split()) > 28:
+            guidance.append("If the question is broad, answer the core fact first, then add one brief clarification request.")
         return "\n".join([f"- {item}" for item in guidance])
+
+    def _build_actor_critic_guidance(self, question: str) -> str:
+        question_text = str(question or "").strip()
+        question_lower = question_text.lower()
+        context = self.context or ComplaintContext(complaint_type="unknown", key_facts={})
+
+        phase_focus = _ordered_workflow_phases(
+            list(context.workflow_phase_priorities or _ACTOR_CRITIC_PHASE_FOCUS_ORDER),
+            explicit_phase_order=_ACTOR_CRITIC_PHASE_FOCUS_ORDER,
+        )
+
+        placeholder_objectives = [
+            str(item.get("objective") or "").strip()
+            for item in _extract_confirmation_placeholders(context.key_facts)
+            if isinstance(item, dict)
+        ]
+        unresolved_objectives = _order_objectives_for_actor_critic(
+            list(context.blocker_objectives or []) + placeholder_objectives,
+            phase_focus_order=phase_focus,
+        )
+
+        guidance: List[str] = []
+        guidance.append("Keep your answer short, factual, and easy for the mediator to act on in the next question.")
+        if str(context.emotional_state).lower() in _EMPATHY_HEAVY_STATES:
+            guidance.append("Open with one brief impact/emotion sentence, then provide concrete facts.")
+        if any(token in question_lower for token in ("how did that affect you", "impact", "harm", "stress", "feeling", "feel")):
+            guidance.append("Name one concrete impact (housing/work/health/financial) and one emotional impact.")
+        if any(token in question_lower for token in ("why", "explain", "tell me more", "what happened")) and len(question_text.split()) < 10:
+            guidance.append("If the question is vague, provide the best direct answer and add one precise clarification need.")
+
+        if unresolved_objectives:
+            prioritized = unresolved_objectives[:3]
+            guidance.append(
+                "When facts remain unresolved, end with a short 'still needs confirmation' line for: "
+                + ", ".join(prioritized)
+                + "."
+            )
+            follow_up_prompts = [
+                prompt
+                for prompt in (_objective_follow_up_prompt(item) for item in prioritized)
+                if prompt
+            ]
+            if follow_up_prompts:
+                guidance.append("Suggested high-yield follow-up prompts: " + " | ".join(follow_up_prompts))
+        else:
+            guidance.append("If chronology or decision-maker precision still feels vague, ask one explicit follow-up prompt before ending.")
+
+        if any(token in question_lower for token in _CHRONOLOGY_TERMS):
+            guidance.append("Close chronology gaps by providing event sequence with dates and response timing, even if approximate.")
+        if any(token in question_lower for token in _DECISION_MAKER_TERMS):
+            guidance.append("Pin down each decision-maker and role; if uncertain, provide the best known role and source context.")
+        if any(token in question_lower for token in _DOCUMENT_ARTIFACT_TERMS):
+            guidance.append("Name documentary artifacts precisely (letter/email/notice), including IDs or subject lines when available.")
+
+        guidance.append(
+            "Phase focus order: "
+            + " -> ".join(phase_focus[:3] if phase_focus else list(_ACTOR_CRITIC_PHASE_FOCUS_ORDER))
+            + "."
+        )
+        return "\n".join(f"- {item}" for item in guidance)
     
     def _fallback_complaint(self, seed_data: Dict[str, Any]) -> str:
         """Fallback complaint if LLM fails."""

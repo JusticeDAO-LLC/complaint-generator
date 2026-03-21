@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, UTC
 from enum import Enum
+from .intake_claim_registry import normalize_claim_type
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,21 @@ _CONFIRMATION_PLACEHOLDER_PATTERN = re.compile(
     r"\b(?:needs?\s+confirmation|to\s+be\s+confirmed|confirm(?:ed|ation)?\s+pending|tbd|unknown|not\s+sure|unclear|pending)\b",
     flags=re.IGNORECASE,
 )
+_DATE_TOKEN_PATTERN = re.compile(
+    r"(?:\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+\d{1,2}(?:,\s*\d{4})?\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(?:19|20)\d{2}\b)",
+    flags=re.IGNORECASE,
+)
+_ACTOR_CRITIC_PHASE_FOCUS_ORDER = ("graph_analysis", "document_generation", "intake_questioning")
+_ACTOR_CRITIC_PRIORITY = 70
+_ACTOR_CRITIC_FOCUS_METRICS = {
+    "empathy": 0.22,
+    "question_quality": 0.58,
+    "information_extraction": 0.72,
+    "coverage": 0.69,
+    "patchability": 0.74,
+}
+_ACTOR_CRITIC_WEAK_CLAIM_TYPES = {"housing_discrimination", "hacc_research_engine"}
+_ACTOR_CRITIC_WEAK_EVIDENCE_MODALITIES = {"policy_document", "file_evidence"}
 
 
 def _utc_now_isoformat() -> str:
@@ -198,26 +214,313 @@ class DependencyGraph:
         
         Returns summary of which claims are ready to file and which need work.
         """
+        def _normalize_key_fragment(value: Any) -> str:
+            normalized = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower())
+            normalized = re.sub(r"_+", "_", normalized).strip("_")
+            return normalized
+
+        def _build_deterministic_update_key(
+            claim_id: str,
+            claim_type: str,
+            source_node: Optional[DependencyNode],
+            source_attrs: Dict[str, Any],
+        ) -> str:
+            explicit_gap_key = str(source_attrs.get("gap_key") or "").strip()
+            if explicit_gap_key:
+                return explicit_gap_key
+            requirement_key = str(source_attrs.get("requirement_key") or "").strip()
+            if requirement_key:
+                type_fragment = _normalize_key_fragment(claim_type) or "claim"
+                req_fragment = _normalize_key_fragment(requirement_key) or "requirement"
+                return f"{type_fragment}:{req_fragment}"
+
+            source_fragment = _normalize_key_fragment(source_node.id if source_node else "") or "unknown_source"
+            claim_fragment = _normalize_key_fragment(claim_type) or _normalize_key_fragment(claim_id) or "claim"
+            return f"{claim_fragment}:{source_fragment}"
+
         claims = self.get_nodes_by_type(NodeType.CLAIM)
+        nodes_by_id = self.nodes
+        incoming_required_by_target: Dict[str, List[Dependency]] = {}
+        for dep in self.dependencies.values():
+            if dep.required:
+                incoming_required_by_target.setdefault(dep.target_id, []).append(dep)
         
         ready_claims = []
         incomplete_claims = []
+        total_missing_dependencies = 0
+        total_satisfaction_ratio = 0.0
+        recommended_next_gaps = []
+        total_required_dependencies = 0
+        total_satisfied_required_dependencies = 0
+        underspecified_claims = 0
+        weak_claim_gap_count = 0
+        weak_modality_gap_count = 0
+        structured_required_dependencies = 0
+        structured_satisfied_dependencies = 0
+        deterministic_gap_targets = 0
+        deterministic_gap_targets_satisfied = 0
         
         for claim in claims:
-            check = self.check_satisfaction(claim.id)
-            if check.get('satisfied', False):
+            required_deps = incoming_required_by_target.get(claim.id, [])
+            satisfied_count = 0
+            missing_dependencies = []
+            for dep in required_deps:
+                source_node = nodes_by_id.get(dep.source_id)
+                if source_node and source_node.satisfied:
+                    satisfied_count += 1
+                else:
+                    missing_dependencies.append(
+                        {
+                            'dependency_id': dep.id,
+                            'source_node_id': dep.source_id,
+                            'source_name': source_node.name if source_node else 'Unknown',
+                            'dependency_type': dep.dependency_type.value,
+                        }
+                    )
+            claim_type = str((claim.attributes or {}).get('claim_type') or '').strip().lower()
+            total_required_for_claim = len(required_deps)
+            claim_satisfaction_ratio = (
+                satisfied_count / total_required_for_claim if total_required_for_claim > 0 else 1.0
+            )
+            claim_is_satisfied = claim_satisfaction_ratio >= 1.0
+            claim_is_underspecified = total_required_for_claim == 0
+            if claim_is_underspecified:
+                underspecified_claims += 1
+
+            total_required_dependencies += total_required_for_claim
+            total_satisfied_required_dependencies += satisfied_count
+
+            ranked_missing_dependencies = []
+            claim_structured_required_count = 0
+            claim_structured_satisfied_count = 0
+            claim_deterministic_target_count = 0
+            claim_deterministic_target_satisfied_count = 0
+            missing_by_source_id = {str(dep.get("source_node_id") or "") for dep in missing_dependencies}
+            for dep in required_deps:
+                source_node = nodes_by_id.get(dep.source_id)
+                source_attrs = source_node.attributes if source_node and isinstance(source_node.attributes, dict) else {}
+                source_node_type = source_node.node_type.value if source_node else "unknown"
+                requirement_key = str(source_attrs.get("requirement_key") or "").strip()
+                expected_modality = str(source_attrs.get("expected_evidence_modality") or "").strip().lower()
+                has_structured_target = bool(
+                    requirement_key
+                    or expected_modality
+                    or source_node_type in {"legal_element", "requirement", "fact", "evidence"}
+                )
+                if has_structured_target:
+                    claim_structured_required_count += 1
+                deterministic_key = _build_deterministic_update_key(
+                    claim_id=claim.id,
+                    claim_type=claim_type,
+                    source_node=source_node,
+                    source_attrs=source_attrs,
+                )
+                has_deterministic_key = bool(deterministic_key)
+                if has_deterministic_key:
+                    claim_deterministic_target_count += 1
+                if dep.source_id not in missing_by_source_id:
+                    if has_structured_target:
+                        claim_structured_satisfied_count += 1
+                    if has_deterministic_key:
+                        claim_deterministic_target_satisfied_count += 1
+
+            structured_required_dependencies += claim_structured_required_count
+            structured_satisfied_dependencies += claim_structured_satisfied_count
+            deterministic_gap_targets += claim_deterministic_target_count
+            deterministic_gap_targets_satisfied += claim_deterministic_target_satisfied_count
+
+            for dep in missing_dependencies:
+                source_node = self.get_node(str(dep.get('source_node_id') or ''))
+                source_attrs = source_node.attributes if source_node and isinstance(source_node.attributes, dict) else {}
+                blocking = bool(source_attrs.get('blocking', source_node.node_type in {NodeType.REQUIREMENT, NodeType.LEGAL_ELEMENT} if source_node else False))
+                source_node_type = source_node.node_type.value if source_node else 'unknown'
+                requirement_key = str(source_attrs.get('requirement_key') or '')
+                evidence_modality = str(source_attrs.get('expected_evidence_modality') or '').strip().lower()
+                deterministic_update_key = _build_deterministic_update_key(
+                    claim_id=claim.id,
+                    claim_type=claim_type,
+                    source_node=source_node,
+                    source_attrs=source_attrs,
+                )
+                gap_id = deterministic_update_key or str(source_attrs.get('gap_key') or f"{claim.id}:{dep.get('source_node_id')}")
+                structured_gap = bool(
+                    requirement_key
+                    or evidence_modality
+                    or source_node_type in {'legal_element', 'requirement', 'fact', 'evidence'}
+                )
+                weak_claim_focus = claim_type in _ACTOR_CRITIC_WEAK_CLAIM_TYPES
+                weak_modality_focus = evidence_modality in _ACTOR_CRITIC_WEAK_EVIDENCE_MODALITIES
+                if weak_claim_focus:
+                    weak_claim_gap_count += 1
+                if weak_modality_focus:
+                    weak_modality_gap_count += 1
+                ranked_missing_dependencies.append(
+                    {
+                        **dep,
+                        'gap_id': gap_id,
+                        'claim_type': claim_type,
+                        'source_node_type': source_node_type,
+                        'source_description': source_node.description if source_node else '',
+                        'requirement_key': requirement_key,
+                        'evidence_modality': evidence_modality,
+                        'structured_gap': structured_gap,
+                        'deterministic_update_key': deterministic_update_key,
+                        'weak_claim_focus': weak_claim_focus,
+                        'weak_modality_focus': weak_modality_focus,
+                        'blocking': blocking,
+                    }
+                )
+
+            ranked_missing_dependencies.sort(
+                key=lambda item: (
+                    0 if item.get('blocking') else 1,
+                    0 if item.get('weak_claim_focus') else 1,
+                    0 if item.get('weak_modality_focus') else 1,
+                    0 if item.get('structured_gap') else 1,
+                    0 if str(item.get('source_node_type') or '') in {'legal_element', 'requirement'} else 1,
+                    str(item.get('source_name') or '').lower(),
+                )
+            )
+
+            total_missing_dependencies += len(ranked_missing_dependencies)
+            total_satisfaction_ratio += claim_satisfaction_ratio
+            next_gap = ranked_missing_dependencies[0] if ranked_missing_dependencies else None
+            if claim_is_satisfied:
                 ready_claims.append({
                     'claim_id': claim.id,
                     'claim_name': claim.name,
-                    'confidence': claim.confidence
+                    'confidence': claim.confidence,
+                    'claim_type': claim_type,
+                    'dependency_satisfaction': 1.0,
+                    'underspecified': claim_is_underspecified,
+                    'required_dependency_count': total_required_for_claim,
+                    'structured_required_count': claim_structured_required_count,
+                    'structured_satisfied_count': claim_structured_satisfied_count,
+                    'deterministic_target_count': claim_deterministic_target_count,
+                    'deterministic_target_satisfied_count': claim_deterministic_target_satisfied_count,
                 })
             else:
                 incomplete_claims.append({
                     'claim_id': claim.id,
                     'claim_name': claim.name,
-                    'satisfaction_ratio': check.get('satisfaction_ratio', 0.0),
-                    'missing_count': len(check.get('missing_dependencies', []))
+                    'claim_type': claim_type,
+                    'satisfaction_ratio': claim_satisfaction_ratio,
+                    'dependency_satisfaction': claim_satisfaction_ratio,
+                    'missing_count': len(ranked_missing_dependencies),
+                    'missing_dependencies': ranked_missing_dependencies,
+                    'next_required_gap': next_gap,
+                    'underspecified': claim_is_underspecified,
+                    'required_dependency_count': total_required_for_claim,
+                    'structured_required_count': claim_structured_required_count,
+                    'structured_satisfied_count': claim_structured_satisfied_count,
+                    'deterministic_target_count': claim_deterministic_target_count,
+                    'deterministic_target_satisfied_count': claim_deterministic_target_satisfied_count,
                 })
+                if next_gap:
+                    recommended_next_gaps.append(
+                        {
+                            'claim_id': claim.id,
+                            'claim_name': claim.name,
+                            'claim_type': claim_type,
+                            **next_gap,
+                        }
+                    )
+
+        claim_level_satisfaction = (
+            total_satisfaction_ratio / len(claims) if claims else 0.0
+        )
+
+        dependency_coverage = (
+            total_satisfied_required_dependencies / total_required_dependencies
+            if total_required_dependencies > 0
+            else (1.0 if claims else 0.0)
+        )
+        overall_dependency_satisfaction = (
+            claim_level_satisfaction * 0.45 + dependency_coverage * 0.55
+        ) if claims else 0.0
+        structured_dependency_coverage = (
+            structured_satisfied_dependencies / structured_required_dependencies
+            if structured_required_dependencies > 0
+            else dependency_coverage
+        )
+        deterministic_gap_closure = (
+            deterministic_gap_targets_satisfied / deterministic_gap_targets
+            if deterministic_gap_targets > 0
+            else dependency_coverage
+        )
+        graph_population_score = (
+            (
+                ((len(claims) - underspecified_claims) / len(claims)) * 0.55
+                + structured_dependency_coverage * 0.45
+            )
+            if claims
+            else 0.0
+        )
+        graph_analysis_confidence = max(
+            0.0,
+            min(
+                1.0,
+                dependency_coverage * 0.35
+                + structured_dependency_coverage * 0.30
+                + deterministic_gap_closure * 0.20
+                + graph_population_score * 0.15,
+            ),
+        )
+        avg_gaps = total_missing_dependencies / len(claims) if claims else 0.0
+
+        readiness_history = self.metadata.setdefault('readiness_history', {})
+        previous_avg_gaps = float(readiness_history.get('avg_gaps', avg_gaps))
+        gap_delta_per_iter = avg_gaps - previous_avg_gaps
+        previous_stall_count = int(readiness_history.get('gap_stall_sessions', 0))
+        if avg_gaps > 0.0 and gap_delta_per_iter >= -1e-9:
+            gap_stall_sessions = previous_stall_count + 1
+        else:
+            gap_stall_sessions = 0
+        readiness_history.update(
+            {
+                'avg_gaps': avg_gaps,
+                'gap_stall_sessions': gap_stall_sessions,
+                'updated_at': _utc_now_isoformat(),
+            }
+        )
+        self.metadata['readiness_history'] = readiness_history
+
+        recommended_actions = []
+        if not claims:
+            recommended_actions.append(
+                "Restore a stable adversarial session flow before tuning graph extraction and dependency tracking."
+            )
+        if total_required_dependencies == 0 and claims:
+            recommended_actions.append(
+                "No required dependencies are linked to claims; populate requirement/evidence edges before denoising."
+            )
+        if gap_stall_sessions >= 2 and avg_gaps > 0.0:
+            recommended_actions.append(
+                "Gap count is not improving across iterations; prioritize blocker-focused follow-ups in graph_analysis."
+            )
+        if weak_claim_gap_count > 0:
+            recommended_actions.append(
+                "Prioritize deterministic requirement closure for housing_discrimination and hacc_research_engine gaps."
+            )
+        if weak_modality_gap_count > 0:
+            recommended_actions.append(
+                "Request policy_document and file_evidence fields with exact document name, date, and issuing/source actor."
+            )
+        if deterministic_gap_closure < 0.6 and total_required_dependencies > 0:
+            recommended_actions.append(
+                "Map each follow-up question to a deterministic_update_key so each answer closes a concrete graph requirement."
+            )
+
+        recommended_next_gaps.sort(
+            key=lambda item: (
+                0 if item.get('blocking') else 1,
+                0 if item.get('weak_claim_focus') else 1,
+                0 if item.get('weak_modality_focus') else 1,
+                0 if item.get('structured_gap') else 1,
+                str(item.get('claim_name') or '').lower(),
+                str(item.get('source_name') or '').lower(),
+            )
+        )
         
         return {
             'total_claims': len(claims),
@@ -225,7 +528,45 @@ class DependencyGraph:
             'incomplete_claims': len(incomplete_claims),
             'ready_claim_details': ready_claims,
             'incomplete_claim_details': incomplete_claims,
-            'overall_readiness': len(ready_claims) / len(claims) if claims else 0.0
+            'overall_readiness': overall_dependency_satisfaction,
+            'overall_dependency_satisfaction': overall_dependency_satisfaction,
+            'dependency_satisfaction': overall_dependency_satisfaction,
+            'claim_level_dependency_satisfaction': claim_level_satisfaction,
+            'dependency_coverage': dependency_coverage,
+            'structured_dependency_coverage': structured_dependency_coverage,
+            'deterministic_gap_closure': deterministic_gap_closure,
+            'graph_population_score': graph_population_score,
+            'graph_analysis_confidence': graph_analysis_confidence,
+            'total_missing_dependencies': total_missing_dependencies,
+            'avg_gaps': avg_gaps,
+            'gap_delta_per_iter': gap_delta_per_iter,
+            'gap_stall_sessions': gap_stall_sessions,
+            'underspecified_claims': underspecified_claims,
+            'weak_claim_gap_count': weak_claim_gap_count,
+            'weak_modality_gap_count': weak_modality_gap_count,
+            'recommended_actions': recommended_actions,
+            'recommended_next_gaps': recommended_next_gaps,
+            'actor_critic': {
+                'optimizer': 'actor_critic',
+                'priority': _ACTOR_CRITIC_PRIORITY,
+                'phase_focus_order': list(_ACTOR_CRITIC_PHASE_FOCUS_ORDER),
+                'focus_metrics': dict(_ACTOR_CRITIC_FOCUS_METRICS),
+                'graph_analysis': {
+                    'dependency_coverage': dependency_coverage,
+                    'structured_dependency_coverage': structured_dependency_coverage,
+                    'deterministic_gap_closure': deterministic_gap_closure,
+                    'graph_population_score': graph_population_score,
+                    'graph_analysis_confidence': graph_analysis_confidence,
+                    'avg_gaps': avg_gaps,
+                    'gap_delta_per_iter': gap_delta_per_iter,
+                    'gap_stall_sessions': gap_stall_sessions,
+                    'weak_claim_types': sorted(_ACTOR_CRITIC_WEAK_CLAIM_TYPES),
+                    'weak_evidence_modalities': sorted(_ACTOR_CRITIC_WEAK_EVIDENCE_MODALITIES),
+                    'weak_claim_gap_count': weak_claim_gap_count,
+                    'weak_modality_gap_count': weak_modality_gap_count,
+                    'recommended_actions': recommended_actions,
+                },
+            },
         }
     
     def to_dict(self) -> dict:
@@ -467,6 +808,100 @@ class DependencyGraph:
                 }
             )
 
+        # Chronology closure blockers: timeline-critical events without exact dates or response timing.
+        chronology_focus_tokens = (
+            "hearing",
+            "appeal",
+            "grievance",
+            "notice",
+            "response",
+            "reply",
+            "decision",
+            "protected activity",
+            "complained",
+            "reported",
+            "adverse action",
+            "terminated",
+            "disciplined",
+            "evicted",
+            "suspended",
+        )
+        chronology_focus_node_ids = [
+            node_id
+            for node_id, text_value in node_text_by_id.items()
+            if any(token in text_value for token in chronology_focus_tokens)
+        ]
+        chronology_missing_date_nodes = [
+            self.get_node(node_id)
+            for node_id in chronology_focus_node_ids
+            if not self._contains_date_anchor(node_rich_text_by_id.get(node_id, ""))
+        ]
+        chronology_missing_date_nodes = [node for node in chronology_missing_date_nodes if node is not None]
+        if chronology_missing_date_nodes:
+            sample_labels = ", ".join(node.name for node in chronology_missing_date_nodes[:3])
+            issues.append(
+                {
+                    "issue_id": "blocker_chronology_exact_dates_missing",
+                    "issue_type": "chronology_exact_dates_missing",
+                    "severity": "blocking",
+                    "question_type": "timeline",
+                    "recommended_resolution_lane": "request_document",
+                    "workflow_phase": "graph_analysis",
+                    "workflow_phase_rank": 0,
+                    "summary": "Chronology-critical events are missing exact date anchors and response timing closure.",
+                    "node_ids": [node.id for node in chronology_missing_date_nodes],
+                    "node_names": [node.name for node in chronology_missing_date_nodes],
+                    "extraction_targets": [
+                        "exact_dates",
+                        "response_timing",
+                        "event_order",
+                        "actor_name",
+                        "decision_maker",
+                        "document_date",
+                    ],
+                    "patchability_markers": [
+                        "chronology_patch_anchor",
+                        "notice_chain_patch_anchor",
+                        "decision_actor_patch_anchor",
+                    ],
+                    "suggested_question": (
+                        f"For chronology items such as {sample_labels}, what exact date did each event occur, "
+                        "who handled each step, and how long after each event the next response or decision occurred?"
+                    ),
+                }
+            )
+
+        chronology_with_dates = [
+            node_id
+            for node_id in chronology_focus_node_ids
+            if self._contains_date_anchor(node_rich_text_by_id.get(node_id, ""))
+        ]
+        has_chronology_sequence = any(
+            dep.dependency_type in {DependencyType.BEFORE, DependencyType.SAME_TIME, DependencyType.OVERLAPS}
+            and dep.source_id in chronology_with_dates
+            and dep.target_id in chronology_with_dates
+            for dep in self.dependencies.values()
+        )
+        if len(chronology_with_dates) >= 2 and not has_chronology_sequence:
+            issues.append(
+                {
+                    "issue_id": "blocker_chronology_sequence_missing",
+                    "issue_type": "chronology_sequence_missing",
+                    "severity": "blocking",
+                    "question_type": "timeline",
+                    "recommended_resolution_lane": "request_document",
+                    "workflow_phase": "graph_analysis",
+                    "workflow_phase_rank": 0,
+                    "summary": "Dated chronology events exist but are not connected into a clear sequence in the graph.",
+                    "node_ids": list(chronology_with_dates),
+                    "extraction_targets": ["exact_dates", "event_order", "response_timing", "causation_link"],
+                    "patchability_markers": ["chronology_patch_anchor", "causation_patch_anchor"],
+                    "suggested_question": (
+                        "Using exact dates, what happened first, second, and third, and what was the response timing between each step?"
+                    ),
+                }
+            )
+
         # Staff identity blockers: staff-role references without a concrete named actor node.
         staff_like_nodes = [
             node for node in self.nodes.values()
@@ -491,6 +926,112 @@ class DependencyGraph:
                     "extraction_targets": ["actor_name", "actor_role", "organization_unit"],
                     "patchability_markers": ["actor_link_patch_anchor"],
                     "suggested_question": "Who specifically took each action (full name and title), what team or office they were in, and how they were connected to your case?",
+                }
+            )
+
+        # Decision detail blockers: adverse action mentions without precision on decision-maker and action specifics.
+        general_adverse_ids = [
+            node_id
+            for node_id, text_value in node_text_by_id.items()
+            if any(
+                token in text_value
+                for token in (
+                    "fired",
+                    "terminated",
+                    "demoted",
+                    "disciplined",
+                    "suspended",
+                    "adverse action",
+                    "evicted",
+                    "reduced hours",
+                    "cut hours",
+                    "denied",
+                )
+            )
+        ]
+        adverse_nodes_missing_actor_precision = [
+            node_id
+            for node_id in general_adverse_ids
+            if not (
+                _NAME_PATTERN.search(node_rich_text_by_id.get(node_id, ""))
+                or any(
+                    token in node_text_by_id.get(node_id, "")
+                    for token in ("manager", "supervisor", "director", "hr", "officer", "landlord", "administrator")
+                )
+            )
+        ]
+        if adverse_nodes_missing_actor_precision:
+            issues.append(
+                {
+                    "issue_id": "blocker_adverse_action_decision_precision_missing",
+                    "issue_type": "adverse_action_decision_precision_missing",
+                    "severity": "blocking",
+                    "question_type": "responsible_party",
+                    "recommended_resolution_lane": "clarify_with_complainant",
+                    "workflow_phase": "graph_analysis",
+                    "workflow_phase_rank": 0,
+                    "summary": "Adverse action facts lack specific decision-maker identity, role, and action detail precision.",
+                    "node_ids": list(adverse_nodes_missing_actor_precision),
+                    "extraction_targets": [
+                        "decision_maker",
+                        "actor_name",
+                        "actor_role",
+                        "adverse_action",
+                        "exact_dates",
+                        "organization_unit",
+                    ],
+                    "patchability_markers": [
+                        "actor_link_patch_anchor",
+                        "decision_actor_patch_anchor",
+                        "chronology_patch_anchor",
+                    ],
+                    "suggested_question": (
+                        "For each adverse action, who made or approved it (full name, title, and office), "
+                        "what exactly was decided or imposed, and on what exact date?"
+                    ),
+                }
+            )
+
+        # Documentary precision blockers: records exist but lack sender/recipient/subject/ID anchors.
+        document_like_nodes = [
+            node_id
+            for node_id, text_value in node_text_by_id.items()
+            if any(token in text_value for token in ("notice", "letter", "email", "message", "text", "memo", "record"))
+        ]
+        has_document_precision = any(
+            self._contains_document_precision_marker(node_rich_text_by_id.get(node_id, ""))
+            for node_id in document_like_nodes
+        )
+        if document_like_nodes and not has_document_precision:
+            issues.append(
+                {
+                    "issue_id": "blocker_document_artifact_precision_missing",
+                    "issue_type": "document_artifact_precision_missing",
+                    "severity": "blocking",
+                    "question_type": "evidence",
+                    "recommended_resolution_lane": "request_document",
+                    "workflow_phase": "document_generation",
+                    "workflow_phase_rank": 1,
+                    "summary": "Document artifacts are referenced but missing citation-grade identifiers for patch-ready drafting.",
+                    "node_ids": list(document_like_nodes),
+                    "extraction_targets": [
+                        "document_type",
+                        "document_date",
+                        "document_owner",
+                        "document_sender",
+                        "document_recipient",
+                        "document_subject",
+                        "document_identifier",
+                    ],
+                    "patchability_markers": [
+                        "support_patch_anchor",
+                        "notice_chain_patch_anchor",
+                        "decision_actor_patch_anchor",
+                    ],
+                    "suggested_question": (
+                        "For each relevant notice/email/message, what is the exact date, sender, recipient, subject line, "
+                        "and any case number or document ID we should cite?"
+                    ),
                 }
             )
 
@@ -619,7 +1160,7 @@ class DependencyGraph:
                     "question_type": "evidence",
                     "recommended_resolution_lane": "request_document",
                     "workflow_phase": "document_generation",
-                    "workflow_phase_rank": 1,
+                    "workflow_phase_rank": 2,
                     "summary": "Placeholder facts are not anchored to specific records for patch-ready drafting.",
                     "placeholder_node_ids": [node.id for node in placeholder_nodes],
                     "placeholder_node_names": [node.name for node in placeholder_nodes],
@@ -638,7 +1179,7 @@ class DependencyGraph:
                     "question_type": "clarification",
                     "recommended_resolution_lane": "clarify_with_complainant",
                     "workflow_phase": "intake_questioning",
-                    "workflow_phase_rank": 2,
+                    "workflow_phase_rank": 1,
                     "summary": "Intake record still has unresolved placeholders requiring a best-estimate fallback for closure.",
                     "placeholder_node_ids": [node.id for node in placeholder_nodes],
                     "placeholder_node_names": [node.name for node in placeholder_nodes],
@@ -650,7 +1191,7 @@ class DependencyGraph:
                 }
             )
 
-        return issues
+        return self._optimize_blocker_issues_for_actor_critic(issues)
 
     def _node_rich_text(self, node: DependencyNode) -> str:
         """Build searchable text including node attributes for blocker diagnostics."""
@@ -683,6 +1224,219 @@ class DependencyGraph:
                 if node is not None:
                     placeholder_nodes.append(node)
         return placeholder_nodes
+
+    def _contains_date_anchor(self, text_value: str) -> bool:
+        """Return whether text includes an explicit or parseable date anchor."""
+        if not text_value:
+            return False
+        return bool(_DATE_TOKEN_PATTERN.search(text_value))
+
+    def _contains_document_precision_marker(self, text_value: str) -> bool:
+        """Return whether text includes document-level precision markers."""
+        if not text_value:
+            return False
+        lowered = text_value.lower()
+        precision_tokens = (
+            "subject line",
+            "sender",
+            "recipient",
+            "from:",
+            "to:",
+            "reference number",
+            "case number",
+            "tracking number",
+            "message id",
+            "document id",
+            "attachment",
+        )
+        return any(token in lowered for token in precision_tokens)
+
+    def _phase_focus_rank_for_actor_critic(self, workflow_phase: str) -> int:
+        phase = str(workflow_phase or "").strip().lower()
+        if phase in _ACTOR_CRITIC_PHASE_FOCUS_ORDER:
+            return _ACTOR_CRITIC_PHASE_FOCUS_ORDER.index(phase)
+        return len(_ACTOR_CRITIC_PHASE_FOCUS_ORDER)
+
+    def _dedupe_preserve_order(self, values: List[str]) -> List[str]:
+        deduped: List[str] = []
+        seen = set()
+        for value in values:
+            token = str(value or "").strip()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            deduped.append(token)
+        return deduped
+
+    def _optimize_issue_question_text(
+        self,
+        *,
+        question_text: str,
+        question_type: str,
+        extraction_targets: List[str],
+    ) -> str:
+        base = str(question_text or "").strip()
+        qtype = str(question_type or "").strip().lower()
+        targets = [str(item or "").strip().lower() for item in extraction_targets if str(item or "").strip()]
+        lower = base.lower()
+
+        empathy_prefix = "To make sure I understand, "
+        if qtype in {"timeline", "responsible_party"}:
+            empathy_prefix = "I know this may be stressful, and this helps keep your record accurate: "
+        elif qtype in {"evidence"}:
+            empathy_prefix = "So we can support your claim clearly, "
+
+        if not lower.startswith((
+            "to make sure i understand",
+            "i know this may be stressful",
+            "so we can support your claim",
+        )):
+            if base:
+                first = base[0].lower() + base[1:] if len(base) > 1 else base.lower()
+            else:
+                first = "can you share the missing details"
+            base = f"{empathy_prefix}{first}"
+            lower = base.lower()
+
+        quality_prompts: List[str] = []
+        if any(item in targets for item in {"exact_dates", "event_order"}) and not any(
+            token in lower for token in ("exact date", "on what date", "what date", "when")
+        ):
+            quality_prompts.append("the exact date for each step")
+        if "response_timing" in targets and not any(
+            token in lower for token in ("response", "responded", "reply", "how long", "time between", "delay")
+        ):
+            quality_prompts.append("how long each response took after the prior event")
+        if any(item in targets for item in {"actor_name", "actor_role", "decision_maker"}) and not any(
+            token in lower for token in ("who", "full name", "title", "role")
+        ):
+            quality_prompts.append("who took each action (full name and title)")
+        if "adverse_action" in targets and not any(
+            token in lower for token in ("adverse action", "terminated", "fired", "disciplined", "evicted", "suspended", "what exactly")
+        ):
+            quality_prompts.append("what exact adverse action occurred at each step")
+        if any(item in targets for item in {"document_type", "document_date", "document_owner"}) and not any(
+            token in lower for token in ("document", "notice", "letter", "email", "record", "message")
+        ):
+            quality_prompts.append("which document or message supports each point")
+        if any(item in targets for item in {"document_sender", "document_recipient", "document_subject", "document_identifier"}) and not any(
+            token in lower for token in ("sender", "recipient", "subject", "reference", "case number", "document id")
+        ):
+            quality_prompts.append("the document sender, recipient, subject line, and any case/document ID")
+        if "causation_link" in targets and not any(token in lower for token in ("because", "after", "before", "led to")):
+            quality_prompts.append("how each step led to the next")
+
+        if quality_prompts:
+            detail_clause = " Please include " + "; ".join(self._dedupe_preserve_order(quality_prompts))
+            if not base.endswith((".", "?", "!")):
+                base = f"{base}."
+            base = f"{base}{detail_clause}"
+
+        cleaned = base.rstrip(" .!?")
+        if not cleaned:
+            cleaned = "To make sure I understand, can you share the missing details"
+        optimized = f"{cleaned}?"
+        if len(optimized) > 280:
+            optimized = optimized[:277].rstrip(" ,;:.!?") + "?"
+        return optimized
+
+    def _optimize_blocker_issues_for_actor_critic(
+        self,
+        issues: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        optimized: List[Dict[str, Any]] = []
+        objective_map = {
+            "timeline": "establish_chronology",
+            "responsible_party": "identify_responsible_party",
+            "evidence": "identify_supporting_evidence",
+            "clarification": "clarify_low_confidence_fact",
+            "requirement": "satisfy_claim_requirement",
+        }
+
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            enriched = dict(issue)
+            workflow_phase = str(enriched.get("workflow_phase") or "graph_analysis").strip().lower()
+            question_type = str(enriched.get("question_type") or "timeline").strip().lower()
+            severity = str(enriched.get("severity") or "").strip().lower()
+            extraction_targets = self._dedupe_preserve_order([
+                str(target).strip()
+                for target in (enriched.get("extraction_targets") or [])
+                if str(target).strip()
+            ])
+            patchability_markers = self._dedupe_preserve_order([
+                str(marker).strip()
+                for marker in (enriched.get("patchability_markers") or [])
+                if str(marker).strip()
+            ])
+
+            if question_type == "timeline":
+                extraction_targets = self._dedupe_preserve_order(
+                    extraction_targets + ["exact_dates", "event_order", "response_timing"]
+                )
+                patchability_markers = self._dedupe_preserve_order(
+                    patchability_markers + ["chronology_patch_anchor"]
+                )
+            elif question_type == "responsible_party":
+                extraction_targets = self._dedupe_preserve_order(
+                    extraction_targets + ["actor_name", "actor_role", "decision_maker"]
+                )
+                patchability_markers = self._dedupe_preserve_order(
+                    patchability_markers + ["actor_link_patch_anchor", "decision_actor_patch_anchor"]
+                )
+            elif question_type == "evidence":
+                extraction_targets = self._dedupe_preserve_order(
+                    extraction_targets
+                    + ["document_type", "document_date", "document_owner", "document_sender", "document_recipient"]
+                )
+                patchability_markers = self._dedupe_preserve_order(
+                    patchability_markers + ["support_patch_anchor", "notice_chain_patch_anchor"]
+                )
+
+            enriched["workflow_phase"] = workflow_phase
+            enriched["workflow_phase_rank"] = self._phase_focus_rank_for_actor_critic(workflow_phase)
+            enriched["extraction_targets"] = extraction_targets
+            enriched["patchability_markers"] = patchability_markers
+            enriched.setdefault("question_objective", objective_map.get(question_type, "general_intake_clarification"))
+            enriched.setdefault("expected_proof_gain", "high" if severity == "blocking" else "medium")
+            enriched.setdefault("router_backed_question_quality", True)
+            enriched.setdefault("actor_critic_priority", _ACTOR_CRITIC_PRIORITY)
+            enriched.setdefault("phase_focus_order", list(_ACTOR_CRITIC_PHASE_FOCUS_ORDER))
+            enriched.setdefault("actor_critic_focus_metrics", dict(_ACTOR_CRITIC_FOCUS_METRICS))
+            enriched.setdefault(
+                "actor_critic_quality_dimensions",
+                {
+                    "chronology_closure": bool(
+                        any(target in {"exact_dates", "event_order", "response_timing"} for target in extraction_targets)
+                    ),
+                    "decision_precision": bool(
+                        any(target in {"decision_maker", "actor_name", "actor_role"} for target in extraction_targets)
+                    ),
+                    "document_precision": bool(
+                        any(
+                            target in {
+                                "document_type",
+                                "document_date",
+                                "document_owner",
+                                "document_sender",
+                                "document_recipient",
+                                "document_subject",
+                                "document_identifier",
+                            }
+                            for target in extraction_targets
+                        )
+                    ),
+                    "patchability_coverage": len(patchability_markers),
+                },
+            )
+            enriched["suggested_question"] = self._optimize_issue_question_text(
+                question_text=str(enriched.get("suggested_question") or ""),
+                question_type=question_type,
+                extraction_targets=extraction_targets,
+            )
+            optimized.append(enriched)
+        return optimized
 
 
     # ------------------------------------------------------------------ #

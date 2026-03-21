@@ -289,7 +289,7 @@ def test_refresh_intake_case_file_builds_temporal_issue_registry_for_relative_an
             "registry_version": "temporal_issue_registry.v1",
             "issue_type": "relative_only_ordering",
             "category": "relative_only_ordering",
-            "summary": "Timeline fact fact_3 only has relative ordering and still needs anchoring.",
+            "summary": "Timeline fact fact_3 only has relative ordering (after) and still needs anchoring.",
             "severity": "blocking",
             "blocking": True,
             "recommended_resolution_lane": "clarify_with_complainant",

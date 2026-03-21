@@ -79,7 +79,60 @@ def _build_seeded_mediator():
         'intake_case_file',
         {
             'candidate_claims': [{'claim_type': 'retaliation'}],
-            'canonical_facts': [{'fact_id': 'fact:1'}],
+            'canonical_facts': [
+                {
+                    'fact_id': 'fact:1',
+                    'text': 'Plaintiff reported repeated sexual harassment to management on January 5, 2026.',
+                    'fact_type': 'timeline',
+                    'predicate_family': 'protected_activity',
+                    'event_label': 'Protected activity',
+                    'event_date_or_range': 'January 5, 2026',
+                    'temporal_context': {
+                        'raw_text': 'January 5, 2026',
+                        'start_date': '2026-01-05',
+                        'end_date': '2026-01-05',
+                        'granularity': 'day',
+                        'is_approximate': False,
+                        'is_range': False,
+                        'relative_markers': [],
+                        'sortable_date': '2026-01-05',
+                        'matched_text': 'January 5, 2026',
+                    },
+                },
+                {
+                    'fact_id': 'fact:2',
+                    'text': 'Defendant terminated Plaintiff on January 20, 2026 after she made the report.',
+                    'fact_type': 'timeline',
+                    'predicate_family': 'adverse_action',
+                    'event_label': 'Adverse action',
+                    'event_date_or_range': 'January 20, 2026',
+                    'temporal_context': {
+                        'raw_text': 'January 20, 2026',
+                        'start_date': '2026-01-20',
+                        'end_date': '2026-01-20',
+                        'granularity': 'day',
+                        'is_approximate': False,
+                        'is_range': False,
+                        'relative_markers': [],
+                        'sortable_date': '2026-01-20',
+                        'matched_text': 'January 20, 2026',
+                    },
+                },
+            ],
+            'timeline_relations': [
+                {
+                    'relation_id': 'timeline_relation_001',
+                    'source_fact_id': 'fact:1',
+                    'target_fact_id': 'fact:2',
+                    'relation_type': 'before',
+                    'source_start_date': '2026-01-05',
+                    'source_end_date': '2026-01-05',
+                    'target_start_date': '2026-01-20',
+                    'target_end_date': '2026-01-20',
+                    'confidence': 'high',
+                }
+            ],
+            'temporal_issue_registry': [],
             'proof_leads': [{'lead_id': 'lead:1'}],
             'blocker_follow_up_summary': {
                 'blocking_item_count': 1,
@@ -260,6 +313,7 @@ def test_generate_formal_complaint_builds_court_style_sections():
     assert complaint['nature_of_action']
     assert complaint['legal_claims'][0]['title'] == 'COUNT I - RETALIATION'
     assert complaint['legal_claims'][0]['legal_standard_elements'][0]['citation'] == '42 U.S.C. § 2000e-3(a)'
+    assert complaint['legal_claims'][0]['supporting_facts'][0] == 'The chronology shows protected activity on January 5, 2026 before adverse action on January 20, 2026.'
     assert complaint['exhibits'][0]['label'] == 'Exhibit A'
     assert complaint['exhibits'][0]['reference'] == 'https://example.org/termination-letter.pdf'
     assert complaint['verification']['title'] == 'Verification'
@@ -293,6 +347,9 @@ def test_generate_formal_complaint_builds_court_style_sections():
         for allegation in complaint['factual_allegations']
     )
     assert complaint['factual_allegation_groups'][0]['title'] == 'Protected Activity and Complaints'
+    assert complaint['anchored_chronology_summary'] == [
+        'Protected activity on January 5, 2026 preceded adverse action on January 20, 2026.'
+    ]
     assert all('lost my pay' not in allegation.lower() for allegation in complaint['factual_allegations'])
     assert all(' and i was ' not in allegation.lower() for allegation in complaint['factual_allegations'])
     assert all(' and i lost ' not in allegation.lower() for allegation in complaint['factual_allegations'])
@@ -302,6 +359,8 @@ def test_generate_formal_complaint_builds_court_style_sections():
     )
     assert 'PROTECTED ACTIVITY AND COMPLAINTS' in complaint['draft_text']
     assert 'ADVERSE ACTION AND RETALIATORY CONDUCT' in complaint['draft_text']
+    assert 'ANCHORED CHRONOLOGY' in complaint['draft_text']
+    assert '1. Protected activity on January 5, 2026 preceded adverse action on January 20, 2026.' in complaint['draft_text']
     assert complaint['certificate_of_service']['title'] == 'Certificate of Service'
     assert complaint['signature_block']['signature_line'] == '/s/ Jane Doe, Esq.'
     assert complaint['signature_block']['title'] == 'Counsel for Plaintiff'
@@ -363,6 +422,49 @@ def test_generate_formal_complaint_can_suppress_mirrored_affidavit_exhibits():
     complaint = result['formal_complaint']
     assert complaint['exhibits']
     assert complaint['affidavit']['supporting_exhibits'] == []
+
+
+def test_generate_formal_complaint_adds_claim_temporal_gap_hints():
+    mediator = _build_seeded_mediator()
+    intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})
+    intake_case_file['temporal_issue_registry'] = [
+        {
+            'summary': 'Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+            'status': 'open',
+            'claim_types': ['retaliation'],
+            'element_tags': ['causation'],
+        }
+    ]
+    intake_case_file['blocker_follow_up_summary'] = {
+        'blocking_items': [
+            {
+                'reason': 'Protected activity and adverse action still need tighter causation sequencing.',
+                'primary_objective': 'causation_sequence',
+                'blocker_objectives': ['causation_sequence', 'exact_dates'],
+                'issue_family': 'causation',
+            }
+        ]
+    }
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+
+    result = mediator.generate_formal_complaint(
+        district='New Mexico',
+        county='Santa Fe County',
+        plaintiff_names=['Jane Doe'],
+        defendant_names=['Acme Corporation'],
+    )
+
+    missing_requirements = result['formal_complaint']['legal_claims'][0]['missing_requirements']
+    assert {
+        'name': 'Chronology gap',
+        'citation': '',
+        'suggested_action': 'Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+    } in missing_requirements
+    assert {
+        'name': 'Chronology gap',
+        'citation': '',
+        'suggested_action': 'Protected activity and adverse action still need tighter causation sequencing.',
+    } in missing_requirements
 
 
 def test_document_api_annotation_promotes_confirmed_intake_handoff():
@@ -621,7 +723,60 @@ def test_build_support_context_carries_blocker_metadata_from_intake_case_file():
     assert priorities['blocker_extraction_targets'] == ['timeline_anchors', 'response_timeline']
     assert priorities['blocker_workflow_phases'] == ['graph_analysis', 'intake_questioning', 'document_generation']
     assert priorities['blocker_issue_families'] == ['response_timeline']
+    assert priorities['anchored_chronology_summary'] == [
+        'Protected activity on January 5, 2026 preceded adverse action on January 20, 2026.'
+    ]
+    assert priorities['temporal_issue_count'] == 0
     assert any('Response or non-response events are described without date anchors.' in prompt for prompt in priorities['recommended_follow_up_prompts'])
+
+
+def test_build_support_context_projects_claim_temporal_gap_hints():
+    mediator = _build_seeded_mediator()
+    intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})
+    intake_case_file['temporal_issue_registry'] = [
+        {
+            'summary': 'Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+            'status': 'open',
+            'claim_types': ['retaliation'],
+            'element_tags': ['causation'],
+        }
+    ]
+    intake_case_file['blocker_follow_up_summary'] = {
+        'blocking_items': [
+            {
+                'reason': 'Protected activity and adverse action still need tighter causation sequencing.',
+                'primary_objective': 'causation_sequence',
+                'blocker_objectives': ['causation_sequence', 'exact_dates'],
+                'issue_family': 'causation',
+            }
+        ]
+    }
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=mediator)
+
+    support_context = optimizer._build_support_context(
+        user_id='Jane Doe',
+        draft={
+            'claims_for_relief': [{'claim_type': 'retaliation', 'support_summary': {}}],
+        },
+        drafting_readiness={'status': 'warning', 'claims': [], 'sections': {}},
+    )
+
+    claim_context = support_context['claims'][0]
+    assert 'Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.' in claim_context['missing_elements']
+    assert 'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.' in claim_context['missing_elements']
+    assert claim_context['support_summary']['temporal_gap_hint_count'] == 2
+    assert support_context['intake_priorities']['claim_temporal_gap_count'] == 2
+    assert support_context['intake_priorities']['claim_temporal_gap_summary'] == [
+        {
+            'claim_type': 'retaliation',
+            'gap_count': 2,
+            'gaps': [
+                'Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+                'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.',
+            ],
+        }
+    ]
 
 
 def test_document_package_promotes_confirmed_intake_handoff(tmp_path):
@@ -640,6 +795,123 @@ def test_document_package_promotes_confirmed_intake_handoff(tmp_path):
     assert result['intake_summary_handoff']['current_phase'] == ComplaintPhase.FORMALIZATION.value
     assert result['intake_summary_handoff']['complainant_summary_confirmation']['confirmed'] is True
     assert result['draft']['drafting_readiness'] == result['drafting_readiness']
+    assert result['draft']['anchored_chronology_summary'] == [
+        'Protected activity on January 5, 2026 preceded adverse action on January 20, 2026.'
+    ]
+    assert result['draft']['claims_for_relief'][0]['supporting_facts'][0] == 'The chronology shows protected activity on January 5, 2026 before adverse action on January 20, 2026.'
+    assert 'ANCHORED CHRONOLOGY' in result['draft']['draft_text']
+
+
+def test_document_package_adds_claim_temporal_gap_hints(tmp_path):
+    mediator = _build_seeded_mediator()
+    intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})
+    intake_case_file['temporal_issue_registry'] = [
+        {
+            'summary': 'Timeline fact fact:2 only has relative ordering and still needs anchoring.',
+            'status': 'open',
+            'claim_types': ['retaliation'],
+            'element_tags': ['causation'],
+        }
+    ]
+    intake_case_file['blocker_follow_up_summary'] = {
+        'blocking_items': [
+            {
+                'reason': 'Protected activity and adverse action still need tighter causation sequencing.',
+                'primary_objective': 'causation_sequence',
+                'blocker_objectives': ['causation_sequence', 'exact_dates'],
+                'issue_family': 'causation',
+            }
+        ]
+    }
+    mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', intake_case_file)
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    result = builder.build_package(
+        district='New Mexico',
+        county='Santa Fe County',
+        plaintiff_names=['Jane Doe'],
+        defendant_names=['Acme Corporation'],
+        output_dir=str(tmp_path),
+        output_formats=['txt'],
+    )
+
+    missing_elements = result['draft']['claims_for_relief'][0]['missing_elements']
+    assert 'Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.' in missing_elements
+    assert 'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.' in missing_elements
+    assert result['draft']['claims_for_relief'][0]['support_summary']['temporal_gap_hint_count'] == 2
+
+
+def test_legacy_claim_fact_collection_includes_chronology_support():
+    mediator = _build_seeded_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    claim_facts = builder._collect_claim_facts('retaliation', 'Jane Doe', {})
+
+    assert claim_facts[0] == 'The chronology shows protected activity on January 5, 2026 before adverse action on January 20, 2026.'
+
+
+def test_legacy_builder_exposes_anchored_chronology_summary():
+    mediator = _build_seeded_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    chronology = builder._build_anchored_chronology_summary()
+
+    assert chronology == [
+        'Protected activity on January 5, 2026 preceded adverse action on January 20, 2026.'
+    ]
+
+
+def test_legacy_builder_condenses_linear_notice_hearing_response_chronology():
+    mediator = _build_seeded_mediator()
+    mediator.phase_manager.update_phase_data(
+        ComplaintPhase.INTAKE,
+        'intake_case_file',
+        {
+            'canonical_facts': [
+                {
+                    'fact_id': 'fact:notice',
+                    'predicate_family': 'notice_chain',
+                    'event_label': 'Notice communication',
+                    'temporal_context': {'start_date': '2025-01-05'},
+                },
+                {
+                    'fact_id': 'fact:hearing',
+                    'predicate_family': 'hearing_process',
+                    'event_label': 'Hearing request event',
+                    'temporal_context': {'start_date': '2025-01-08'},
+                },
+                {
+                    'fact_id': 'fact:response',
+                    'predicate_family': 'response_timeline',
+                    'event_label': 'Response event',
+                    'temporal_context': {'start_date': '2025-01-20'},
+                },
+            ],
+            'timeline_relations': [
+                {
+                    'relation_type': 'before',
+                    'source_fact_id': 'fact:notice',
+                    'target_fact_id': 'fact:hearing',
+                    'source_start_date': '2025-01-05',
+                    'target_start_date': '2025-01-08',
+                },
+                {
+                    'relation_type': 'before',
+                    'source_fact_id': 'fact:hearing',
+                    'target_fact_id': 'fact:response',
+                    'source_start_date': '2025-01-08',
+                    'target_start_date': '2025-01-20',
+                },
+            ],
+        },
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    chronology = builder._build_anchored_chronology_summary()
+
+    assert chronology == [
+        'Notice communication on January 5, 2025, Hearing request event on January 8, 2025, and Response event on January 20, 2025 occurred in sequence.'
+    ]
 
 
 def test_factual_allegations_merge_overlapping_adverse_action_narratives():

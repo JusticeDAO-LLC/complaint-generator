@@ -1365,6 +1365,48 @@ SUGGESTIONS:
         assert selected is not None
         assert selected['question_objective'] == 'resolve_factual_contradiction'
 
+    def test_select_next_question_prioritizes_adverse_action_details_when_actor_gap_open(self):
+        session = AdversarialSession(
+            "test_session",
+            Complainant(MockLLMBackend()),
+            MockMediator(),
+            Critic(MockLLMBackend()),
+            max_turns=3,
+        )
+
+        questions = [
+            {
+                'question': 'Who made the decision?',
+                'type': 'responsible_party',
+                'question_objective': 'actors',
+                'context': {},
+            },
+            {
+                'question': 'What exact reason was given for the housing decision, who gave it, and what date was it communicated?',
+                'type': 'adverse_action_details',
+                'question_objective': 'adverse_action_details',
+                'context': {},
+            },
+        ]
+
+        selected = session._select_next_question(
+            questions=questions,
+            asked_question_counts={},
+            asked_intent_counts={},
+            need_timeline=False,
+            need_harm_remedy=False,
+            need_actor_decisionmaker=True,
+            need_documentary_evidence=False,
+            need_witness=False,
+            last_question_key=None,
+            last_question_intent_key=None,
+            recent_intent_keys=set(),
+            missing_anchor_sections=set(),
+        )
+
+        assert selected is not None
+        assert selected['question_objective'] == 'adverse_action_details'
+
     def test_question_intent_key_prefers_question_objective(self):
         question = {
             'question': 'Who handled the issue?',

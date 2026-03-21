@@ -29,14 +29,17 @@ DEFAULT_PARTIES = {
 FILING_FORUM_CHOICES = ("court", "hud", "state_agency")
 ACTOR_CRITIC_PHASE_FOCUS_ORDER = ("graph_analysis", "document_generation", "intake_questioning")
 DEFAULT_ACTOR_CRITIC_BATCH_METRICS = {
-    "empathy": 0.25,
-    "question_quality": 0.40,
+    "empathy": 0.22,
+    "question_quality": 0.58,
     "information_extraction": 0.40,
     "coverage": 0.40,
     "efficiency": 0.62,
 }
 INTAKE_OBJECTIVE_PRIORITY = {
+    "exact_dates": 1.0,
     "timeline": 1.0,
+    "response_dates": 1.0,
+    "hearing_request_timing": 0.98,
     "staff_names_titles": 1.0,
     "actors": 0.95,
     "causation_link": 1.0,
@@ -83,17 +86,24 @@ def _extract_actor_critic_metrics(session: Dict[str, Any]) -> Dict[str, float]:
     normalized: Dict[str, float] = {}
     aliases = {
         "empathy": "empathy",
+        "empathy_avg": "empathy",
         "question_quality": "question_quality",
+        "question_quality_avg": "question_quality",
         "information_extraction": "information_extraction",
+        "information_extraction_avg": "information_extraction",
         "coverage": "coverage",
+        "coverage_avg": "coverage",
         "efficiency": "efficiency",
+        "efficiency_avg": "efficiency",
     }
     candidates = [
         critic_score,
         dict(critic_score.get("dimension_scores") or {}),
         dict(critic_score.get("scores") or {}),
         dict(final_state.get("actor_critic_metrics") or {}),
+        dict(final_state.get("baseline_metrics") or {}),
         dict(priority_summary.get("actor_critic_metrics") or {}),
+        dict(priority_summary.get("baseline_metrics") or {}),
     ]
     for candidate in candidates:
         if not isinstance(candidate, dict):
@@ -112,7 +122,8 @@ def _actor_critic_phase_focus_order(session: Dict[str, Any]) -> List[str]:
     final_state = dict(session.get("final_state") or {})
     candidates = list(final_state.get("phase_focus_order") or []) + list(final_state.get("adversarial_phase_focus_order") or [])
     ordered = []
-    for name in list(ACTOR_CRITIC_PHASE_FOCUS_ORDER) + [str(item).strip() for item in candidates if str(item).strip()]:
+    ordered_candidates = [str(item).strip() for item in candidates if str(item).strip()]
+    for name in ordered_candidates + list(ACTOR_CRITIC_PHASE_FOCUS_ORDER):
         if name and name not in ordered:
             ordered.append(name)
     return ordered
@@ -717,6 +728,153 @@ def _dedupe_timeline_summaries(items: List[str], limit: int = 2) -> List[str]:
         if len(deduped) >= limit:
             break
     return deduped
+
+
+def _session_intake_case_file(session: Dict[str, Any]) -> Dict[str, Any]:
+    final_state = session.get("final_state") if isinstance(session.get("final_state"), dict) else {}
+    intake_case_file = final_state.get("intake_case_file") if isinstance(final_state.get("intake_case_file"), dict) else {}
+    return dict(intake_case_file or {})
+
+
+def _format_timeline_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%B %-d, %Y")
+    except ValueError:
+        return text
+
+
+def _chronology_fact_label(fact: Dict[str, Any]) -> str:
+    event_label = str((fact if isinstance(fact, dict) else {}).get("event_label") or "").strip()
+    if event_label:
+        return event_label
+    predicate_family = str((fact if isinstance(fact, dict) else {}).get("predicate_family") or "").strip().replace("_", " ")
+    if predicate_family:
+        return predicate_family.title()
+    return "Event"
+
+
+def _join_chronology_segments(segments: List[str]) -> str:
+    if not segments:
+        return ""
+    if len(segments) == 1:
+        return segments[0]
+    if len(segments) == 2:
+        return f"{segments[0]} and {segments[1]}"
+    return f"{', '.join(segments[:-1])}, and {segments[-1]}"
+
+
+def _anchored_chronology_lines(session: Dict[str, Any], limit: int = 2) -> List[str]:
+    intake_case_file = _session_intake_case_file(session)
+    facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    if not facts or not relations:
+        return []
+
+    fact_by_id = {
+        str(fact.get("fact_id") or "").strip(): fact
+        for fact in facts
+        if str(fact.get("fact_id") or "").strip()
+    }
+    relation_records = []
+    for relation in relations:
+        if str(relation.get("relation_type") or "").strip().lower() != "before":
+            continue
+        source_id = str(relation.get("source_fact_id") or "").strip()
+        target_id = str(relation.get("target_fact_id") or "").strip()
+        source_fact = fact_by_id.get(source_id)
+        target_fact = fact_by_id.get(target_id)
+        if not source_fact or not target_fact:
+            continue
+        source_date = _format_timeline_date((source_fact.get("temporal_context") or {}).get("start_date") or relation.get("source_start_date"))
+        target_date = _format_timeline_date((target_fact.get("temporal_context") or {}).get("start_date") or relation.get("target_start_date"))
+        if not source_date or not target_date:
+            continue
+        relation_records.append(
+            {
+                "key": (source_id, target_id),
+                "source_id": source_id,
+                "target_id": target_id,
+                "source_fact": source_fact,
+                "target_fact": target_fact,
+                "source_date": source_date,
+                "target_date": target_date,
+            }
+        )
+    if not relation_records:
+        return []
+
+    outgoing: Dict[str, List[Dict[str, Any]]] = {}
+    incoming_count: Dict[str, int] = {}
+    for record in relation_records:
+        outgoing.setdefault(record["source_id"], []).append(record)
+        incoming_count[record["target_id"]] = incoming_count.get(record["target_id"], 0) + 1
+        incoming_count.setdefault(record["source_id"], incoming_count.get(record["source_id"], 0))
+
+    lines: List[str] = []
+    seen = set()
+    used_keys = set()
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        if incoming_count.get(record["source_id"], 0) != 0 or len(outgoing.get(record["source_id"], [])) != 1:
+            continue
+        chain = [record]
+        next_id = record["target_id"]
+        temp_used = {record["key"]}
+        while len(outgoing.get(next_id, [])) == 1 and incoming_count.get(next_id, 0) == 1:
+            next_record = outgoing[next_id][0]
+            if next_record["key"] in temp_used:
+                break
+            chain.append(next_record)
+            temp_used.add(next_record["key"])
+            next_id = next_record["target_id"]
+        if len(chain) < 2:
+            continue
+        segments = [
+            f"{_chronology_fact_label(chain[0]['source_fact']).lower()} on {chain[0]['source_date']}"
+        ]
+        segments.extend(
+            f"{_chronology_fact_label(item['target_fact']).lower()} on {item['target_date']}"
+            for item in chain
+        )
+        line = f"The intake chronology places {_join_chronology_segments(segments)} in sequence."
+        last_target = chain[-1]["target_fact"]
+        target_context = last_target.get("temporal_context") if isinstance(last_target.get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f". The later date is derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        used_keys.update(temp_used)
+        lines.append(line)
+
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        source_label = _chronology_fact_label(record["source_fact"])
+        target_label = _chronology_fact_label(record["target_fact"]).lower()
+        line = f"The intake chronology places {source_label.lower()} on {record['source_date']} before {target_label} on {record['target_date']}."
+        target_context = record["target_fact"].get("temporal_context") if isinstance(record["target_fact"].get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f". The later date is derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(line)
+    return lines
 
 
 def _summarize_intake_fact(fact: str, max_sentences: int = 2) -> str:
@@ -1951,6 +2109,117 @@ def _filter_grounding_evidence_for_seed(seed: Dict[str, Any], evidence_items: Li
             filtered.append(item)
             continue
     return filtered or evidence_items
+
+
+def _normalize_readiness_status(value: Any) -> str:
+    status = str(value or "").strip().lower()
+    if status in {"ready", "warning", "blocked"}:
+        return status
+    return "ready"
+
+
+def _readiness_modality_signals(seed: Dict[str, Any]) -> Dict[str, Any]:
+    evidence_items = [dict(item) for item in list(seed.get("hacc_evidence") or []) if isinstance(item, dict)]
+    policy_document_count = 0
+    file_evidence_count = 0
+    for item in evidence_items:
+        title = str(item.get("title") or "").lower()
+        snippet = str(item.get("snippet") or "").lower()
+        source_path = str(item.get("source_path") or "").lower()
+        combined = " ".join((title, snippet, source_path))
+        is_policy = any(token in combined for token in ("policy", "administrative plan", "acop", "grievance procedure"))
+        if is_policy:
+            policy_document_count += 1
+        if source_path or any(token in combined for token in ("upload", "file", ".pdf", "exhibit")):
+            file_evidence_count += 1
+    weak_modalities: List[str] = []
+    if policy_document_count <= 0:
+        weak_modalities.append("policy_document")
+    if file_evidence_count <= 0:
+        weak_modalities.append("file_evidence")
+    return {
+        "modalities": {
+            "policy_document": policy_document_count,
+            "file_evidence": file_evidence_count,
+        },
+        "weak_modalities": weak_modalities,
+    }
+
+
+def _merge_drafting_readiness_signals(seed: Dict[str, Any], grounding_bundle: Dict[str, Any]) -> Dict[str, Any]:
+    key_facts = dict(seed.get("key_facts") or {})
+    existing = dict(key_facts.get("drafting_readiness") or {})
+    candidates = [existing]
+    if isinstance(grounding_bundle, dict):
+        for key in (
+            "drafting_readiness",
+            "document_handoff_summary",
+            "document_generation",
+            "graph_analysis",
+            "phase_status",
+            "signals",
+        ):
+            candidate = grounding_bundle.get(key)
+            if isinstance(candidate, dict):
+                candidates.append(dict(candidate))
+
+    coverage = _safe_float(existing.get("coverage"), 0.95)
+    for candidate in candidates:
+        for key in ("coverage", "graph_completeness", "completeness", "document_generation_coverage"):
+            if key in candidate:
+                coverage = _safe_float(candidate.get(key), coverage)
+                break
+
+    phase_status = _normalize_readiness_status(existing.get("phase_status") or existing.get("status") or "warning")
+    for candidate in candidates:
+        for key in ("phase_status", "status", "drafting_status", "document_generation_status"):
+            text = str(candidate.get(key) or "").strip()
+            if text:
+                phase_status = _normalize_readiness_status(text)
+                break
+
+    blockers: List[str] = []
+    unresolved_factual_gaps: List[str] = []
+    unresolved_legal_gaps: List[str] = []
+    for candidate in candidates:
+        for item in list(candidate.get("blockers") or []) + list(candidate.get("blocking_codes") or []) + list(candidate.get("warning_codes") or []):
+            text = str(item or "").strip()
+            if text and text not in blockers:
+                blockers.append(text)
+        for item in list(candidate.get("unresolved_factual_gaps") or []) + list(candidate.get("factual_gaps") or []):
+            text = " ".join(str(item or "").split()).strip()
+            if text and text not in unresolved_factual_gaps:
+                unresolved_factual_gaps.append(text)
+        for item in list(candidate.get("unresolved_legal_gaps") or []) + list(candidate.get("legal_gaps") or []):
+            text = " ".join(str(item or "").split()).strip()
+            if text and text not in unresolved_legal_gaps:
+                unresolved_legal_gaps.append(text)
+
+    modality_signals = _readiness_modality_signals(seed)
+    weak_modalities = list(modality_signals.get("weak_modalities") or [])
+    if "policy_document" in weak_modalities:
+        unresolved_legal_gaps.append("policy_document evidence is thin and should be reinforced before formalization")
+    if "file_evidence" in weak_modalities:
+        unresolved_factual_gaps.append("file_evidence exhibits are thin and should be reinforced with case-specific records before formalization")
+
+    if coverage < 0.98 or unresolved_factual_gaps or unresolved_legal_gaps:
+        phase_status = "warning" if phase_status == "ready" else phase_status
+    if coverage < 0.98 and "graph_analysis_not_ready" not in blockers:
+        blockers.append("graph_analysis_not_ready")
+    if phase_status in {"warning", "blocked"} and "document_generation_not_ready" not in blockers:
+        blockers.append("document_generation_not_ready")
+
+    return {
+        "coverage": max(0.0, min(1.0, coverage)),
+        "phase_status": phase_status,
+        "blockers": blockers,
+        "unresolved_factual_gaps": unresolved_factual_gaps[:5],
+        "unresolved_legal_gaps": unresolved_legal_gaps[:5],
+        "evidence_modalities": dict(modality_signals.get("modalities") or {}),
+        "weak_evidence_modalities": weak_modalities[:3],
+    }
+
+
 def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str, Any]) -> Dict[str, Any]:
     merged = _refresh_seed_source_snippets(dict(seed or {}))
     if not grounding_bundle:
@@ -2034,13 +2303,213 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                     synced_evidence.append(updated_item)
                 merged["hacc_evidence"] = synced_evidence
 
+    readiness = _merge_drafting_readiness_signals(merged, grounding_bundle)
+    graph_signals: Dict[str, Any] = {}
+    document_signals: Dict[str, Any] = {}
+    if isinstance(grounding_bundle, dict):
+        graph_candidates = [
+            grounding_bundle.get("graph_completeness_signals"),
+            grounding_bundle.get("graph_analysis"),
+            grounding_bundle.get("graph_phase"),
+            dict(grounding_bundle.get("drafting_readiness") or {}).get("graph_completeness_signals"),
+            dict(grounding_bundle.get("document_generation") or {}).get("graph_completeness_signals"),
+        ]
+        for candidate in graph_candidates:
+            if isinstance(candidate, dict) and candidate:
+                graph_signals = dict(candidate)
+                break
+        document_candidates = [
+            grounding_bundle.get("formalization_gate"),
+            grounding_bundle.get("document_handoff_summary"),
+            grounding_bundle.get("document_generation"),
+            grounding_bundle.get("drafting_readiness"),
+        ]
+        for candidate in document_candidates:
+            if isinstance(candidate, dict) and candidate:
+                document_signals = dict(candidate)
+                break
+
+    blockers = [str(item) for item in list(readiness.get("blockers") or []) if str(item)]
+    factual_gaps = [str(item) for item in list(readiness.get("unresolved_factual_gaps") or []) if str(item)]
+    legal_gaps = [str(item) for item in list(readiness.get("unresolved_legal_gaps") or []) if str(item)]
+    weak_modalities = [str(item) for item in list(readiness.get("weak_evidence_modalities") or []) if str(item)]
+    weak_complaint_types = [
+        str(item)
+        for item in list(readiness.get("weak_complaint_types") or []) + list(document_signals.get("weak_complaint_types") or [])
+        if str(item)
+    ]
+
+    graph_status = str(
+        graph_signals.get("status")
+        or graph_signals.get("phase_status")
+        or graph_signals.get("graph_phase_status")
+        or ""
+    ).strip().lower()
+    graph_gap_count = max(
+        int(_safe_float(graph_signals.get("remaining_gap_count"), 0)),
+        int(_safe_float(graph_signals.get("current_gap_count"), 0)),
+    )
+    graph_ready = (
+        not graph_status
+        or graph_status == "ready"
+    ) and graph_gap_count <= 0
+    if not graph_ready:
+        if "graph_analysis_not_ready" not in blockers:
+            blockers.append("graph_analysis_not_ready")
+        graph_gap_line = (
+            "Graph analysis remains incomplete at drafting handoff; unresolved chronology/entity links should be closed before formalization."
+        )
+        if graph_gap_line not in factual_gaps:
+            factual_gaps.append(graph_gap_line)
+
+    if _safe_float(readiness.get("coverage"), 0.0) < 0.98 and "graph_analysis_not_ready" not in blockers:
+        blockers.append("graph_analysis_not_ready")
+
+    for item in list(document_signals.get("blockers") or []) + list(document_signals.get("blocking_codes") or []):
+        text = str(item).strip()
+        if text and text not in blockers:
+            blockers.append(text)
+    for item in list(document_signals.get("unresolved_factual_gaps") or []) + list(document_signals.get("factual_gaps") or []):
+        text = " ".join(str(item).split()).strip()
+        if text and text not in factual_gaps:
+            factual_gaps.append(text)
+    for item in list(document_signals.get("unresolved_legal_gaps") or []) + list(document_signals.get("legal_gaps") or []):
+        text = " ".join(str(item).split()).strip()
+        if text and text not in legal_gaps:
+            legal_gaps.append(text)
+
+    if "policy_document" in weak_modalities:
+        policy_gap = "policy_document evidence is thin and should be reinforced before formalization"
+        if policy_gap not in legal_gaps:
+            legal_gaps.append(policy_gap)
+    if "file_evidence" in weak_modalities:
+        file_gap = "file_evidence exhibits are thin and should be reinforced with case-specific records before formalization"
+        if file_gap not in factual_gaps:
+            factual_gaps.append(file_gap)
+
+    if any(item in {"housing_discrimination", "hacc_research_engine"} for item in weak_complaint_types):
+        theory_gap = (
+            "Claim framing should be generalized for housing_discrimination and hacc_research_engine using matched policy text plus case-specific exhibits."
+        )
+        if theory_gap not in legal_gaps:
+            legal_gaps.append(theory_gap)
+
+    if (factual_gaps or legal_gaps) and "document_generation_not_ready" not in blockers:
+        blockers.append("document_generation_not_ready")
+
+    phase_status = str(readiness.get("phase_status") or "warning").strip().lower() or "warning"
+    if phase_status == "ready" and (_safe_float(readiness.get("coverage"), 0.0) < 0.98 or factual_gaps or legal_gaps):
+        phase_status = "warning"
+
+    readiness.update(
+        {
+            "phase_status": phase_status,
+            "blockers": blockers[:8],
+            "unresolved_factual_gaps": factual_gaps[:6],
+            "unresolved_legal_gaps": legal_gaps[:6],
+            "weak_complaint_types": list(dict.fromkeys(weak_complaint_types))[:3],
+            "ready_for_formalization": phase_status == "ready" and not blockers,
+        }
+    )
+    key_facts["drafting_readiness"] = readiness
     merged["key_facts"] = key_facts
     return merged
+
+
+def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
+    key_facts = dict(seed.get("key_facts") or {})
+    stored = dict(key_facts.get("drafting_readiness") or {})
+    coverage = _safe_float(stored.get("coverage"), 0.95)
+    phase_status = _normalize_readiness_status(stored.get("phase_status") or "warning")
+    blockers = [str(item) for item in list(stored.get("blockers") or []) if str(item)]
+    factual_gaps = [str(item) for item in list(stored.get("unresolved_factual_gaps") or []) if str(item)]
+    legal_gaps = [str(item) for item in list(stored.get("unresolved_legal_gaps") or []) if str(item)]
+
+    intake_case_file = _session_intake_case_file(session)
+    canonical_facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    timeline_relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    graph_complete = bool(canonical_facts) and bool(timeline_relations)
+    if not graph_complete:
+        phase_status = "warning"
+        if "graph_analysis_not_ready" not in blockers:
+            blockers.append("graph_analysis_not_ready")
+        missing_graph_line = "Graph chronology is incomplete and still needs canonical events and timeline links before formalization."
+        if missing_graph_line not in factual_gaps:
+            factual_gaps.append(missing_graph_line)
+
+    for gap in _outstanding_intake_gaps(session, limit=5):
+        if gap not in factual_gaps:
+            factual_gaps.append(gap)
+
+    legal_objectives = {"causation_link", "anchor_appeal_rights", "anchor_adverse_action", "response_dates", "hearing_request_timing"}
+    for item in _session_blocker_follow_up_items(session):
+        reason = " ".join(str(item.get("reason") or "").split()).strip()
+        objective = _normalize_intake_objective(item.get("primary_objective") or "")
+        if objective in legal_objectives and reason and reason not in legal_gaps:
+            legal_gaps.append(reason)
+        elif reason and reason not in factual_gaps:
+            factual_gaps.append(reason)
+
+    weak_modalities = [str(item) for item in list(stored.get("weak_evidence_modalities") or []) if str(item)]
+    if weak_modalities:
+        phase_status = "warning"
+        if "document_generation_not_ready" not in blockers:
+            blockers.append("document_generation_not_ready")
+
+    if (factual_gaps or legal_gaps) and "document_generation_not_ready" not in blockers:
+        blockers.append("document_generation_not_ready")
+    if (factual_gaps or legal_gaps or coverage < 0.98) and phase_status == "ready":
+        phase_status = "warning"
+
+    return {
+        "coverage": max(0.0, min(1.0, coverage)),
+        "phase_status": phase_status,
+        "blockers": blockers,
+        "unresolved_factual_gaps": factual_gaps[:6],
+        "unresolved_legal_gaps": legal_gaps[:6],
+        "weak_evidence_modalities": weak_modalities[:3],
+        "evidence_modalities": dict(stored.get("evidence_modalities") or {}),
+    }
 
 
 def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
     allegations: List[str] = []
+    readiness = _drafting_readiness_for_formalization(seed, session)
+    if readiness["phase_status"] != "ready":
+        blockers = ", ".join(readiness.get("blockers") or [])
+        allegations.append(
+            f"Drafting readiness is {readiness['phase_status']} (coverage {readiness['coverage']:.2f}); formalization should wait until graph completeness and document-generation blockers are cleared"
+            + (f" ({blockers})" if blockers else "")
+        )
+    if readiness.get("unresolved_factual_gaps"):
+        allegations.append(
+            "Unresolved factual gaps still require confirmation before formalization, including "
+            + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:3])
+        )
+    if readiness.get("unresolved_legal_gaps"):
+        allegations.append(
+            "Unresolved legal gaps are still open at drafting handoff, including "
+            + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:2])
+        )
+    evidence_titles = [
+        str(item.get("title") or "").strip()
+        for item in list(seed.get("hacc_evidence") or [])
+        if isinstance(item, dict) and str(item.get("title") or "").strip()
+    ]
+    if evidence_titles:
+        allegations.append(
+            "Current exhibit handoff references "
+            + ", ".join(list(dict.fromkeys(evidence_titles))[:3])
+            + "; allegations should track these exhibits and any remaining gap closures before formalization."
+        )
+    weak_modalities = [str(item) for item in list(readiness.get("weak_evidence_modalities") or []) if str(item)]
+    if weak_modalities:
+        allegations.append(
+            "Evidence modality coverage remains weak for "
+            + ", ".join(weak_modalities[:2])
+            + ", so document generation stays gated pending stronger exhibits."
+        )
     description = _normalize_incident_summary(seed.get("description") or key_facts.get("incident_summary") or "")
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     if description:
@@ -2052,6 +2521,9 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegation = _section_allegation(section)
         if allegation:
             allegations.append(allegation)
+
+    for line in _anchored_chronology_lines(session, limit=1):
+        allegations.append(line)
 
     timeline_summaries: List[str] = []
     for fact in _collect_timeline_points(list(session.get("conversation_history") or []), limit=3):
@@ -2067,12 +2539,47 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
 
 def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: str = "court", limit: int = 6) -> List[str]:
     key_facts = dict(seed.get("key_facts") or {})
+    readiness = _drafting_readiness_for_formalization(seed, session)
     sections = [str(item) for item in list(key_facts.get("anchor_sections") or []) if str(item)]
     theory_labels = [str(item) for item in list(key_facts.get("theory_labels") or []) if str(item)]
     protected_bases = [str(item) for item in list(key_facts.get("protected_bases") or []) if str(item)]
     authority_hints = _authority_hints_for_forum(seed, filing_forum)
     evidence_summary = _summarize_policy_excerpt(key_facts.get("evidence_summary") or seed.get("summary") or "")
     claims: List[str] = []
+    if readiness["phase_status"] != "ready":
+        blockers = ", ".join(readiness.get("blockers") or [])
+        claims.append(
+            f"Formalization gate: drafting remains {readiness['phase_status']} (coverage {readiness['coverage']:.2f})"
+            + (f" because {blockers}" if blockers else "")
+            + "; claims are provisional until unresolved graph and drafting blockers are closed"
+        )
+    if readiness.get("unresolved_legal_gaps"):
+        claims.append(
+            "Unresolved legal gaps still need closure before final formalization, including "
+            + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:3])
+        )
+    if readiness.get("unresolved_factual_gaps"):
+        claims.append(
+            "Unresolved factual gaps are still blocking final legal framing, including "
+            + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:2])
+        )
+    weak_modalities = [str(item) for item in list(readiness.get("weak_evidence_modalities") or []) if str(item)]
+    if weak_modalities:
+        claims.append(
+            "Evidence modality handoff remains incomplete ("
+            + ", ".join(weak_modalities)
+            + "); strengthen policy_document and file_evidence exhibits before locking legal theory."
+        )
+    complaint_type = str(seed.get("type") or "").strip().lower()
+    if complaint_type in {"housing_discrimination", "hacc_research_engine"}:
+        claims.append(
+            "This theory is framed to generalize across housing_discrimination and hacc_research_engine by tying each claim to both policy language and case-specific evidence artifacts."
+        )
+    weak_types = [str(item) for item in list(readiness.get("weak_complaint_types") or []) if str(item)]
+    if any(item in {"housing_discrimination", "hacc_research_engine"} for item in weak_types):
+        claims.append(
+            "Drafting readiness flags weak complaint-type support for housing_discrimination/hacc_research_engine, so each claim should remain explicitly mapped to chronology facts, policy text, and exhibit citations before formalization."
+        )
 
     if "proxy_discrimination" in theory_labels:
         claims.append("The current evidence suggests a proxy or criteria-based discrimination theory requiring closer review of how HACC framed and applied its policies")
@@ -2499,7 +3006,106 @@ def _fallback_intake_follow_up_questions(uncovered: List[str], *, limit: int) ->
     return questions
 
 
-def _optimize_follow_up_question_text(question: str, objective: str, metrics: Dict[str, float]) -> str:
+def _objective_needs_documentary_precision(objective: str) -> bool:
+    return objective in {
+        "exact_dates",
+        "timeline",
+        "response_dates",
+        "hearing_request_timing",
+        "staff_names_titles",
+        "actors",
+        "anchor_adverse_action",
+        "anchor_appeal_rights",
+    }
+
+
+def _question_precision_signal(question: str) -> float:
+    lowered = str(question or "").lower()
+    signal = 0.0
+    if any(token in lowered for token in ("exact date", "closest day-level", "day-level", "timeline", "sequence", "days until")):
+        signal += 0.12
+    if any(token in lowered for token in ("name/title", "title", "decision-maker", "who approved", "who communicated")):
+        signal += 0.12
+    if any(token in lowered for token in ("document", "notice", "email", "letter", "portal", "message", "artifact")):
+        signal += 0.12
+    if any(token in lowered for token in ("format:", "|", "unknown", "if a field is unknown")):
+        signal += 0.08
+    return signal
+
+
+def _critical_intake_precision_questions(
+    uncovered: List[str],
+    blocker_items: List[Dict[str, Any]],
+    *,
+    router_backed_question_quality: bool,
+) -> List[str]:
+    uncovered_set = {_normalize_intake_objective(item) for item in uncovered if _normalize_intake_objective(item)}
+    blocker_objectives = {
+        _normalize_intake_objective(item.get("primary_objective") or "")
+        for item in blocker_items
+        if _normalize_intake_objective(item.get("primary_objective") or "")
+    }
+    targets = {item for item in uncovered_set | blocker_objectives if item}
+    prompts: List[str] = []
+
+    chronology_targets = {
+        "exact_dates",
+        "timeline",
+        "response_dates",
+        "hearing_request_timing",
+        "anchor_adverse_action",
+        "anchor_appeal_rights",
+        "causation_link",
+    }
+    if chronology_targets & targets:
+        prompts.append(
+            "Please provide a closed chronology from first protected activity to final HACC action: exact date "
+            "(or closest day-level anchor), event, actor/title, document artifact (notice/email/letter/portal), "
+            "and days until the next event."
+        )
+    if {"response_dates", "hearing_request_timing", "anchor_appeal_rights"} & targets:
+        prompts.append(
+            "For each review/hearing step, what were the request date, response date, outcome date, and the document "
+            "or message where each date appears?"
+        )
+    if {"actors", "staff_names_titles", "anchor_adverse_action"} & targets:
+        prompts.append(
+            "For each adverse action or key decision, who recommended it, who approved it, who communicated it, and "
+            "what are each person's name/title (or best-known role) and supporting document?"
+        )
+    if "anchor_adverse_action" in targets:
+        prompts.append(
+            "What exact action was denied, terminated, reduced, or changed; what was the effective date; and what "
+            "reason was stated in the notice or message?"
+        )
+
+    if router_backed_question_quality and prompts:
+        prompts.append(
+            "Use one line per event: event_id | exact/estimated date | days since prior event | actor/title | "
+            "document artifact | action/decision | reason given."
+        )
+        prompts.append(
+            "If any field is unknown, write 'unknown' so the chronology can be patched without losing sequence order."
+        )
+
+    deduped: List[str] = []
+    seen = set()
+    for question in prompts:
+        key = question.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(question)
+    return deduped
+
+
+def _optimize_follow_up_question_text(
+    question: str,
+    objective: str,
+    metrics: Dict[str, float],
+    *,
+    router_backed_question_quality: bool = False,
+) -> str:
     cleaned = " ".join(str(question or "").split()).strip()
     if not cleaned:
         return ""
@@ -2521,15 +3127,30 @@ def _optimize_follow_up_question_text(question: str, objective: str, metrics: Di
             "causation_link": "Describe sequence details showing protected activity followed by adverse treatment.",
             "hearing_request_timing": "Include request date, request channel, and response date.",
             "response_dates": "List exact response dates and decision communication dates.",
+            "anchor_adverse_action": "Identify the precise adverse action, effective date, and source document.",
+            "anchor_appeal_rights": "Specify what appeal/review right was provided, requested, denied, or ignored and where documented.",
         }
         suffix = quality_addenda.get(objective)
         if suffix and suffix.lower() not in cleaned.lower():
             cleaned = f"{cleaned} {suffix}"
 
+    extraction = _safe_float(metrics.get("information_extraction"), DEFAULT_ACTOR_CRITIC_BATCH_METRICS["information_extraction"])
+    if extraction < 0.72 and _objective_needs_documentary_precision(objective):
+        documentary_suffix = "Include supporting document artifacts (notice/email/letter/portal) and quote the stated reason when available."
+        if documentary_suffix.lower() not in cleaned.lower():
+            cleaned = f"{cleaned} {documentary_suffix}"
+
     if empathy < 0.5:
-        empathy_prefix = "I know this can be stressful, and this helps protect your housing rights: "
+        empathy_prefix = "I know this process can be stressful, and this detail helps protect your housing rights: "
         if not cleaned.lower().startswith("i know this can be stressful"):
             cleaned = f"{empathy_prefix}{cleaned[0].lower() + cleaned[1:] if cleaned else cleaned}"
+
+    if router_backed_question_quality and (quality < 0.75 or extraction < 0.75):
+        if "|" not in cleaned.lower() and "event_id | exact/estimated date" not in cleaned.lower():
+            cleaned = (
+                f"{cleaned} Please answer in this format: event_id | exact/estimated date | days since prior event | "
+                "actor/title | document artifact | action/decision | reason given."
+            )
 
     if not cleaned.endswith("?") and "please list" not in cleaned.lower():
         cleaned = f"{cleaned}?"
@@ -2542,6 +3163,7 @@ def _rank_actor_critic_follow_up_questions(
     metrics: Dict[str, float],
     phase_focus_order: Sequence[str],
     *,
+    router_backed_question_quality: bool = False,
     limit: int,
 ) -> List[str]:
     if not questions:
@@ -2549,15 +3171,15 @@ def _rank_actor_critic_follow_up_questions(
     uncovered_rank = {objective: index for index, objective in enumerate(uncovered)}
     phase_rank = {name: index for index, name in enumerate(list(phase_focus_order) or list(ACTOR_CRITIC_PHASE_FOCUS_ORDER))}
     objective_phase = {
-        "exact_dates": "document_generation",
+        "exact_dates": "graph_analysis",
         "timeline": "graph_analysis",
         "actors": "document_generation",
         "staff_names_titles": "document_generation",
         "causation_link": "graph_analysis",
         "anchor_adverse_action": "graph_analysis",
         "anchor_appeal_rights": "document_generation",
-        "hearing_request_timing": "document_generation",
-        "response_dates": "document_generation",
+        "hearing_request_timing": "graph_analysis",
+        "response_dates": "graph_analysis",
         "harm_remedy": "document_generation",
         "intake_follow_up": "intake_questioning",
     }
@@ -2569,7 +3191,12 @@ def _rank_actor_critic_follow_up_questions(
     scored: List[tuple[float, int, str]] = []
     for index, question in enumerate(questions):
         objective = _normalize_intake_objective(_classify_intake_question_objective(question))
-        tuned = _optimize_follow_up_question_text(question, objective, metrics)
+        tuned = _optimize_follow_up_question_text(
+            question,
+            objective,
+            metrics,
+            router_backed_question_quality=router_backed_question_quality,
+        )
         priority = float(INTAKE_OBJECTIVE_PRIORITY.get(objective, 0.5))
         uncovered_position_bonus = 0.0
         if objective in uncovered_rank:
@@ -2588,6 +3215,10 @@ def _rank_actor_critic_follow_up_questions(
             quality_bonus += 0.08
         if coverage < 0.72 and any(token in lowered for token in ("for each", "each", "sequence", "who", "what date")):
             quality_bonus += 0.06
+        precision_bonus = _question_precision_signal(tuned)
+        quality_bonus += min(0.18, precision_bonus)
+        if router_backed_question_quality and ("event_id | exact/estimated date" in lowered or "|" in tuned):
+            quality_bonus += 0.07
         score = priority + uncovered_position_bonus + phase_bonus + quality_bonus
         scored.append((score, index, tuned))
     scored.sort(key=lambda item: (-item[0], item[1]))
@@ -2623,7 +3254,8 @@ def _actor_critic_confirmation_conversion_questions(
     if {"exact_dates", "timeline", "response_dates", "anchor_adverse_action", "anchor_appeal_rights"} & targets:
         prompts.append(
             "For each key event, provide the exact date (or closest day-level anchor), the document or communication "
-            "(notice/email/letter/portal message), who sent it, and the specific decision or instruction stated."
+            "(notice/email/letter/portal message), who sent it, and the specific decision or instruction stated. "
+            "Also include days between events."
         )
 
     if {"actors", "staff_names_titles"} & targets:
@@ -2631,12 +3263,13 @@ def _actor_critic_confirmation_conversion_questions(
         if follow_up > 0:
             prompts.append(
                 "To finalize decision-maker identity: who made the initial recommendation, who approved the final action, "
-                "who communicated it, and each person's name/title (or best-known role if name is unknown)?"
+                "who communicated it, each person's name/title (or best-known role if name is unknown), and which "
+                "document shows each role?"
             )
         else:
             prompts.append(
                 "Who were the decision-makers at each stage (intake, notice, review/hearing, final action), and what was "
-                "each person's name/title and specific decision?"
+                "each person's name/title, specific decision, and supporting document?"
             )
 
     if "causation_link" in targets:
@@ -2653,7 +3286,11 @@ def _actor_critic_confirmation_conversion_questions(
 
     if router_backed_question_quality and prompts:
         prompts.append(
-            "If easier, answer in one line per event using: date | actor/title | document type | decision/action | reason given."
+            "If easier, answer in one line per event using: event_id | exact/estimated date | days since prior event | "
+            "actor/title | document artifact | decision/action | reason given."
+        )
+        prompts.append(
+            "If a field is unknown, write 'unknown' so we can patch missing facts without losing the sequence."
         )
 
     deduped: List[str] = []
@@ -2753,7 +3390,12 @@ def _outstanding_intake_follow_up_questions(
         objective_counts,
         router_backed_question_quality=bool(router_backed_question_quality),
     )
-    candidate_questions = (matched + enhanced_questions + _fallback_intake_follow_up_questions(combined_uncovered, limit=limit))[
+    critical_questions = _critical_intake_precision_questions(
+        combined_uncovered,
+        blocker_items,
+        router_backed_question_quality=bool(router_backed_question_quality),
+    )
+    candidate_questions = (matched + critical_questions + enhanced_questions + _fallback_intake_follow_up_questions(combined_uncovered, limit=limit))[
         : max(limit * 3, limit)
     ]
     return _rank_actor_critic_follow_up_questions(
@@ -2761,6 +3403,7 @@ def _outstanding_intake_follow_up_questions(
         combined_uncovered,
         actor_critic_metrics,
         list(phase_focus_order or ACTOR_CRITIC_PHASE_FOCUS_ORDER),
+        router_backed_question_quality=bool(router_backed_question_quality),
         limit=limit,
     )
 
@@ -3089,6 +3732,8 @@ def _proposed_allegations(seed: Dict[str, Any], session: Dict[str, Any], filing_
     combined_narrative = _combined_section_narrative(list(key_facts.get("anchor_sections") or []))
     if combined_narrative:
         allegations.append(combined_narrative)
+    for line in _anchored_chronology_lines(session, limit=2):
+        allegations.append(line)
     summarized_facts: List[str] = []
     for fact in _conversation_facts(list(session.get("conversation_history") or []), limit=5):
         summary = _summarize_intake_fact(fact)
@@ -3239,6 +3884,14 @@ def _render_markdown(package: Dict[str, Any]) -> str:
             "",
         ])
         lines.extend(f"- {item}" for item in grounded_summary)
+    anchored_chronology_summary = [str(item) for item in list(package.get("anchored_chronology_summary") or []) if str(item)]
+    if anchored_chronology_summary:
+        lines.extend([
+            "",
+            "## Anchored Chronology",
+            "",
+        ])
+        lines.extend(f"- {item}" for item in anchored_chronology_summary)
     grounding_overview = dict(package.get("grounding_overview") or {})
     grounding_overview_lines = _grounding_overview_lines(grounding_overview)
     if grounding_overview_lines:
@@ -3595,6 +4248,7 @@ def main(argv: List[str] | None = None) -> int:
             limit=8,
         ),
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
+        "anchored_chronology_summary": _anchored_chronology_lines(best_session, limit=3),
         "intake_blocker_summary": _synthesized_blocker_summary(best_session),
         "outstanding_intake_gaps": _outstanding_intake_gaps(best_session),
         "outstanding_intake_follow_up_questions": _outstanding_intake_follow_up_questions(

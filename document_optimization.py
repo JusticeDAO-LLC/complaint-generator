@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 import json
 import math
 import re
@@ -98,6 +99,20 @@ def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
         seen.add(text)
         normalized_values.append(text)
     return normalized_values
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
 
 
 _DATE_ANCHOR_PATTERN = re.compile(
@@ -261,6 +276,148 @@ def _build_blocker_prompt(blocker: Dict[str, Any]) -> str:
     return ""
 
 
+def _format_timeline_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%B %-d, %Y")
+    except ValueError:
+        return text
+
+
+def _chronology_fact_label(fact: Dict[str, Any]) -> str:
+    fact_dict = fact if isinstance(fact, dict) else {}
+    event_label = str(fact_dict.get("event_label") or "").strip()
+    if event_label:
+        return event_label
+    predicate_family = str(fact_dict.get("predicate_family") or "").strip().replace("_", " ")
+    if predicate_family:
+        return predicate_family.title()
+    return "Event"
+
+
+def _join_chronology_segments(segments: List[str]) -> str:
+    if not segments:
+        return ""
+    if len(segments) == 1:
+        return segments[0]
+    if len(segments) == 2:
+        return f"{segments[0]} and {segments[1]}"
+    return f"{', '.join(segments[:-1])}, and {segments[-1]}"
+
+
+def _build_anchored_chronology_summary(intake_case_file: Dict[str, Any], *, limit: int = 3) -> List[str]:
+    case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+    facts = [dict(item) for item in list(case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    relations = [dict(item) for item in list(case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    if not facts or not relations:
+        return []
+
+    fact_by_id = {
+        str(fact.get("fact_id") or "").strip(): fact
+        for fact in facts
+        if str(fact.get("fact_id") or "").strip()
+    }
+    relation_records = []
+    for relation in relations:
+        if str(relation.get("relation_type") or "").strip().lower() != "before":
+            continue
+        source_id = str(relation.get("source_fact_id") or "").strip()
+        target_id = str(relation.get("target_fact_id") or "").strip()
+        source_fact = fact_by_id.get(source_id)
+        target_fact = fact_by_id.get(target_id)
+        if not source_fact or not target_fact:
+            continue
+        source_date = _format_timeline_date((source_fact.get("temporal_context") or {}).get("start_date") or relation.get("source_start_date"))
+        target_date = _format_timeline_date((target_fact.get("temporal_context") or {}).get("start_date") or relation.get("target_start_date"))
+        if not source_date or not target_date:
+            continue
+        relation_records.append(
+            {
+                "key": (source_id, target_id),
+                "source_id": source_id,
+                "target_id": target_id,
+                "source_fact": source_fact,
+                "target_fact": target_fact,
+                "source_date": source_date,
+                "target_date": target_date,
+            }
+        )
+    if not relation_records:
+        return []
+
+    outgoing: Dict[str, List[Dict[str, Any]]] = {}
+    incoming_count: Dict[str, int] = {}
+    for record in relation_records:
+        outgoing.setdefault(record["source_id"], []).append(record)
+        incoming_count[record["target_id"]] = incoming_count.get(record["target_id"], 0) + 1
+        incoming_count.setdefault(record["source_id"], incoming_count.get(record["source_id"], 0))
+
+    lines: List[str] = []
+    seen = set()
+    used_keys = set()
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        if incoming_count.get(record["source_id"], 0) != 0 or len(outgoing.get(record["source_id"], [])) != 1:
+            continue
+        chain = [record]
+        next_id = record["target_id"]
+        temp_used = {record["key"]}
+        while len(outgoing.get(next_id, [])) == 1 and incoming_count.get(next_id, 0) == 1:
+            next_record = outgoing[next_id][0]
+            if next_record["key"] in temp_used:
+                break
+            chain.append(next_record)
+            temp_used.add(next_record["key"])
+            next_id = next_record["target_id"]
+        if len(chain) < 2:
+            continue
+        segments = [
+            f"{_chronology_fact_label(chain[0]['source_fact'])} on {chain[0]['source_date']}"
+        ]
+        segments.extend(
+            f"{_chronology_fact_label(item['target_fact'])} on {item['target_date']}"
+            for item in chain
+        )
+        line = f"{_join_chronology_segments(segments)} occurred in sequence."
+        last_target = chain[-1]["target_fact"]
+        target_context = last_target.get("temporal_context") if isinstance(last_target.get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f". The later date is currently derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        used_keys.update(temp_used)
+        lines.append(line)
+
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        source_label = _chronology_fact_label(record["source_fact"])
+        target_label = _chronology_fact_label(record["target_fact"])
+        line = f"{source_label} on {record['source_date']} preceded {target_label.lower()} on {record['target_date']}."
+        target_context = record["target_fact"].get("temporal_context") if isinstance(record["target_fact"].get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f". The later date is currently derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(line)
+    return lines
+
+
 def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str, Any]:
     summary = intake_case_summary if isinstance(intake_case_summary, dict) else {}
     packet_summary = summary.get("claim_support_packet_summary")
@@ -323,6 +480,95 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     ):
         return {}
     return temporal_handoff
+
+
+def _claim_temporal_gap_focus(claim_type: str, claim_name: str) -> Dict[str, set[str]]:
+    combined = " ".join([str(claim_type or ""), str(claim_name or "")]).strip().lower()
+    issue_families = {"timeline"}
+    element_tags = {"timeline"}
+    objectives = {"timeline", "exact_dates"}
+    if any(token in combined for token in ("retaliat", "reprisal", "protected activity")):
+        issue_families.update({"causation", "protected_activity", "adverse_action"})
+        element_tags.update({"causation", "protected_activity", "adverse_action"})
+        objectives.update({"causation_link", "causation_sequence", "anchor_adverse_action"})
+    if any(token in combined for token in ("due process", "grievance", "hearing", "appeal", "review", "notice")):
+        issue_families.update({"notice_chain", "hearing_process", "response_timeline"})
+        element_tags.update({"notice", "hearing", "appeal", "response", "review"})
+        objectives.update({"anchor_appeal_rights", "hearing_request_timing", "response_dates"})
+    if any(token in combined for token in ("accommodation", "disabil", "discrimination", "termination", "denial")):
+        issue_families.update({"adverse_action", "notice_chain", "response_timeline"})
+        element_tags.update({"adverse_action", "response", "notice"})
+        objectives.update({"response_dates", "anchor_adverse_action"})
+    return {
+        "issue_families": issue_families,
+        "element_tags": element_tags,
+        "objectives": objectives,
+    }
+
+
+def _build_claim_temporal_gap_hints(
+    intake_case_file: Dict[str, Any],
+    *,
+    claim_type: str,
+    claim_name: str,
+    limit: int = 3,
+) -> List[str]:
+    case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+    focus = _claim_temporal_gap_focus(claim_type, claim_name)
+    normalized_claim_type = str(claim_type or "").strip().lower()
+    hints: List[str] = []
+
+    for issue in list(case_file.get("temporal_issue_registry") or []):
+        if not isinstance(issue, dict):
+            continue
+        status = str(issue.get("status") or "open").strip().lower()
+        if status not in {"open", "blocking", "warning"}:
+            continue
+        issue_claim_types = {
+            str(item).strip().lower()
+            for item in list(issue.get("claim_types") or [])
+            if str(item).strip()
+        }
+        issue_element_tags = {
+            str(item).strip().lower()
+            for item in list(issue.get("element_tags") or [])
+            if str(item).strip()
+        }
+        if issue_claim_types:
+            if normalized_claim_type not in issue_claim_types:
+                continue
+        elif issue_element_tags and not (issue_element_tags & focus["element_tags"]):
+            continue
+        summary = str(issue.get("summary") or "").strip()
+        if summary:
+            hints.append(f"Chronology gap: {summary}")
+
+    blocker_follow_up_summary = (
+        case_file.get("blocker_follow_up_summary")
+        if isinstance(case_file.get("blocker_follow_up_summary"), dict)
+        else {}
+    )
+    for blocker in list(blocker_follow_up_summary.get("blocking_items") or []):
+        if not isinstance(blocker, dict):
+            continue
+        issue_family = str(blocker.get("issue_family") or "").strip().lower()
+        primary_objective = str(blocker.get("primary_objective") or "").strip().lower()
+        blocker_objectives = {
+            str(item).strip().lower()
+            for item in list(blocker.get("blocker_objectives") or [])
+            if str(item).strip()
+        }
+        matched_objectives = ({primary_objective} if primary_objective else set()) | blocker_objectives
+        if issue_family:
+            if issue_family not in focus["issue_families"] and not (matched_objectives & focus["objectives"]):
+                continue
+        elif not (matched_objectives & focus["objectives"]):
+            continue
+        reason = str(blocker.get("reason") or "").strip()
+        if reason:
+            hints.append(f"Chronology gap: {reason}")
+
+    return _unique_preserving_order(hints)[:limit]
 
 
 class AgenticDocumentOptimizer:
@@ -399,6 +645,7 @@ class AgenticDocumentOptimizer:
             user_id=user_id,
             draft=working_draft,
             drafting_readiness=readiness,
+            config=config or {},
         )
         initial_review = self._run_critic(
             draft=working_draft,
@@ -409,8 +656,16 @@ class AgenticDocumentOptimizer:
         iterations: List[Dict[str, Any]] = []
         accepted_iterations = 0
         optimized_sections: List[str] = []
+        document_guardrail = (
+            support_context.get("document_generation_guardrail")
+            if isinstance(support_context.get("document_generation_guardrail"), dict)
+            else {}
+        )
+        assessment_blocked = bool(document_guardrail.get("assessment_blocked"))
 
         for iteration in range(1, self.max_iterations + 1):
+            if assessment_blocked:
+                break
             if float(current_review.get("overall_score") or 0.0) >= self.target_score:
                 break
 
@@ -517,7 +772,7 @@ class AgenticDocumentOptimizer:
             }
         )
         return {
-            "status": "optimized" if accepted_iterations else "completed",
+            "status": "blocked" if assessment_blocked else ("optimized" if accepted_iterations else "completed"),
             "method": "actor_mediator_critic_optimizer",
             "optimization_method": "actor_critic",
             "phase_focus_order": ["graph_analysis", "document_generation", "intake_questioning"],
@@ -539,6 +794,25 @@ class AgenticDocumentOptimizer:
             "claim_support_temporal_handoff": claim_support_temporal_handoff,
             "claim_reasoning_review": claim_reasoning_review,
             "workflow_optimization_guidance": workflow_optimization_guidance,
+            "actor_critic_priority": int(
+                (support_context.get("actor_critic") or {}).get("priority")
+                if isinstance(support_context.get("actor_critic"), dict)
+                else 70
+            ),
+            "actor_critic_metrics": dict(
+                (support_context.get("actor_critic") or {}).get("metrics")
+                if isinstance(support_context.get("actor_critic"), dict)
+                else {}
+            ),
+            "baseline_metrics": dict(
+                (support_context.get("actor_critic") or {}).get("baseline_metrics")
+                if isinstance(support_context.get("actor_critic"), dict)
+                else {}
+            ),
+            "adversarial_session_flow": dict(document_guardrail),
+            "successful_session_count": int(document_guardrail.get("successful_session_count") or 0),
+            "session_count": int(document_guardrail.get("session_count") or 0),
+            "assessment_blocked": bool(document_guardrail.get("assessment_blocked")),
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {
@@ -749,7 +1023,9 @@ class AgenticDocumentOptimizer:
         user_id: Optional[str],
         draft: Dict[str, Any],
         drafting_readiness: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        config_payload = config if isinstance(config, dict) else {}
         claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
         claim_entries = drafting_readiness.get("claims") if isinstance(drafting_readiness.get("claims"), list) else []
         readiness_by_claim = {}
@@ -781,11 +1057,22 @@ class AgenticDocumentOptimizer:
                 }
             )
 
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = {}
+        if phase_manager is not None and hasattr(phase_manager, "get_phase_data"):
+            try:
+                intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") or {}
+            except Exception:
+                intake_case_file = {}
+        intake_case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+
         claim_contexts = []
+        claim_temporal_gap_summary = []
         for claim in claims:
             if not isinstance(claim, dict):
                 continue
             claim_type = str(claim.get("claim_type") or claim.get("count_title") or "").strip()
+            claim_name = str(claim.get("count_title") or claim.get("claim_type") or "").strip()
             support_facts = self._call_mediator("get_claim_support_facts", claim_type=claim_type, user_id=user_id) or []
             overview = self._call_mediator("get_claim_overview", claim_type=claim_type, user_id=user_id) or {}
             overview_claim = {}
@@ -795,16 +1082,31 @@ class AgenticDocumentOptimizer:
             support_summary = support_summary_claims.get(claim_type) if isinstance(support_summary_claims.get(claim_type), dict) else {}
             readiness_entry = readiness_by_claim.get(claim_type, {})
             support_texts = self._extract_support_texts(support_facts)
+            temporal_gap_hints = _build_claim_temporal_gap_hints(
+                intake_case_file,
+                claim_type=claim_type,
+                claim_name=claim_name,
+            )
+            missing_elements = _unique_preserving_order(
+                [
+                    *self._extract_element_texts(overview_claim.get("missing")),
+                    *self._normalize_lines(claim.get("missing_elements") or []),
+                    *temporal_gap_hints,
+                ]
+            )
             claim_contexts.append(
                 {
                     "claim_type": claim_type,
-                    "missing_elements": self._extract_element_texts(overview_claim.get("missing")),
+                    "missing_elements": missing_elements,
                     "partially_supported_elements": self._extract_element_texts(overview_claim.get("partially_supported")),
                     "support_summary": {
                         "total_elements": int(support_summary.get("total_elements") or claim.get("support_summary", {}).get("total_elements") or 0),
                         "covered_elements": int(support_summary.get("covered_elements") or claim.get("support_summary", {}).get("covered_elements") or 0),
                         "uncovered_elements": int(support_summary.get("uncovered_elements") or claim.get("support_summary", {}).get("uncovered_elements") or 0),
                         "source_family_counts": dict(support_summary.get("support_packet_summary", {}).get("source_family_counts") or claim.get("support_summary", {}).get("source_family_counts") or {}),
+                        "temporal_gap_hint_count": int(
+                            claim.get("support_summary", {}).get("temporal_gap_hint_count") or len(temporal_gap_hints)
+                        ),
                     },
                     "support_facts": support_texts[:8],
                     "readiness_warnings": [
@@ -814,18 +1116,18 @@ class AgenticDocumentOptimizer:
                     ],
                 }
             )
+            if temporal_gap_hints:
+                claim_temporal_gap_summary.append(
+                    {
+                        "claim_type": claim_type,
+                        "gap_count": len(temporal_gap_hints),
+                        "gaps": temporal_gap_hints,
+                    }
+                )
 
         intake_status = build_intake_status_summary(self.mediator)
         intake_handoff = intake_status.get("intake_summary_handoff") if isinstance(intake_status, dict) else {}
         intake_handoff = intake_handoff if isinstance(intake_handoff, dict) else {}
-        phase_manager = getattr(self.mediator, "phase_manager", None)
-        intake_case_file = {}
-        if phase_manager is not None and hasattr(phase_manager, "get_phase_data"):
-            try:
-                intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") or {}
-            except Exception:
-                intake_case_file = {}
-        intake_case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
         blocker_follow_up_summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
         blocker_items = _normalize_blocker_records(blocker_follow_up_summary.get("blocking_items"))
         open_items = _normalize_blocker_records(intake_case_file.get("open_items"))
@@ -894,12 +1196,187 @@ class AgenticDocumentOptimizer:
             [_build_blocker_prompt(blocker) for blocker in blocker_items]
             + [_build_blocker_prompt(item) for item in blocker_open_items]
         )
+        anchored_chronology_summary = _build_anchored_chronology_summary(intake_case_file)
+        temporal_issue_registry = intake_case_file.get("temporal_issue_registry") if isinstance(intake_case_file.get("temporal_issue_registry"), list) else []
+
+        metric_aliases = {
+            "empathy_avg": "empathy",
+            "avg_empathy": "empathy",
+            "question_quality_avg": "question_quality",
+            "avg_question_quality": "question_quality",
+            "information_extraction_avg": "information_extraction",
+            "avg_information_extraction": "information_extraction",
+            "coverage_avg": "coverage",
+            "avg_coverage": "coverage",
+            "efficiency_avg": "efficiency",
+            "avg_efficiency": "efficiency",
+        }
+        raw_baseline_metrics = (
+            config_payload.get("baseline_metrics")
+            if isinstance(config_payload.get("baseline_metrics"), dict)
+            else {}
+        )
+        baseline_metrics: Dict[str, float] = {}
+        for raw_key, raw_value in dict(raw_baseline_metrics).items():
+            key = metric_aliases.get(str(raw_key).strip().lower(), str(raw_key).strip().lower())
+            if key not in {"empathy", "question_quality", "information_extraction", "coverage", "efficiency"}:
+                continue
+            baseline_metrics[key] = _clamp(_safe_float(raw_value, 0.0))
+
+        actor_critic_priority = 70
+        for candidate in (
+            config_payload.get("priority"),
+            config_payload.get("actor_critic_priority"),
+            (config_payload.get("actor_critic_optimizer") or {}).get("priority")
+            if isinstance(config_payload.get("actor_critic_optimizer"), dict)
+            else None,
+        ):
+            if candidate is None:
+                continue
+            try:
+                actor_critic_priority = max(1, min(100, int(candidate)))
+                break
+            except Exception:
+                continue
+
+        warning_messages = [
+            str((warning or {}).get("message") or "")
+            for warning in (drafting_readiness.get("warnings") or [])
+            if isinstance(warning, dict)
+        ]
+        workflow_phase_plan = (
+            config_payload.get("workflow_phase_plan")
+            if isinstance(config_payload.get("workflow_phase_plan"), dict)
+            else {}
+        )
+        phase_payloads = (
+            workflow_phase_plan.get("phases")
+            if isinstance(workflow_phase_plan.get("phases"), dict)
+            else {}
+        )
+        document_phase = (
+            phase_payloads.get("document_generation")
+            if isinstance(phase_payloads.get("document_generation"), dict)
+            else {}
+        )
+        document_signals = (
+            document_phase.get("signals")
+            if isinstance(document_phase.get("signals"), dict)
+            else {}
+        )
+        document_summary = str(document_phase.get("summary") or "").strip()
+        summary_candidates = [
+            document_summary,
+            str(config_payload.get("phase_goal") or "").strip(),
+            str(config_payload.get("document_phase_goal") or "").strip(),
+            *warning_messages,
+        ]
+        no_success_signal = any(
+            "no successful sessions" in value.lower() and "drafting handoff" in value.lower()
+            for value in summary_candidates
+            if value
+        )
+
+        successful_session_count = max(
+            0,
+            _safe_int(document_signals.get("adversarial_successful_session_count"), 0),
+            _safe_int(config_payload.get("successful_session_count"), 0),
+            _safe_int(config_payload.get("successful_sessions"), 0),
+            _safe_int((config_payload.get("adversarial_batch") or {}).get("successful_session_count"), 0)
+            if isinstance(config_payload.get("adversarial_batch"), dict)
+            else 0,
+        )
+        session_count = max(
+            0,
+            _safe_int(document_signals.get("adversarial_session_count"), 0),
+            _safe_int(config_payload.get("session_count"), 0),
+            _safe_int(config_payload.get("sessions"), 0),
+            _safe_int((config_payload.get("adversarial_batch") or {}).get("session_count"), 0)
+            if isinstance(config_payload.get("adversarial_batch"), dict)
+            else 0,
+        )
+        phase_status = (
+            str(document_phase.get("status") or "").strip().lower()
+            or str(drafting_readiness.get("phase_status") or drafting_readiness.get("status") or "ready").strip().lower()
+        )
+        coverage = max(
+            0.0,
+            _safe_float(document_signals.get("drafting_coverage"), -1.0),
+            _safe_float(config_payload.get("coverage"), -1.0),
+            _safe_float(drafting_readiness.get("coverage"), -1.0),
+        )
+        if coverage < 0.0:
+            coverage = 0.0
+        session_flow_stable = bool(document_signals.get("adversarial_session_flow_stable")) if "adversarial_session_flow_stable" in document_signals else True
+        has_session_flow_signal = any(
+            (
+                no_success_signal,
+                session_count > 0,
+                phase_status == "critical",
+                not session_flow_stable,
+                bool(document_phase),
+            )
+        )
+        assessment_blocked = (
+            successful_session_count <= 0
+            and has_session_flow_signal
+            and (
+                no_success_signal
+                or session_count > 0
+                or phase_status == "critical"
+                or coverage <= 0.0
+                or not session_flow_stable
+            )
+        )
+        recommended_actions = _dedupe_text_values(
+            [
+                *[
+                    str((action or {}).get("recommended_action") or "").strip()
+                    for action in list(document_phase.get("recommended_actions") or [])
+                    if isinstance(action, dict)
+                ],
+                *[
+                    str(action).strip()
+                    for action in list(config_payload.get("recommended_actions") or [])
+                    if str(action).strip()
+                ],
+                "Restore a stable adversarial session flow before tuning document-generation handoffs."
+                if assessment_blocked
+                else "",
+            ]
+        )
+        actor_critic_metrics = {
+            "empathy": _clamp(baseline_metrics.get("empathy", 0.0)),
+            "question_quality": _clamp(baseline_metrics.get("question_quality", 0.0)),
+            "information_extraction": _clamp(baseline_metrics.get("information_extraction", 0.0)),
+            "coverage": _clamp(baseline_metrics.get("coverage", coverage)),
+            "efficiency": _clamp(baseline_metrics.get("efficiency", 0.0)),
+        }
 
         return {
             "claims": claim_contexts,
             "evidence": evidence_summaries[:10],
             "sections": dict(drafting_readiness.get("sections") or {}) if isinstance(drafting_readiness, dict) else {},
             "packet_projection": self._build_packet_projection(draft),
+            "actor_critic": {
+                "priority": actor_critic_priority,
+                "baseline_metrics": baseline_metrics,
+                "metrics": actor_critic_metrics,
+            },
+            "document_generation_guardrail": {
+                "phase_status": phase_status or "ready",
+                "coverage": _clamp(coverage),
+                "successful_session_count": successful_session_count,
+                "session_count": session_count,
+                "assessment_blocked": assessment_blocked,
+                "summary": (
+                    "No successful sessions were available to assess drafting handoff quality."
+                    if assessment_blocked
+                    else ""
+                ),
+                "recommended_actions": recommended_actions,
+                "priority": actor_critic_priority,
+            },
             "intake_priorities": {
                 "covered_objectives": covered_objectives,
                 "uncovered_objectives": uncovered_objectives,
@@ -913,6 +1390,14 @@ class AgenticDocumentOptimizer:
                 "blocker_extraction_targets": blocker_extraction_targets,
                 "blocker_workflow_phases": blocker_workflow_phases,
                 "blocker_issue_families": blocker_issue_families,
+                "anchored_chronology_summary": anchored_chronology_summary,
+                "temporal_issue_count": len(temporal_issue_registry),
+                "claim_temporal_gap_count": sum(
+                    int(item.get("gap_count") or 0)
+                    for item in claim_temporal_gap_summary
+                    if isinstance(item, dict)
+                ),
+                "claim_temporal_gap_summary": claim_temporal_gap_summary,
                 "recommended_follow_up_prompts": [
                     _OBJECTIVE_PROMPTS[objective]
                     for objective in critical_unresolved
@@ -1497,6 +1982,24 @@ class AgenticDocumentOptimizer:
                 support_context=support_context,
             ),
         }
+        guardrail = (
+            support_context.get("document_generation_guardrail")
+            if isinstance(support_context.get("document_generation_guardrail"), dict)
+            else {}
+        )
+        assessment_blocked = bool(guardrail.get("assessment_blocked"))
+        guardrail_phase_status = str(guardrail.get("phase_status") or "").strip().lower()
+        guardrail_coverage = _safe_float(guardrail.get("coverage"), 0.0)
+        if assessment_blocked:
+            document_cap = 0.4 if guardrail_phase_status == "critical" or guardrail_coverage <= 0.0 else 0.55
+            for section_name in (
+                "claims_for_relief",
+                "requested_relief",
+                "affidavit",
+                "certificate_of_service",
+                "packet_projection",
+            ):
+                section_scores[section_name] = min(float(section_scores.get(section_name) or 0.0), document_cap)
         ordered_sections = sorted(
             ((name, score) for name, score in section_scores.items() if name in self.VALID_FOCUS_SECTIONS),
             key=lambda item: item[1],
@@ -1512,6 +2015,14 @@ class AgenticDocumentOptimizer:
             phase_target_sections.get(prioritized_phase)
             or (ordered_sections[0][0] if ordered_sections else "factual_allegations")
         )
+        if assessment_blocked:
+            forced_phase_order = ["graph_analysis", "intake_questioning", "document_generation"]
+            phase_focus_order = forced_phase_order
+            prioritized_phase = forced_phase_order[0]
+            recommended_focus = str(
+                phase_target_sections.get(prioritized_phase)
+                or "factual_allegations"
+            )
 
         weaknesses: List[str] = []
         suggestions: List[str] = []
@@ -1553,9 +2064,23 @@ class AgenticDocumentOptimizer:
             suggestions.append(
                 "Ask targeted follow-up questions to lock dates, each HACC actor decision, hearing and response timing, and direct causation facts linking protected activity to adverse treatment."
             )
+        if assessment_blocked:
+            weaknesses.append(
+                str(guardrail.get("summary") or "No successful sessions were available to assess drafting handoff quality.")
+            )
+            for action in list(guardrail.get("recommended_actions") or []):
+                action_text = str(action).strip()
+                if not action_text:
+                    continue
+                suggestions.append(action_text)
 
         readiness_status = str(drafting_readiness.get("status") or "ready").strip().lower()
         procedural_score = 0.95 if readiness_status == "ready" else 0.75 if readiness_status == "warning" else 0.45
+        if assessment_blocked:
+            procedural_score = min(
+                procedural_score,
+                0.35 if guardrail_phase_status == "critical" or guardrail_coverage <= 0.0 else 0.6,
+            )
         completeness_score = sum(section_scores.values()) / max(len(section_scores), 1)
         grounding_score = self._score_grounding(support_context)
         coherence_score = self._score_coherence(factual_allegations)
@@ -1572,6 +2097,11 @@ class AgenticDocumentOptimizer:
             + (procedural_score * 0.15)
             + (renderability_score * 0.1)
         )
+        if assessment_blocked:
+            overall_score = min(
+                overall_score,
+                0.55 if guardrail_phase_status == "critical" or guardrail_coverage <= 0.0 else 0.7,
+            )
         strengths = []
         if support_context.get("claims"):
             strengths.append("Support packets are available.")
@@ -1602,6 +2132,7 @@ class AgenticDocumentOptimizer:
             "workflow_phase_scores": dict(workflow_phase_targeting.get("phase_scores") or {}),
             "workflow_phase_target_sections": phase_target_sections,
             "prioritized_workflow_phase": prioritized_phase,
+            "document_generation_guardrail": dict(guardrail),
         }
 
     def _score_factual_allegations(self, allegations: List[str], claims: List[Dict[str, Any]]) -> float:
@@ -1751,6 +2282,12 @@ class AgenticDocumentOptimizer:
             score += 0.06
         if any(token in lowered_allegations for token in ("name and title", "names and titles", "name or title", "staff names", "staff titles")):
             score += 0.05
+        if priorities.get("anchored_chronology_summary"):
+            score += 0.08
+            if int(priorities.get("temporal_issue_count") or 0) <= 0:
+                score += 0.03
+        elif int(priorities.get("temporal_issue_count") or 0) > 0:
+            score -= 0.05
         if covered:
             score += min(len(covered), 4) * 0.03
         weighted_gap_penalty = 0.0

@@ -35,8 +35,8 @@ STATE_DEFAULT_RELIEF = [
 ]
 ACTOR_CRITIC_PHASE_FOCUS_ORDER = ("graph_analysis", "document_generation", "intake_questioning")
 DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS = {
-    "empathy": 0.25,
-    "question_quality": 0.40,
+    "empathy": 0.22,
+    "question_quality": 0.58,
     "information_extraction": 0.40,
     "coverage": 0.40,
     "efficiency": 0.62,
@@ -93,11 +93,167 @@ def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
     return normalized_values
 
 
+def _format_timeline_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%B %-d, %Y")
+    except ValueError:
+        return text
+
+
+def _chronology_fact_label(fact: Dict[str, Any]) -> str:
+    event_label = str((fact if isinstance(fact, dict) else {}).get("event_label") or "").strip()
+    if event_label:
+        return event_label
+    predicate_family = str((fact if isinstance(fact, dict) else {}).get("predicate_family") or "").strip().replace("_", " ")
+    if predicate_family:
+        return predicate_family.title()
+    return "Event"
+
+
+def _join_chronology_segments(segments: List[str]) -> str:
+    if not segments:
+        return ""
+    if len(segments) == 1:
+        return segments[0]
+    if len(segments) == 2:
+        return f"{segments[0]} and {segments[1]}"
+    return f"{', '.join(segments[:-1])}, and {segments[-1]}"
+
+
+def _build_anchored_chronology_summary_from_case_file(intake_case_file: Dict[str, Any], *, limit: int = 3) -> List[str]:
+    case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+    facts = [dict(item) for item in list(case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    relations = [dict(item) for item in list(case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    if not facts or not relations:
+        return []
+
+    fact_by_id = {
+        str(fact.get("fact_id") or "").strip(): fact
+        for fact in facts
+        if str(fact.get("fact_id") or "").strip()
+    }
+    relation_records = []
+    for relation in relations:
+        if str(relation.get("relation_type") or "").strip().lower() != "before":
+            continue
+        source_id = str(relation.get("source_fact_id") or "").strip()
+        target_id = str(relation.get("target_fact_id") or "").strip()
+        source_fact = fact_by_id.get(source_id)
+        target_fact = fact_by_id.get(target_id)
+        if not source_fact or not target_fact:
+            continue
+        source_date = _format_timeline_date((source_fact.get("temporal_context") or {}).get("start_date") or relation.get("source_start_date"))
+        target_date = _format_timeline_date((target_fact.get("temporal_context") or {}).get("start_date") or relation.get("target_start_date"))
+        if not source_date or not target_date:
+            continue
+        relation_records.append(
+            {
+                "key": (source_id, target_id),
+                "source_id": source_id,
+                "target_id": target_id,
+                "source_fact": source_fact,
+                "target_fact": target_fact,
+                "source_date": source_date,
+                "target_date": target_date,
+            }
+        )
+    if not relation_records:
+        return []
+
+    outgoing: Dict[str, List[Dict[str, Any]]] = {}
+    incoming_count: Dict[str, int] = {}
+    for record in relation_records:
+        outgoing.setdefault(record["source_id"], []).append(record)
+        incoming_count[record["target_id"]] = incoming_count.get(record["target_id"], 0) + 1
+        incoming_count.setdefault(record["source_id"], incoming_count.get(record["source_id"], 0))
+
+    lines: List[str] = []
+    seen = set()
+    used_keys = set()
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        if incoming_count.get(record["source_id"], 0) != 0 or len(outgoing.get(record["source_id"], [])) != 1:
+            continue
+        chain = [record]
+        next_id = record["target_id"]
+        temp_used = {record["key"]}
+        while len(outgoing.get(next_id, [])) == 1 and incoming_count.get(next_id, 0) == 1:
+            next_record = outgoing[next_id][0]
+            if next_record["key"] in temp_used:
+                break
+            chain.append(next_record)
+            temp_used.add(next_record["key"])
+            next_id = next_record["target_id"]
+        if len(chain) < 2:
+            continue
+        segments = [
+            f"{_chronology_fact_label(chain[0]['source_fact'])} on {chain[0]['source_date']}"
+        ]
+        segments.extend(
+            f"{_chronology_fact_label(item['target_fact'])} on {item['target_date']}"
+            for item in chain
+        )
+        line = f"{_join_chronology_segments(segments)} occurred in sequence."
+        last_target = chain[-1]["target_fact"]
+        target_context = last_target.get("temporal_context") if isinstance(last_target.get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f". The later date is currently derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        used_keys.update(temp_used)
+        lines.append(line)
+
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        source_label = _chronology_fact_label(record["source_fact"])
+        target_label = _chronology_fact_label(record["target_fact"])
+        line = f"{source_label} on {record['source_date']} preceded {target_label.lower()} on {record['target_date']}."
+        target_context = record["target_fact"].get("temporal_context") if isinstance(record["target_fact"].get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f". The later date is currently derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(line)
+    return lines
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
     except Exception:
         return float(default)
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    if not text:
+        return default
+    if text in {"1", "true", "yes", "y", "on", "available", "enabled"}:
+        return True
+    if text in {"0", "false", "no", "n", "off", "unavailable", "disabled"}:
+        return False
+    return default
 
 
 def _extract_text_candidates(value: Any) -> List[str]:
@@ -217,6 +373,89 @@ def _contains_confirmation_placeholder(value: Any) -> bool:
     return bool(_CONFIRMATION_PLACEHOLDER_PATTERN.search(str(value or "")))
 
 
+def _extract_latest_adversarial_priority_findings(value: Any) -> List[str]:
+    findings: List[str] = []
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            findings.append(text)
+        return findings
+    if isinstance(value, list):
+        for item in value:
+            findings.extend(_extract_latest_adversarial_priority_findings(item))
+        return findings
+    if isinstance(value, dict):
+        candidate_keys = (
+            "summary",
+            "finding",
+            "message",
+            "reason",
+            "title",
+            "description",
+            "priority",
+            "text",
+        )
+        for key in candidate_keys:
+            if key in value and value.get(key):
+                findings.extend(_extract_latest_adversarial_priority_findings(value.get(key)))
+        for nested_key in (
+            "priorities",
+            "priority_findings",
+            "findings",
+            "issues",
+            "gaps",
+            "latest_priorities",
+            "latest_adversarial_priorities",
+            "critical_findings",
+            "latest_batch_findings",
+            "latest_batch_priorities",
+            "latest_adversarial_batch",
+            "latest_adversarial_batch_summary",
+        ):
+            if nested_key in value and value.get(nested_key):
+                findings.extend(_extract_latest_adversarial_priority_findings(value.get(nested_key)))
+    return findings
+
+
+def _has_chronology_gap_priority(findings: Iterable[str]) -> bool:
+    lowered = " ".join(str(item or "").strip().lower() for item in findings if str(item or "").strip())
+    if not lowered:
+        return False
+    chronology_markers = (
+        "chronology",
+        "exact date",
+        "date gap",
+        "response timing",
+        "response date",
+        "sequence",
+        "timeline",
+        "follow up",
+        "follow-up",
+        "critical chronology",
+    )
+    return any(marker in lowered for marker in chronology_markers)
+
+
+def _has_decision_or_document_precision_priority(findings: Iterable[str]) -> bool:
+    lowered = " ".join(str(item or "").strip().lower() for item in findings if str(item or "").strip())
+    if not lowered:
+        return False
+    precision_markers = (
+        "decision-maker",
+        "decision maker",
+        "adverse action",
+        "documentary artifact",
+        "document artifact",
+        "documentary evidence",
+        "specific decision",
+        "who made",
+        "who decided",
+        "named actor",
+        "artifact precision",
+    )
+    return any(marker in lowered for marker in precision_markers)
+
+
 def _roman(index: int) -> str:
     numerals = [
         (1000, "M"),
@@ -257,6 +496,7 @@ def _merge_status(current: str, candidate: str) -> str:
         "ready": 0,
         "warning": 1,
         "blocked": 2,
+        "critical": 3,
     }
     current_status = str(current or "ready")
     candidate_status = str(candidate or "ready")
@@ -480,11 +720,22 @@ class FormalComplaintDocumentBuilder:
             user_id=resolved_user_id,
             draft=draft,
         )
-        workflow_phase_plan = (
-            dict(drafting_readiness.get("workflow_phase_plan") or {})
-            if isinstance(drafting_readiness.get("workflow_phase_plan"), dict)
-            else {}
+        workflow_phase_plan = self._build_runtime_workflow_phase_plan(
+            drafting_readiness=drafting_readiness,
+            document_optimization=document_optimization,
         )
+        if not workflow_phase_plan:
+            workflow_phase_plan = (
+                dict(drafting_readiness.get("workflow_phase_plan") or {})
+                if isinstance(drafting_readiness.get("workflow_phase_plan"), dict)
+                else {}
+            )
+        if workflow_phase_plan:
+            drafting_readiness["workflow_phase_plan"] = workflow_phase_plan
+            self._refresh_drafting_readiness_workflow_warnings(
+                drafting_readiness=drafting_readiness,
+                workflow_phase_plan=workflow_phase_plan,
+            )
         workflow_optimization_guidance = _build_runtime_workflow_optimization_guidance(
             mediator=self.mediator,
             drafting_readiness=drafting_readiness,
@@ -505,12 +756,24 @@ class FormalComplaintDocumentBuilder:
         draft["filing_checklist"] = filing_checklist
         draft["affidavit"] = self._build_affidavit(draft)
         claim_support_temporal_handoff = self._build_claim_support_temporal_handoff(document_optimization)
+        formalization_gate = self._build_formalization_gate_payload(drafting_readiness)
         source_context = draft.get("source_context") if isinstance(draft.get("source_context"), dict) else {}
+        enriched_source_context = dict(source_context)
         if claim_support_temporal_handoff:
-            draft["source_context"] = {
-                **source_context,
-                "claim_support_temporal_handoff": claim_support_temporal_handoff,
-            }
+            enriched_source_context["claim_support_temporal_handoff"] = claim_support_temporal_handoff
+        if formalization_gate:
+            enriched_source_context["formalization_gate"] = formalization_gate
+        if enriched_source_context:
+            draft["source_context"] = enriched_source_context
+        if formalization_gate:
+            draft["formalization_gate"] = formalization_gate
+        drafting_handoff = (
+            dict(drafting_readiness.get("drafting_handoff") or {})
+            if isinstance(drafting_readiness.get("drafting_handoff"), dict)
+            else {}
+        )
+        if drafting_handoff:
+            draft["drafting_handoff"] = drafting_handoff
         artifacts = self.render_artifacts(
             draft,
             output_dir=output_dir,
@@ -528,8 +791,12 @@ class FormalComplaintDocumentBuilder:
             "output_formats": formats,
             "generated_at": _utcnow().isoformat(),
         }
+        if formalization_gate:
+            package_payload["formalization_gate"] = formalization_gate
         if workflow_phase_plan:
             package_payload["workflow_phase_plan"] = workflow_phase_plan
+        if drafting_handoff:
+            package_payload["drafting_handoff"] = drafting_handoff
         if claim_support_temporal_handoff:
             package_payload["claim_support_temporal_handoff"] = claim_support_temporal_handoff
         return package_payload
@@ -722,6 +989,8 @@ class FormalComplaintDocumentBuilder:
         affidavit_notary_block: Optional[List[str]],
     ) -> Dict[str, Any]:
         state = getattr(self.mediator, "state", None)
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
         generated_complaint = self._get_existing_formal_complaint()
         classification = getattr(state, "legal_classification", {}) or {}
         statutes = _coerce_list(getattr(state, "applicable_statutes", []) or [])
@@ -835,6 +1104,9 @@ class FormalComplaintDocumentBuilder:
             "venue_statement": venue_statement,
             "factual_allegations": factual_allegations,
             "summary_of_facts": facts,
+            "anchored_chronology_summary": _build_anchored_chronology_summary_from_case_file(
+                intake_case_file if isinstance(intake_case_file, dict) else {}
+            ),
             "claims_for_relief": claims_for_relief,
             "legal_standards": legal_standards,
             "requested_relief": relief_items,
@@ -861,11 +1133,19 @@ class FormalComplaintDocumentBuilder:
                 affidavit_notary_block=affidavit_notary_block,
             ),
         }
+        self._annotate_claim_temporal_gap_hints(draft)
         self._attach_allegation_references(draft)
         self._annotate_case_caption_display(draft)
         draft["affidavit"] = self._build_affidavit(draft)
         draft["draft_text"] = self._render_draft_text(draft)
         return draft
+
+    def _build_anchored_chronology_summary(self) -> List[str]:
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
+        return _build_anchored_chronology_summary_from_case_file(
+            intake_case_file if isinstance(intake_case_file, dict) else {}
+        )
 
     def _optimize_draft(
         self,
@@ -914,6 +1194,7 @@ class FormalComplaintDocumentBuilder:
                 claim.get("supporting_facts", []),
                 limit=10,
             ) or self._normalize_text_lines(claim.get("supporting_facts", []))
+        self._annotate_claim_temporal_gap_hints(optimized_draft)
         self._attach_allegation_references(optimized_draft)
         self._annotate_case_caption_display(optimized_draft)
         optimized_draft["affidavit"] = self._build_affidavit(optimized_draft)
@@ -1123,6 +1404,9 @@ class FormalComplaintDocumentBuilder:
             "venue_statement": formal_complaint.get("venue_statement", ""),
             "factual_allegations": factual_allegations,
             "summary_of_facts": _unique_preserving_order(_extract_text_candidates(formal_complaint.get("summary_of_facts") or formal_complaint.get("factual_allegations"))),
+            "anchored_chronology_summary": _unique_preserving_order(
+                _extract_text_candidates(formal_complaint.get("anchored_chronology_summary"))
+            ),
             "claims_for_relief": claims_for_relief,
             "legal_standards": _unique_preserving_order(legal_standards),
             "requested_relief": _unique_preserving_order(_extract_text_candidates(formal_complaint.get("requested_relief") or formal_complaint.get("prayer_for_relief"))),
@@ -1137,6 +1421,7 @@ class FormalComplaintDocumentBuilder:
                 "jurisdiction": formal_complaint.get("jurisdiction", "unknown"),
             },
         }
+        self._annotate_claim_temporal_gap_hints(draft)
         self._attach_allegation_references(draft)
         self._annotate_case_caption_display(draft)
         built_affidavit = self._build_affidavit(draft)
@@ -1379,6 +1664,10 @@ class FormalComplaintDocumentBuilder:
             lines.append(str(draft["venue_statement"]))
         lines.extend(["", "FACTUAL ALLEGATIONS"])
         lines.extend(self._grouped_allegation_text_lines(draft))
+        chronology_lines = self._normalize_text_lines(draft.get("anchored_chronology_summary", []))
+        if chronology_lines:
+            lines.extend(["", "ANCHORED CHRONOLOGY"])
+            lines.extend(self._numbered_lines(chronology_lines))
         claims = draft.get("claims_for_relief", []) if isinstance(draft.get("claims_for_relief"), list) else []
         if claims:
             lines.extend(["", "CLAIMS FOR RELIEF"])
@@ -2612,6 +2901,7 @@ class FormalComplaintDocumentBuilder:
                 "nature_of_action": draft.get("nature_of_action", []),
                 "summary_of_facts": draft.get("summary_of_facts", []),
                 "factual_allegations": draft.get("factual_allegations", []),
+                "anchored_chronology_summary": draft.get("anchored_chronology_summary", []),
                 "claims_for_relief": draft.get("claims_for_relief", []),
                 "legal_standards": draft.get("legal_standards", []),
                 "requested_relief": draft.get("requested_relief", []),
@@ -3008,7 +3298,233 @@ class FormalComplaintDocumentBuilder:
             normalized.append(text)
             if len(normalized) >= 8:
                 break
-        return normalized or [f"The intake record describes facts supporting the {claim_type} claim."]
+        chronology_support = self._build_claim_chronology_support(claim_type=claim_type, claim_name=claim_type.title())
+        combined = _unique_preserving_order(chronology_support + normalized)
+        return combined or [f"The intake record describes facts supporting the {claim_type} claim."]
+
+    def _build_claim_chronology_support(self, *, claim_type: str, claim_name: str, limit: int = 2) -> List[str]:
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
+        if not isinstance(intake_case_file, dict):
+            return []
+
+        facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+        relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+        if not facts or not relations:
+            return []
+
+        combined = " ".join([str(claim_type or ""), str(claim_name or "")]).strip().lower()
+        if any(token in combined for token in ("retaliat", "reprisal", "protected activity")):
+            focus_families = {"protected_activity", "adverse_action", "causation"}
+        elif any(token in combined for token in ("due process", "grievance", "hearing", "appeal", "review", "notice")):
+            focus_families = {"notice_chain", "hearing_process", "response_timeline", "adverse_action"}
+        elif any(token in combined for token in ("accommodation", "disabil", "fair housing", "discrimination", "termination", "denial")):
+            focus_families = {"adverse_action", "response_timeline", "notice_chain"}
+        else:
+            focus_families = set()
+
+        fact_by_id = {
+            str(fact.get("fact_id") or "").strip(): fact
+            for fact in facts
+            if str(fact.get("fact_id") or "").strip()
+        }
+        relation_records = []
+        for relation in relations:
+            if str(relation.get("relation_type") or "").strip().lower() != "before":
+                continue
+            source_id = str(relation.get("source_fact_id") or "").strip()
+            target_id = str(relation.get("target_fact_id") or "").strip()
+            source_fact = fact_by_id.get(source_id)
+            target_fact = fact_by_id.get(target_id)
+            if not source_fact or not target_fact:
+                continue
+            source_date = _format_timeline_date((source_fact.get("temporal_context") or {}).get("start_date") or relation.get("source_start_date"))
+            target_date = _format_timeline_date((target_fact.get("temporal_context") or {}).get("start_date") or relation.get("target_start_date"))
+            if not source_date or not target_date:
+                continue
+            relation_records.append(
+                {
+                    "key": (source_id, target_id),
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "source_fact": source_fact,
+                    "target_fact": target_fact,
+                    "source_date": source_date,
+                    "target_date": target_date,
+                    "source_family": str(source_fact.get("predicate_family") or "").strip().lower(),
+                    "target_family": str(target_fact.get("predicate_family") or "").strip().lower(),
+                }
+            )
+        if not relation_records:
+            return []
+
+        filtered_records = [
+            record for record in relation_records
+            if not focus_families or ({record['source_family'], record['target_family']} & focus_families)
+        ]
+        if not filtered_records:
+            filtered_records = relation_records
+
+        outgoing: Dict[str, List[Dict[str, Any]]] = {}
+        incoming_count: Dict[str, int] = {}
+        for record in filtered_records:
+            outgoing.setdefault(record["source_id"], []).append(record)
+            incoming_count[record["target_id"]] = incoming_count.get(record["target_id"], 0) + 1
+            incoming_count.setdefault(record["source_id"], incoming_count.get(record["source_id"], 0))
+
+        lines: List[str] = []
+        fallback_lines: List[str] = []
+        seen = set()
+        used_keys = set()
+        for record in filtered_records:
+            if len(lines) >= limit:
+                break
+            if record["key"] in used_keys:
+                continue
+            if incoming_count.get(record["source_id"], 0) != 0 or len(outgoing.get(record["source_id"], [])) != 1:
+                continue
+            chain = [record]
+            next_id = record["target_id"]
+            temp_used = {record["key"]}
+            while len(outgoing.get(next_id, [])) == 1 and incoming_count.get(next_id, 0) == 1:
+                next_record = outgoing[next_id][0]
+                if next_record["key"] in temp_used:
+                    break
+                chain.append(next_record)
+                temp_used.add(next_record["key"])
+                next_id = next_record["target_id"]
+            if len(chain) < 2:
+                continue
+            segments = [
+                f"{_chronology_fact_label(chain[0]['source_fact']).lower()} on {chain[0]['source_date']}"
+            ]
+            segments.extend(
+                f"{_chronology_fact_label(item['target_fact']).lower()} on {item['target_date']}"
+                for item in chain
+            )
+            line = f"The chronology shows {_join_chronology_segments(segments)} in sequence."
+            last_target = chain[-1]["target_fact"]
+            target_context = last_target.get("temporal_context") if isinstance(last_target.get("temporal_context"), dict) else {}
+            if target_context.get("derived_from_relative_anchor"):
+                relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+                if relative_markers:
+                    line = line.rstrip(".") + f". The later date is derived from reported timing ({relative_markers[0]})."
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            used_keys.update(temp_used)
+            lines.append(line)
+
+        for record in filtered_records:
+            if record["key"] in used_keys:
+                continue
+            source_label = _chronology_fact_label(record["source_fact"])
+            target_label = _chronology_fact_label(record["target_fact"]).lower()
+            line = f"The chronology shows {source_label.lower()} on {record['source_date']} before {target_label} on {record['target_date']}."
+            target_context = record["target_fact"].get("temporal_context") if isinstance(record["target_fact"].get("temporal_context"), dict) else {}
+            if target_context.get("derived_from_relative_anchor"):
+                relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+                if relative_markers:
+                    line = line.rstrip(".") + f". The later date is derived from reported timing ({relative_markers[0]})."
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            fallback_lines.append(line)
+        if lines:
+            return lines
+        if fallback_lines:
+            return fallback_lines[:1]
+        return []
+
+    def _claim_temporal_gap_focus(self, claim_type: str, claim_name: str) -> Dict[str, set[str]]:
+        combined = " ".join([str(claim_type or ""), str(claim_name or "")]).strip().lower()
+        issue_families = {"timeline"}
+        element_tags = {"timeline"}
+        objectives = {"timeline", "exact_dates"}
+        if any(token in combined for token in ("retaliat", "reprisal", "protected activity")):
+            issue_families.update({"causation", "protected_activity", "adverse_action"})
+            element_tags.update({"causation", "protected_activity", "adverse_action"})
+            objectives.update({"causation_link", "causation_sequence", "anchor_adverse_action"})
+        if any(token in combined for token in ("due process", "grievance", "hearing", "appeal", "review", "notice")):
+            issue_families.update({"notice_chain", "hearing_process", "response_timeline"})
+            element_tags.update({"notice", "hearing", "appeal", "response", "review"})
+            objectives.update({"anchor_appeal_rights", "hearing_request_timing", "response_dates"})
+        if any(token in combined for token in ("accommodation", "disabil", "discrimination", "termination", "denial")):
+            issue_families.update({"adverse_action", "notice_chain", "response_timeline"})
+            element_tags.update({"adverse_action", "response", "notice"})
+            objectives.update({"response_dates", "anchor_adverse_action"})
+        return {
+            "issue_families": issue_families,
+            "element_tags": element_tags,
+            "objectives": objectives,
+        }
+
+    def _build_claim_temporal_gap_hints(self, claim_type: str, claim_name: str, *, limit: int = 3) -> List[str]:
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
+        if not isinstance(intake_case_file, dict):
+            return []
+
+        focus = self._claim_temporal_gap_focus(claim_type, claim_name)
+        normalized_claim_type = str(claim_type or "").strip().lower()
+        hints: List[str] = []
+
+        for issue in _coerce_list(intake_case_file.get("temporal_issue_registry")):
+            if not isinstance(issue, dict):
+                continue
+            status = str(issue.get("status") or "open").strip().lower()
+            if status not in {"open", "blocking", "warning"}:
+                continue
+            issue_claim_types = {str(item).strip().lower() for item in _coerce_list(issue.get("claim_types")) if str(item).strip()}
+            issue_element_tags = {str(item).strip().lower() for item in _coerce_list(issue.get("element_tags")) if str(item).strip()}
+            if issue_claim_types:
+                if normalized_claim_type not in issue_claim_types:
+                    continue
+            elif issue_element_tags and not (issue_element_tags & focus["element_tags"]):
+                continue
+            summary = str(issue.get("summary") or "").strip()
+            if summary:
+                hints.append(f"Chronology gap: {summary}")
+
+        blocker_summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
+        for blocker in _coerce_list(blocker_summary.get("blocking_items")):
+            if not isinstance(blocker, dict):
+                continue
+            issue_family = str(blocker.get("issue_family") or "").strip().lower()
+            primary_objective = str(blocker.get("primary_objective") or "").strip().lower()
+            blocker_objectives = {str(item).strip().lower() for item in _coerce_list(blocker.get("blocker_objectives")) if str(item).strip()}
+            matched_objectives = ({primary_objective} if primary_objective else set()) | blocker_objectives
+            if issue_family:
+                if issue_family not in focus["issue_families"] and not (matched_objectives & focus["objectives"]):
+                    continue
+            elif not (matched_objectives & focus["objectives"]):
+                continue
+            reason = str(blocker.get("reason") or "").strip()
+            if reason:
+                hints.append(f"Chronology gap: {reason}")
+
+        return _unique_preserving_order(hints)[:limit]
+
+    def _annotate_claim_temporal_gap_hints(self, draft: Dict[str, Any]) -> None:
+        claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            claim_type = str(claim.get("claim_type") or claim.get("count_title") or "").strip()
+            claim_name = str(claim.get("count_title") or claim.get("claim_type") or "").strip()
+            hints = self._build_claim_temporal_gap_hints(claim_type, claim_name)
+            if not hints:
+                continue
+            claim["missing_elements"] = _unique_preserving_order(
+                list(_coerce_list(claim.get("missing_elements"))) + hints
+            )
+            support_summary = claim.get("support_summary") if isinstance(claim.get("support_summary"), dict) else {}
+            claim["support_summary"] = {
+                **support_summary,
+                "temporal_gap_hint_count": len(hints),
+            }
 
     def _build_claim_legal_standards(
         self,
@@ -3170,10 +3686,19 @@ class FormalComplaintDocumentBuilder:
             return {}
         final_review = optimization_report.get("final_review") if isinstance(optimization_report.get("final_review"), dict) else {}
         dimension_scores = final_review.get("dimension_scores") if isinstance(final_review.get("dimension_scores"), dict) else {}
+        adversarial_batch = (
+            optimization_report.get("adversarial_batch")
+            if isinstance(optimization_report.get("adversarial_batch"), dict)
+            else {}
+        )
         metric_candidates = [
             optimization_report.get("actor_critic_metrics"),
             optimization_report.get("adversarial_batch_metrics"),
+            optimization_report.get("latest_adversarial_batch_metrics"),
+            optimization_report.get("priority_metrics"),
+            optimization_report.get("baseline_metrics"),
             optimization_report.get("metrics"),
+            adversarial_batch.get("metrics") if isinstance(adversarial_batch, dict) else {},
             (optimization_report.get("actor_critic_optimizer") or {}).get("metrics")
             if isinstance(optimization_report.get("actor_critic_optimizer"), dict)
             else {},
@@ -3181,10 +3706,21 @@ class FormalComplaintDocumentBuilder:
         normalized: Dict[str, float] = {}
         aliases = {
             "empathy": "empathy",
+            "empathy_avg": "empathy",
+            "avg_empathy": "empathy",
             "question_quality": "question_quality",
+            "question_quality_avg": "question_quality",
+            "avg_question_quality": "question_quality",
+            "question_quality_score": "question_quality",
             "information_extraction": "information_extraction",
+            "information_extraction_avg": "information_extraction",
+            "avg_information_extraction": "information_extraction",
             "coverage": "coverage",
+            "coverage_avg": "coverage",
+            "avg_coverage": "coverage",
             "efficiency": "efficiency",
+            "efficiency_avg": "efficiency",
+            "avg_efficiency": "efficiency",
         }
         for candidate in metric_candidates:
             if not isinstance(candidate, dict):
@@ -3218,6 +3754,46 @@ class FormalComplaintDocumentBuilder:
             normalized["empathy"] = DEFAULT_ACTOR_CRITIC_PRIORITY_METRICS["empathy"]
         return normalized
 
+    def _extract_actor_critic_priority_value(self, optimization_report: Dict[str, Any]) -> int:
+        report = optimization_report if isinstance(optimization_report, dict) else {}
+        priority_candidates = [
+            report.get("priority"),
+            report.get("actor_critic_priority"),
+            (report.get("actor_critic_optimizer") or {}).get("priority")
+            if isinstance(report.get("actor_critic_optimizer"), dict)
+            else None,
+        ]
+        for candidate in priority_candidates:
+            if candidate is None:
+                continue
+            try:
+                return max(1, min(100, int(candidate)))
+            except Exception:
+                continue
+        return 70
+
+    def _resolve_router_backed_question_quality(self, optimization_report: Dict[str, Any]) -> bool:
+        report = optimization_report if isinstance(optimization_report, dict) else {}
+        router_status = dict(report.get("router_status") or {})
+        router_usage = dict(report.get("router_usage") or {})
+        actor_critic_optimizer = (
+            report.get("actor_critic_optimizer")
+            if isinstance(report.get("actor_critic_optimizer"), dict)
+            else {}
+        )
+        adversarial_batch = report.get("adversarial_batch") if isinstance(report.get("adversarial_batch"), dict) else {}
+        candidate_flags = [
+            str(router_status.get("llm_router") or "").strip().lower() == "available",
+            _coerce_bool(router_status.get("llm_router_available"), default=False),
+            _coerce_bool(router_status.get("available"), default=False),
+            _coerce_bool(router_usage.get("llm_router_available"), default=False),
+            _coerce_bool(router_usage.get("router_backed_question_quality"), default=False),
+            _coerce_bool(report.get("router_backed_question_quality"), default=False),
+            _coerce_bool(actor_critic_optimizer.get("router_backed_question_quality"), default=False),
+            _coerce_bool(adversarial_batch.get("router_backed_question_quality"), default=False),
+        ]
+        return any(candidate_flags)
+
     def _extract_actor_critic_guidance(self, optimization_report: Dict[str, Any]) -> Dict[str, Any]:
         report = optimization_report if isinstance(optimization_report, dict) else {}
         optimization_method = str(report.get("optimization_method") or "").strip().lower()
@@ -3232,13 +3808,24 @@ class FormalComplaintDocumentBuilder:
         ]
         phase_focus_order = [name for name in ACTOR_CRITIC_PHASE_FOCUS_ORDER if name in provided_order] or list(ACTOR_CRITIC_PHASE_FOCUS_ORDER)
         phase_focus_order.extend(name for name in provided_order if name not in phase_focus_order)
-        router_status = dict(report.get("router_status") or {})
         final_review = report.get("final_review") if isinstance(report.get("final_review"), dict) else {}
         section_scores = final_review.get("section_scores") if isinstance(final_review.get("section_scores"), dict) else {}
 
         metrics = self._extract_actor_critic_priority_metrics(report)
+        priority = self._extract_actor_critic_priority_value(report)
         intake_score = _safe_float(section_scores.get("intake_questioning"), 0.0)
-        if intake_score < 0.85:
+        priority_findings = _dedupe_text_values(
+            _extract_latest_adversarial_priority_findings(
+                {
+                    "priorities": report.get("priorities"),
+                    "priority_findings": report.get("priority_findings"),
+                    "latest_adversarial_batch": report.get("latest_adversarial_batch"),
+                    "adversarial_batch": report.get("adversarial_batch"),
+                    "latest_batch_priorities": report.get("latest_batch_priorities"),
+                }
+            )
+        )
+        if intake_score < 0.85 or priority >= 70:
             forced_order = [name for name in ACTOR_CRITIC_PHASE_FOCUS_ORDER if name in phase_focus_order]
             forced_order.extend(name for name in phase_focus_order if name not in forced_order)
             phase_focus_order = forced_order
@@ -3246,11 +3833,130 @@ class FormalComplaintDocumentBuilder:
         return {
             "optimization_method": optimization_method or "actor_critic",
             "phase_focus_order": phase_focus_order,
-            "priority": 70,
+            "priority": priority,
             "metrics": metrics,
             "intake_questioning_score": intake_score,
-            "router_backed_question_quality": str(router_status.get("llm_router") or "").strip().lower() == "available",
+            "router_backed_question_quality": self._resolve_router_backed_question_quality(report),
+            "priority_findings": priority_findings,
+            "needs_chronology_closure": _has_chronology_gap_priority(priority_findings),
+            "needs_decision_document_precision": _has_decision_or_document_precision_priority(priority_findings),
         }
+
+    def _extract_adversarial_session_flow_signals(self, optimization_report: Dict[str, Any]) -> Dict[str, Any]:
+        report = optimization_report if isinstance(optimization_report, dict) else {}
+        if not report:
+            return {
+                "available": False,
+                "successful_session_count": 0,
+                "session_count": 0,
+                "assessment_blocked": False,
+            }
+
+        adversarial_batch = report.get("adversarial_batch") if isinstance(report.get("adversarial_batch"), dict) else {}
+        actor_critic_optimizer = (
+            report.get("actor_critic_optimizer")
+            if isinstance(report.get("actor_critic_optimizer"), dict)
+            else {}
+        )
+        review_metadata = report.get("review_metadata") if isinstance(report.get("review_metadata"), dict) else {}
+
+        def _first_count(candidates: List[Any], *, default: int = 0) -> int:
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                try:
+                    if isinstance(candidate, list):
+                        return max(0, len(candidate))
+                    return max(0, int(candidate))
+                except Exception:
+                    continue
+            return default
+
+        successful_session_count = _first_count(
+            [
+                report.get("successful_session_count"),
+                report.get("successful_sessions"),
+                adversarial_batch.get("successful_session_count"),
+                adversarial_batch.get("successful_sessions"),
+                actor_critic_optimizer.get("successful_session_count"),
+                actor_critic_optimizer.get("successful_sessions"),
+                review_metadata.get("successful_session_count"),
+                review_metadata.get("successful_sessions"),
+                report.get("accepted_iterations"),
+            ]
+        )
+        session_count = _first_count(
+            [
+                report.get("session_count"),
+                report.get("total_session_count"),
+                report.get("adversarial_session_count"),
+                adversarial_batch.get("session_count"),
+                adversarial_batch.get("total_session_count"),
+                adversarial_batch.get("adversarial_session_count"),
+                adversarial_batch.get("sessions"),
+                actor_critic_optimizer.get("session_count"),
+                actor_critic_optimizer.get("sessions"),
+                report.get("section_history"),
+            ]
+        )
+        has_adversarial_evidence = any(
+            (
+                bool(adversarial_batch),
+                bool(report.get("latest_adversarial_batch")),
+                bool(report.get("latest_batch_priorities")),
+                bool(report.get("priority_findings")),
+                bool(report.get("adversarial_batch_metrics")),
+            )
+        )
+        available = bool(report)
+        assessment_blocked = available and successful_session_count <= 0 and (
+            session_count > 0 or has_adversarial_evidence
+        )
+        return {
+            "available": available,
+            "successful_session_count": successful_session_count,
+            "session_count": session_count,
+            "assessment_blocked": assessment_blocked,
+        }
+
+    def _refresh_drafting_readiness_workflow_warnings(
+        self,
+        *,
+        drafting_readiness: Dict[str, Any],
+        workflow_phase_plan: Dict[str, Any],
+    ) -> None:
+        if not isinstance(drafting_readiness, dict):
+            return
+        all_existing_warnings = [
+            dict(item) for item in list(drafting_readiness.get("warnings") or []) if isinstance(item, dict)
+        ]
+        prior_workflow_warning_count = sum(
+            1
+            for item in all_existing_warnings
+            if str(item.get("code") or "").strip().lower().startswith("workflow_")
+        )
+        existing_warnings = [
+            item
+            for item in all_existing_warnings
+            if not str(item.get("code") or "").strip().lower().startswith("workflow_")
+        ]
+        workflow_warnings = self._build_workflow_phase_warning_entries(workflow_phase_plan)
+        combined_warnings = existing_warnings + workflow_warnings
+        base_warning_count = max(
+            0,
+            int(drafting_readiness.get("warning_count") or 0) - prior_workflow_warning_count,
+        )
+        if combined_warnings:
+            drafting_readiness["warnings"] = combined_warnings
+            drafting_readiness["warning_count"] = base_warning_count + len(workflow_warnings)
+            for warning in workflow_warnings:
+                drafting_readiness["status"] = _merge_status(
+                    str(drafting_readiness.get("status") or "ready"),
+                    str(warning.get("severity") or "ready"),
+                )
+        elif "warnings" in drafting_readiness:
+            drafting_readiness.pop("warnings", None)
+            drafting_readiness["warning_count"] = base_warning_count
 
     def _build_runtime_workflow_phase_plan(
         self,
@@ -3265,6 +3971,7 @@ class FormalComplaintDocumentBuilder:
 
         phases: Dict[str, Dict[str, Any]] = {}
         actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
+        adversarial_flow_signals = self._extract_adversarial_session_flow_signals(optimization_report)
         graph_phase = self._build_graph_analysis_phase_guidance(
             phase_manager,
             document_optimization=optimization_report,
@@ -3276,8 +3983,147 @@ class FormalComplaintDocumentBuilder:
             drafting_readiness=drafting_readiness,
             document_optimization=optimization_report,
         )
+        graph_status = str(graph_phase.get("status") or "ready").strip().lower() if graph_phase else "ready"
+        graph_signals = (
+            dict(graph_phase.get("signals") or {})
+            if isinstance(graph_phase.get("signals"), dict)
+            else {}
+        )
+        readiness_graph_signals = (
+            dict(drafting_readiness.get("graph_completeness_signals") or {})
+            if isinstance(drafting_readiness.get("graph_completeness_signals"), dict)
+            else {}
+        )
+        unresolved_factual_gaps = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("unresolved_factual_gaps") or [])
+            if str(item).strip()
+        ]
+        unresolved_legal_gaps = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("unresolved_legal_gaps") or [])
+            if str(item).strip()
+        ]
+        weak_complaint_types = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("weak_complaint_types") or [])
+            if str(item).strip()
+        ]
+        weak_evidence_modalities = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("weak_evidence_modalities") or [])
+            if str(item).strip()
+        ]
+        targeted_weak_complaint_types = [
+            item
+            for item in weak_complaint_types
+            if item.lower() in {"housing_discrimination", "hacc_research_engine"}
+        ]
+        targeted_weak_evidence_modalities = [
+            item
+            for item in weak_evidence_modalities
+            if item.lower() in {"policy_document", "file_evidence"}
+        ]
+        graph_remaining_gap_count = max(
+            int(graph_signals.get("remaining_gap_count", 0) or 0),
+            int(graph_signals.get("current_gap_count", 0) or 0),
+            int(readiness_graph_signals.get("remaining_gap_count", 0) or 0),
+            int(readiness_graph_signals.get("current_gap_count", 0) or 0),
+        )
+        graph_gate_active = (
+            graph_status != "ready"
+            or graph_remaining_gap_count > 0
+            or not _coerce_bool(
+                readiness_graph_signals.get("knowledge_graph_available", graph_signals.get("knowledge_graph_available", True)),
+                default=True,
+            )
+            or not _coerce_bool(
+                readiness_graph_signals.get("dependency_graph_available", graph_signals.get("dependency_graph_available", True)),
+                default=True,
+            )
+            )
         if document_phase:
-            phases["document_generation"] = document_phase
+            updated_document_phase = dict(document_phase)
+            if graph_gate_active:
+                gate_status = "blocked"
+                updated_document_phase["status"] = _merge_status(
+                    str(updated_document_phase.get("status") or "ready"),
+                    gate_status,
+                )
+                summary = str(updated_document_phase.get("summary") or "").strip()
+                gate_summary = (
+                    "Document generation is gated on graph completeness and should not be treated as final until graph blockers are resolved."
+                )
+                updated_document_phase["summary"] = f"{summary} {gate_summary}".strip()
+                actions = [str(item).strip() for item in list(updated_document_phase.get("recommended_actions") or []) if str(item).strip()]
+                actions.append(
+                    "Resolve graph completeness blockers (knowledge/dependency graph availability and unresolved graph gaps) before formalization."
+                )
+                if unresolved_factual_gaps:
+                    actions.append(
+                        "Close unresolved factual gaps before formalization: "
+                        + "; ".join(unresolved_factual_gaps[:3])
+                    )
+                if unresolved_legal_gaps:
+                    actions.append(
+                        "Close unresolved legal gaps before formalization: "
+                        + "; ".join(unresolved_legal_gaps[:3])
+                    )
+                if targeted_weak_complaint_types:
+                    actions.append(
+                        "Generalize drafting quality for weak complaint types before formalization: "
+                        + ", ".join(targeted_weak_complaint_types)
+                    )
+                if targeted_weak_evidence_modalities:
+                    actions.append(
+                        "Strengthen allegation support for weak evidence modalities before formalization: "
+                        + ", ".join(targeted_weak_evidence_modalities)
+                    )
+                updated_document_phase["recommended_actions"] = _dedupe_text_values(actions)
+            if bool(adversarial_flow_signals.get("assessment_blocked")):
+                gate_status = "blocked" if str(drafting_readiness.get("phase_status") or "").strip().lower() == "critical" else "warning"
+                updated_document_phase["status"] = _merge_status(
+                    str(updated_document_phase.get("status") or "ready"),
+                    gate_status,
+                )
+                summary = str(updated_document_phase.get("summary") or "").strip()
+                session_summary = (
+                    "No successful adversarial sessions were available to assess drafting handoff quality."
+                )
+                updated_document_phase["summary"] = f"{summary} {session_summary}".strip()
+                actions = [str(item).strip() for item in list(updated_document_phase.get("recommended_actions") or []) if str(item).strip()]
+                actions.append(
+                    "Restore a stable adversarial session flow before tuning document-generation handoffs."
+                )
+                updated_document_phase["recommended_actions"] = _dedupe_text_values(actions)
+            signals = dict(updated_document_phase.get("signals") or {})
+            signals["gate_on_graph_completeness"] = bool(graph_gate_active)
+            signals["graph_phase_status"] = graph_status
+            signals["graph_remaining_gap_count"] = int(graph_remaining_gap_count)
+            signals["drafting_coverage"] = _safe_float(drafting_readiness.get("coverage"), 0.0)
+            signals["unresolved_factual_gap_count"] = len(unresolved_factual_gaps)
+            signals["unresolved_legal_gap_count"] = len(unresolved_legal_gaps)
+            signals["unresolved_factual_gaps"] = unresolved_factual_gaps[:6]
+            signals["unresolved_legal_gaps"] = unresolved_legal_gaps[:6]
+            signals["weak_complaint_types"] = weak_complaint_types
+            signals["weak_evidence_modalities"] = weak_evidence_modalities
+            signals["targeted_weak_complaint_types"] = targeted_weak_complaint_types
+            signals["targeted_weak_evidence_modalities"] = targeted_weak_evidence_modalities
+            signals["ready_for_formalization"] = not bool(
+                graph_gate_active
+                or unresolved_factual_gaps
+                or unresolved_legal_gaps
+                or targeted_weak_complaint_types
+                or targeted_weak_evidence_modalities
+            )
+            signals["adversarial_session_flow_available"] = bool(adversarial_flow_signals.get("available"))
+            signals["adversarial_session_count"] = int(adversarial_flow_signals.get("session_count") or 0)
+            signals["adversarial_successful_session_count"] = int(
+                adversarial_flow_signals.get("successful_session_count") or 0
+            )
+            signals["adversarial_session_flow_stable"] = not bool(adversarial_flow_signals.get("assessment_blocked"))
+            updated_document_phase["signals"] = signals
+            phases["document_generation"] = updated_document_phase
         intake_phase = self._build_intake_questioning_phase_guidance(
             drafting_readiness=drafting_readiness,
             document_optimization=optimization_report,
@@ -3293,6 +4139,8 @@ class FormalComplaintDocumentBuilder:
             if actor_critic_guidance
             else ["graph_analysis", "document_generation", "intake_questioning"]
         )
+        if bool(adversarial_flow_signals.get("assessment_blocked")):
+            preferred_order = ["graph_analysis", "intake_questioning", "document_generation"]
         ordered = [name for name in preferred_order if name in phases]
         ordered.extend(
             name
@@ -3323,6 +4171,11 @@ class FormalComplaintDocumentBuilder:
         )
         unresolved_temporal_count = int(temporal_handoff.get("unresolved_temporal_issue_count", 0) or 0)
         chronology_tasks = int(temporal_handoff.get("chronology_task_count", 0) or 0)
+        actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
+        blocker_signals = self._extract_blocker_follow_up_signals(optimization_report)
+        needs_chronology_closure = bool(actor_critic_guidance.get("needs_chronology_closure")) or bool(
+            blocker_signals.get("needs_causation_follow_up")
+        )
         if unresolved_temporal_count > 0 or chronology_tasks > 0:
             updated["status"] = "warning" if str(updated.get("status") or "").lower() == "ready" else updated.get("status")
             summary = str(updated.get("summary") or "").strip()
@@ -3336,8 +4189,18 @@ class FormalComplaintDocumentBuilder:
                 "Resolve chronology edges for protected activity, hearing/review requests, response dates, and adverse-action outcomes before finalizing the complaint timeline."
             )
             updated["recommended_actions"] = _dedupe_text_values(actions)
+        if needs_chronology_closure:
+            updated["status"] = "warning" if str(updated.get("status") or "").lower() == "ready" else updated.get("status")
+            actions = [str(item) for item in list(updated.get("recommended_actions") or []) if str(item).strip()]
+            actions.append(
+                "Close critical chronology gaps by confirming exact date anchors for protected activity, each notice/response event, and each adverse-action step in sequence."
+            )
+            updated["recommended_actions"] = _dedupe_text_values(actions)
         signals["unresolved_temporal_issue_count"] = unresolved_temporal_count
         signals["chronology_task_count"] = chronology_tasks
+        signals["needs_chronology_closure"] = needs_chronology_closure
+        signals["decision_maker_probe_count"] = int(blocker_signals.get("decision_maker_probe_count", 0) or 0)
+        signals["document_anchor_probe_count"] = int(blocker_signals.get("document_anchor_probe_count", 0) or 0)
         updated["signals"] = signals
         return updated
 
@@ -3356,6 +4219,7 @@ class FormalComplaintDocumentBuilder:
         updated = dict(phase)
         optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
         actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
+        blocker_signals = self._extract_blocker_follow_up_signals(optimization_report)
         final_review = optimization_report.get("final_review") if isinstance(optimization_report.get("final_review"), dict) else {}
         section_scores = final_review.get("section_scores") if isinstance(final_review.get("section_scores"), dict) else {}
         intake_score = float(section_scores.get("intake_questioning") or 0.0)
@@ -3378,12 +4242,31 @@ class FormalComplaintDocumentBuilder:
             actions.append(
                 "Use router-backed drafting passes to convert unresolved intake objectives into concrete chronology-aligned allegations and claim-support paragraphs."
             )
+            actions.append(
+                "Preserve patchability by emitting single-sentence allegation units with explicit date, actor/title, and source anchors for each router-refined paragraph."
+            )
+            updated["recommended_actions"] = _dedupe_text_values(actions)
+        if bool(actor_critic_guidance.get("needs_decision_document_precision")) or bool(
+            blocker_signals.get("needs_document_anchor_follow_up")
+        ):
+            actions = [str(item) for item in list(updated.get("recommended_actions") or []) if str(item).strip()]
+            actions.append(
+                "Increase precision in adverse-action allegations by naming the decision-maker (or known title), the specific decision communicated, and the controlling documentary artifact for each step."
+            )
+            actions.append(
+                "Keep each allegation patchable by isolating one decision event per sentence with explicit fields for date, actor/title, adverse action detail, and source document anchor."
+            )
             updated["recommended_actions"] = _dedupe_text_values(actions)
         signals = dict(updated.get("signals") or {})
         signals["intake_questioning_score"] = intake_score
         if actor_critic_guidance:
             signals["actor_critic_priority"] = int(actor_critic_guidance.get("priority") or 70)
             signals["router_backed_question_quality"] = bool(actor_critic_guidance.get("router_backed_question_quality"))
+            signals["needs_decision_document_precision"] = bool(
+                actor_critic_guidance.get("needs_decision_document_precision")
+            )
+        signals["decision_maker_probe_count"] = int(blocker_signals.get("decision_maker_probe_count", 0) or 0)
+        signals["document_anchor_probe_count"] = int(blocker_signals.get("document_anchor_probe_count", 0) or 0)
         updated["signals"] = signals
         return updated
 
@@ -3396,6 +4279,13 @@ class FormalComplaintDocumentBuilder:
         optimization_report = document_optimization if isinstance(document_optimization, dict) else {}
         actor_critic_guidance = self._extract_actor_critic_guidance(optimization_report)
         actor_critic_metrics = dict(actor_critic_guidance.get("metrics") or {}) if actor_critic_guidance else {}
+        blocker_signals = self._extract_blocker_follow_up_signals(optimization_report)
+        needs_chronology_closure = bool(actor_critic_guidance.get("needs_chronology_closure")) or bool(
+            blocker_signals.get("needs_causation_follow_up")
+        )
+        needs_decision_document_precision = bool(actor_critic_guidance.get("needs_decision_document_precision")) or bool(
+            blocker_signals.get("needs_decision_maker_follow_up")
+        ) or bool(blocker_signals.get("needs_document_anchor_follow_up"))
         intake_status = (
             optimization_report.get("intake_status")
             if isinstance(optimization_report.get("intake_status"), dict)
@@ -3501,9 +4391,15 @@ class FormalComplaintDocumentBuilder:
             actions.append(
                 "Lead each intake follow-up with a short empathy frame before asking for chronology or decision details."
             )
+            actions.append(
+                "Use an empathy-forward transition format ('I hear the impact this had. To keep your record accurate...') before requesting exact dates or staff identifiers."
+            )
         if question_quality_score < 0.7:
             actions.append(
                 "Upgrade question quality by asking one targeted objective per question with explicit date, actor/title, and decision-anchor prompts."
+            )
+            actions.append(
+                "Require each follow-up question to include one objective tag plus a concrete answer target (date, actor/title, notice/response event, or quoted decision language)."
             )
         if information_extraction_score < 0.7:
             actions.append(
@@ -3521,6 +4417,33 @@ class FormalComplaintDocumentBuilder:
             actions.append(
                 "Use router-backed question generation to refine prompts for specificity while preserving patchability and objective coverage."
             )
+            if question_quality_score < 0.75:
+                actions.append(
+                    "Route low-quality follow-ups through the llm router with an objective-specific schema so each prompt asks for one verifiable fact and one temporal anchor."
+                )
+            if information_extraction_score < 0.75:
+                actions.append(
+                    "Use router-backed extraction checks to normalize each answer into date, actor/title, event, and source fields before drafting updates."
+                )
+        if needs_chronology_closure:
+            actions.append(
+                "Close chronology gaps with follow-up questions that require exact dates, elapsed response timing, and event sequence ordering before drafting updates."
+            )
+            if router_backed_question_quality:
+                actions.append(
+                    "Use router-backed single-objective prompts to ask one chronology gap at a time (event date, response date, or sequence delta) and reject answers without explicit date anchors."
+                )
+        if needs_decision_document_precision:
+            actions.append(
+                "Ask decision-precision follow-ups that capture who made each adverse decision, their title, the exact decision communicated, and the document or notice that records it."
+            )
+            if router_backed_question_quality:
+                actions.append(
+                    "Use router-backed extraction checks to normalize adverse-action answers into decision-maker, decision detail, communication channel, document artifact, and date fields."
+                )
+        actions.append(
+            "Keep follow-up prompts patchable by using short, single-objective question templates that can be edited independently without changing global intake flow."
+        )
         actions = _dedupe_text_values(actions)
         if actions and status == "ready":
             status = "warning"
@@ -3541,12 +4464,186 @@ class FormalComplaintDocumentBuilder:
                 "actor_critic_priority": int(actor_critic_guidance.get("priority") or 70) if actor_critic_guidance else None,
                 "actor_critic_metrics": actor_critic_metrics if actor_critic_guidance else {},
                 "router_backed_question_quality": router_backed_question_quality,
+                "blocker_follow_up_signals": blocker_signals,
+                "needs_chronology_closure": needs_chronology_closure,
+                "needs_decision_document_precision": needs_decision_document_precision,
+                "priority_findings": list(actor_critic_guidance.get("priority_findings") or []) if actor_critic_guidance else [],
             },
             "recommended_actions": actions,
         }
 
     def _build_workflow_phase_warning_entries(self, workflow_phase_plan: Dict[str, Any]) -> List[Dict[str, Any]]:
         return build_workflow_phase_warning_entries(workflow_phase_plan)
+
+    def _build_formalization_gate_payload(self, drafting_readiness: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(drafting_readiness, dict):
+            return {}
+        phase_status = str(drafting_readiness.get("phase_status") or drafting_readiness.get("status") or "ready").strip().lower() or "ready"
+        blockers = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("blockers") or [])
+            if str(item).strip()
+        ]
+        unresolved_factual_gaps = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("unresolved_factual_gaps") or [])
+            if str(item).strip()
+        ]
+        unresolved_legal_gaps = [
+            str(item).strip()
+            for item in list(drafting_readiness.get("unresolved_legal_gaps") or [])
+            if str(item).strip()
+        ]
+        return {
+            "ready_for_formalization": phase_status == "ready" and not blockers,
+            "phase_status": phase_status,
+            "coverage": _safe_float(drafting_readiness.get("coverage"), 0.0),
+            "blockers": blockers,
+            "unresolved_factual_gaps": unresolved_factual_gaps[:6],
+            "unresolved_legal_gaps": unresolved_legal_gaps[:6],
+            "weak_complaint_types": list(drafting_readiness.get("weak_complaint_types") or []),
+            "weak_evidence_modalities": list(drafting_readiness.get("weak_evidence_modalities") or []),
+        }
+
+    def _build_graph_completeness_signals(self, phase_manager: Any) -> Dict[str, Any]:
+        if phase_manager is None:
+            return {
+                "status": "warning",
+                "knowledge_graph_available": False,
+                "dependency_graph_available": False,
+                "remaining_gap_count": 0,
+                "current_gap_count": 0,
+                "knowledge_graph_enhanced": False,
+            }
+        graph_phase = build_graph_analysis_phase_guidance(phase_manager, audience="drafting")
+        signals = dict(graph_phase.get("signals") or {}) if isinstance(graph_phase, dict) else {}
+        return {
+            "status": str(graph_phase.get("status") or "warning").strip().lower() if isinstance(graph_phase, dict) else "warning",
+            "knowledge_graph_available": _coerce_bool(signals.get("knowledge_graph_available"), default=False),
+            "dependency_graph_available": _coerce_bool(signals.get("dependency_graph_available"), default=False),
+            "remaining_gap_count": int(signals.get("remaining_gap_count", 0) or 0),
+            "current_gap_count": int(signals.get("current_gap_count", 0) or 0),
+            "knowledge_graph_enhanced": _coerce_bool(signals.get("knowledge_graph_enhanced"), default=False),
+        }
+
+    def _collect_evidence_modality_signals(
+        self,
+        *,
+        draft: Dict[str, Any],
+        claim_readiness: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        policy_count = 0
+        file_count = 0
+
+        for claim in claim_readiness:
+            if not isinstance(claim, dict):
+                continue
+            for key, value in dict(claim.get("artifact_family_counts") or {}).items():
+                count = int(value or 0)
+                token = str(key or "").strip().lower()
+                if count <= 0:
+                    continue
+                if "policy" in token:
+                    policy_count += count
+                if any(marker in token for marker in ("file", "upload", "document", "pdf", "exhibit", "record")):
+                    file_count += count
+            for key, value in dict(claim.get("support_by_source") or {}).items():
+                count = int(value or 0)
+                token = str(key or "").strip().lower()
+                if count <= 0:
+                    continue
+                if "policy_document" in token:
+                    policy_count += count
+                if "file_evidence" in token:
+                    file_count += count
+
+        for exhibit in _coerce_list(draft.get("exhibits")):
+            if not isinstance(exhibit, dict):
+                continue
+            type_text = " ".join(
+                str(exhibit.get(key) or "").strip().lower()
+                for key in ("type", "evidence_type", "source_type", "title", "description", "link", "path")
+            )
+            if any(marker in type_text for marker in ("policy", "administrative plan", "acop", "grievance")):
+                policy_count += 1
+            if any(marker in type_text for marker in ("file", "upload", ".pdf", "exhibit", "record", "document")):
+                file_count += 1
+
+        weak_modalities: List[str] = []
+        if policy_count <= 0:
+            weak_modalities.append("policy_document")
+        if file_count <= 0:
+            weak_modalities.append("file_evidence")
+        return {
+            "modalities": {
+                "policy_document": int(policy_count),
+                "file_evidence": int(file_count),
+            },
+            "weak_modalities": weak_modalities,
+        }
+
+    def _collect_unresolved_readiness_gaps(
+        self,
+        *,
+        claim_readiness: List[Dict[str, Any]],
+        sections: Dict[str, Dict[str, Any]],
+        graph_signals: Dict[str, Any],
+    ) -> Dict[str, List[str]]:
+        factual_gaps: List[str] = []
+        legal_gaps: List[str] = []
+
+        for claim in claim_readiness:
+            if not isinstance(claim, dict):
+                continue
+            claim_type = str(claim.get("claim_type") or "claim").strip()
+            for warning in _coerce_list(claim.get("warnings")):
+                if not isinstance(warning, dict):
+                    continue
+                code = str(warning.get("code") or "").strip().lower()
+                message = " ".join(str(warning.get("message") or "").split()).strip()
+                if not message:
+                    continue
+                if code in {"proof_gaps_present", "unresolved_elements", "claim_contradicted"}:
+                    factual_gaps.append(f"{claim_type}: {message}")
+                elif code in {"adverse_authority_present", "authority_reliability_uncertain"}:
+                    legal_gaps.append(f"{claim_type}: {message}")
+                else:
+                    factual_gaps.append(f"{claim_type}: {message}")
+
+        for section_key, section in sections.items():
+            if not isinstance(section, dict):
+                continue
+            section_name = str(section.get("title") or section_key or "section").strip()
+            for warning in _coerce_list(section.get("warnings")):
+                if not isinstance(warning, dict):
+                    continue
+                code = str(warning.get("code") or "").strip().lower()
+                message = " ".join(str(warning.get("message") or "").split()).strip()
+                if not message:
+                    continue
+                if code in {"procedural_prerequisites_identified", "jurisdiction_or_venue_incomplete"}:
+                    legal_gaps.append(f"{section_name}: {message}")
+                else:
+                    factual_gaps.append(f"{section_name}: {message}")
+
+        graph_status = str(graph_signals.get("status") or "ready").strip().lower()
+        graph_gap_count = max(
+            int(graph_signals.get("remaining_gap_count", 0) or 0),
+            int(graph_signals.get("current_gap_count", 0) or 0),
+        )
+        if graph_status != "ready":
+            factual_gaps.append(
+                "Graph analysis is not ready and chronology/cross-claim dependencies should be closed before formalization."
+            )
+        if graph_gap_count > 0:
+            factual_gaps.append(
+                f"Graph analysis still has {graph_gap_count} unresolved intake gap(s) that affect drafting completeness."
+            )
+
+        return {
+            "factual_gaps": _dedupe_text_values(factual_gaps)[:6],
+            "legal_gaps": _dedupe_text_values(legal_gaps)[:6],
+        }
 
     def _build_drafting_readiness(
         self,
@@ -3809,12 +4906,135 @@ class FormalComplaintDocumentBuilder:
             overall_status = _merge_status(overall_status, str(section.get("status") or "ready"))
             aggregate_warning_count += len(section.get("warnings", []) or [])
 
+        graph_signals = self._build_graph_completeness_signals(getattr(self.mediator, "phase_manager", None))
+        gap_signals = self._collect_unresolved_readiness_gaps(
+            claim_readiness=claim_readiness,
+            sections=sections,
+            graph_signals=graph_signals,
+        )
+        unresolved_factual_gaps = list(gap_signals.get("factual_gaps") or [])
+        unresolved_legal_gaps = list(gap_signals.get("legal_gaps") or [])
+        evidence_modality_signals = self._collect_evidence_modality_signals(
+            draft=draft,
+            claim_readiness=claim_readiness,
+        )
+        weak_evidence_modalities = list(evidence_modality_signals.get("weak_modalities") or [])
+        weak_complaint_types = [
+            claim_type
+            for claim_type in claim_types
+            if str(claim_type or "").strip().lower() in {"housing_discrimination", "hacc_research_engine"}
+        ]
+        targeted_weak_evidence_modalities = [
+            modality
+            for modality in weak_evidence_modalities
+            if str(modality or "").strip().lower() in {"policy_document", "file_evidence"}
+        ]
+        total_elements = sum(int(entry.get("total_elements", 0) or 0) for entry in claim_readiness if isinstance(entry, dict))
+        covered_elements = sum(int(entry.get("covered_elements", 0) or 0) for entry in claim_readiness if isinstance(entry, dict))
+        claim_coverage = (
+            (float(covered_elements) / float(total_elements))
+            if total_elements > 0
+            else (1.0 if summary_fact_count > 0 else 0.0)
+        )
+        ready_section_count = sum(
+            1
+            for section in sections.values()
+            if isinstance(section, dict) and str(section.get("status") or "ready").strip().lower() == "ready"
+        )
+        section_coverage = (float(ready_section_count) / float(len(sections))) if sections else 0.0
+        graph_gap_count = max(
+            int(graph_signals.get("remaining_gap_count", 0) or 0),
+            int(graph_signals.get("current_gap_count", 0) or 0),
+        )
+        graph_coverage = 1.0
+        if str(graph_signals.get("status") or "ready").strip().lower() != "ready":
+            graph_coverage -= 0.05
+        if graph_gap_count > 0:
+            graph_coverage -= min(0.25, 0.02 * float(graph_gap_count))
+        if not _coerce_bool(graph_signals.get("knowledge_graph_enhanced"), default=True):
+            graph_coverage -= 0.05
+        graph_coverage = max(0.0, min(1.0, graph_coverage))
+        graph_gate_active = (
+            str(graph_signals.get("status") or "ready").strip().lower() != "ready"
+            or graph_gap_count > 0
+            or not _coerce_bool(graph_signals.get("knowledge_graph_available"), default=True)
+            or not _coerce_bool(graph_signals.get("dependency_graph_available"), default=True)
+        )
+        coverage = max(
+            0.0,
+            min(
+                1.0,
+                round(
+                    (0.5 * claim_coverage) + (0.25 * section_coverage) + (0.25 * graph_coverage),
+                    3,
+                ),
+            ),
+        )
+        phase_status = str(overall_status or "ready").strip().lower() or "ready"
+        if str(graph_signals.get("status") or "ready").strip().lower() != "ready":
+            phase_status = _merge_status(phase_status, "warning")
+        if graph_gate_active:
+            phase_status = _merge_status(phase_status, "blocked")
+        if (
+            coverage < 0.98
+            or unresolved_factual_gaps
+            or unresolved_legal_gaps
+            or targeted_weak_evidence_modalities
+            or weak_complaint_types
+        ):
+            phase_status = _merge_status(phase_status, "warning")
+        if coverage <= 0.05 and (
+            graph_gap_count > 0
+            or not claim_readiness
+            or unresolved_factual_gaps
+            or unresolved_legal_gaps
+        ):
+            phase_status = "critical"
+
+        blockers: List[str] = []
+        if graph_gate_active:
+            blockers.append("graph_analysis_not_ready")
+        if phase_status in {"warning", "blocked", "critical"}:
+            blockers.append("document_generation_not_ready")
+        if phase_status == "critical":
+            blockers.append("document_generation_critical")
+        if unresolved_factual_gaps:
+            blockers.append("unresolved_factual_gaps_not_closed")
+        if unresolved_legal_gaps:
+            blockers.append("unresolved_legal_gaps_not_closed")
+        if weak_complaint_types:
+            blockers.append("weak_complaint_type_generalization_needed")
+        if targeted_weak_evidence_modalities:
+            blockers.append("weak_evidence_modality_support_needed")
+        blockers = _dedupe_text_values(blockers)
+
         readiness_payload = {
             "status": overall_status,
             "claim_types": claim_types,
             "warning_count": aggregate_warning_count,
             "claims": claim_readiness,
             "sections": sections,
+            "coverage": coverage,
+            "phase_status": phase_status,
+            "blockers": blockers,
+            "unresolved_factual_gaps": unresolved_factual_gaps,
+            "unresolved_legal_gaps": unresolved_legal_gaps,
+            "weak_complaint_types": weak_complaint_types,
+            "evidence_modalities": dict(evidence_modality_signals.get("modalities") or {}),
+            "weak_evidence_modalities": weak_evidence_modalities,
+            "graph_completeness_signals": graph_signals,
+            "drafting_handoff": {
+                "gate_on_graph_completeness": bool(graph_gate_active),
+                "graph_phase_status": str(graph_signals.get("status") or "ready").strip().lower() or "ready",
+                "graph_remaining_gap_count": int(graph_gap_count),
+                "coverage": float(coverage),
+                "ready_for_formalization": phase_status == "ready" and not blockers,
+                "blockers": list(blockers),
+                "unresolved_factual_gaps": unresolved_factual_gaps[:6],
+                "unresolved_legal_gaps": unresolved_legal_gaps[:6],
+                "targeted_weak_complaint_types": weak_complaint_types[:4],
+                "targeted_weak_evidence_modalities": targeted_weak_evidence_modalities[:4],
+            },
         }
         workflow_phase_plan = self._build_runtime_workflow_phase_plan(
             drafting_readiness=readiness_payload,
@@ -3831,6 +5051,53 @@ class FormalComplaintDocumentBuilder:
                     str(readiness_payload.get("status") or "ready"),
                     str(warning.get("severity") or "ready"),
                 )
+        gap_warnings: List[Dict[str, Any]] = []
+        if unresolved_factual_gaps:
+            gap_warnings.append(
+                {
+                    "code": "unresolved_factual_gaps",
+                    "severity": "warning",
+                    "message": "Unresolved factual gaps remain and should be closed before formalization.",
+                    "gaps": unresolved_factual_gaps[:5],
+                }
+            )
+        if unresolved_legal_gaps:
+            gap_warnings.append(
+                {
+                    "code": "unresolved_legal_gaps",
+                    "severity": "warning",
+                    "message": "Unresolved legal gaps remain and should be closed before formalization.",
+                    "gaps": unresolved_legal_gaps[:5],
+                }
+            )
+        if weak_complaint_types:
+            gap_warnings.append(
+                {
+                    "code": "weak_complaint_type_generalization_needed",
+                    "severity": "warning",
+                    "message": "Target complaint types still need stronger drafting generalization before formalization.",
+                    "claim_types": weak_complaint_types[:4],
+                }
+            )
+        if targeted_weak_evidence_modalities:
+            gap_warnings.append(
+                {
+                    "code": "weak_evidence_modality_support_needed",
+                    "severity": "warning",
+                    "message": "Weak evidence modalities require stronger source-anchored allegations before formalization.",
+                    "modalities": targeted_weak_evidence_modalities[:4],
+                }
+            )
+        if gap_warnings:
+            existing_warnings = [
+                dict(item)
+                for item in list(readiness_payload.get("warnings") or [])
+                if isinstance(item, dict)
+            ]
+            readiness_payload["warnings"] = existing_warnings + gap_warnings
+            readiness_payload["warning_count"] = int(readiness_payload.get("warning_count") or 0) + len(gap_warnings)
+            readiness_payload["status"] = _merge_status(str(readiness_payload.get("status") or "ready"), "warning")
+            readiness_payload["phase_status"] = _merge_status(str(readiness_payload.get("phase_status") or "ready"), "warning")
 
         return readiness_payload
 
@@ -4277,6 +5544,9 @@ class FormalComplaintDocumentBuilder:
             draft.get("factual_allegations") or draft.get("summary_of_facts", []),
             groups=draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else None,
         )
+        chronology_lines = draft.get("anchored_chronology_summary", [])
+        if chronology_lines:
+            self._add_docx_numbered_facts(document, "Anchored Chronology", chronology_lines)
 
         legal_standards = draft.get("legal_standards", [])
         if legal_standards:
@@ -4594,6 +5864,7 @@ class FormalComplaintDocumentBuilder:
             draft.get("factual_allegations") or draft.get("summary_of_facts", []),
             groups=draft.get("factual_allegation_groups") if isinstance(draft.get("factual_allegation_groups"), list) else None,
         )
+        self._append_pdf_numbered_section(story, styles, "Anchored Chronology", draft.get("anchored_chronology_summary", []))
         self._append_pdf_section(
             story,
             styles,

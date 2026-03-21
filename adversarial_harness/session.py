@@ -551,12 +551,36 @@ class AdversarialSession:
         return ''
 
     @staticmethod
+    def _extract_workflow_phase(question: Any) -> str:
+        if not isinstance(question, dict):
+            return ''
+        workflow_phase = question.get('workflow_phase')
+        if isinstance(workflow_phase, str) and workflow_phase.strip():
+            return workflow_phase.strip().lower()
+        explanation = question.get('ranking_explanation')
+        if isinstance(explanation, dict):
+            nested = explanation.get('workflow_phase')
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip().lower()
+            nested_phase1 = explanation.get('phase1_section')
+            if isinstance(nested_phase1, str) and nested_phase1.strip():
+                return nested_phase1.strip().lower()
+        return ''
+
+    @staticmethod
     def _phase_focus_rank_for_candidate(question: Any) -> int:
+        workflow_phase = AdversarialSession._extract_workflow_phase(question)
+        if workflow_phase:
+            return {
+                'graph_analysis': 0,
+                'document_generation': 1,
+                'intake_questioning': 2,
+            }.get(workflow_phase, 3)
         phase1_section = AdversarialSession._extract_phase1_section(question)
         return {
             'graph_analysis': 0,
-            'intake_questioning': 1,
-            'document_generation': 2,
+            'document_generation': 1,
+            'intake_questioning': 2,
             # Compatibility with denoiser section labels.
             'contradictions': 0,
             'chronology': 0,
@@ -564,7 +588,7 @@ class AdversarialSession:
             'claim_elements': 0,
             'proof_leads': 0,
             'harm_remedy': 1,
-            'general': 1,
+            'general': 2,
         }.get(phase1_section, 3)
 
     @staticmethod
@@ -614,6 +638,35 @@ class AdversarialSession:
         return any(token in text for token in response_tokens) and any(token in text for token in date_tokens)
 
     @staticmethod
+    def _is_adverse_action_detail_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        adverse_tokens = (
+            'adverse action',
+            'denial',
+            'terminate',
+            'termination',
+            'evict',
+            'suspend',
+            'nonrenew',
+            'notice',
+            'decision',
+            'outcome',
+        )
+        detail_tokens = (
+            'exactly',
+            'specific',
+            'what happened',
+            'what was said',
+            'what was done',
+            'reason given',
+            'stated reason',
+            'basis',
+            'details',
+            'content',
+        )
+        return any(token in text for token in adverse_tokens) and any(token in text for token in detail_tokens)
+
+    @staticmethod
     def _is_causation_sequence_question(question: Any) -> bool:
         text = AdversarialSession._extract_question_text(question).lower()
         if AdversarialSession._is_protected_activity_causation_question(question):
@@ -633,6 +686,7 @@ class AdversarialSession:
         need_timeline: bool,
         need_harm_remedy: bool,
         need_actor_decisionmaker: bool,
+        need_adverse_action_details: bool,
         need_causation: bool,
         need_documentary_evidence: bool,
         need_witness: bool,
@@ -653,27 +707,29 @@ class AdversarialSession:
             return -1
         if need_exact_dates and AdversarialSession._is_exact_dates_question(question):
             return 0
-        if need_staff_names_titles and AdversarialSession._is_staff_names_titles_question(question):
+        if need_adverse_action_details and AdversarialSession._is_adverse_action_detail_question(question):
             return 1
-        if need_hearing_request_timing and AdversarialSession._is_hearing_request_timing_question(question):
+        if need_staff_names_titles and AdversarialSession._is_staff_names_titles_question(question):
             return 2
-        if need_response_dates and AdversarialSession._is_response_dates_question(question):
+        if need_hearing_request_timing and AdversarialSession._is_hearing_request_timing_question(question):
             return 3
-        if need_causation_sequence and AdversarialSession._is_causation_sequence_question(question):
+        if need_response_dates and AdversarialSession._is_response_dates_question(question):
             return 4
-        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
+        if need_causation_sequence and AdversarialSession._is_causation_sequence_question(question):
             return 5
-        if need_timeline and AdversarialSession._is_timeline_question(question):
+        if need_harm_remedy and AdversarialSession._is_harm_or_remedy_question(question):
             return 6
-        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
+        if need_timeline and AdversarialSession._is_timeline_question(question):
             return 7
-        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
+        if need_actor_decisionmaker and AdversarialSession._is_actor_or_decisionmaker_question(question):
             return 8
-        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
+        if need_causation and AdversarialSession._is_protected_activity_causation_question(question):
             return 9
-        if need_witness and AdversarialSession._is_witness_question(question):
+        if need_documentary_evidence and AdversarialSession._is_documentary_evidence_question(question):
             return 10
-        return 11
+        if need_witness and AdversarialSession._is_witness_question(question):
+            return 11
+        return 12
 
     @staticmethod
     def _extract_actor_critic_score(question: Any) -> float:
@@ -729,6 +785,31 @@ class AdversarialSession:
         return 0
 
     @staticmethod
+    def _normalized_actor_critic_score(question: Any) -> float:
+        raw = AdversarialSession._extract_actor_critic_score(question)
+        # Candidate actor/critic scores can be unbounded depending on router internals.
+        # Clamp to a stable window before normalizing so ranking remains predictable.
+        bounded = max(-3.0, min(6.0, float(raw)))
+        return (bounded + 3.0) / 9.0
+
+    @staticmethod
+    def _normalized_selector_score(question: Any) -> float:
+        raw = AdversarialSession._extract_selector_score(question)
+        # Selector scores are usually positive, but may drift by router/model version.
+        return max(0.0, min(1.0, float(raw) / 100.0))
+
+    @staticmethod
+    def _phase_focus_weight(phase_focus_rank: int) -> float:
+        # Preserve phase ordering while keeping lower-priority phases selectable.
+        if phase_focus_rank <= 0:
+            return 1.0
+        if phase_focus_rank == 1:
+            return 0.9
+        if phase_focus_rank == 2:
+            return 0.72
+        return 0.4
+
+    @staticmethod
     def _question_specificity_score(question_text: str) -> float:
         normalized = AdversarialSession._question_dedupe_key(question_text)
         if not normalized:
@@ -782,6 +863,132 @@ class AdversarialSession:
             score += 0.35
         score += min(0.45, token_count / 20.0)
         score += min(0.20, legal_context_hits * 0.05)
+        return max(0.0, min(1.0, score))
+
+    @staticmethod
+    def _question_precision_score(question_text: str) -> float:
+        lowered = " ".join(question_text.lower().split())
+        if not lowered:
+            return 0.0
+
+        chronology_hits = sum(
+            1
+            for token in (
+                'exact date',
+                'specific date',
+                'month and year',
+                'days later',
+                'before',
+                'after',
+                'sequence',
+                'timeline',
+                'what happened first',
+            )
+            if token in lowered
+        )
+        decision_hits = sum(
+            1
+            for token in (
+                'name',
+                'title',
+                'role',
+                'decision-maker',
+                'decision maker',
+                'who made',
+                'who decided',
+                'who communicated',
+            )
+            if token in lowered
+        )
+        adverse_hits = sum(
+            1
+            for token in (
+                'adverse action',
+                'denial',
+                'termination',
+                'eviction',
+                'suspension',
+                'notice',
+                'reason given',
+                'what exactly',
+            )
+            if token in lowered
+        )
+        document_hits = sum(
+            1
+            for token in (
+                'document',
+                'email',
+                'text message',
+                'notice',
+                'letter',
+                'record',
+                'screenshot',
+                'attachment',
+                'receipt',
+                'invoice',
+                'policy',
+            )
+            if token in lowered
+        )
+        extraction_hits = sum(
+            1
+            for token in (
+                'for each',
+                'identify',
+                'list',
+                'exact',
+                'specific',
+                'date and time',
+                'name and title',
+                'which document',
+            )
+            if token in lowered
+        )
+        score = 0.0
+        score += min(0.30, chronology_hits * 0.08)
+        score += min(0.22, decision_hits * 0.07)
+        score += min(0.20, adverse_hits * 0.06)
+        score += min(0.16, document_hits * 0.04)
+        score += min(0.12, extraction_hits * 0.05)
+        return max(0.0, min(1.0, score))
+
+    @classmethod
+    def _router_backed_quality_signal(cls, question: Any) -> float:
+        if not isinstance(question, dict):
+            return 0.0
+        signals = cls._extract_selector_signals(question)
+        candidate_source = str(signals.get('candidate_source') or '').strip().lower()
+        source_bonus = 0.0
+        if candidate_source:
+            source_bonus = 0.4
+            if any(token in candidate_source for token in ('dependency_graph', 'router', 'matcher', 'knowledge_graph')):
+                source_bonus = 0.6
+        blocker_matches = min(1.0, float(cls._extract_blocker_closure_match_count(question)) / 2.0)
+        selector_score = cls._normalized_selector_score(question)
+        actor_critic = cls._normalized_actor_critic_score(question)
+        return max(0.0, min(1.0, source_bonus * 0.35 + blocker_matches * 0.30 + selector_score * 0.20 + actor_critic * 0.15))
+
+    @classmethod
+    def _question_quality_score(cls, question: Any, question_text: str) -> float:
+        specificity = cls._question_specificity_score(question_text)
+        precision = cls._question_precision_score(question_text)
+        actor_critic = cls._normalized_actor_critic_score(question)
+        selector_score = cls._normalized_selector_score(question)
+        blocker_matches = min(1.0, float(cls._extract_blocker_closure_match_count(question)) / 2.0)
+        phase_weight = cls._phase_focus_weight(cls._phase_focus_rank_for_candidate(question))
+        router_backed = cls._router_backed_quality_signal(question)
+        # Weighted blend that favors concrete, extraction-ready prompts while still
+        # respecting actor/critic feedback and router phase focus.
+        score = (
+            specificity * 0.30
+            + precision * 0.24
+            + actor_critic * 0.18
+            + selector_score * 0.09
+            + blocker_matches * 0.10
+            + phase_weight * 0.05
+            + router_backed * 0.04
+        )
         return max(0.0, min(1.0, score))
 
     @staticmethod
@@ -852,9 +1059,11 @@ class AdversarialSession:
             objectives.append('response_dates')
         if any(token in lowered for token in ('when', 'date', 'timeline', 'chronology', 'sequence', 'decision timeline')):
             objectives.append('timeline')
+        if cls._is_adverse_action_detail_question({'question': question_text}):
+            objectives.append('adverse_action_details')
         if any(token in lowered for token in ('harm', 'remedy', 'loss', 'relief')):
             objectives.append('harm_remedy')
-        if any(token in lowered for token in ('who', 'which person', 'made, communicated', 'carried out')):
+        if any(token in lowered for token in ('who', 'which person', 'made', 'communicated', 'carried out', 'decision-maker', 'decision maker')):
             objectives.append('actors')
         if (
             any(token in lowered for token in ('protected activity', 'complaint', 'reported', 'accommodation', 'grievance', 'appeal'))
@@ -905,6 +1114,7 @@ class AdversarialSession:
             'hearing_request_timing',
             'response_dates',
             'causation_sequence',
+            'adverse_action_details',
         }
         extraction_target_objectives = {
             'timeline_anchors': 'exact_dates',
@@ -912,6 +1122,7 @@ class AdversarialSession:
             'hearing_process': 'hearing_request_timing',
             'response_timeline': 'response_dates',
             'retaliation_sequence': 'causation_sequence',
+            'adverse_action_details': 'adverse_action_details',
         }
         required: Set[str] = set()
         for payload in (key_facts, synthetic_prompts if isinstance(synthetic_prompts, dict) else {}):
@@ -956,6 +1167,8 @@ class AdversarialSession:
                 for objective in AdversarialSession._question_objectives_from_prompt(question_text):
                     candidates.append((question_text, objective))
 
+        candidates.extend(AdversarialSession._claim_temporal_gap_prompts(seed_complaint))
+
         expected_anchor_sections = [
             str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)
         ]
@@ -976,6 +1189,7 @@ class AdversarialSession:
             'staff_names_titles': 1,
             'hearing_request_timing': 2,
             'response_dates': 3,
+            'adverse_action_details': 4,
             'anchor_adverse_action': 0,
             'anchor_grievance_hearing': 1,
             'anchor_appeal_rights': 2,
@@ -1033,6 +1247,271 @@ class AdversarialSession:
             term in seed_text for term in adverse_terms
         )
 
+    @staticmethod
+    def _extract_latest_batch_priorities(seed_complaint: Dict[str, Any]) -> List[str]:
+        candidate_containers = [
+            seed_complaint,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint, dict) else None,
+        ]
+        latest: List[str] = []
+        for payload in candidate_containers:
+            if not isinstance(payload, dict):
+                continue
+            for value in list(payload.get('latest_batch_priorities') or []):
+                text = str(value or '').strip()
+                if text:
+                    latest.append(text)
+        deduped: List[str] = []
+        seen = set()
+        for item in latest:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
+
+    @classmethod
+    def _extract_latest_batch_priority_flags(cls, seed_complaint: Dict[str, Any]) -> Dict[str, bool]:
+        priorities = [item.lower() for item in cls._extract_latest_batch_priorities(seed_complaint)]
+        chronology_markers = (
+            'chronology',
+            'exact date',
+            'response timing',
+            'sequence',
+            'timeline',
+        )
+        decision_document_markers = (
+            'decision-maker',
+            'decision maker',
+            'adverse action',
+            'documentary artifacts',
+            'document',
+            'artifact',
+            'precision',
+        )
+        needs_chronology_closure = any(
+            any(marker in item for marker in chronology_markers)
+            for item in priorities
+        )
+        needs_decision_document_precision = any(
+            any(marker in item for marker in decision_document_markers)
+            for item in priorities
+        )
+        return {
+            'needs_chronology_closure': needs_chronology_closure,
+            'needs_decision_document_precision': needs_decision_document_precision,
+        }
+
+    @staticmethod
+    def _extract_claim_temporal_gap_summary(seed_complaint: Dict[str, Any]) -> List[Dict[str, Any]]:
+        candidate_containers = [
+            seed_complaint,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint, dict) else None,
+        ]
+        rows: List[Dict[str, Any]] = []
+        seen = set()
+        for payload in candidate_containers:
+            if not isinstance(payload, dict):
+                continue
+            intake_priorities = payload.get('intake_priorities') if isinstance(payload.get('intake_priorities'), dict) else {}
+            claim_gap_summary = intake_priorities.get('claim_temporal_gap_summary')
+            if not isinstance(claim_gap_summary, list):
+                continue
+            for item in claim_gap_summary:
+                if not isinstance(item, dict):
+                    continue
+                claim_type = str(item.get('claim_type') or '').strip().lower()
+                gaps = [str(gap).strip() for gap in list(item.get('gaps') or []) if str(gap).strip()]
+                key = (claim_type, tuple(gaps))
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append({'claim_type': claim_type, 'gaps': gaps})
+        return rows
+
+    @classmethod
+    def _claim_temporal_gap_prompts(cls, seed_complaint: Dict[str, Any]) -> List[tuple[str, str]]:
+        prompts: List[tuple[str, str]] = []
+        for row in cls._extract_claim_temporal_gap_summary(seed_complaint):
+            claim_type = str(row.get('claim_type') or '').strip().replace('_', ' ')
+            claim_label = claim_type or 'claim'
+            for gap in list(row.get('gaps') or []):
+                gap_text = str(gap or '').strip()
+                lowered = gap_text.lower()
+                if any(token in lowered for token in ('relative ordering', 'anchor', 'anchoring', 'exact date', 'date anchor')):
+                    prompts.append((
+                        f"For your {claim_label} claim, what exact dates or best available date anchors do you have for each key event in sequence?",
+                        'exact_dates',
+                    ))
+                if any(token in lowered for token in ('response', 'non-response', 'reply', 'response dates')):
+                    prompts.append((
+                        f"For your {claim_label} claim, when did HACC respond, fail to respond, or issue each notice or decision?",
+                        'response_dates',
+                    ))
+                if any(token in lowered for token in ('hearing', 'appeal', 'review request', 'grievance request')):
+                    prompts.append((
+                        f"For your {claim_label} claim, when did you request a hearing, grievance review, or appeal, and when was that request acknowledged or denied?",
+                        'hearing_request_timing',
+                    ))
+                if any(token in lowered for token in ('causation', 'protected activity', 'adverse action', 'sequence')):
+                    prompts.append((
+                        f"For your {claim_label} claim, please walk through the sequence from protected activity to adverse action, including who knew what and when.",
+                        'causation_sequence',
+                    ))
+                if any(token in lowered for token in ('name', 'title', 'staff', 'role')):
+                    prompts.append((
+                        f"For your {claim_label} claim, which HACC staff handled each step, and what were their names and titles or roles?",
+                        'staff_names_titles',
+                    ))
+        deduped: List[tuple[str, str]] = []
+        seen = set()
+        for item in prompts:
+            key = (item[0].strip().lower(), item[1])
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
+
+    @staticmethod
+    def _extract_actor_critic_intake_context(seed_complaint: Dict[str, Any]) -> Dict[str, Any]:
+        containers = [
+            seed_complaint,
+            seed_complaint.get('_meta') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint, dict) else None,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint, dict) else None,
+        ]
+        weak_complaint_types: Set[str] = set()
+        weak_evidence_modalities: Set[str] = set()
+        question_quality_signal = None
+        empathy_signal = None
+        efficiency_signal = None
+
+        for payload in containers:
+            if not isinstance(payload, dict):
+                continue
+            for key in ('weak_complaint_types', 'complaint_type_targets', 'generalization_targets'):
+                for value in list(payload.get(key) or []):
+                    item = str(value or '').strip().lower()
+                    if item:
+                        weak_complaint_types.add(item)
+            for key in ('weak_evidence_modalities', 'evidence_modality_targets'):
+                for value in list(payload.get(key) or []):
+                    item = str(value or '').strip().lower()
+                    if item:
+                        weak_evidence_modalities.add(item)
+
+            for key in ('question_quality_avg', 'question_quality'):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    question_quality_signal = float(value)
+            for key in ('empathy_avg', 'empathy'):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    empathy_signal = float(value)
+            for key in ('efficiency_avg', 'efficiency'):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    efficiency_signal = float(value)
+
+            phase_signals = payload.get('phase_signal_context')
+            if isinstance(phase_signals, dict):
+                for key in ('question_quality_avg', 'question_quality'):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        question_quality_signal = float(value)
+                for key in ('empathy_avg', 'empathy'):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        empathy_signal = float(value)
+                for key in ('efficiency_avg', 'efficiency'):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        efficiency_signal = float(value)
+
+        complaint_type = str(seed_complaint.get('type') or '').strip().lower()
+        source = str(
+            seed_complaint.get('source')
+            or (seed_complaint.get('_meta') or {}).get('seed_source')
+            or ''
+        ).strip().lower()
+        if complaint_type:
+            weak_complaint_types.add(complaint_type)
+        if source:
+            weak_complaint_types.add(source)
+
+        if source == 'hacc_research_engine':
+            weak_evidence_modalities.add('policy_document')
+            weak_evidence_modalities.add('file_evidence')
+
+        return {
+            'weak_complaint_types': weak_complaint_types,
+            'weak_evidence_modalities': weak_evidence_modalities,
+            'question_quality': question_quality_signal,
+            'empathy': empathy_signal,
+            'efficiency': efficiency_signal,
+            'is_housing_discrimination': 'housing_discrimination' in weak_complaint_types,
+            'is_hacc_research_seed': 'hacc_research_engine' in weak_complaint_types,
+        }
+
+    @staticmethod
+    def _intake_objective_group(objective: str) -> str:
+        if objective.startswith('anchor_'):
+            return 'anchor'
+        if objective in {'documents', 'witnesses'}:
+            return 'evidentiary'
+        if objective in {
+            'exact_dates',
+            'staff_names_titles',
+            'hearing_request_timing',
+            'response_dates',
+            'adverse_action_details',
+            'timeline',
+            'actors',
+            'causation',
+            'causation_sequence',
+            'harm_remedy',
+        }:
+            return 'factual'
+        return 'other'
+
+    @classmethod
+    def _intake_objective_weight(
+        cls,
+        objective: str,
+        context: Dict[str, Any],
+    ) -> float:
+        weight = 1.0
+        group = cls._intake_objective_group(objective)
+        if group == 'anchor':
+            weight += 0.35
+        elif group == 'factual':
+            weight += 0.25
+        elif group == 'evidentiary':
+            weight += 0.30
+
+        weak_complaint_types = set(context.get('weak_complaint_types') or set())
+        weak_evidence_modalities = set(context.get('weak_evidence_modalities') or set())
+        if objective in {'documents', 'anchor_selection_criteria'} and weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            weight += 0.55
+        if objective in {'adverse_action_details', 'causation_sequence', 'timeline', 'actors'} and (
+            'housing_discrimination' in weak_complaint_types
+            or 'hacc_research_engine' in weak_complaint_types
+        ):
+            weight += 0.30
+        if objective.startswith('anchor_') and (
+            'housing_discrimination' in weak_complaint_types
+            or 'hacc_research_engine' in weak_complaint_types
+        ):
+            weight += 0.20
+        return weight
+
     @classmethod
     def _questions_substantially_overlap(cls, question_a: Any, question_b: Any) -> bool:
         text_a = cls._extract_question_text(question_a)
@@ -1058,11 +1537,267 @@ class AdversarialSession:
         seed_complaint: Dict[str, Any],
         questions: Sequence[Any],
     ) -> List[Any]:
+        existing_questions = list(questions or [])
+        optimizer_context = cls._extract_actor_critic_intake_context(seed_complaint)
+        weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
+        weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        signal_values = [
+            float(value)
+            for value in (
+                optimizer_context.get('question_quality'),
+                optimizer_context.get('empathy'),
+                optimizer_context.get('efficiency'),
+            )
+            if isinstance(value, (int, float))
+        ]
+        stability_contexts = [
+            seed_complaint,
+            key_facts,
+            seed_complaint.get('_meta') if isinstance(seed_complaint.get('_meta'), dict) else None,
+            seed_complaint.get('actor_critic_optimizer') if isinstance(seed_complaint.get('actor_critic_optimizer'), dict) else None,
+            seed_complaint.get('optimization_guidance') if isinstance(seed_complaint.get('optimization_guidance'), dict) else None,
+            seed_complaint.get('document_optimization') if isinstance(seed_complaint.get('document_optimization'), dict) else None,
+            key_facts.get('actor_critic_optimizer') if isinstance(key_facts.get('actor_critic_optimizer'), dict) else None,
+            key_facts.get('actor_critic_session_stability') if isinstance(key_facts.get('actor_critic_session_stability'), dict) else None,
+        ]
+        num_successful_sessions = None
+        no_successful_sessions_hint = False
+        explicit_recovery_hint = False
+        for payload in stability_contexts:
+            if not isinstance(payload, dict):
+                continue
+            for key in ('num_successful_sessions', 'successful_sessions', 'successful_runs'):
+                value = payload.get(key)
+                if isinstance(value, (int, float)):
+                    num_successful_sessions = int(value)
+            if bool(payload.get('no_successful_sessions')):
+                no_successful_sessions_hint = True
+            summary = str(payload.get('summary') or '').strip().lower()
+            message = str(payload.get('message') or '').strip().lower()
+            if 'no successful sessions' in summary or 'no successful sessions' in message:
+                no_successful_sessions_hint = True
+
+            stability_payload = payload.get('actor_critic_session_stability')
+            if isinstance(stability_payload, dict):
+                if str(stability_payload.get('mode') or '').strip().lower() == 'recovery':
+                    explicit_recovery_hint = True
+                if str(stability_payload.get('reason') or '').strip().lower() == 'no_successful_sessions':
+                    no_successful_sessions_hint = True
+                for key in ('num_successful_sessions', 'successful_sessions'):
+                    value = stability_payload.get(key)
+                    if isinstance(value, (int, float)):
+                        num_successful_sessions = int(value)
+
+            phase_signals = payload.get('phase_signal_context')
+            if isinstance(phase_signals, dict):
+                if bool(phase_signals.get('no_successful_sessions')):
+                    no_successful_sessions_hint = True
+                for key in ('num_successful_sessions', 'successful_sessions'):
+                    value = phase_signals.get(key)
+                    if isinstance(value, (int, float)):
+                        num_successful_sessions = int(value)
+
+        no_successful_sessions = bool(no_successful_sessions_hint or num_successful_sessions == 0)
+        # When actor-critic intake signals are missing/near-zero, preserve mediator
+        # flow and only backfill a small number of missing objective probes.
+        stability_recovery_mode = (
+            no_successful_sessions
+            or explicit_recovery_hint
+            or (not signal_values)
+            or max(signal_values) <= 0.05
+        )
+        strict_stability_mode = no_successful_sessions or explicit_recovery_hint
+        signal_strength = max(signal_values) if signal_values else 0.0
+        seed_boosted_probes: List[tuple[str, str]] = []
+
+        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            seed_boosted_probes.extend(
+                [
+                    (
+                        "Which specific policy or procedure document did staff rely on, what section did they cite, and how was it applied to you?",
+                        "documents",
+                    ),
+                    (
+                        "Please list each supporting file you have (notice, email, text, letter, screenshot, or upload), including date, sender, and what fact it proves.",
+                        "documents",
+                    ),
+                ]
+            )
+        if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
+            seed_boosted_probes.extend(
+                [
+                    (
+                        "What protected characteristic, accommodation request, or complaint came before the adverse action, and what happened right after it?",
+                        "causation_sequence",
+                    ),
+                    (
+                        "What exact reason was given for the housing decision, who gave it, and what date was it communicated?",
+                        "adverse_action_details",
+                    ),
+                ]
+            )
+
+        prioritized_prompts = seed_boosted_probes + cls._extract_intake_prompt_candidates(seed_complaint)
+        objective_priority: Dict[str, int] = {}
+        for _, objective in prioritized_prompts:
+            objective_priority.setdefault(objective, len(objective_priority))
+
+        forced_objectives: Set[str] = set()
+        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            forced_objectives.update({'documents', 'anchor_selection_criteria'})
+        if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
+            forced_objectives.update(
+                {
+                    'exact_dates',
+                    'adverse_action_details',
+                    'causation_sequence',
+                    'anchor_adverse_action',
+                    'anchor_selection_criteria',
+                }
+            )
+        for objective in sorted(forced_objectives):
+            objective_priority.setdefault(objective, len(objective_priority))
+
+        deduped_existing: List[Any] = []
+        seen_existing: Set[str] = set()
+        for question in existing_questions:
+            question_text = cls._extract_question_text(question)
+            key = cls._question_dedupe_key(question_text)
+            if key and key in seen_existing:
+                continue
+            if key:
+                seen_existing.add(key)
+            deduped_existing.append(question)
+        existing_questions = deduped_existing
+
+        covered_objectives: Set[str] = set()
+        for question in existing_questions:
+            for objective in objective_priority:
+                if cls._candidate_matches_intake_objective(question, objective):
+                    covered_objectives.add(objective)
+
+        objective_group_coverage: Dict[str, int] = {'factual': 0, 'evidentiary': 0, 'anchor': 0}
+        for objective in covered_objectives:
+            group = cls._intake_objective_group(objective)
+            if group in objective_group_coverage:
+                objective_group_coverage[group] += 1
+
+        group_targets = {'factual': 0, 'evidentiary': 0, 'anchor': 0}
+        if not stability_recovery_mode:
+            group_targets['factual'] = 3
+            group_targets['evidentiary'] = 2 if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}) else 1
+            group_targets['anchor'] = 2 if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}) else 1
+        elif not strict_stability_mode:
+            group_targets['factual'] = 1
+            group_targets['evidentiary'] = 1 if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}) else 0
+            group_targets['anchor'] = 1 if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}) else 0
+
         merged: List[Any] = []
         seen = set()
         skipped = set()
-        existing_questions = list(questions or [])
-        for probe_text, probe_type in cls._extract_intake_prompt_candidates(seed_complaint):
+        injected_objectives: Set[str] = set()
+        missing_objectives = [
+            objective
+            for objective in objective_priority
+            if objective not in covered_objectives
+        ]
+
+        critical_objectives = [
+            'exact_dates',
+            'staff_names_titles',
+            'hearing_request_timing',
+            'response_dates',
+            'adverse_action_details',
+            'timeline',
+            'actors',
+            'causation_sequence',
+            'documents',
+            'harm_remedy',
+        ]
+        uncovered_critical_objectives = [
+            objective for objective in critical_objectives if objective in missing_objectives
+        ]
+
+        for question in existing_questions:
+            key = cls._question_dedupe_key(cls._extract_question_text(question))
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            merged.append(question)
+
+        if stability_recovery_mode:
+            if existing_questions and (
+                strict_stability_mode
+                or len(existing_questions) >= 2
+                or not uncovered_critical_objectives
+            ):
+                return merged
+            # Recovery mode should prioritize continuity over aggressive backfilling.
+            # Only inject a minimal, high-value probe when intake coverage is clearly weak.
+            if strict_stability_mode:
+                injection_budget = 1
+            else:
+                injection_budget = min(3, len(uncovered_critical_objectives) or 2)
+                if not existing_questions:
+                    injection_budget = max(injection_budget, 2)
+        else:
+            if signal_strength >= 0.75:
+                injection_budget = 10
+            elif signal_strength >= 0.4:
+                injection_budget = 8
+            else:
+                injection_budget = 6
+            if not existing_questions:
+                injection_budget = max(injection_budget, 5)
+            forced_missing = [objective for objective in forced_objectives if objective in missing_objectives]
+            unmet_group_targets = sum(
+                max(0, group_targets[group] - objective_group_coverage.get(group, 0))
+                for group in group_targets
+            )
+            if forced_missing:
+                injection_budget = max(injection_budget, min(12, len(forced_missing) + 4))
+            if unmet_group_targets > 0:
+                injection_budget = max(injection_budget, min(12, unmet_group_targets + 4))
+
+        weighted_prompts: List[tuple[float, int, str, str]] = []
+        for index, (probe_text, probe_type) in enumerate(prioritized_prompts):
+            weight = cls._intake_objective_weight(probe_type, optimizer_context)
+            if probe_type in forced_objectives:
+                weight += 0.75
+            group = cls._intake_objective_group(probe_type)
+            if group in group_targets:
+                remaining = max(0, group_targets[group] - objective_group_coverage.get(group, 0))
+                if remaining > 0:
+                    weight += min(0.9, remaining * 0.35)
+            if probe_type in missing_objectives:
+                weight += 0.25
+            weighted_prompts.append((weight, index, probe_text, probe_type))
+        weighted_prompts.sort(key=lambda item: (-item[0], item[1]))
+
+        injected = 0
+        injected_questions: List[Any] = []
+        strict_recovery_objectives = {
+            'timeline',
+            'actors',
+            'adverse_action_details',
+            'documents',
+            'harm_remedy',
+            'exact_dates',
+            'staff_names_titles',
+        }
+        for _weight, _index, probe_text, probe_type in weighted_prompts:
+            if injected >= injection_budget:
+                break
+            if probe_type in injected_objectives:
+                continue
+            if missing_objectives and probe_type not in missing_objectives:
+                continue
+            if stability_recovery_mode and probe_type not in critical_objectives and missing_objectives:
+                continue
+            if strict_stability_mode and probe_type not in strict_recovery_objectives and missing_objectives:
+                continue
             key = cls._question_dedupe_key(probe_text)
             if key and (key in seen or key in skipped):
                 continue
@@ -1082,15 +1817,55 @@ class AdversarialSession:
                 continue
             if key and key not in seen:
                 seen.add(key)
-                merged.append(synthetic_question)
-        for question in existing_questions:
-            key = cls._question_dedupe_key(cls._extract_question_text(question))
-            if key and key in seen:
-                continue
-            if key:
-                seen.add(key)
-            merged.append(question)
-        return merged
+                injected_objectives.add(probe_type)
+                injected_questions.append(synthetic_question)
+                objective_group = cls._intake_objective_group(probe_type)
+                if objective_group in objective_group_coverage:
+                    objective_group_coverage[objective_group] += 1
+                injected += 1
+
+        # Final guardrail for non-recovery runs: if weak areas are still uncovered and
+        # budget remains, add one extra high-priority question per unmet objective group.
+        if not stability_recovery_mode and injected < injection_budget:
+            unmet_groups = [
+                group
+                for group, target_count in group_targets.items()
+                if objective_group_coverage.get(group, 0) < target_count
+            ]
+            for group in unmet_groups:
+                if injected >= injection_budget:
+                    break
+                for _weight, _index, probe_text, probe_type in weighted_prompts:
+                    if cls._intake_objective_group(probe_type) != group:
+                        continue
+                    key = cls._question_dedupe_key(probe_text)
+                    if probe_type in injected_objectives:
+                        continue
+                    if key and (key in seen or key in skipped):
+                        continue
+                    synthetic_question = {
+                        "question": probe_text,
+                        "type": probe_type,
+                        "question_objective": probe_type,
+                        "question_reason": "Structured intake prompt imported from the grounding bundle.",
+                        "source": "synthetic_intake_prompt",
+                    }
+                    if any(
+                        cls._questions_substantially_overlap(synthetic_question, existing_question)
+                        for existing_question in existing_questions
+                    ):
+                        if key:
+                            skipped.add(key)
+                        continue
+                    if key:
+                        seen.add(key)
+                    injected_objectives.add(probe_type)
+                    injected_questions.append(synthetic_question)
+                    objective_group_coverage[group] = objective_group_coverage.get(group, 0) + 1
+                    injected += 1
+                    break
+
+        return injected_questions + merged
 
     @classmethod
     def _candidate_matches_intake_objective(cls, candidate: Any, objective: str) -> bool:
@@ -1105,6 +1880,8 @@ class AdversarialSession:
             return cls._is_hearing_request_timing_question(candidate)
         if objective == 'response_dates':
             return cls._is_response_dates_question(candidate)
+        if objective == 'adverse_action_details':
+            return cls._is_adverse_action_detail_question(candidate)
         if objective == 'timeline':
             return cls._is_timeline_question(candidate)
         if objective == 'actors':
@@ -1135,19 +1912,63 @@ class AdversarialSession:
         if not intake_candidates:
             return list(candidates or [])[:max_questions]
 
+        optimizer_context = cls._extract_actor_critic_intake_context(seed_complaint)
+        signal_values = [
+            float(value)
+            for value in (
+                optimizer_context.get('question_quality'),
+                optimizer_context.get('empathy'),
+                optimizer_context.get('efficiency'),
+            )
+            if isinstance(value, (int, float))
+        ]
+        stability_recovery_mode = (not signal_values) or max(signal_values) <= 0.05
         objective_priority: Dict[str, int] = {}
         for _, objective in intake_candidates:
             objective_priority.setdefault(objective, len(objective_priority))
 
-        ranked: List[tuple[tuple[Any, ...], Any]] = []
+        forced_objectives: Set[str] = set()
+        weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
+        weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
+        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            forced_objectives.update({'documents', 'anchor_selection_criteria'})
+        if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
+            forced_objectives.update(
+                {
+                    'exact_dates',
+                    'adverse_action_details',
+                    'causation_sequence',
+                    'anchor_adverse_action',
+                    'anchor_selection_criteria',
+                }
+            )
+        for objective in sorted(forced_objectives):
+            objective_priority.setdefault(objective, len(objective_priority))
+
+        for objective in list(objective_priority):
+            if objective == 'documents' and set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'}):
+                objective_priority[objective] = max(0, objective_priority[objective] - 3)
+            if objective.startswith('anchor_') and (
+                optimizer_context.get('is_housing_discrimination') or optimizer_context.get('is_hacc_research_seed')
+            ):
+                objective_priority[objective] = max(0, objective_priority[objective] - 1)
+            if objective in forced_objectives:
+                objective_priority[objective] = max(0, objective_priority[objective] - 2)
+
+        ranked: List[tuple[tuple[Any, ...], Any, List[str]]] = []
         for index, candidate in enumerate(list(candidates or [])):
-            best_priority = len(objective_priority) + 1
+            best_priority = float(len(objective_priority) + 1)
             matched_objectives: List[str] = []
             for objective, priority in objective_priority.items():
                 if cls._candidate_matches_intake_objective(candidate, objective):
                     matched_objectives.append(objective)
-                    if priority < best_priority:
-                        best_priority = priority
+                    objective_weight = cls._intake_objective_weight(objective, optimizer_context)
+                    if objective in forced_objectives:
+                        objective_weight += 0.7
+                    boost_scale = 0.2 if stability_recovery_mode else 0.5
+                    weighted_priority = max(0.0, float(priority) - min(0.8, (objective_weight - 1.0) * boost_scale))
+                    if weighted_priority < best_priority:
+                        best_priority = weighted_priority
             selector_score = 0.0
             if isinstance(candidate, dict):
                 selector_score = float(candidate.get('selector_score', 0.0) or 0.0)
@@ -1156,6 +1977,10 @@ class AdversarialSession:
                 proof_priority = int(candidate.get('proof_priority', 99) or 99)
             phase_focus_rank = cls._phase_focus_rank_for_candidate(candidate)
             actor_critic_score = cls._extract_actor_critic_score(candidate)
+            actor_critic_normalized = cls._normalized_actor_critic_score(candidate)
+            selector_score_normalized = cls._normalized_selector_score(candidate)
+            question_text = cls._extract_question_text(candidate)
+            quality_score = cls._question_quality_score(candidate, question_text)
             blocker_match_count = 0
             for objective in matched_objectives:
                 if objective in {
@@ -1166,6 +1991,25 @@ class AdversarialSession:
                     'causation_sequence',
                 }:
                     blocker_match_count += 1
+            objective_weight_sum = sum(
+                cls._intake_objective_weight(objective, optimizer_context)
+                for objective in matched_objectives
+            )
+            forced_objective_matches = sum(
+                1 for objective in matched_objectives if objective in forced_objectives
+            )
+            group_priority = min(
+                (
+                    {
+                        'anchor': 0,
+                        'evidentiary': 1,
+                        'factual': 2,
+                        'other': 3,
+                    }.get(cls._intake_objective_group(objective), 3)
+                    for objective in matched_objectives
+                ),
+                default=3,
+            )
 
             annotated_candidate = candidate
             if isinstance(candidate, dict):
@@ -1184,32 +2028,163 @@ class AdversarialSession:
                 selector_signals['intake_priority_rank'] = None if not matched_objectives else best_priority
                 selector_signals['phase_focus_rank'] = phase_focus_rank
                 selector_signals['actor_critic_score'] = actor_critic_score
+                selector_signals['actor_critic_score_normalized'] = actor_critic_normalized
+                selector_signals['selector_score_normalized'] = selector_score_normalized
                 selector_signals['blocker_match_count'] = blocker_match_count
+                selector_signals['intake_objective_weighted_score'] = objective_weight_sum
+                selector_signals['forced_objective_matches'] = forced_objective_matches
+                selector_signals['intake_group_priority'] = group_priority
+                selector_signals['question_quality_score'] = quality_score
                 annotated_candidate['selector_signals'] = selector_signals
                 explanation['intake_priority_match'] = matched_objectives
                 explanation['intake_priority_rank'] = None if not matched_objectives else best_priority
                 explanation['phase_focus_rank'] = phase_focus_rank
                 explanation['actor_critic_score'] = actor_critic_score
+                explanation['actor_critic_score_normalized'] = actor_critic_normalized
+                explanation['selector_score_normalized'] = selector_score_normalized
                 explanation['blocker_match_count'] = blocker_match_count
+                explanation['intake_objective_weighted_score'] = objective_weight_sum
+                explanation['forced_objective_matches'] = forced_objective_matches
+                explanation['intake_group_priority'] = group_priority
+                explanation['question_quality_score'] = quality_score
                 annotated_candidate['ranking_explanation'] = explanation
 
             ranked.append(
                 (
                     (
                         best_priority,
-                        phase_focus_rank,
-                        -blocker_match_count,
-                        -selector_score,
-                        -actor_critic_score,
-                        proof_priority,
+                        group_priority if not stability_recovery_mode else phase_focus_rank,
+                        -forced_objective_matches if not stability_recovery_mode else index,
+                        # During low-signal recovery, keep ordering stable and avoid
+                        # over-reacting to weak actor-critic gradients.
+                        index if stability_recovery_mode else phase_focus_rank,
+                        phase_focus_rank if stability_recovery_mode else -blocker_match_count,
+                        -blocker_match_count if stability_recovery_mode else -objective_weight_sum,
+                        -objective_weight_sum if stability_recovery_mode else -quality_score,
+                        -quality_score if stability_recovery_mode else -actor_critic_normalized,
+                        -selector_score_normalized if stability_recovery_mode else -selector_score_normalized,
+                        -selector_score if stability_recovery_mode else -selector_score,
+                        proof_priority if stability_recovery_mode else -actor_critic_score,
+                        -actor_critic_score if stability_recovery_mode else proof_priority,
                         index,
                     ),
                     annotated_candidate,
+                    matched_objectives,
                 )
             )
 
         ranked.sort(key=lambda item: item[0])
-        return [candidate for _, candidate in ranked[:max_questions]]
+        ranked_candidates = [candidate for _, candidate, _ in ranked]
+        ranked_objectives = [matched_objectives for _, _, matched_objectives in ranked]
+
+        if stability_recovery_mode:
+            # Preserve mediator ordering during recovery and avoid aggressive
+            # objective-forcing while signals are uninformative.
+            selected: List[Any] = []
+            for candidate in ranked_candidates:
+                if len(selected) >= max_questions:
+                    break
+                if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
+                    continue
+                selected.append(candidate)
+            return selected[:max_questions]
+
+        selected: List[Any] = []
+        selected_objectives: Set[str] = set()
+        selected_indexes: Set[int] = set()
+        selected_group_counts: Dict[str, int] = {'factual': 0, 'evidentiary': 0, 'anchor': 0}
+        group_targets = {'factual': 1, 'evidentiary': 0, 'anchor': 0}
+        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            group_targets['evidentiary'] = 1
+        if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
+            group_targets['anchor'] = 1
+            group_targets['factual'] = 2
+
+        for objective in sorted(forced_objectives, key=lambda item: objective_priority.get(item, 99)):
+            for rank_index, candidate in enumerate(ranked_candidates):
+                if rank_index in selected_indexes:
+                    continue
+                matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+                if objective not in matched:
+                    continue
+                if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
+                    continue
+                selected.append(candidate)
+                selected_indexes.add(rank_index)
+                selected_objectives.update(matched)
+                for matched_objective in matched:
+                    group = cls._intake_objective_group(matched_objective)
+                    if group in selected_group_counts:
+                        selected_group_counts[group] += 1
+                if len(selected) >= max_questions:
+                    return selected
+                break
+
+        for group, target_count in group_targets.items():
+            while selected_group_counts.get(group, 0) < target_count and len(selected) < max_questions:
+                added = False
+                for rank_index, candidate in enumerate(ranked_candidates):
+                    if rank_index in selected_indexes:
+                        continue
+                    matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+                    if not any(cls._intake_objective_group(objective) == group for objective in matched):
+                        continue
+                    if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
+                        continue
+                    selected.append(candidate)
+                    selected_indexes.add(rank_index)
+                    selected_objectives.update(matched)
+                    for matched_objective in matched:
+                        matched_group = cls._intake_objective_group(matched_objective)
+                        if matched_group in selected_group_counts:
+                            selected_group_counts[matched_group] += 1
+                    added = True
+                    if len(selected) >= max_questions:
+                        return selected
+                    break
+                if not added:
+                    break
+
+        for objective, _priority in sorted(objective_priority.items(), key=lambda item: item[1]):
+            for rank_index, candidate in enumerate(ranked_candidates):
+                if rank_index in selected_indexes:
+                    continue
+                matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+                if objective not in matched:
+                    continue
+                if any(cls._questions_substantially_overlap(candidate, existing) for existing in selected):
+                    continue
+                selected.append(candidate)
+                selected_indexes.add(rank_index)
+                selected_objectives.update(matched)
+                for matched_objective in matched:
+                    group = cls._intake_objective_group(matched_objective)
+                    if group in selected_group_counts:
+                        selected_group_counts[group] += 1
+                if len(selected) >= max_questions:
+                    return selected
+                break
+
+        for rank_index, candidate in enumerate(ranked_candidates):
+            if len(selected) >= max_questions:
+                break
+            if rank_index in selected_indexes:
+                continue
+            matched = ranked_objectives[rank_index] if rank_index < len(ranked_objectives) else []
+            adds_new_coverage = any(objective not in selected_objectives for objective in matched)
+            if not adds_new_coverage and any(
+                cls._questions_substantially_overlap(candidate, existing) for existing in selected
+            ):
+                continue
+            selected.append(candidate)
+            selected_indexes.add(rank_index)
+            selected_objectives.update(matched)
+            for matched_objective in matched:
+                group = cls._intake_objective_group(matched_objective)
+                if group in selected_group_counts:
+                    selected_group_counts[group] += 1
+
+        return selected[:max_questions]
 
     @classmethod
     def _summarize_intake_priority_coverage(
@@ -1218,10 +2193,46 @@ class AdversarialSession:
         seed_complaint: Dict[str, Any],
     ) -> Dict[str, Any]:
         intake_candidates = cls._extract_intake_prompt_candidates(seed_complaint)
+        optimizer_context = cls._extract_actor_critic_intake_context(seed_complaint)
+        signal_values = [
+            float(value)
+            for value in (
+                optimizer_context.get('question_quality'),
+                optimizer_context.get('empathy'),
+                optimizer_context.get('efficiency'),
+            )
+            if isinstance(value, (int, float))
+        ]
+        stability_recovery_mode = (not signal_values) or max(signal_values) <= 0.05
         expected_objectives: List[str] = []
         for _, objective in intake_candidates:
             if objective not in expected_objectives:
                 expected_objectives.append(objective)
+
+        weak_complaint_types = set(optimizer_context.get('weak_complaint_types') or set())
+        weak_evidence_modalities = set(optimizer_context.get('weak_evidence_modalities') or set())
+        forced_objectives: Set[str] = set()
+        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            forced_objectives.update({'documents', 'anchor_selection_criteria'})
+        if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
+            forced_objectives.update(
+                {
+                    'exact_dates',
+                    'adverse_action_details',
+                    'causation_sequence',
+                    'anchor_adverse_action',
+                    'anchor_selection_criteria',
+                }
+            )
+        for objective in sorted(forced_objectives):
+            if objective not in expected_objectives:
+                expected_objectives.append(objective)
+
+        if (
+            set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'})
+            and 'documents' not in expected_objectives
+        ):
+            expected_objectives.append('documents')
 
         coverage_counts: Dict[str, int] = {}
         for objective in expected_objectives:
@@ -1238,11 +2249,93 @@ class AdversarialSession:
         uncovered_objectives = [
             objective for objective in expected_objectives if coverage_counts.get(objective, 0) <= 0
         ]
+
+        grouped_expected: Dict[str, List[str]] = {'factual': [], 'evidentiary': [], 'anchor': [], 'other': []}
+        grouped_covered: Dict[str, List[str]] = {'factual': [], 'evidentiary': [], 'anchor': [], 'other': []}
+        grouped_uncovered: Dict[str, List[str]] = {'factual': [], 'evidentiary': [], 'anchor': [], 'other': []}
+        for objective in expected_objectives:
+            group = cls._intake_objective_group(objective)
+            grouped_expected.setdefault(group, []).append(objective)
+            if objective in covered_objectives:
+                grouped_covered.setdefault(group, []).append(objective)
+            else:
+                grouped_uncovered.setdefault(group, []).append(objective)
+
+        group_coverage_rates: Dict[str, float] = {}
+        for group in grouped_expected:
+            expected_count = len(grouped_expected.get(group, []))
+            covered_count = len(grouped_covered.get(group, []))
+            group_coverage_rates[group] = 1.0 if expected_count <= 0 else covered_count / expected_count
+
+        group_targets = {'factual': 1, 'evidentiary': 0, 'anchor': 0}
+        if weak_evidence_modalities.intersection({'policy_document', 'file_evidence'}):
+            group_targets['evidentiary'] = 1
+        if weak_complaint_types.intersection({'housing_discrimination', 'hacc_research_engine'}):
+            group_targets['factual'] = 2
+            group_targets['anchor'] = 1
+        group_covered_counts = {
+            group: len(grouped_covered.get(group, []))
+            for group in ('factual', 'evidentiary', 'anchor')
+        }
+        group_target_met = {
+            group: group_covered_counts.get(group, 0) >= group_targets.get(group, 0)
+            for group in group_targets
+        }
+
+        expected_weight = 0.0
+        covered_weight = 0.0
+        for objective in expected_objectives:
+            weight = cls._intake_objective_weight(objective, optimizer_context)
+            expected_weight += weight
+            if coverage_counts.get(objective, 0) > 0:
+                covered_weight += weight
+
+        forced_uncovered = [
+            objective for objective in sorted(forced_objectives)
+            if coverage_counts.get(objective, 0) <= 0
+        ]
+        recovery_actions: List[str] = []
+        if stability_recovery_mode:
+            recovery_actions = [
+                "Prioritize stable session flow by preserving mediator-generated intake ordering.",
+                "Inject only missing intake objectives with a small synthetic-question budget.",
+                "Defer aggressive actor-critic ranking adjustments until intake signals recover above baseline.",
+            ]
+
+        weighted_coverage = 0.0 if expected_weight <= 0.0 else covered_weight / expected_weight
+        exit_ready = (
+            (not forced_uncovered)
+            and all(group_target_met.values())
+            and (weighted_coverage >= 0.72 or stability_recovery_mode)
+        )
+
         return {
             "expected_objectives": expected_objectives,
             "covered_objectives": covered_objectives,
             "uncovered_objectives": uncovered_objectives,
             "objective_question_counts": coverage_counts,
+            "grouped_expected_objectives": grouped_expected,
+            "grouped_covered_objectives": grouped_covered,
+            "grouped_uncovered_objectives": grouped_uncovered,
+            "group_coverage_rates": group_coverage_rates,
+            "group_target_minimums": group_targets,
+            "group_covered_counts": group_covered_counts,
+            "group_target_met": group_target_met,
+            "forced_objectives": sorted(forced_objectives),
+            "forced_uncovered_objectives": forced_uncovered,
+            "weighted_coverage_score": weighted_coverage,
+            "weighted_expected_total": expected_weight,
+            "weighted_covered_total": covered_weight,
+            "intake_exit_ready": exit_ready,
+            "stability_recovery_mode": stability_recovery_mode,
+            "stability_recovery_actions": recovery_actions,
+            "actor_critic_focus": {
+                "weak_complaint_types": sorted(set(optimizer_context.get('weak_complaint_types') or set())),
+                "weak_evidence_modalities": sorted(set(optimizer_context.get('weak_evidence_modalities') or set())),
+                "question_quality_signal": optimizer_context.get('question_quality'),
+                "empathy_signal": optimizer_context.get('empathy'),
+                "efficiency_signal": optimizer_context.get('efficiency'),
+            },
         }
 
     def _persist_intake_priority_summary(
@@ -1363,6 +2456,11 @@ class AdversarialSession:
                 "What response dates did you receive for notices, hearing or appeal requests, and the final decision?",
                 "response_dates",
             ))
+        if need_actor_decisionmaker:
+            probe_candidates.append((
+                "For each adverse action or notice, who made or communicated it, what were their names and titles, and what exactly did they say or do?",
+                "adverse_action_details",
+            ))
         if need_harm_remedy:
             probe_candidates.append((
                 "What concrete harms did this cause you, and what specific remedy are you requesting?",
@@ -1375,7 +2473,7 @@ class AdversarialSession:
             ))
         if need_actor_decisionmaker:
             probe_candidates.append((
-                "Who specifically made each decision or statement, and what exactly was said or done?",
+                "Who specifically made each decision or statement, what were their names and titles, and what exactly was said or done?",
                 "actors",
             ))
         if need_causation:
@@ -1390,7 +2488,7 @@ class AdversarialSession:
             ))
         if need_documentary_evidence:
             probe_candidates.append((
-                "Do you have any supporting records such as emails, messages, notices, or other written documents?",
+                "Do you have any supporting records such as dated notices, emails, messages, letters, screenshots, or other written documents that match each key event?",
                 "documents",
             ))
         if need_witness:
@@ -1455,19 +2553,32 @@ class AdversarialSession:
             return text
         if AdversarialSession._has_empathy_prefix(text):
             return text
-        return (
-            "I understand this can be stressful, and these details help me support you. "
-            + text
-        )
+        return "Thank you for walking me through this; I know it can be difficult. " + text
+
+    @classmethod
+    def _empathy_prefix_for_question(cls, turn_index: int, question: Any) -> str:
+        if cls._is_harm_or_remedy_question(question):
+            return "I am sorry you are dealing with this, and I appreciate you sharing these details."
+        if cls._is_protected_activity_causation_question(question) or cls._is_contradiction_resolution_question(question):
+            return "Thank you for staying with me through this; these details are important and I know this can be hard to revisit."
+        if cls._is_documentary_evidence_question(question) or cls._is_witness_question(question):
+            return "Thank you for sharing this; even partial records can still help."
+        if cls._is_timeline_question(question):
+            return "Thank you for your patience; timeline details help us protect your claim."
+        if turn_index <= 1:
+            return "Thank you for sharing this; I know it may be stressful."
+        return "Thank you for walking me through this."
 
     @classmethod
     def _should_apply_empathy_prefix(cls, turn_index: int, question: Any) -> bool:
-        if turn_index <= 1:
+        if turn_index <= 2:
             return True
         return (
             cls._is_harm_or_remedy_question(question)
             or cls._is_protected_activity_causation_question(question)
             or cls._is_contradiction_resolution_question(question)
+            or cls._is_documentary_evidence_question(question)
+            or cls._is_witness_question(question)
         )
 
     def _select_next_question(
@@ -1562,13 +2673,15 @@ class AdversarialSession:
             )
             if not has_document_candidate:
                 return None
+        need_adverse_action_details = need_actor_decisionmaker
         # Prefer filling high-value information gaps before exploring lower-value variants.
         high_quality_candidates = [
             c
             for c in non_redundant_candidates
             if (
-                self._question_specificity_score(c[1]) >= 0.4
-                or self._extract_actor_critic_score(c[0]) >= 0.2
+                self._question_quality_score(c[0], c[1]) >= 0.5
+                or self._question_specificity_score(c[1]) >= 0.45
+                or self._normalized_actor_critic_score(c[0]) >= 0.5
                 or self._extract_selector_score(c[0]) > 0.0
             )
         ]
@@ -1581,6 +2694,7 @@ class AdversarialSession:
                     need_timeline=need_timeline,
                     need_harm_remedy=need_harm_remedy,
                     need_actor_decisionmaker=need_actor_decisionmaker,
+                    need_adverse_action_details=need_adverse_action_details,
                     need_causation=need_causation,
                     need_documentary_evidence=need_documentary_evidence,
                     need_witness=need_witness,
@@ -1593,6 +2707,8 @@ class AdversarialSession:
                 ),
                 self._phase_focus_rank_for_candidate(c[0]),
                 -self._extract_blocker_closure_match_count(c[0]),
+                -self._question_quality_score(c[0], c[1]),
+                -self._normalized_actor_critic_score(c[0]),
                 -self._extract_selector_score(c[0]),
                 -self._extract_actor_critic_score(c[0]),
                 c[5],
@@ -1634,6 +2750,15 @@ class AdversarialSession:
                     and intent_count == 0
                     and similarity_to_seen < novel_similarity_threshold
                     and self._is_response_dates_question(q)
+                ):
+                    return q
+        if need_adverse_action_details:
+            for q, _, _, _, asked_count, intent_count, similarity_to_seen in non_redundant_candidates:
+                if (
+                    asked_count == 0
+                    and intent_count == 0
+                    and similarity_to_seen < novel_similarity_threshold
+                    and self._is_adverse_action_detail_question(q)
                 ):
                     return q
         if need_causation_sequence:
@@ -1799,19 +2924,30 @@ class AdversarialSession:
             has_causation_sequence_question = False
             expected_anchor_sections = self._extract_anchor_sections(seed_complaint)
             required_blocker_objectives = self._extract_required_blocker_objectives(seed_complaint)
+            latest_batch_flags = self._extract_latest_batch_priority_flags(seed_complaint)
             require_causation_probe = self._seed_requires_causation_probe(seed_complaint)
-            require_exact_dates_probe = 'exact_dates' in required_blocker_objectives
-            require_staff_names_titles_probe = 'staff_names_titles' in required_blocker_objectives
+            require_exact_dates_probe = (
+                'exact_dates' in required_blocker_objectives
+                or bool(latest_batch_flags.get('needs_chronology_closure'))
+            )
+            require_staff_names_titles_probe = (
+                'staff_names_titles' in required_blocker_objectives
+                or bool(latest_batch_flags.get('needs_decision_document_precision'))
+            )
             require_hearing_timing_probe = (
                 'hearing_request_timing' in required_blocker_objectives
+                or bool(latest_batch_flags.get('needs_chronology_closure'))
                 or bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights'})
             )
             require_response_dates_probe = (
                 'response_dates' in required_blocker_objectives
+                or bool(latest_batch_flags.get('needs_chronology_closure'))
                 or bool(expected_anchor_sections & {'grievance_hearing', 'appeal_rights', 'adverse_action'})
             )
             require_causation_sequence_probe = (
-                'causation_sequence' in required_blocker_objectives or require_causation_probe
+                'causation_sequence' in required_blocker_objectives
+                or require_causation_probe
+                or bool(latest_batch_flags.get('needs_chronology_closure'))
             )
             
             while turns < self.max_turns:
@@ -1910,7 +3046,12 @@ class AdversarialSession:
                 # Get response from complainant
                 complainant_prompt = question_text
                 if self._should_apply_empathy_prefix(turns, question):
-                    complainant_prompt = self._with_empathy_prefix(question_text)
+                    empathic_prefix = self._empathy_prefix_for_question(turns, question)
+                    complainant_prompt = (
+                        question_text
+                        if self._has_empathy_prefix(question_text)
+                        else f"{empathic_prefix} {question_text}".strip()
+                    )
                 answer = self.complainant.respond_to_question(
                     complainant_prompt
                 )

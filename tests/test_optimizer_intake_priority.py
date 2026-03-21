@@ -264,12 +264,27 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     assert "target_symbols" in graph_task.constraints
     assert any(path.endswith("denoiser.py") for path in graph_task.constraints["target_symbols"])
     assert any(path.endswith("dependency_graph.py") for path in graph_task.constraints["target_symbols"])
+    dependency_graph_symbols = next(
+        symbols
+        for path, symbols in graph_task.constraints["target_symbols"].items()
+        if path.endswith("dependency_graph.py")
+    )
+    denoiser_symbols = next(
+        symbols
+        for path, symbols in graph_task.constraints["target_symbols"].items()
+        if path.endswith("denoiser.py")
+    )
+    assert dependency_graph_symbols == ["get_claim_readiness"]
+    assert denoiser_symbols == ["process_answer"]
     assert "workflow_capabilities" in graph_task.metadata
     assert "knowledge_graph_population" in graph_task.metadata["workflow_capabilities"]
     assert "target_symbols" in document_task.constraints
     assert len(graph_task.target_files) == 2
     assert graph_task.target_files[0].name == "dependency_graph.py"
     assert graph_task.target_files[1].name == "denoiser.py"
+    assert "Current graph signals:" in graph_task.description
+    assert "phase_signal_context" in graph_task.metadata
+    assert "dg_avg_satisfaction_rate" in graph_task.metadata["phase_signal_context"]
     assert any(path.endswith("document_pipeline.py") for path in document_task.constraints["target_symbols"])
     assert len(document_task.target_files) == 2
     assert any(path.name == "synthesize_hacc_complaint.py" for path in document_task.target_files)
@@ -530,6 +545,30 @@ def test_analyze_without_successful_sessions_returns_critical_workflow_phase_pla
     assert report.workflow_phase_plan["phases"]["intake_questioning"]["status"] == "critical"
     assert report.workflow_phase_plan["phases"]["graph_analysis"]["status"] == "critical"
     assert report.workflow_phase_plan["phases"]["document_generation"]["status"] == "critical"
+
+
+def test_build_phase_patch_tasks_limits_no_data_intake_phase_to_session_only():
+    optimizer = Optimizer()
+    result = _session_result("session_failed", 0.18, {})
+    result.success = False
+
+    tasks, report = optimizer.build_phase_patch_tasks(
+        [result],
+        method="actor_critic",
+        components={
+            "OptimizationTask": lambda **kwargs: SimpleNamespace(**kwargs),
+            "OptimizationMethod": SimpleNamespace(ACTOR_CRITIC="ACTOR_CRITIC"),
+            "OptimizerLLMRouter": None,
+            "optimizer_classes": {},
+        },
+    )
+
+    intake_task = next(task for task in tasks if task.metadata["workflow_phase"] == "intake_questioning")
+    assert report.num_sessions_analyzed == 0
+    assert intake_task.target_files == [Path("adversarial_harness/session.py")]
+    assert list(intake_task.constraints["target_symbols"].values()) == [[
+        "_inject_intake_prompt_questions",
+    ]]
 
 
 def test_run_agentic_autopatch_caches_inner_generation_diagnostics_on_failure():

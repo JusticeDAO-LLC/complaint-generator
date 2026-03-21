@@ -513,6 +513,376 @@ def _build_factual_allegation_groups(allegations: Sequence[Any]) -> List[Dict[st
     ]
 
 
+def _format_timeline_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%B %-d, %Y")
+    except ValueError:
+        return text
+
+
+def _chronology_fact_label(fact: Dict[str, Any]) -> str:
+    event_label = str((fact if isinstance(fact, dict) else {}).get("event_label") or "").strip()
+    if event_label:
+        return event_label
+    predicate_family = str((fact if isinstance(fact, dict) else {}).get("predicate_family") or "").strip().replace("_", " ")
+    if predicate_family:
+        return predicate_family.title()
+    return "Event"
+
+
+def _join_chronology_segments(segments: List[str]) -> str:
+    if not segments:
+        return ""
+    if len(segments) == 1:
+        return segments[0]
+    if len(segments) == 2:
+        return f"{segments[0]} and {segments[1]}"
+    return f"{', '.join(segments[:-1])}, and {segments[-1]}"
+
+
+def _build_anchored_chronology_summary(intake_case_file: Dict[str, Any], *, limit: int = 3) -> List[str]:
+    facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    if not facts or not relations:
+        return []
+
+    fact_by_id = {
+        str(fact.get("fact_id") or "").strip(): fact
+        for fact in facts
+        if str(fact.get("fact_id") or "").strip()
+    }
+    relation_records = []
+    for relation in relations:
+        if str(relation.get("relation_type") or "").strip().lower() != "before":
+            continue
+        source_id = str(relation.get("source_fact_id") or "").strip()
+        target_id = str(relation.get("target_fact_id") or "").strip()
+        source_fact = fact_by_id.get(source_id)
+        target_fact = fact_by_id.get(target_id)
+        if not source_fact or not target_fact:
+            continue
+        source_date = _format_timeline_date((source_fact.get("temporal_context") or {}).get("start_date") or relation.get("source_start_date"))
+        target_date = _format_timeline_date((target_fact.get("temporal_context") or {}).get("start_date") or relation.get("target_start_date"))
+        if not source_date or not target_date:
+            continue
+        relation_records.append(
+            {
+                "key": (source_id, target_id),
+                "source_id": source_id,
+                "target_id": target_id,
+                "source_fact": source_fact,
+                "target_fact": target_fact,
+                "source_date": source_date,
+                "target_date": target_date,
+            }
+        )
+    if not relation_records:
+        return []
+
+    outgoing: Dict[str, List[Dict[str, Any]]] = {}
+    incoming_count: Dict[str, int] = {}
+    for record in relation_records:
+        outgoing.setdefault(record["source_id"], []).append(record)
+        incoming_count[record["target_id"]] = incoming_count.get(record["target_id"], 0) + 1
+        incoming_count.setdefault(record["source_id"], incoming_count.get(record["source_id"], 0))
+
+    lines: List[str] = []
+    seen = set()
+    used_keys = set()
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        if incoming_count.get(record["source_id"], 0) != 0 or len(outgoing.get(record["source_id"], [])) != 1:
+            continue
+        chain = [record]
+        next_id = record["target_id"]
+        temp_used = {record["key"]}
+        while len(outgoing.get(next_id, [])) == 1 and incoming_count.get(next_id, 0) == 1:
+            next_record = outgoing[next_id][0]
+            if next_record["key"] in temp_used:
+                break
+            chain.append(next_record)
+            temp_used.add(next_record["key"])
+            next_id = next_record["target_id"]
+        if len(chain) < 2:
+            continue
+        segments = [
+            f"{_chronology_fact_label(chain[0]['source_fact'])} on {chain[0]['source_date']}"
+        ]
+        segments.extend(
+            f"{_chronology_fact_label(item['target_fact'])} on {item['target_date']}"
+            for item in chain
+        )
+        line = f"{_join_chronology_segments(segments)} occurred in sequence."
+        last_target = chain[-1]["target_fact"]
+        target_context = last_target.get("temporal_context") if isinstance(last_target.get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f" The later date is derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        used_keys.update(temp_used)
+        lines.append(line)
+
+    for record in relation_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        source_label = _chronology_fact_label(record["source_fact"])
+        target_label = _chronology_fact_label(record["target_fact"]).lower()
+        line = f"{source_label} on {record['source_date']} preceded {target_label} on {record['target_date']}."
+        target_context = record["target_fact"].get("temporal_context") if isinstance(record["target_fact"].get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f" The later date is derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(line)
+    return lines
+
+
+def _claim_chronology_focus_families(claim_type: str, claim_name: str) -> set[str]:
+    combined = " ".join([str(claim_type or ""), str(claim_name or "")]).strip().lower()
+    if any(token in combined for token in ("retaliat", "reprisal", "protected activity")):
+        return {"protected_activity", "adverse_action", "causation"}
+    if any(token in combined for token in ("due process", "grievance", "hearing", "appeal", "review", "notice")):
+        return {"notice_chain", "hearing_process", "response_timeline", "adverse_action"}
+    if any(token in combined for token in ("accommodation", "disabil", "fair housing", "discrimination", "termination", "denial")):
+        return {"adverse_action", "response_timeline", "notice_chain"}
+    return set()
+
+
+def _build_claim_chronology_support(
+    intake_case_file: Dict[str, Any],
+    *,
+    claim_type: str,
+    claim_name: str,
+    limit: int = 2,
+) -> List[str]:
+    facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
+    if not facts or not relations:
+        return []
+
+    fact_by_id = {
+        str(fact.get("fact_id") or "").strip(): fact
+        for fact in facts
+        if str(fact.get("fact_id") or "").strip()
+    }
+    focus_families = _claim_chronology_focus_families(claim_type, claim_name)
+    relation_records = []
+    for relation in relations:
+        if str(relation.get("relation_type") or "").strip().lower() != "before":
+            continue
+        source_id = str(relation.get("source_fact_id") or "").strip()
+        target_id = str(relation.get("target_fact_id") or "").strip()
+        source_fact = fact_by_id.get(source_id)
+        target_fact = fact_by_id.get(target_id)
+        if not source_fact or not target_fact:
+            continue
+        source_date = _format_timeline_date((source_fact.get("temporal_context") or {}).get("start_date") or relation.get("source_start_date"))
+        target_date = _format_timeline_date((target_fact.get("temporal_context") or {}).get("start_date") or relation.get("target_start_date"))
+        if not source_date or not target_date:
+            continue
+        relation_records.append(
+            {
+                "key": (source_id, target_id),
+                "source_id": source_id,
+                "target_id": target_id,
+                "source_fact": source_fact,
+                "target_fact": target_fact,
+                "source_date": source_date,
+                "target_date": target_date,
+                "source_family": str(source_fact.get("predicate_family") or "").strip().lower(),
+                "target_family": str(target_fact.get("predicate_family") or "").strip().lower(),
+            }
+        )
+    if not relation_records:
+        return []
+
+    filtered_records = [
+        record for record in relation_records
+        if not focus_families or ({record['source_family'], record['target_family']} & focus_families)
+    ]
+    if not filtered_records:
+        filtered_records = relation_records
+
+    outgoing: Dict[str, List[Dict[str, Any]]] = {}
+    incoming_count: Dict[str, int] = {}
+    for record in filtered_records:
+        outgoing.setdefault(record["source_id"], []).append(record)
+        incoming_count[record["target_id"]] = incoming_count.get(record["target_id"], 0) + 1
+        incoming_count.setdefault(record["source_id"], incoming_count.get(record["source_id"], 0))
+
+    lines: List[str] = []
+    seen = set()
+    fallback_lines: List[str] = []
+
+    used_keys = set()
+    for record in filtered_records:
+        if len(lines) >= limit:
+            break
+        if record["key"] in used_keys:
+            continue
+        if incoming_count.get(record["source_id"], 0) != 0 or len(outgoing.get(record["source_id"], [])) != 1:
+            continue
+        chain = [record]
+        next_id = record["target_id"]
+        temp_used = {record["key"]}
+        while len(outgoing.get(next_id, [])) == 1 and incoming_count.get(next_id, 0) == 1:
+            next_record = outgoing[next_id][0]
+            if next_record["key"] in temp_used:
+                break
+            chain.append(next_record)
+            temp_used.add(next_record["key"])
+            next_id = next_record["target_id"]
+        if len(chain) < 2:
+            continue
+        segments = [
+            f"{_chronology_fact_label(chain[0]['source_fact']).lower()} on {chain[0]['source_date']}"
+        ]
+        segments.extend(
+            f"{_chronology_fact_label(item['target_fact']).lower()} on {item['target_date']}"
+            for item in chain
+        )
+        line = f"The chronology shows {_join_chronology_segments(segments)} in sequence."
+        last_target = chain[-1]["target_fact"]
+        target_context = last_target.get("temporal_context") if isinstance(last_target.get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f" The later date is derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        used_keys.update(temp_used)
+        lines.append(line)
+
+    for record in filtered_records:
+        if record["key"] in used_keys:
+            continue
+        source_label = _chronology_fact_label(record["source_fact"])
+        target_label = _chronology_fact_label(record["target_fact"]).lower()
+        line = f"The chronology shows {source_label.lower()} on {record['source_date']} before {target_label} on {record['target_date']}."
+        target_context = record["target_fact"].get("temporal_context") if isinstance(record["target_fact"].get("temporal_context"), dict) else {}
+        if target_context.get("derived_from_relative_anchor"):
+            relative_markers = [str(item) for item in list(target_context.get("relative_markers") or []) if str(item)]
+            if relative_markers:
+                line = line.rstrip(".") + f" The later date is derived from reported timing ({relative_markers[0]})."
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        fallback_lines.append(line)
+
+    if lines:
+        return lines
+    if fallback_lines:
+        return fallback_lines[:1]
+    return []
+
+
+def _claim_temporal_gap_focus(claim_type: str, claim_name: str) -> Dict[str, set[str]]:
+    combined = " ".join([str(claim_type or ""), str(claim_name or "")]).strip().lower()
+    issue_families = {"timeline"}
+    element_tags = {"timeline"}
+    objectives = {"timeline", "exact_dates"}
+    if any(token in combined for token in ("retaliat", "reprisal", "protected activity")):
+        issue_families.update({"causation", "protected_activity", "adverse_action"})
+        element_tags.update({"causation", "protected_activity", "adverse_action"})
+        objectives.update({"causation_link", "causation_sequence", "anchor_adverse_action"})
+    if any(token in combined for token in ("due process", "grievance", "hearing", "appeal", "review", "notice")):
+        issue_families.update({"notice_chain", "hearing_process", "response_timeline"})
+        element_tags.update({"notice", "hearing", "appeal", "response", "review"})
+        objectives.update({"anchor_appeal_rights", "hearing_request_timing", "response_dates"})
+    if any(token in combined for token in ("accommodation", "disabil", "discrimination", "termination", "denial")):
+        issue_families.update({"adverse_action", "notice_chain", "response_timeline"})
+        element_tags.update({"adverse_action", "response", "notice"})
+        objectives.update({"response_dates", "anchor_adverse_action"})
+    return {
+        "issue_families": issue_families,
+        "element_tags": element_tags,
+        "objectives": objectives,
+    }
+
+
+def _build_claim_temporal_gap_hints(
+    intake_case_file: Dict[str, Any],
+    *,
+    claim_type: str,
+    claim_name: str,
+    limit: int = 3,
+) -> List[Dict[str, str]]:
+    if not isinstance(intake_case_file, dict):
+        return []
+
+    focus = _claim_temporal_gap_focus(claim_type, claim_name)
+    normalized_claim_type = str(claim_type or "").strip().lower()
+    hints: List[Dict[str, str]] = []
+    seen = set()
+
+    def _append_hint(summary: str, *, label: str = "Chronology gap") -> None:
+        cleaned_summary = _clean_text(summary)
+        if not cleaned_summary:
+            return
+        key = (label.lower(), cleaned_summary.lower())
+        if key in seen:
+            return
+        seen.add(key)
+        hints.append(
+            {
+                "name": label,
+                "citation": "",
+                "suggested_action": cleaned_summary,
+            }
+        )
+
+    for issue in _listify(intake_case_file.get("temporal_issue_registry")):
+        if not isinstance(issue, dict):
+            continue
+        status = str(issue.get("status") or "open").strip().lower()
+        if status not in {"open", "blocking", "warning"}:
+            continue
+        issue_claim_types = {str(item).strip().lower() for item in _listify(issue.get("claim_types")) if str(item).strip()}
+        issue_element_tags = {str(item).strip().lower() for item in _listify(issue.get("element_tags")) if str(item).strip()}
+        if issue_claim_types:
+            if normalized_claim_type not in issue_claim_types:
+                continue
+        elif issue_element_tags and not (issue_element_tags & focus["element_tags"]):
+            continue
+        _append_hint(str(issue.get("summary") or ""))
+
+    blocker_summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
+    for blocker in _listify(blocker_summary.get("blocking_items")):
+        if not isinstance(blocker, dict):
+            continue
+        issue_family = str(blocker.get("issue_family") or "").strip().lower()
+        primary_objective = str(blocker.get("primary_objective") or "").strip().lower()
+        blocker_objectives = {str(item).strip().lower() for item in _listify(blocker.get("blocker_objectives")) if str(item).strip()}
+        matched_objectives = ({primary_objective} if primary_objective else set()) | blocker_objectives
+        if issue_family:
+            if issue_family not in focus["issue_families"] and not (matched_objectives & focus["objectives"]):
+                continue
+        elif not (matched_objectives & focus["objectives"]):
+            continue
+        _append_hint(str(blocker.get("reason") or ""))
+
+    return hints[:limit]
+
+
 def _listify(value: Any) -> List[Any]:
     if value is None:
         return []
@@ -610,6 +980,7 @@ class ComplaintDocumentBuilder:
         phase_manager = getattr(self.mediator, "phase_manager", None)
         kg = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "knowledge_graph") if phase_manager else None
         dg = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "dependency_graph") if phase_manager else None
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
         legal_graph = phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, "legal_graph") if phase_manager else None
         matching_results = phase_manager.get_phase_data(ComplaintPhase.FORMALIZATION, "matching_results") if phase_manager else None
 
@@ -719,6 +1090,9 @@ class ComplaintDocumentBuilder:
             }
             for claim in claims
         ]
+        anchored_chronology_summary = _build_anchored_chronology_summary(
+            intake_case_file if isinstance(intake_case_file, dict) else {}
+        )
 
         draft = {
             **base,
@@ -736,6 +1110,7 @@ class ComplaintDocumentBuilder:
             "summary_of_facts": factual_allegations[: min(len(factual_allegations), 6)],
             "factual_allegations": factual_allegations,
             "factual_allegation_groups": _build_factual_allegation_groups(factual_allegations),
+            "anchored_chronology_summary": anchored_chronology_summary,
             "legal_standards": legal_standards,
             "legal_claims": claims,
             "claims_for_relief": claims,
@@ -832,6 +1207,17 @@ class ComplaintDocumentBuilder:
         else:
             for index, allegation in enumerate(_listify(draft.get("factual_allegations")), 1):
                 lines.append(f"{index}. {_clean_sentence(allegation)}")
+
+        chronology_lines = [
+            _clean_sentence(item)
+            for item in _listify(draft.get("anchored_chronology_summary"))
+            if _clean_text(item)
+        ]
+        if chronology_lines:
+            lines.append("")
+            lines.append("ANCHORED CHRONOLOGY")
+            for index, chronology_line in enumerate(chronology_lines, 1):
+                lines.append(f"{index}. {chronology_line}")
 
         claims = _listify(draft.get("legal_claims"))
         if claims:
@@ -1350,6 +1736,8 @@ class ComplaintDocumentBuilder:
     ) -> List[Dict[str, Any]]:
         claim_entries = []
         raw_claims = []
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
         if isinstance(matching_results, dict):
             raw_claims.extend(_listify(matching_results.get("claims")))
         if not raw_claims and dependency_graph is not None:
@@ -1403,6 +1791,13 @@ class ComplaintDocumentBuilder:
                 for item in _listify(claim.get("missing_requirements"))
                 if isinstance(item, dict)
             ]
+            missing_requirements.extend(
+                _build_claim_temporal_gap_hints(
+                    intake_case_file if isinstance(intake_case_file, dict) else {},
+                    claim_type=claim_type,
+                    claim_name=claim_name,
+                )
+            )
             claim_entries.append(
                 {
                     "count": index,
@@ -1422,6 +1817,13 @@ class ComplaintDocumentBuilder:
         return claim_entries
 
     def _build_supporting_facts(self, claim_type: str, claim_name: str, factual_allegations: List[str], user_id: str) -> List[str]:
+        phase_manager = getattr(self.mediator, "phase_manager", None)
+        intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") if phase_manager else None
+        chronology_support = _build_claim_chronology_support(
+            intake_case_file if isinstance(intake_case_file, dict) else {},
+            claim_type=claim_type,
+            claim_name=claim_name,
+        )
         facts = self._safe_call("get_claim_support_facts", claim_type, user_id, default=[])
         supporting_facts = []
         for fact in _listify(facts):
@@ -1431,13 +1833,13 @@ class ComplaintDocumentBuilder:
             if text:
                 supporting_facts.append(text)
         if supporting_facts:
-            return self._dedupe(supporting_facts)
+            return self._dedupe(chronology_support + supporting_facts)
         lowered_claim_name = claim_name.lower()
         filtered = [
             allegation for allegation in factual_allegations
             if claim_type.replace("_", " ") in allegation.lower() or lowered_claim_name in allegation.lower()
         ]
-        return self._dedupe(filtered or factual_allegations[:3])
+        return self._dedupe(chronology_support + (filtered or factual_allegations[:3]))
 
     def _filter_authorities(self, authority_records: Any, claim_type: str) -> List[Dict[str, Any]]:
         matched = []
@@ -1827,6 +2229,14 @@ class ComplaintDocumentBuilder:
         else:
             self._docx_section(document, "Factual Allegations", draft.get("factual_allegations", []), numbered=True)
 
+        chronology_lines = [
+            _clean_sentence(item)
+            for item in _listify(draft.get("anchored_chronology_summary"))
+            if _clean_text(item)
+        ]
+        if chronology_lines:
+            self._docx_section(document, "Anchored Chronology", chronology_lines, numbered=True)
+
         claims_heading = document.add_paragraph()
         claims_heading.add_run("Claims for Relief").bold = True
         for claim in _listify(draft.get("legal_claims")):
@@ -1982,6 +2392,14 @@ class ComplaintDocumentBuilder:
                         story.append(Paragraph(f"{entry.get('number')}. {text}", body))
         else:
             self._pdf_section(story, section, body, "Factual Allegations", draft.get("factual_allegations", []), numbered=True)
+
+        chronology_lines = [
+            _clean_sentence(item)
+            for item in _listify(draft.get("anchored_chronology_summary"))
+            if _clean_text(item)
+        ]
+        if chronology_lines:
+            self._pdf_section(story, section, body, "Anchored Chronology", chronology_lines, numbered=True)
 
         story.append(Paragraph("Claims for Relief", section))
         for claim in _listify(draft.get("legal_claims")):

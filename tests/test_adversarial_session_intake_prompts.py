@@ -331,6 +331,70 @@ def test_extract_intake_prompt_candidates_classifies_graph_blocker_prompts():
     ) in objective_pairs
 
 
+def test_extract_intake_prompt_candidates_adds_claim_temporal_gap_prompts_from_optimizer_context():
+    seed = {
+        "document_optimization": {
+            "intake_priorities": {
+                "claim_temporal_gap_summary": [
+                    {
+                        "claim_type": "retaliation",
+                        "gap_count": 2,
+                        "gaps": [
+                            "Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.",
+                            "Chronology gap: Protected activity and adverse action still need tighter causation sequencing.",
+                        ],
+                    }
+                ]
+            }
+        },
+        "key_facts": {"synthetic_prompts": {"intake_questions": []}},
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+
+    assert (
+        "For your retaliation claim, what exact dates or best available date anchors do you have for each key event in sequence?",
+        "exact_dates",
+    ) in candidates
+    assert (
+        "For your retaliation claim, please walk through the sequence from protected activity to adverse action, including who knew what and when.",
+        "causation_sequence",
+    ) in candidates
+
+
+def test_inject_intake_prompt_questions_prioritizes_claim_temporal_gap_prompts():
+    seed = {
+        "document_optimization": {
+            "intake_priorities": {
+                "claim_temporal_gap_summary": [
+                    {
+                        "claim_type": "retaliation",
+                        "gap_count": 1,
+                        "gaps": [
+                            "Chronology gap: Protected activity and adverse action still need tighter causation sequencing.",
+                        ],
+                    }
+                ]
+            }
+        },
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [
+                    "What remedy are you seeking now?",
+                ]
+            }
+        },
+    }
+
+    merged = AdversarialSession._inject_intake_prompt_questions(seed, [])
+
+    assert merged[0]["question"] == (
+        "For your retaliation claim, please walk through the sequence from protected activity to adverse action, including who knew what and when."
+    )
+    assert merged[0]["question_objective"] == "causation_sequence"
+    assert merged[0]["source"] == "synthetic_intake_prompt"
+
+
 def test_inject_intake_prompt_questions_prepends_prioritized_candidates():
     seed = {
         "key_facts": {

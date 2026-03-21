@@ -18,6 +18,7 @@ from .intake_claim_registry import (
     build_claim_element_question_text,
     build_proof_lead_question_intent,
     build_proof_lead_question_text,
+    normalize_claim_type,
     render_question_text_from_intent,
 )
 
@@ -49,6 +50,9 @@ class ComplaintDenoiser:
         self.actor_critic_enabled = self._env_bool("CG_DENOISER_ACTOR_CRITIC_ENABLED", True)
         self.actor_weight = self._env_float("CG_DENOISER_ACTOR_WEIGHT", 1.0)
         self.critic_weight = self._env_float("CG_DENOISER_CRITIC_WEIGHT", 1.0)
+        self.question_quality_weight = self._env_float("CG_DENOISER_QUESTION_QUALITY_WEIGHT", 1.0)
+        self.empathy_weight = self._env_float("CG_DENOISER_EMPATHY_WEIGHT", 1.0)
+        self.selector_quality_guard_enabled = self._env_bool("CG_DENOISER_SELECTOR_QUALITY_GUARD_ENABLED", True)
         self.phase_focus_order = self._env_csv(
             "CG_DENOISER_PHASE_FOCUS_ORDER",
             ["graph_analysis", "document_generation", "intake_questioning"],
@@ -145,13 +149,19 @@ class ComplaintDenoiser:
             targets.extend(["actor_name", "actor_role"])
         if qtype in {"evidence", "requirement"}:
             targets.extend(["document_type", "document_date", "document_owner"])
+        if qtype in {"timeline", "responsible_party", "contradiction"}:
+            targets.extend(["decision_maker", "adverse_action"])
         if qtype in {"impact", "remedy"}:
             targets.extend(["harm_type", "requested_outcome"])
         gap_type = str(context.get("gap_type") or "").strip().lower()
         if gap_type in {"missing_written_notice", "missing_response_dates"}:
-            targets.extend(["notice_chain", "notice_date"])
+            targets.extend(["notice_chain", "notice_date", "response_timing"])
         if gap_type in {"retaliation_missing_causation", "retaliation_missing_sequence", "retaliation_missing_sequencing_dates"}:
             targets.extend(["protected_activity", "adverse_action", "causation_link"])
+        if gap_type in {"missing_decision_timeline", "missing_exact_action_dates", "missing_hearing_timing"}:
+            targets.extend(["exact_dates", "event_order", "response_timing"])
+        if gap_type in {"missing_staff_identity", "missing_staff_title"}:
+            targets.extend(["actor_name", "actor_role", "decision_maker"])
         deduped: List[str] = []
         for target in targets:
             if target and target not in deduped:
@@ -173,10 +183,16 @@ class ComplaintDenoiser:
             markers.append("actor_link_patch_anchor")
         if qtype in {"evidence", "requirement"}:
             markers.append("support_patch_anchor")
+            markers.append("documentary_artifact_patch_anchor")
         if qtype in {"impact", "remedy"}:
             markers.append("relief_patch_anchor")
         if str(context.get("gap_type") or "").strip().lower() in {"missing_written_notice", "missing_response_dates"}:
             markers.append("notice_chain_patch_anchor")
+            markers.append("chronology_response_patch_anchor")
+        if qtype in {"responsible_party", "timeline"}:
+            markers.append("decision_actor_patch_anchor")
+        if qtype in {"timeline", "contradiction"}:
+            markers.append("adverse_action_patch_anchor")
         return markers
 
 
@@ -422,6 +438,69 @@ class ComplaintDenoiser:
             "right after",
         ]
         return any(term in lowered for term in sequencing_terms)
+
+    def _contains_sequence_signal(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        sequence_terms = [
+            "before",
+            "after",
+            "then",
+            "next",
+            "later",
+            "earlier",
+            "same day",
+            "the next day",
+            "following day",
+            "in sequence",
+            "timeline",
+        ]
+        return any(term in lowered for term in sequence_terms)
+
+    def _extract_response_timing_phrases(self, text: str) -> List[str]:
+        if not text:
+            return []
+        patterns = [
+            r"\b(?:within|after|in)\s+\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months)\b",
+            r"\b\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months)\s+(?:later|after|before)\b",
+            r"\b(?:same day|next day|following day|immediately|right away|no response|never responded)\b",
+        ]
+        found: List[str] = []
+        for pattern in patterns:
+            for match in re.findall(pattern, text.lower()):
+                normalized = str(match or "").strip()
+                if normalized and normalized not in found:
+                    found.append(normalized)
+        return found
+
+    def _contains_adverse_action_signal(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        signals = [
+            "terminated",
+            "fired",
+            "demoted",
+            "disciplined",
+            "suspended",
+            "evicted",
+            "denied",
+            "rejected",
+            "written up",
+            "write-up",
+            "adverse action",
+        ]
+        return any(token in lowered for token in signals)
+
+    def _contains_document_precision_signal(self, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.lower()
+        has_doc = any(token in lowered for token in ("notice", "letter", "email", "message", "record", "memo"))
+        has_sender = any(token in lowered for token in ("from ", "sent by", "signed by", "authored by", "issued by"))
+        has_date = bool(self._extract_date_strings(text))
+        return bool(has_doc and has_sender and has_date)
 
 
     def _contains_retaliation_context(self, text: str) -> bool:
@@ -706,6 +785,10 @@ class ComplaintDenoiser:
             "actor_critic_enabled": bool(self.actor_critic_enabled),
             "actor_weight": float(self.actor_weight),
             "critic_weight": float(self.critic_weight),
+            "question_quality_weight": float(self.question_quality_weight),
+            "empathy_weight": float(self.empathy_weight),
+            "selector_quality_guard_enabled": bool(self.selector_quality_guard_enabled),
+            "phase_focus_order": list(self.phase_focus_order),
         }
 
 
@@ -805,20 +888,120 @@ class ComplaintDenoiser:
         return False
 
     def _with_empathy(self, question_text: str, question_type: str) -> str:
-        # Keep this minimal so we don't overwhelm the prompt.
+        # Keep this lightweight so we improve tone without bloating prompts.
         text = (question_text or "").strip()
         if not text:
             return text
+        normalized = text.lower()
+        empathy_openers = (
+            "to make sure i understand, ",
+            "i know this may be stressful, and this helps keep your record accurate: ",
+            "so we can support your claim clearly, ",
+            "thanks for sharing this. ",
+            "i hear you. ",
+        )
+        if normalized.startswith(empathy_openers):
+            return text
+
         prefix = ""
-        if question_type in {'clarification', 'relationship', 'requirement'}:
+        qtype = (question_type or "").strip().lower()
+        if qtype in {'clarification', 'relationship', 'requirement'}:
             prefix = "To make sure I understand, "
-        elif question_type in {'timeline', 'contradiction', 'responsible_party'}:
+        elif qtype in {'timeline', 'contradiction', 'responsible_party'}:
             prefix = "I know this may be stressful, and this helps keep your record accurate: "
-        elif question_type in {'evidence'}:
+        elif qtype in {'evidence'}:
             prefix = "So we can support your claim clearly, "
-        if prefix and not text.lower().startswith(prefix.strip().lower()):
-            return prefix + text[0].lower() + text[1:] if len(text) > 1 else prefix + text.lower()
+        elif qtype in {'impact', 'remedy'}:
+            prefix = "Thanks for sharing this. "
+
+        if prefix:
+            if prefix.endswith(": "):
+                return prefix + text[0].lower() + text[1:] if len(text) > 1 else prefix + text.lower()
+            return prefix + text
         return text
+
+    def _question_quality_bonus_candidate(self, candidate: Dict[str, Any]) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        question_text = str(candidate.get('question') or '').strip().lower()
+        follow_up_tags = [str(tag).strip().lower() for tag in (candidate.get('follow_up_tags') or []) if str(tag).strip()]
+        extraction_targets = [str(target).strip().lower() for target in (candidate.get('extraction_targets') or []) if str(target).strip()]
+        workflow_phase = str(candidate.get('workflow_phase') or '').strip().lower()
+        score = 0.0
+        if not question_text:
+            return score
+        if question_text.endswith("?"):
+            score += 0.35
+        if question_text.count("?") <= 1:
+            score += 0.35
+        if any(question_text.startswith(prefix) for prefix in ("what ", "when ", "who ", "which ", "where ", "how ")):
+            score += 0.4
+        if 45 <= len(question_text) <= 240:
+            score += 0.35
+        if 'exact_dates' in follow_up_tags and any(token in question_text for token in ('exact date', 'what date', 'when')):
+            score += 0.5
+        if 'staff_identity' in follow_up_tags and any(token in question_text for token in ('full name', 'title', 'role', 'who')):
+            score += 0.5
+        if 'notice_chain' in follow_up_tags and any(token in question_text for token in ('notice', 'letter', 'email', 'message', 'document')):
+            score += 0.4
+        if 'retaliation_sequence' in follow_up_tags and any(token in question_text for token in ('protected activity', 'adverse', 'because', 'after')):
+            score += 0.5
+        if 'chronology_gap' in follow_up_tags and any(token in question_text for token in ('exact date', 'in order', 'before', 'after', 'sequence', 'how long')):
+            score += 0.55
+        if 'decision_precision' in follow_up_tags and any(token in question_text for token in ('who exactly', 'full name', 'title', 'organization', 'adverse action')):
+            score += 0.55
+        if 'documentary_precision' in follow_up_tags and any(token in question_text for token in ('document type', 'date', 'sender', 'recipient', 'delivered')):
+            score += 0.55
+        if 'response_timing' in follow_up_tags and any(token in question_text for token in ('how long', 'within', 'response', 'responded')):
+            score += 0.55
+        if extraction_targets:
+            covered = 0
+            keyword_map = {
+                'exact_dates': ('date', 'when'),
+                'event_order': ('before', 'after', 'timeline', 'sequence'),
+                'actor_name': ('who', 'name'),
+                'actor_role': ('title', 'role'),
+                'document_type': ('document', 'notice', 'letter', 'email', 'message', 'record'),
+                'document_date': ('date', 'dated', 'when'),
+                'document_owner': ('who sent', 'who wrote', 'who owns', 'from'),
+                'protected_activity': ('protected activity', 'complained', 'reported'),
+                'adverse_action': ('adverse action', 'adverse', 'discipline', 'fired', 'terminated', 'denied'),
+                'causation_link': ('because', 'as a result', 'why'),
+                'harm_type': ('harm', 'impact'),
+                'requested_outcome': ('remedy', 'seeking', 'outcome'),
+                'notice_chain': ('notice', 'letter', 'email', 'message'),
+                'response_timing': ('how long', 'within', 'response', 'responded'),
+                'decision_maker': ('who made', 'who approved', 'decision-maker', 'decision maker'),
+            }
+            for target in extraction_targets:
+                target_tokens = keyword_map.get(target, ())
+                if target_tokens and any(token in question_text for token in target_tokens):
+                    covered += 1
+            if covered:
+                score += min(1.0, 0.25 * float(covered))
+        score += max(0.0, 0.7 - 0.25 * float(self._phase_focus_rank(workflow_phase)))
+        return score
+
+    def _empathy_bonus_candidate(self, candidate: Dict[str, Any]) -> float:
+        if not isinstance(candidate, dict):
+            return 0.0
+        qtype = str(candidate.get('type') or '').strip().lower()
+        question_text = str(candidate.get('question') or '').strip().lower()
+        empathy_openers = (
+            "to make sure i understand, ",
+            "i know this may be stressful, and this helps keep your record accurate: ",
+            "so we can support your claim clearly, ",
+            "thanks for sharing this. ",
+            "i hear you. ",
+        )
+        has_empathy_frame = question_text.startswith(empathy_openers)
+        if has_empathy_frame:
+            if qtype in {'timeline', 'contradiction', 'responsible_party', 'impact', 'remedy', 'evidence'}:
+                return 0.8
+            return 0.5
+        if qtype in {'timeline', 'contradiction', 'responsible_party', 'impact', 'remedy'}:
+            return -0.25
+        return 0.0
 
     def _phase1_proof_priority(self, question_type: str) -> int:
         objective_order = {
@@ -1092,6 +1275,12 @@ class ComplaintDenoiser:
             tags.append('notice_chain')
         if gap_type in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequencing_dates', 'retaliation_missing_sequence'}:
             tags.append('retaliation_sequence')
+        if gap_type in {'missing_exact_action_dates', 'missing_decision_timeline', 'missing_hearing_timing', 'missing_response_dates'}:
+            tags.append('chronology_gap')
+        if gap_type in {'missing_staff_identity', 'missing_staff_title'}:
+            tags.append('decision_precision')
+        if gap_type in {'missing_written_notice', 'missing_response_dates'}:
+            tags.append('documentary_precision')
 
         if any(token in normalized_text for token in ('exact date', 'on what date', 'when did')):
             tags.append('exact_dates')
@@ -1101,6 +1290,14 @@ class ComplaintDenoiser:
             tags.append('notice_chain')
         if any(token in normalized_text for token in ('protected activity', 'adverse action', 'because of', 'soon after')):
             tags.append('retaliation_sequence')
+        if any(token in normalized_text for token in ('sequence', 'before', 'after', 'timeline', 'order')):
+            tags.append('chronology_gap')
+        if any(token in normalized_text for token in ('decision-maker', 'decision maker', 'approved', 'communicated it')):
+            tags.append('decision_precision')
+        if any(token in normalized_text for token in ('document', 'message', 'email', 'who sent', 'dated')):
+            tags.append('documentary_precision')
+        if any(token in normalized_text for token in ('how long', 'within how many', 'response time', 'responded')):
+            tags.append('response_timing')
 
         if question_type in {'timeline'} and 'exact_dates' not in tags:
             tags.append('timeline')
@@ -1170,15 +1367,74 @@ class ComplaintDenoiser:
         if not isinstance(candidate_claims, list):
             return []
 
+        def _expected_modalities(evidence_classes: List[str]) -> List[str]:
+            values = [str(item or '').strip().lower() for item in evidence_classes if str(item or '').strip()]
+            modalities: List[str] = []
+            if any(token in values for token in ('policy', 'handbook')):
+                modalities.append('policy_document')
+            if any(
+                token in values
+                for token in (
+                    'lease', 'denial_notice', 'termination_notice', 'eviction_notice', 'application_record',
+                    'inspection_record', 'maintenance_record', 'rent_record', 'personnel_record',
+                )
+            ):
+                modalities.append('file_evidence')
+            if any(token in values for token in ('email', 'text_message', 'landlord_message', 'denial_message')):
+                if 'file_evidence' not in modalities:
+                    modalities.append('file_evidence')
+            return modalities
+
+        def _targets_for_element(element_id: str, modalities: List[str]) -> List[str]:
+            normalized_element = str(element_id or '').strip().lower()
+            targets: List[str] = ['actor_name', 'actor_role']
+            element_target_map = {
+                'protected_trait': ['harm_type'],
+                'housing_context': ['actor_name', 'actor_role', 'decision_maker'],
+                'employment_relationship': ['actor_name', 'actor_role', 'decision_maker'],
+                'adverse_action': ['adverse_action', 'exact_dates', 'event_order'],
+                'discriminatory_motive': ['causation_link', 'event_order'],
+                'causation': ['protected_activity', 'adverse_action', 'causation_link', 'exact_dates', 'event_order'],
+            }
+            targets.extend(element_target_map.get(normalized_element, []))
+            if 'policy_document' in modalities:
+                targets.extend(['document_type', 'document_owner'])
+            if 'file_evidence' in modalities:
+                targets.extend(['document_type', 'document_date', 'document_owner'])
+            deduped: List[str] = []
+            for item in targets:
+                if item and item not in deduped:
+                    deduped.append(item)
+            return deduped
+
+        def _patchability_for_element(element_id: str, modalities: List[str]) -> List[str]:
+            normalized_element = str(element_id or '').strip().lower()
+            markers = ['claim_element_patch_anchor', 'support_patch_anchor']
+            if normalized_element in {'housing_context', 'employment_relationship'}:
+                markers.append('actor_link_patch_anchor')
+            if normalized_element in {'adverse_action', 'causation'}:
+                markers.append('chronology_patch_anchor')
+            if 'policy_document' in modalities:
+                markers.append('policy_document_patch_anchor')
+            if 'file_evidence' in modalities:
+                markers.append('documentary_artifact_patch_anchor')
+            deduped: List[str] = []
+            for item in markers:
+                if item and item not in deduped:
+                    deduped.append(item)
+            return deduped
+
         for claim in candidate_claims:
             if not isinstance(claim, dict):
                 continue
-            claim_type = str(claim.get('claim_type') or '').strip()
+            claim_type = normalize_claim_type(str(claim.get('claim_type') or '').strip())
             claim_label = str(claim.get('label') or claim_type or 'this claim').strip()
+            weak_claim_focus = claim_type in {'housing_discrimination', 'hacc_research_engine'}
             for element in claim.get('required_elements', []) or []:
                 if not isinstance(element, dict):
                     continue
-                if str(element.get('status') or '').strip().lower() == 'present':
+                element_status = str(element.get('status') or '').strip().lower()
+                if element_status in {'present', 'satisfied', 'complete'}:
                     continue
                 element_id = str(element.get('element_id') or '').strip()
                 element_label = str(element.get('label') or element_id or 'this missing element').strip()
@@ -1186,6 +1442,12 @@ class ComplaintDenoiser:
                 if question_key in seen_keys:
                     continue
                 seen_keys.add(question_key)
+                evidence_classes = list(element.get('evidence_classes', []) or [])
+                actor_roles = list(element.get('actor_roles', []) or [])
+                expected_modalities = _expected_modalities(evidence_classes)
+                extraction_targets = _targets_for_element(element_id, expected_modalities)
+                patchability_markers = _patchability_for_element(element_id, expected_modalities)
+                gap_id = f"{claim_type}:{element_id}".lower()
                 question_intent = build_claim_element_question_intent(
                     claim_type,
                     claim_label,
@@ -1193,8 +1455,8 @@ class ComplaintDenoiser:
                         'element_id': element_id,
                         'label': element_label,
                         'blocking': bool(element.get('blocking', False)),
-                        'actor_roles': list(element.get('actor_roles', []) or []),
-                        'evidence_classes': list(element.get('evidence_classes', []) or []),
+                        'actor_roles': actor_roles,
+                        'evidence_classes': evidence_classes,
                     },
                 )
                 question_text = build_claim_element_question_text(
@@ -1203,6 +1465,19 @@ class ComplaintDenoiser:
                     element_id,
                     element_label,
                 )
+                if 'policy_document' in expected_modalities and 'file_evidence' in expected_modalities:
+                    question_text = (
+                        f"{question_text} If available, identify one policy document and one file record "
+                        "(notice, lease, email, or upload) with date and sender."
+                    )
+                elif 'policy_document' in expected_modalities:
+                    question_text = (
+                        f"{question_text} If available, identify the policy document (name/section) and who issued it."
+                    )
+                elif 'file_evidence' in expected_modalities:
+                    question_text = (
+                        f"{question_text} If available, identify one file record (notice, lease, email, or upload) with date and sender."
+                    )
                 if not self._already_asked(question_text):
                     questions.append(self._question_candidate(
                         source='intake_claim_element_gap',
@@ -1214,8 +1489,19 @@ class ComplaintDenoiser:
                             'requirement_id': element_id,
                             'requirement_name': element_label,
                             'target_element_id': element_id,
+                            'gap_id': gap_id,
+                            'gap_type': 'missing_claim_element',
+                            'requirement_key': element_id,
+                            'actor_roles': actor_roles,
+                            'evidence_classes': evidence_classes,
+                            'expected_evidence_modalities': expected_modalities,
+                            'deterministic_update_key': gap_id,
+                            'workflow_phase': 'graph_analysis' if (bool(element.get('blocking', False)) or weak_claim_focus) else 'intake_questioning',
+                            'recommended_resolution_lane': 'structured_requirement_capture',
+                            'extraction_targets': extraction_targets,
+                            'patchability_markers': patchability_markers,
                         },
-                        priority='high' if bool(element.get('blocking', False)) else 'medium',
+                        priority='high' if (bool(element.get('blocking', False)) or weak_claim_focus) else 'medium',
                         question_intent=question_intent,
                     ))
                 if len(questions) >= max_questions:
@@ -1233,8 +1519,22 @@ class ComplaintDenoiser:
             return []
 
         proof_leads = intake_case_file.get('proof_leads', [])
-        if isinstance(proof_leads, list) and proof_leads:
-            return []
+        existing_policy_doc = False
+        existing_file_evidence = False
+        if isinstance(proof_leads, list):
+            for lead in proof_leads:
+                if not isinstance(lead, dict):
+                    continue
+                lead_text = " ".join(
+                    str(lead.get(field) or '').strip().lower()
+                    for field in ('lead_type', 'description', 'expected_format', 'recommended_support_kind', 'source_quality_target')
+                )
+                if any(token in lead_text for token in ('policy', 'handbook', 'rule', 'criteria')):
+                    existing_policy_doc = True
+                if any(token in lead_text for token in ('file', 'pdf', 'upload', 'notice', 'lease', 'record', 'email', 'message', 'document')):
+                    existing_file_evidence = True
+            if proof_leads and existing_policy_doc and existing_file_evidence:
+                return []
 
         questions: List[Dict[str, Any]] = []
         seen_keys: Set[str] = set()
@@ -1245,14 +1545,35 @@ class ComplaintDenoiser:
         for claim in candidate_claims:
             if not isinstance(claim, dict):
                 continue
-            claim_type = str(claim.get('claim_type') or '').strip()
+            claim_type = normalize_claim_type(str(claim.get('claim_type') or '').strip())
             claim_label = str(claim.get('label') or claim_type or 'this claim').strip()
+            weak_claim_focus = claim_type in {'housing_discrimination', 'hacc_research_engine'}
+            missing_modalities: List[str] = []
+            if not existing_policy_doc:
+                missing_modalities.append('policy_document')
+            if not existing_file_evidence:
+                missing_modalities.append('file_evidence')
+            if not missing_modalities:
+                continue
             question_key = f"{claim_type}:{claim_label}:proof_leads".lower()
             if question_key in seen_keys:
                 continue
             seen_keys.add(question_key)
             question_intent = build_proof_lead_question_intent(claim_type, claim_label)
             question_text = build_proof_lead_question_text(claim_type, claim_label)
+            if missing_modalities == ['policy_document', 'file_evidence'] or missing_modalities == ['file_evidence', 'policy_document']:
+                question_text = (
+                    f"{question_text} Please name at least one policy document and one file record "
+                    "(notice, lease, email, or attachment) with date, sender, and where it can be obtained."
+                )
+            elif missing_modalities == ['policy_document']:
+                question_text = (
+                    f"{question_text} Please identify any policy document (name/section) relevant to this claim and who issued it."
+                )
+            elif missing_modalities == ['file_evidence']:
+                question_text = (
+                    f"{question_text} Please identify one file record (notice, lease, email, message, or attachment) with date, sender, and where it can be obtained."
+                )
             if not self._already_asked(question_text):
                 questions.append(self._question_candidate(
                     source='intake_proof_gap',
@@ -1261,6 +1582,14 @@ class ComplaintDenoiser:
                     context={
                         'claim_type': claim_type,
                         'claim_name': claim_label,
+                        'gap_id': f"{claim_type}:proof_leads",
+                        'gap_type': 'missing_proof_leads',
+                        'expected_evidence_modalities': list(missing_modalities),
+                        'deterministic_update_key': f"{claim_type}:proof_leads:{'-'.join(missing_modalities)}",
+                        'workflow_phase': 'graph_analysis' if weak_claim_focus else 'document_generation',
+                        'recommended_resolution_lane': 'structured_proof_capture',
+                        'extraction_targets': ['document_type', 'document_date', 'document_owner', 'actor_name'],
+                        'patchability_markers': ['support_patch_anchor', 'documentary_artifact_patch_anchor', 'notice_chain_patch_anchor'],
                     },
                     priority='high',
                     question_intent=question_intent,
@@ -1300,6 +1629,10 @@ class ComplaintDenoiser:
             has_dates = bool(self._extract_date_strings(answer_text))
             has_named_actors = bool(self._extract_named_role_people(answer_text) or self._extract_named_people_with_titles(answer_text))
             has_documents = bool(self._extract_document_mentions(answer_text))
+            has_sequence = self._contains_sequence_signal(answer_text)
+            response_timings = self._extract_response_timing_phrases(answer_text)
+            has_document_precision = self._contains_document_precision_signal(answer_text)
+            has_adverse_action = self._contains_adverse_action_signal(answer_text)
 
             if needs_confirmation:
                 follow_ups = [
@@ -1343,6 +1676,32 @@ class ComplaintDenoiser:
 
             if len(questions) >= max_questions:
                 break
+
+            chronology_gap = (
+                qtype in {'timeline', 'responsible_party', 'clarification', 'relationship', 'requirement'}
+                and (not has_dates or not has_sequence or not response_timings)
+            )
+            if chronology_gap and len(questions) < max_questions:
+                chronology_text = (
+                    "Please list each key event in order with the exact date (month/day/year), "
+                    "who acted, and how long it took for the next response after your request or report."
+                )
+                key = f"timeline:{self._normalize_question_text(chronology_text)}"
+                if key not in seen_keys and not self._already_asked(chronology_text):
+                    seen_keys.add(key)
+                    questions.append(self._question_candidate(
+                        source='history_follow_up',
+                        question_type='timeline',
+                        question_text=chronology_text,
+                        context={
+                            'gap_type': 'missing_decision_timeline',
+                            'follow_up_reason': 'chronology_gap_closeout',
+                            'workflow_phase': 'graph_analysis',
+                            'extraction_targets': ['exact_dates', 'event_order', 'response_timing', 'actor_name', 'actor_role'],
+                            'patchability_markers': ['chronology_patch_anchor', 'chronology_response_patch_anchor', 'actor_link_patch_anchor'],
+                        },
+                        priority='high',
+                    ))
 
             should_probe_causation = (
                 retaliation_context
@@ -1400,10 +1759,39 @@ class ComplaintDenoiser:
             if len(questions) >= max_questions:
                 break
 
+            needs_decision_precision = (
+                qtype in {'timeline', 'responsible_party', 'relationship', 'clarification', 'requirement'}
+                and (not has_named_actors or not has_adverse_action)
+            )
+            if needs_decision_precision and len(questions) < max_questions:
+                decision_precision_text = (
+                    "Who exactly made the adverse decision, what was the specific adverse action, "
+                    "and what title and organization did that person have at the time?"
+                )
+                key = f"responsible_party:{self._normalize_question_text(decision_precision_text)}"
+                if key not in seen_keys and not self._already_asked(decision_precision_text):
+                    seen_keys.add(key)
+                    questions.append(self._question_candidate(
+                        source='history_follow_up',
+                        question_type='responsible_party',
+                        question_text=decision_precision_text,
+                        context={
+                            'gap_type': 'missing_staff_identity',
+                            'follow_up_reason': 'decision_precision_closeout',
+                            'workflow_phase': 'graph_analysis',
+                            'extraction_targets': ['actor_name', 'actor_role', 'decision_maker', 'adverse_action'],
+                            'patchability_markers': ['actor_link_patch_anchor', 'decision_actor_patch_anchor', 'adverse_action_patch_anchor'],
+                        },
+                        priority='high',
+                    ))
+
+            if len(questions) >= max_questions:
+                break
+
             # Ask for concrete documentary anchors if narrative detail exists but sources are absent.
-            if (retaliation_context or needs_confirmation) and not has_documents and len(questions) < max_questions:
+            if (retaliation_context or needs_confirmation or chronology_gap) and (not has_documents or not has_document_precision) and len(questions) < max_questions:
                 doc_text = (
-                    "What specific document or message shows who made the decision and when it was communicated?"
+                    "What exact document or message records the decision (document type, date, sender, recipient, and how it was delivered)?"
                 )
                 key = f"evidence:{self._normalize_question_text(doc_text)}"
                 if key not in seen_keys and not self._already_asked(doc_text):
@@ -1416,8 +1804,8 @@ class ComplaintDenoiser:
                             'gap_type': 'missing_written_notice',
                             'follow_up_reason': 'document_anchor_probe',
                             'workflow_phase': 'document_generation',
-                            'extraction_targets': ['document_type', 'document_date', 'document_owner', 'actor_name'],
-                            'patchability_markers': ['support_patch_anchor', 'notice_chain_patch_anchor', 'decision_actor_patch_anchor'],
+                            'extraction_targets': ['document_type', 'document_date', 'document_owner', 'actor_name', 'actor_role'],
+                            'patchability_markers': ['support_patch_anchor', 'notice_chain_patch_anchor', 'decision_actor_patch_anchor', 'documentary_artifact_patch_anchor'],
                         },
                         priority='high',
                     ))
@@ -1448,6 +1836,11 @@ class ComplaintDenoiser:
             max(0, max_questions - len(questions)),
         )
         questions.extend(proof_lead_questions[:max(0, max_questions - len(questions))])
+
+        history_follow_up_questions = self._build_history_follow_up_questions(
+            max(0, max_questions - len(questions)),
+        )
+        questions.extend(history_follow_up_questions[:max(0, max_questions - len(questions))])
 
         kg_gaps = knowledge_graph.find_gaps()
         for gap in kg_gaps[:max(0, max_questions - len(questions))]:
@@ -1652,16 +2045,22 @@ class ComplaintDenoiser:
             score += 1.0
         if 'retaliation_sequence' in follow_up_tags:
             score += 2.0
+        if 'chronology_gap' in follow_up_tags:
+            score += 1.8
+        if 'decision_precision' in follow_up_tags:
+            score += 1.8
+        if 'documentary_precision' in follow_up_tags:
+            score += 1.4
+        if 'response_timing' in follow_up_tags:
+            score += 1.4
         if extraction_targets:
             score += min(2.0, 0.4 * float(len(extraction_targets)))
         if patchability_markers:
             score += min(1.5, 0.5 * float(len(patchability_markers)))
         score += max(0.0, 2.0 - float(self._phase_focus_rank(workflow_phase)) * 0.5)
 
-        normalized_text = question_text
-        has_empathy_frame = normalized_text.startswith('to make sure i understand') or normalized_text.startswith('i know this may be stressful') or normalized_text.startswith('so we can support your claim')
-        if has_empathy_frame:
-            score += 0.75
+        score += float(self.question_quality_weight) * float(self._question_quality_bonus_candidate(candidate))
+        score += float(self.empathy_weight) * float(self._empathy_bonus_candidate(candidate))
 
         asked_count_for_type = sum(
             1
@@ -1679,6 +2078,7 @@ class ComplaintDenoiser:
     def _critic_penalty_candidate(self, candidate: Dict[str, Any]) -> float:
         if not isinstance(candidate, dict):
             return 0.0
+        qtype = str(candidate.get('type') or '').strip().lower()
         question_text = str(candidate.get('question') or '').strip().lower()
         context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
         follow_up_tags = [str(tag).strip().lower() for tag in (candidate.get('follow_up_tags') or []) if str(tag).strip()]
@@ -1699,6 +2099,8 @@ class ComplaintDenoiser:
             penalty += 0.5
         if len(question_text) > 280:
             penalty += 0.5
+        if question_text and not question_text.endswith('?'):
+            penalty += 0.4
         if not context:
             penalty += 0.5
         if (
@@ -1712,12 +2114,30 @@ class ComplaintDenoiser:
             penalty += 1.0
         if 'retaliation_sequence' in follow_up_tags and not any(token in question_text for token in ('protected activity', 'adverse', 'because', 'after')):
             penalty += 1.0
+        if 'chronology_gap' in follow_up_tags and not any(token in question_text for token in ('exact date', 'before', 'after', 'sequence', 'how long', 'response')):
+            penalty += 1.1
+        if 'decision_precision' in follow_up_tags and not any(token in question_text for token in ('who exactly', 'full name', 'title', 'organization', 'adverse action')):
+            penalty += 1.1
+        if 'documentary_precision' in follow_up_tags and not any(token in question_text for token in ('document type', 'date', 'sender', 'recipient', 'delivered')):
+            penalty += 1.1
+        if 'response_timing' in follow_up_tags and not any(token in question_text for token in ('how long', 'within', 'response', 'responded')):
+            penalty += 1.1
         if question_text.count('?') > 1:
             penalty += 0.4
         if workflow_phase == 'graph_analysis' and not any(token in question_text for token in ('when', 'date', 'who', 'what happened')):
             penalty += 0.6
         if workflow_phase == 'document_generation' and not any(token in question_text for token in ('document', 'notice', 'letter', 'email', 'record', 'message')):
             penalty += 0.6
+        if qtype in {'timeline', 'contradiction', 'responsible_party', 'impact', 'remedy'}:
+            empathy_openers = (
+                "to make sure i understand, ",
+                "i know this may be stressful, and this helps keep your record accurate: ",
+                "so we can support your claim clearly, ",
+                "thanks for sharing this. ",
+                "i hear you. ",
+            )
+            if not question_text.startswith(empathy_openers):
+                penalty += 0.45
         if extraction_targets and not any(token in question_text for token in ('who', 'when', 'date', 'name', 'title', 'document', 'notice', 'record', 'because', 'after')):
             penalty += 0.5
         return penalty
@@ -1744,6 +2164,13 @@ class ComplaintDenoiser:
             bonus += 0.35
         elif phase_count >= 4:
             bonus -= 0.35
+        phase_rank = self._phase_focus_rank(workflow_phase)
+        if phase_rank == 0:
+            bonus += 0.5
+        elif phase_rank == 1:
+            bonus += 0.25
+        elif phase_rank == 2:
+            bonus += 0.1
         return bonus
 
     def _annotate_actor_critic_scores(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1793,6 +2220,29 @@ class ComplaintDenoiser:
             annotated.append(enriched)
         return annotated
 
+    def _is_low_quality_selected_candidate(
+        self,
+        candidate: Dict[str, Any],
+        *,
+        pool_score_floor: float,
+    ) -> bool:
+        if not isinstance(candidate, dict):
+            return True
+        score = float(candidate.get('actor_critic_score', 0.0) or 0.0)
+        critic_penalty = float(candidate.get('critic_penalty', 0.0) or 0.0)
+        text = str(candidate.get('question') or '').strip()
+        extraction_targets = list(candidate.get('extraction_targets') or [])
+        patchability_markers = list(candidate.get('patchability_markers') or [])
+        if not text:
+            return True
+        if score < pool_score_floor and critic_penalty > 2.25:
+            return True
+        if len(text) < 24:
+            return True
+        if not extraction_targets and not patchability_markers and critic_penalty > 2.0:
+            return True
+        return False
+
     def select_question_candidates(
         self,
         candidates: List[Dict[str, Any]],
@@ -1837,8 +2287,49 @@ class ComplaintDenoiser:
         if isinstance(selected, list):
             normalized_selected = _finalize(selected, dedupe=True)
             if normalized_selected:
+                if self.selector_quality_guard_enabled:
+                    normalized_selected = self._annotate_actor_critic_scores(normalized_selected)
                 if len(normalized_selected) >= max_questions:
-                    return normalized_selected[:max_questions]
+                    if not self.selector_quality_guard_enabled:
+                        return normalized_selected[:max_questions]
+                    pool_scores = [
+                        float(candidate.get('actor_critic_score', 0.0) or 0.0)
+                        for candidate in normalized_candidates
+                    ]
+                    if pool_scores:
+                        sorted_pool_scores = sorted(pool_scores, reverse=True)
+                        anchor_index = min(len(sorted_pool_scores) - 1, max(0, max_questions - 1))
+                        pool_score_floor = float(sorted_pool_scores[anchor_index]) - 0.75
+                    else:
+                        pool_score_floor = -999.0
+                    selected_keys = {
+                        (
+                            self._normalize_question_text(str(candidate.get('question', ''))),
+                            str(candidate.get('type', '')).strip().lower(),
+                        )
+                        for candidate in normalized_selected
+                    }
+                    fallback_candidates = [
+                        candidate for candidate in normalized_candidates
+                        if (
+                            self._normalize_question_text(str(candidate.get('question', ''))),
+                            str(candidate.get('type', '')).strip().lower(),
+                        ) not in selected_keys
+                    ]
+                    fallback_candidates.sort(
+                        key=lambda candidate: (
+                            -float(candidate.get('actor_critic_score', 0.0) or 0.0),
+                            self._default_candidate_sort_key(candidate),
+                        )
+                    )
+                    replacement_queue = list(fallback_candidates)
+                    upgraded_selected: List[Dict[str, Any]] = []
+                    for candidate in normalized_selected[:max_questions]:
+                        if self._is_low_quality_selected_candidate(candidate, pool_score_floor=pool_score_floor) and replacement_queue:
+                            upgraded_selected.append(replacement_queue.pop(0))
+                        else:
+                            upgraded_selected.append(candidate)
+                    return _finalize(upgraded_selected, dedupe=True)
                 selected_keys = {
                     (
                         self._normalize_question_text(str(candidate.get('question', ''))),
@@ -2170,22 +2661,394 @@ class ComplaintDenoiser:
             'requirements_satisfied': 0
         }
 
-        question_type = question.get('type')
+        question_type = str(question.get('type') or '').strip().lower()
         context = question.get('context', {})
+        context = context if isinstance(context, dict) else {}
         answer_text = str(answer or '').strip()
         timeline_enrichment_types = {'clarification', 'evidence', 'impact', 'relationship', 'remedy', 'requirement', 'responsible_party', 'timeline'}
         responsible_party_enrichment_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}
         fallback_timeline_fact_types = {'clarification', 'evidence', 'relationship', 'requirement', 'responsible_party', 'timeline'}
+        low_information_tokens = {
+            '', 'n/a', 'na', 'none', 'unknown', 'not sure', 'unsure', 'no idea', 'i do not know', "i don't know",
+        }
+        gap_type = str(context.get('gap_type') or '').strip().lower()
+        expected_modalities = {
+            str(item).strip().lower()
+            for item in (context.get('expected_evidence_modalities') or [])
+            if str(item).strip()
+        }
+        weak_modalities = {
+            str(item).strip().lower()
+            for item in (context.get('weak_evidence_modalities') or [])
+            if str(item).strip()
+        }
+        answer_lower = answer_text.lower()
+        extracted_dates = self._extract_date_strings(answer_text)
+        response_timing_phrases = self._extract_response_timing_phrases(answer_text)
+        document_mentions = self._extract_document_mentions(answer_text)
+        named_role_people = self._extract_named_role_people(answer_text)
+        named_title_people = self._extract_named_people_with_titles(answer_text)
+        org_candidates = self._extract_org_candidates(answer_text)
+        generic_roles = self._extract_generic_roles(answer_text)
+        has_sequence_signal = self._contains_sequence_signal(answer_text)
+        has_causation_signal = self._contains_causation_signal(answer_text)
+        has_adverse_action_signal = self._contains_adverse_action_signal(answer_text)
+        has_document_precision_signal = self._contains_document_precision_signal(answer_text)
 
         def _single_claim_id() -> Optional[str]:
             claims = knowledge_graph.get_entities_by_type('claim')
             return claims[0].id if len(claims) == 1 else None
 
+        def _single_claim_entity() -> Optional[Entity]:
+            claim_id = _single_claim_id()
+            return knowledge_graph.get_entity(claim_id) if claim_id else None
+
+        def _answer_is_substantive(text_value: str) -> bool:
+            normalized = " ".join(str(text_value or '').strip().lower().split())
+            if not normalized:
+                return False
+            if normalized in low_information_tokens:
+                return False
+            if len(normalized) < 8:
+                return False
+            if self._contains_confirmation_placeholder(normalized):
+                return False
+            return True
+
+        def _extract_file_references(text_value: str) -> List[str]:
+            if not text_value:
+                return []
+            refs: List[str] = []
+            for pattern in (
+                r"\b[\w\-./]+\.(?:pdf|docx?|xlsx?|csv|txt|jpg|jpeg|png|gif|msg|eml)\b",
+                r"\"([^\"]+\.(?:pdf|docx?|xlsx?|csv|txt|jpg|jpeg|png|gif|msg|eml))\"",
+                r"'([^']+\.(?:pdf|docx?|xlsx?|csv|txt|jpg|jpeg|png|gif|msg|eml))'",
+            ):
+                for match in re.findall(pattern, text_value, flags=re.IGNORECASE):
+                    candidate = str(match or "").strip()
+                    if candidate and candidate not in refs:
+                        refs.append(candidate)
+            return refs[:6]
+
+        def _extract_policy_references(text_value: str) -> List[str]:
+            if not text_value:
+                return []
+            refs: List[str] = []
+            for match in re.findall(
+                r"\b([A-Z][A-Za-z0-9/&\-\s]{2,80}(?:Policy|Handbook|Manual|Rule|Procedure|Guideline|Code))\b",
+                text_value,
+            ):
+                candidate = str(match or "").strip()
+                if candidate and candidate not in refs:
+                    refs.append(candidate)
+            for match in re.findall(r"\b(section\s+\d+(?:\.\d+)*)\b", text_value, flags=re.IGNORECASE):
+                candidate = str(match or "").strip()
+                if candidate and candidate not in refs:
+                    refs.append(candidate)
+            return refs[:6]
+
+        extracted_file_refs = _extract_file_references(answer_text)
+        extracted_policy_refs = _extract_policy_references(answer_text)
+        policy_signal = any(token in answer_lower for token in ('policy', 'handbook', 'rule', 'criteria', 'section', 'guideline')) or bool(extracted_policy_refs)
+        file_signal = bool(extracted_file_refs) or bool(document_mentions) or any(token in answer_lower for token in ('file', 'upload', 'attachment', 'exhibit', 'pdf', 'screenshot', 'scan'))
+
+        def _find_claim_entity_from_context() -> Optional[Entity]:
+            for key in ('claim_entity_id', 'claim_id'):
+                candidate_id = str(context.get(key) or '').strip()
+                if not candidate_id:
+                    continue
+                entity = knowledge_graph.get_entity(candidate_id)
+                if entity and entity.type == 'claim':
+                    return entity
+            claim_name = str(context.get('claim_name') or '').strip().lower()
+            if claim_name:
+                for entity in knowledge_graph.get_entities_by_type('claim'):
+                    entity_name = str(entity.name or '').strip().lower()
+                    if entity_name == claim_name or claim_name in entity_name or entity_name in claim_name:
+                        return entity
+            return _single_claim_entity()
+
+        def _append_attr_list(entity: Optional[Entity], key: str, value: str) -> bool:
+            if not entity:
+                return False
+            updated = self._append_unique_text_item((entity.attributes or {}).get(key), value)
+            previous = (entity.attributes or {}).get(key)
+            if previous != updated:
+                entity.attributes[key] = updated
+                return True
+            return False
+
+        def _mark_resolved_gap(claim_entity: Optional[Entity]) -> None:
+            nonlocal updates
+            if not claim_entity:
+                return
+            deterministic_key = str(context.get('deterministic_update_key') or '').strip().lower()
+            gap_id = str(context.get('gap_id') or '').strip().lower()
+            requirement_id = str(context.get('requirement_id') or context.get('target_element_id') or '').strip().lower()
+            resolution_key = deterministic_key or gap_id or requirement_id
+            if not resolution_key:
+                return
+            changed = _append_attr_list(claim_entity, 'resolved_gaps', resolution_key)
+            if changed:
+                updates['entities_updated'] += 1
+
+        def _append_claim_signal(claim_entity: Optional[Entity], key: str, value: str) -> None:
+            nonlocal updates
+            if not value:
+                return
+            if _append_attr_list(claim_entity, key, value):
+                updates['entities_updated'] += 1
+
+        def _link_claim_to_entity(claim_entity: Optional[Entity], target_entity: Optional[Entity], relation_type: str, confidence: float = 0.62) -> None:
+            nonlocal updates
+            if not claim_entity or not target_entity or not relation_type:
+                return
+            _, rel_created = self._add_relationship_if_missing(
+                knowledge_graph,
+                claim_entity.id,
+                target_entity.id,
+                relation_type,
+                confidence,
+            )
+            if rel_created:
+                updates['relationships_added'] += 1
+
+        def _deterministic_requirement_fact(claim_entity: Optional[Entity]) -> None:
+            nonlocal updates
+            if not claim_entity or not _answer_is_substantive(answer_text):
+                return
+            requirement_id = str(context.get('requirement_id') or context.get('target_element_id') or '').strip()
+            requirement_name = str(context.get('requirement_name') or requirement_id or 'claim element').strip()
+            claim_type = normalize_claim_type(str(context.get('claim_type') or claim_entity.attributes.get('claim_type') or '').strip())
+            snippet = self._short_description(answer_text, 140)
+            fact_name = f"Requirement {requirement_name}: {self._short_description(answer_text, 72)}"
+            fact_entity, created = self._add_entity_if_missing(
+                knowledge_graph,
+                'fact',
+                fact_name,
+                {
+                    'fact_type': 'requirement_support',
+                    'description': snippet,
+                    'requirement_id': requirement_id,
+                    'requirement_name': requirement_name,
+                    'claim_type': claim_type,
+                    'source_question_type': question_type,
+                    'gap_id': str(context.get('gap_id') or ''),
+                },
+                0.68,
+            )
+            if created:
+                updates['entities_updated'] += 1
+            _link_claim_to_entity(claim_entity, fact_entity, 'has_requirement_fact', 0.64)
+
+            if requirement_id:
+                changed = _append_attr_list(claim_entity, 'satisfied_requirements', requirement_id.lower())
+                if changed:
+                    updates['entities_updated'] += 1
+            if str(context.get('requirement_name') or '').strip():
+                changed = _append_attr_list(claim_entity, 'satisfied_requirement_labels', requirement_name)
+                if changed:
+                    updates['entities_updated'] += 1
+
+        def _upsert_structured_evidence(claim_entity: Optional[Entity],
+                                        claim_id: Optional[str],
+                                        evidence_type: str,
+                                        confidence: float,
+                                        extra_attrs: Optional[Dict[str, Any]] = None) -> None:
+            nonlocal updates
+            if not claim_id or not _answer_is_substantive(answer_text):
+                return
+            snippet = self._short_description(answer_text, 140)
+            prefix = "Policy document" if evidence_type == 'policy_document' else "File evidence"
+            evidence_name = f"{prefix}: {self._short_description(answer_text, 80)}"
+            attrs = {
+                'description': snippet,
+                'evidence_type': evidence_type,
+                'gap_type': gap_type,
+                'gap_id': str(context.get('gap_id') or ''),
+            }
+            if extra_attrs:
+                attrs.update(extra_attrs)
+            evidence_entity, created = self._add_entity_if_missing(
+                knowledge_graph,
+                'evidence',
+                evidence_name,
+                attrs,
+                confidence,
+            )
+            if created:
+                updates['entities_updated'] += 1
+            if evidence_entity:
+                _, rel_created = self._add_relationship_if_missing(
+                    knowledge_graph,
+                    claim_id,
+                    evidence_entity.id,
+                    'supported_by',
+                    max(0.6, confidence - 0.01),
+                )
+                if rel_created:
+                    updates['relationships_added'] += 1
+            _append_claim_signal(claim_entity, 'satisfied_evidence_modalities', evidence_type)
+            if evidence_type == 'policy_document':
+                for ref in extracted_policy_refs[:3]:
+                    _append_claim_signal(claim_entity, 'policy_document_refs', ref)
+            if evidence_type == 'file_evidence':
+                for ref in extracted_file_refs[:3]:
+                    _append_claim_signal(claim_entity, 'file_evidence_refs', ref)
+
+        def _mark_dependency_requirement_satisfied() -> None:
+            nonlocal updates
+            if not dependency_graph or not _answer_is_substantive(answer_text):
+                return
+            candidate_ids = {
+                str(context.get('requirement_id') or '').strip(),
+                str(context.get('node_id') or '').strip(),
+                str(context.get('target_element_id') or '').strip(),
+            }
+            requirement_name = str(context.get('requirement_name') or context.get('node_name') or '').strip().lower()
+            requirement_key = str(context.get('requirement_key') or context.get('target_element_id') or '').strip().lower()
+
+            matched_nodes = []
+            for node_id in [item for item in candidate_ids if item]:
+                node = dependency_graph.get_node(node_id)
+                if node:
+                    matched_nodes.append(node)
+            if not matched_nodes:
+                for node in dependency_graph.nodes.values():
+                    node_name = str(node.name or '').strip().lower()
+                    attrs = node.attributes if isinstance(node.attributes, dict) else {}
+                    node_requirement_key = str(attrs.get('requirement_key') or '').strip().lower()
+                    if requirement_name and node_name == requirement_name:
+                        matched_nodes.append(node)
+                    elif requirement_key and node_requirement_key and node_requirement_key == requirement_key:
+                        matched_nodes.append(node)
+
+            seen_node_ids: Set[str] = set()
+            for node in matched_nodes:
+                if not node or node.id in seen_node_ids:
+                    continue
+                seen_node_ids.add(node.id)
+                if not node.satisfied:
+                    node.satisfied = True
+                    updates['requirements_satisfied'] += 1
+                node.confidence = max(float(node.confidence or 0.0), 0.78)
+                attrs = node.attributes if isinstance(node.attributes, dict) else {}
+                attrs['satisfied_via_denoiser'] = True
+                attrs['satisfied_answer_text'] = self._short_description(answer_text, 180)
+                if str(context.get('gap_id') or '').strip():
+                    attrs['satisfied_gap_id'] = str(context.get('gap_id'))
+                if requirement_key:
+                    attrs['requirement_key'] = requirement_key
+                node.attributes = attrs
+
+        def _mark_dependency_gap_satisfied() -> None:
+            nonlocal updates
+            if not dependency_graph or not _answer_is_substantive(answer_text):
+                return
+            gap_id = str(context.get('gap_id') or '').strip().lower()
+            deterministic_key = str(context.get('deterministic_update_key') or '').strip().lower()
+            target_keys = {
+                item
+                for item in [
+                    gap_id,
+                    deterministic_key,
+                    str(context.get('target_element_id') or '').strip().lower(),
+                    str(context.get('requirement_key') or '').strip().lower(),
+                ]
+                if item
+            }
+            if not target_keys and not gap_type:
+                return
+            for node in dependency_graph.nodes.values():
+                attrs = node.attributes if isinstance(node.attributes, dict) else {}
+                node_keys = {
+                    str(node.id or '').strip().lower(),
+                    str(node.name or '').strip().lower(),
+                    str(attrs.get('gap_id') or '').strip().lower(),
+                    str(attrs.get('gap_key') or '').strip().lower(),
+                    str(attrs.get('requirement_key') or '').strip().lower(),
+                    str(attrs.get('target_element_id') or '').strip().lower(),
+                }
+                node_gap_type = str(attrs.get('gap_type') or '').strip().lower()
+                matched = bool(target_keys.intersection({item for item in node_keys if item}))
+                if not matched and gap_type and node_gap_type == gap_type:
+                    matched = True
+                if not matched:
+                    continue
+                if not node.satisfied:
+                    node.satisfied = True
+                    updates['requirements_satisfied'] += 1
+                node.confidence = max(float(node.confidence or 0.0), 0.8)
+                attrs['satisfied_via_denoiser'] = True
+                attrs['satisfied_answer_text'] = self._short_description(answer_text, 180)
+                if gap_id:
+                    attrs['satisfied_gap_id'] = gap_id
+                if gap_type:
+                    attrs['gap_type'] = gap_type
+                node.attributes = attrs
+
+        def _context_gap_is_closed() -> bool:
+            if not _answer_is_substantive(answer_text):
+                return False
+            if not gap_type:
+                return question_type in {'requirement', 'evidence', 'timeline', 'responsible_party', 'relationship'}
+            checks = {
+                'missing_exact_action_dates': bool(extracted_dates),
+                'missing_hearing_request_date': bool(extracted_dates),
+                'missing_response_dates': bool(extracted_dates or response_timing_phrases),
+                'missing_hearing_timing': bool(extracted_dates or response_timing_phrases),
+                'missing_decision_timeline': bool(extracted_dates) and bool(has_sequence_signal or response_timing_phrases or has_adverse_action_signal),
+                'missing_staff_identity': bool(named_role_people or named_title_people or org_candidates),
+                'missing_staff_title': bool(named_role_people or named_title_people or generic_roles),
+                'missing_written_notice': bool(file_signal or has_document_precision_signal),
+                'retaliation_missing_causation': bool(has_causation_signal) and bool(has_adverse_action_signal or has_sequence_signal or extracted_dates),
+                'retaliation_missing_causation_link': bool(has_causation_signal) and bool(has_adverse_action_signal or has_sequence_signal or extracted_dates),
+                'retaliation_missing_sequence': bool(has_sequence_signal) and bool(extracted_dates or response_timing_phrases),
+                'retaliation_missing_sequencing_dates': bool(has_sequence_signal) and bool(extracted_dates or response_timing_phrases),
+                'missing_claim_element': True,
+                'missing_proof_leads': bool(policy_signal or file_signal or extracted_file_refs or extracted_policy_refs),
+            }
+            return bool(checks.get(gap_type, True))
+
+        def _record_gap_resolution(claim_entity: Optional[Entity]) -> None:
+            nonlocal updates
+            if not claim_entity or not _answer_is_substantive(answer_text):
+                return
+            if not gap_type:
+                return
+            fact_name = f"Gap resolved ({gap_type}): {self._short_description(answer_text, 68)}"
+            attrs: Dict[str, Any] = {
+                'fact_type': 'gap_resolution',
+                'gap_type': gap_type,
+                'gap_id': str(context.get('gap_id') or ''),
+                'description': self._short_description(answer_text, 140),
+                'source_question_type': question_type,
+            }
+            if extracted_dates:
+                attrs['captured_dates'] = list(extracted_dates[:4])
+            if response_timing_phrases:
+                attrs['captured_response_timing'] = list(response_timing_phrases[:3])
+            if extracted_policy_refs:
+                attrs['captured_policy_refs'] = list(extracted_policy_refs[:3])
+            if extracted_file_refs:
+                attrs['captured_file_refs'] = list(extracted_file_refs[:3])
+            fact_entity, created = self._add_entity_if_missing(
+                knowledge_graph,
+                'fact',
+                fact_name,
+                attrs,
+                0.68,
+            )
+            if created:
+                updates['entities_updated'] += 1
+            _link_claim_to_entity(claim_entity, fact_entity, 'has_gap_resolution', 0.64)
+
         def _apply_timeline_enrichment() -> None:
             nonlocal updates
             if question_type not in timeline_enrichment_types or not answer_text:
                 return
-            claim_id = _single_claim_id()
+            claim_entity = _find_claim_entity_from_context()
+            claim_id = claim_entity.id if claim_entity else _single_claim_id()
             dates = self._extract_date_strings(answer_text)
             if dates:
                 for date_str in dates:
@@ -2208,31 +3071,68 @@ class ComplaintDenoiser:
                         )
                         if rel_created:
                             updates['relationships_added'] += 1
-                return
-            if question_type not in fallback_timeline_fact_types:
-                return
-            claim_id = _single_claim_id()
-            snippet = self._short_description(answer_text, 120)
-            fact_name = f"Timeline detail: {self._short_description(answer_text, 60)}"
-            fact_entity, created = self._add_entity_if_missing(
-                knowledge_graph,
-                'fact',
-                fact_name,
-                {'fact_type': 'timeline', 'description': snippet},
-                0.6
+
+            response_timing_phrases = self._extract_response_timing_phrases(answer_text)
+            has_sequence = self._contains_sequence_signal(answer_text)
+            should_add_timeline_fact = (
+                question_type in fallback_timeline_fact_types
+                and (not dates or has_sequence or bool(response_timing_phrases))
             )
-            if created:
-                updates['entities_updated'] += 1
-            if claim_id and fact_entity:
-                _, rel_created = self._add_relationship_if_missing(
+            if should_add_timeline_fact:
+                snippet = self._short_description(answer_text, 120)
+                fact_name = f"Timeline detail: {self._short_description(answer_text, 60)}"
+                fact_attrs: Dict[str, Any] = {'fact_type': 'timeline', 'description': snippet}
+                if response_timing_phrases:
+                    fact_attrs['response_timing'] = list(response_timing_phrases[:3])
+                if has_sequence:
+                    fact_attrs['event_order'] = 'captured'
+                fact_entity, created = self._add_entity_if_missing(
                     knowledge_graph,
-                    claim_id,
-                    fact_entity.id,
-                    'has_timeline_detail',
+                    'fact',
+                    fact_name,
+                    fact_attrs,
                     0.6
                 )
-                if rel_created:
-                    updates['relationships_added'] += 1
+                if created:
+                    updates['entities_updated'] += 1
+                if claim_id and fact_entity:
+                    _, rel_created = self._add_relationship_if_missing(
+                        knowledge_graph,
+                        claim_id,
+                        fact_entity.id,
+                        'has_timeline_detail',
+                        0.6
+                    )
+                    if rel_created:
+                        updates['relationships_added'] += 1
+
+            if question_type in {'evidence', 'timeline', 'responsible_party', 'requirement'}:
+                document_mentions = self._extract_document_mentions(answer_text)
+                for document_label in document_mentions[:3]:
+                    artifact_name = f"{document_label}: {self._short_description(answer_text, 64)}"
+                    artifact_entity, artifact_created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'fact',
+                        artifact_name,
+                        {
+                            'fact_type': 'documentary_artifact',
+                            'document_type': document_label,
+                            'description': self._short_description(answer_text, 120),
+                        },
+                        0.58
+                    )
+                    if artifact_created:
+                        updates['entities_updated'] += 1
+                    if claim_id and artifact_entity:
+                        _, rel_created = self._add_relationship_if_missing(
+                            knowledge_graph,
+                            claim_id,
+                            artifact_entity.id,
+                            'has_documentary_artifact',
+                            0.58
+                        )
+                        if rel_created:
+                            updates['relationships_added'] += 1
 
         if question_type == 'clarification':
             entity_id = context.get('entity_id')
@@ -2244,26 +3144,27 @@ class ComplaintDenoiser:
 
         elif question_type == 'relationship':
             entity_id = context.get('entity_id')
-            if entity_id and len(answer_text) > 10:
+            if entity_id and _answer_is_substantive(answer_text):
                 entity = knowledge_graph.get_entity(entity_id)
                 if entity:
                     entity.attributes['relationship_described'] = True
+                    entity.attributes['relationship_description'] = self._short_description(answer_text, 180)
                     updates['entities_updated'] += 1
+                    _link_claim_to_entity(_find_claim_entity_from_context(), entity, 'involves', 0.63)
 
         elif question_type == 'responsible_party':
             pass
 
         elif question_type == 'evidence':
-            claim_id = context.get('claim_id')
-            entity = knowledge_graph.get_entity(claim_id)
-            if entity:
-                if 'evidence_descriptions' not in entity.attributes:
-                    entity.attributes['evidence_descriptions'] = []
-                entity.attributes['evidence_descriptions'].append(answer)
+            claim_entity = _find_claim_entity_from_context()
+            if claim_entity:
+                claim_entity.attributes['evidence_descriptions'] = self._append_unique_text_item(
+                    claim_entity.attributes.get('evidence_descriptions'),
+                    answer,
+                )
                 updates['entities_updated'] += 1
-            if not claim_id:
-                claim_id = _single_claim_id()
-            if claim_id and len(answer_text) > 10:
+            claim_id = claim_entity.id if claim_entity else _single_claim_id()
+            if claim_id and _answer_is_substantive(answer_text):
                 snippet = self._short_description(answer_text, 120)
                 evidence_name = f"Evidence: {self._short_description(answer_text, 80)}"
                 evidence_entity, created = self._add_entity_if_missing(
@@ -2286,12 +3187,48 @@ class ComplaintDenoiser:
                     if rel_created:
                         updates['relationships_added'] += 1
 
+            modality_targets = expected_modalities.union(weak_modalities)
+            should_capture_policy = bool(policy_signal) and (
+                'policy_document' in modality_targets
+                or gap_type in {'missing_claim_element', 'missing_proof_leads', 'missing_written_notice'}
+            )
+            should_capture_file = bool(file_signal) and (
+                'file_evidence' in modality_targets
+                or gap_type in {'missing_claim_element', 'missing_proof_leads', 'missing_written_notice'}
+            )
+            if claim_id and _answer_is_substantive(answer_text):
+                if should_capture_policy:
+                    _upsert_structured_evidence(
+                        claim_entity,
+                        claim_id,
+                        'policy_document',
+                        0.7,
+                        {
+                            'policy_refs': list(extracted_policy_refs[:4]),
+                            'document_mentions': list(document_mentions[:3]),
+                            'document_date_candidates': list(extracted_dates[:3]),
+                        },
+                    )
+                if should_capture_file:
+                    _upsert_structured_evidence(
+                        claim_entity,
+                        claim_id,
+                        'file_evidence',
+                        0.7,
+                        {
+                            'file_refs': list(extracted_file_refs[:4]),
+                            'document_mentions': list(document_mentions[:3]),
+                            'document_date_candidates': list(extracted_dates[:3]),
+                        },
+                    )
+
         elif question_type == 'timeline':
             pass
 
         elif question_type in {'impact', 'remedy'}:
             if answer_text:
-                claim_id = _single_claim_id()
+                claim_entity = _find_claim_entity_from_context()
+                claim_id = claim_entity.id if claim_entity else _single_claim_id()
                 snippet = self._short_description(answer_text, 120)
                 if question_type == 'remedy':
                     fact_type = 'remedy'
@@ -2343,19 +3280,22 @@ class ComplaintDenoiser:
                             updates['relationships_added'] += 1
 
         elif question_type == 'requirement':
-            if dependency_graph:
-                req_id = context.get('requirement_id')
-                req_node = dependency_graph.get_node(req_id)
-                if req_node and len(answer_text) > 10:
-                    req_node.satisfied = True
-                    req_node.confidence = 0.7
-                    updates['requirements_satisfied'] += 1
+            claim_entity = _find_claim_entity_from_context()
+            _deterministic_requirement_fact(claim_entity)
+            _mark_dependency_requirement_satisfied()
+            _append_claim_signal(claim_entity, 'answered_requirement_questions', str(context.get('requirement_id') or context.get('target_element_id') or '').strip().lower())
 
         if question_type in responsible_party_enrichment_types and answer_text:
             updates = self._update_responsible_parties_from_answer(answer_text, knowledge_graph, updates)
 
         if question_type in timeline_enrichment_types and answer_text:
             _apply_timeline_enrichment()
+
+        claim_entity_for_gap = _find_claim_entity_from_context()
+        if _context_gap_is_closed():
+            _record_gap_resolution(claim_entity_for_gap)
+            _mark_resolved_gap(claim_entity_for_gap)
+            _mark_dependency_gap_satisfied()
 
         logger.info(f"Processed answer: {updates}")
 

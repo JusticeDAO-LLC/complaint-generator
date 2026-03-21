@@ -2255,6 +2255,59 @@ def test_agentic_optimizer_uses_upstream_router_provider_selection_when_provider
     assert result["draft"]["workflow_optimization_guidance"] == result["workflow_optimization_guidance"]
 
 
+def test_actor_critic_guidance_enforces_requested_phase_order_at_priority_70():
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    guidance = builder._extract_actor_critic_guidance(
+        {
+            "optimization_method": "actor_critic",
+            "priority": 70,
+            "phase_focus_order": ["intake_questioning", "document_generation", "graph_analysis"],
+            "final_review": {"section_scores": {"intake_questioning": 0.95}},
+        }
+    )
+
+    assert guidance["phase_focus_order"][:3] == [
+        "graph_analysis",
+        "document_generation",
+        "intake_questioning",
+    ]
+    assert guidance["priority"] == 70
+
+
+def test_intake_guidance_promotes_chronology_and_decision_document_precision_from_latest_batch_priorities():
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    guidance = builder._build_intake_questioning_phase_guidance(
+        drafting_readiness={"status": "warning"},
+        document_optimization={
+            "optimization_method": "actor_critic",
+            "priority": 70,
+            "router_backed_question_quality": True,
+            "latest_batch_priorities": [
+                "Did not follow up to close critical chronology gaps (exact dates, response timing, sequence).",
+                "Did not pin down specific decision-makers, adverse action details, or documentary artifacts with precision.",
+            ],
+            "final_review": {
+                "section_scores": {"intake_questioning": 0.72},
+                "dimension_scores": {
+                    "coherence": 0.63,
+                    "grounding": 0.61,
+                    "completeness": 0.6,
+                    "procedural": 0.7,
+                },
+            },
+        },
+    )
+
+    assert guidance["signals"]["needs_chronology_closure"] is True
+    assert guidance["signals"]["needs_decision_document_precision"] is True
+    assert any("Close chronology gaps" in action for action in guidance["recommended_actions"])
+    assert any("decision-precision follow-ups" in action for action in guidance["recommended_actions"])
+
+
 def test_review_api_generated_docx_preserves_grouped_factual_headings_end_to_end(tmp_path):
     mediator = _build_mediator()
     mediator.build_formal_complaint_document_package.side_effect = (
