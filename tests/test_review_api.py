@@ -1011,6 +1011,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                 {"fact_id": "fact_002"},
             ],
         }
+        assert intake_case_summary["event_ledger"] == []
         assert intake_case_summary["complainant_summary_confirmation"] == {}
         assert intake_case_summary["contradiction_summary"] == {
             "count": 1,
@@ -1025,10 +1026,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "count": 1,
             "anchors": [{"anchor_id": "timeline_anchor_001"}],
         }
+        assert intake_case_summary["timeline_anchors"] == []
         assert intake_case_summary["timeline_relation_summary"] == {
             "count": 1,
             "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
         }
+        assert intake_case_summary["timeline_relations"] == []
+        assert intake_case_summary["temporal_fact_registry"] == []
+        assert intake_case_summary["temporal_relation_registry"] == []
+        assert intake_case_summary["temporal_issue_registry"] == []
         assert intake_case_summary["timeline_consistency_summary"] == {
             "event_count": 2,
             "anchor_count": 1,

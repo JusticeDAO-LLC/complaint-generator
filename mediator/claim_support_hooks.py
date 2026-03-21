@@ -3055,6 +3055,10 @@ class ClaimSupportHook:
         requirements: Dict[str, List[str]],
         complaint_id: Optional[str] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
+        requirement_metadata = _merge_intake_summary_handoff_metadata(
+            {},
+            self.mediator,
+        )
         if not DUCKDB_AVAILABLE:
             registered: Dict[str, List[Dict[str, Any]]] = {}
             for claim_type, elements in requirements.items():
@@ -3076,10 +3080,6 @@ class ClaimSupportHook:
             return registered
 
         registered: Dict[str, List[Dict[str, Any]]] = {}
-        requirement_metadata = _merge_intake_summary_handoff_metadata(
-            {},
-            self.mediator,
-        )
         try:
             conn = duckdb.connect(self.db_path)
             for claim_type, elements in requirements.items():

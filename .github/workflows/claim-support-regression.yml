@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/claim-support-regression.yml
+      - applications/document_ui.py
+      - complaint_phases/**
       - mediator/claim_support_hooks.py
       - mediator/mediator.py
       - applications/review_api.py
@@ -26,6 +28,8 @@ on:
       - master
     paths:
       - .github/workflows/claim-support-regression.yml
+      - applications/document_ui.py
+      - complaint_phases/**
       - mediator/claim_support_hooks.py
       - mediator/mediator.py
       - applications/review_api.py

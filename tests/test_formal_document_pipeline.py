@@ -1359,6 +1359,55 @@ def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():
     assert review['recommended_focus'] == 'factual_allegations'
 
 
+def test_drafting_readiness_flags_low_document_grounding_for_formalization():
+    mediator = _build_seeded_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    draft = {
+        "source_context": {"claim_types": ["retaliation"]},
+        "summary_of_facts": ["Plaintiff reported harassment.", "Plaintiff was terminated."],
+        "claims_for_relief": [
+            {
+                "claim_type": "retaliation",
+                "supporting_facts": ["Plaintiff engaged in protected activity."],
+            }
+        ],
+        "requested_relief": ["Compensatory damages."],
+        "jurisdiction_statement": ["Jurisdiction is proper."],
+        "venue_statement": ["Venue is proper."],
+        "exhibits": [],
+        "document_provenance_summary": {
+            "summary_fact_count": 2,
+            "summary_fact_backed_count": 0,
+            "factual_allegation_paragraph_count": 0,
+            "factual_allegation_fact_backed_count": 0,
+            "claim_count": 1,
+            "claim_supporting_fact_count": 1,
+            "claim_supporting_fact_backed_count": 0,
+            "fact_id_count": 0,
+            "source_artifact_id_count": 0,
+            "fact_backed_ratio": 0.0,
+            "low_grounding_flag": True,
+            "claims": [],
+        },
+    }
+
+    readiness = builder._build_drafting_readiness(user_id="Jane Doe", draft=draft)
+
+    assert readiness["document_low_grounding_flag"] is True
+    assert readiness["document_fact_backed_ratio"] == 0.0
+    assert "document_provenance_grounding_needed" in readiness["blockers"]
+    assert any(
+        warning["code"] == "document_provenance_grounding_thin"
+        for warning in readiness["sections"]["summary_of_facts"]["warnings"]
+    )
+
+    gate = builder._build_formalization_gate_payload(readiness)
+    assert gate["document_low_grounding_flag"] is True
+    assert gate["document_fact_backed_ratio"] == 0.0
+    assert gate["ready_for_formalization"] is False
+
+
 def test_build_support_context_carries_blocker_metadata_from_intake_case_file():
     mediator = _build_seeded_mediator()
     optimizer = document_optimization.AgenticDocumentOptimizer(mediator=mediator)

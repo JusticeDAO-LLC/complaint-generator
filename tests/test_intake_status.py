@@ -531,19 +531,25 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "count": 1,
         "events": [{"temporal_fact_id": "fact_1", "temporal_status": "anchored"}],
     }
+    assert summary["event_ledger"] == []
     assert summary["temporal_fact_registry_summary"] == {
         "count": 1,
         "facts": [{"temporal_fact_id": "fact_1", "temporal_status": "anchored"}],
     }
+    assert summary["temporal_fact_registry"] == []
     assert summary["timeline_anchor_summary"]["count"] == 1
+    assert summary["timeline_anchors"] == []
     assert summary["temporal_relation_registry_summary"] == {
         "count": 1,
         "relations": [{"relation_id": "timeline_relation_001", "inference_basis": "normalized_temporal_context"}],
     }
+    assert summary["temporal_relation_registry"] == []
     assert summary["timeline_relation_summary"] == {
         "count": 1,
         "relations": [{"relation_id": "timeline_relation_001", "relation_type": "before"}],
     }
+    assert summary["timeline_relations"] == []
+    assert summary["temporal_issue_registry"] == []
     assert summary["temporal_issue_registry_summary"] == {
         "count": 1,
         "issues": [{"issue_id": "temporal_issue:relative_only_ordering:fact_3", "issue_type": "relative_only_ordering"}],

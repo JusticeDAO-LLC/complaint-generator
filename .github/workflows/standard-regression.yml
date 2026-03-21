@@ -8,12 +8,17 @@ on:
       - Makefile
       - README.md
       - tests/README.md
+      - applications/cli.py
       - applications/document_api.py
       - applications/review_api.py
       - applications/review_ui.py
       - claim_support_review.py
+      - complaint_analysis/**
+      - complaint_phases/**
       - document_optimization.py
       - document_pipeline.py
+      - intake_status.py
+      - mediator/__init__.py
       - mediator/claim_support_hooks.py
       - mediator/formal_document.py
       - mediator/mediator.py
@@ -22,6 +27,11 @@ on:
       - templates/document.html
       - workflow_phase_guidance.py
       - scripts/run_standard_regression.py
+      - tests/test_cli_commands.py
+      - tests/test_complaint_phases.py
+      - tests/test_intake_status.py
+      - tests/test_mediator.py
+      - tests/test_mediator_three_phase.py
       - tests/test_run_standard_regression_cli.py
       - tests/test_review_api.py
       - tests/test_claim_support_review_dashboard_flow.py
@@ -41,12 +51,17 @@ on:
       - Makefile
       - README.md
       - tests/README.md
+      - applications/cli.py
       - applications/document_api.py
       - applications/review_api.py
       - applications/review_ui.py
       - claim_support_review.py
+      - complaint_analysis/**
+      - complaint_phases/**
       - document_optimization.py
       - document_pipeline.py
+      - intake_status.py
+      - mediator/__init__.py
       - mediator/claim_support_hooks.py
       - mediator/formal_document.py
       - mediator/mediator.py
@@ -55,6 +70,11 @@ on:
       - templates/document.html
       - workflow_phase_guidance.py
       - scripts/run_standard_regression.py
+      - tests/test_cli_commands.py
+      - tests/test_complaint_phases.py
+      - tests/test_intake_status.py
+      - tests/test_mediator.py
+      - tests/test_mediator_three_phase.py
       - tests/test_run_standard_regression_cli.py
       - tests/test_review_api.py
       - tests/test_claim_support_review_dashboard_flow.py
