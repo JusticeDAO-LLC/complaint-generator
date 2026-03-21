@@ -768,6 +768,56 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
     assert result["draft"]["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
 
 
+def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_registries():
+    intake_case_summary = {
+        "claim_support_packet_summary": {},
+        "alignment_evidence_tasks": [],
+        "event_ledger": [
+            {
+                "event_id": "event-ledger-001",
+                "temporal_fact_id": "fact-ledger-001",
+            }
+        ],
+        "temporal_fact_registry": [
+            {
+                "temporal_fact_id": "fact-ledger-001",
+            }
+        ],
+        "temporal_relation_registry": [
+            {
+                "relation_id": "relation-ledger-001",
+            }
+        ],
+        "temporal_issue_registry": [
+            {
+                "temporal_issue_id": "issue-open-001",
+                "status": "open",
+            },
+            {
+                "temporal_issue_id": "issue-resolved-001",
+                "status": "resolved",
+            },
+        ],
+    }
+    expected = {
+        "unresolved_temporal_issue_count": 1,
+        "unresolved_temporal_issue_ids": ["issue-open-001"],
+        "chronology_task_count": 0,
+        "event_ids": ["event-ledger-001"],
+        "temporal_fact_ids": ["fact-ledger-001"],
+        "temporal_relation_ids": ["relation-ledger-001"],
+        "timeline_issue_ids": ["issue-open-001", "issue-resolved-001"],
+        "temporal_issue_ids": ["issue-open-001", "issue-resolved-001"],
+        "temporal_proof_bundle_ids": [],
+        "temporal_proof_objectives": [],
+    }
+
+    assert document_optimization.build_claim_support_temporal_handoff_from_intake_case_summary(intake_case_summary) == expected
+
+    builder = FormalComplaintDocumentBuilder(_build_mediator())
+    assert builder._build_claim_support_temporal_handoff({"intake_case_summary": intake_case_summary}) == expected
+
+
 def test_formal_complaint_document_builder_exposes_runtime_workflow_phase_plan_from_phase_state():
     mediator = _build_mediator()
     phase_values = {

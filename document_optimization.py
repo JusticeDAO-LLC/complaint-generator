@@ -226,6 +226,82 @@ def _build_document_execution_drift_summary(
     }
 
 
+def _build_document_grounding_improvement_summary(
+    *,
+    initial_document_provenance_summary: Any,
+    final_document_provenance_summary: Any,
+    workflow_optimization_guidance: Any = None,
+) -> Dict[str, Any]:
+    initial_summary = (
+        initial_document_provenance_summary
+        if isinstance(initial_document_provenance_summary, dict)
+        else {}
+    )
+    final_summary = (
+        final_document_provenance_summary
+        if isinstance(final_document_provenance_summary, dict)
+        else {}
+    )
+    guidance = workflow_optimization_guidance if isinstance(workflow_optimization_guidance, dict) else {}
+    if not initial_summary and not final_summary:
+        return {}
+
+    initial_ratio = float(initial_summary.get("fact_backed_ratio") or 0.0)
+    final_ratio = float(final_summary.get("fact_backed_ratio") or 0.0)
+    delta = round(final_ratio - initial_ratio, 4)
+    evidence_workflow_action_queue = (
+        guidance.get("evidence_workflow_action_queue")
+        if isinstance(guidance.get("evidence_workflow_action_queue"), list)
+        else []
+    )
+    workflow_action_queue = (
+        guidance.get("workflow_action_queue")
+        if isinstance(guidance.get("workflow_action_queue"), list)
+        else []
+    )
+    recovery_actions = [
+        action
+        for action in [*evidence_workflow_action_queue, *workflow_action_queue]
+        if isinstance(action, dict)
+        and (
+            bool(action.get("document_grounding_recovery"))
+            or str(action.get("action_code") or "").strip().lower() == "recover_document_grounding"
+            or str(action.get("action") or "").strip().lower() == "recover document grounding"
+        )
+    ]
+    targeted_claim_elements = _unique_preserving_order(
+        str((action or {}).get("claim_element_id") or "").strip()
+        for action in recovery_actions
+        if isinstance(action, dict)
+    )
+    preferred_support_kinds = _unique_preserving_order(
+        str((action or {}).get("preferred_support_kind") or "").strip()
+        for action in recovery_actions
+        if isinstance(action, dict)
+    )
+    improved_flag = delta > 0.02
+    regressed_flag = delta < -0.02
+    stalled_flag = not improved_flag and not regressed_flag
+    low_grounding_resolved_flag = bool(
+        initial_summary.get("low_grounding_flag") and not final_summary.get("low_grounding_flag")
+    )
+    return {
+        "initial_fact_backed_ratio": round(initial_ratio, 4),
+        "final_fact_backed_ratio": round(final_ratio, 4),
+        "fact_backed_ratio_delta": delta,
+        "initial_low_grounding_flag": bool(initial_summary.get("low_grounding_flag")),
+        "final_low_grounding_flag": bool(final_summary.get("low_grounding_flag")),
+        "recovery_action_count": len(recovery_actions),
+        "recovery_attempted_flag": bool(recovery_actions),
+        "targeted_claim_elements": targeted_claim_elements,
+        "preferred_support_kinds": preferred_support_kinds,
+        "improved_flag": improved_flag,
+        "regressed_flag": regressed_flag,
+        "stalled_flag": stalled_flag,
+        "low_grounding_resolved_flag": low_grounding_resolved_flag,
+    }
+
+
 def _sorted_count_items(values: Any) -> List[Tuple[str, int]]:
     return [
         (str(name), int(count or 0))
@@ -1200,6 +1276,11 @@ class AgenticDocumentOptimizer:
             support_context=support_context,
             user_id=user_id,
         )
+        initial_document_provenance_summary = (
+            dict(draft.get("document_provenance_summary") or {})
+            if isinstance(draft.get("document_provenance_summary"), dict)
+            else {}
+        )
         workflow_optimization_guidance = self._build_workflow_optimization_guidance(
             drafting_readiness=readiness_for_critic,
             support_context=support_context,
@@ -1223,6 +1304,16 @@ class AgenticDocumentOptimizer:
             workflow_targeting_summary=workflow_targeting_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
         )
+        final_document_provenance_summary = (
+            dict(working_draft.get("document_provenance_summary") or {})
+            if isinstance(working_draft.get("document_provenance_summary"), dict)
+            else {}
+        )
+        document_grounding_improvement_summary = _build_document_grounding_improvement_summary(
+            initial_document_provenance_summary=initial_document_provenance_summary,
+            final_document_provenance_summary=final_document_provenance_summary,
+            workflow_optimization_guidance=workflow_optimization_guidance,
+        )
         if workflow_targeting_summary:
             workflow_optimization_guidance["workflow_targeting_summary"] = dict(workflow_targeting_summary)
         if document_workflow_execution_summary:
@@ -1232,6 +1323,10 @@ class AgenticDocumentOptimizer:
         if document_execution_drift_summary:
             workflow_optimization_guidance["document_execution_drift_summary"] = dict(
                 document_execution_drift_summary
+            )
+        if document_grounding_improvement_summary:
+            workflow_optimization_guidance["document_grounding_improvement_summary"] = dict(
+                document_grounding_improvement_summary
             )
         trace_storage = self._store_trace(
             {
@@ -1256,6 +1351,7 @@ class AgenticDocumentOptimizer:
                 "workflow_targeting_summary": workflow_targeting_summary,
                 "document_workflow_execution_summary": document_workflow_execution_summary,
                 "document_execution_drift_summary": document_execution_drift_summary,
+                "document_grounding_improvement_summary": document_grounding_improvement_summary,
                 "support_context": support_context,
                 "drafting_readiness": readiness_for_critic,
                 "initial_review": initial_review,
@@ -1310,6 +1406,7 @@ class AgenticDocumentOptimizer:
             "workflow_targeting_summary": workflow_targeting_summary,
             "document_workflow_execution_summary": document_workflow_execution_summary,
             "document_execution_drift_summary": document_execution_drift_summary,
+            "document_grounding_improvement_summary": document_grounding_improvement_summary,
             "packet_projection": dict(support_context.get("packet_projection") or {}),
             "section_history": [
                 {

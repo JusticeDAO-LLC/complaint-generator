@@ -14,7 +14,10 @@ from complaint_phases.intake_claim_registry import (
     normalize_claim_type,
     registry_element_for_claim_type,
 )
-from document_optimization import AgenticDocumentOptimizer
+from document_optimization import (
+    AgenticDocumentOptimizer,
+    build_claim_support_temporal_handoff_from_intake_case_summary,
+)
 from intake_status import build_intake_case_review_summary, build_intake_status_summary
 from workflow_phase_guidance import (
     build_drafting_document_generation_phase_guidance,
@@ -558,6 +561,11 @@ def _build_runtime_workflow_optimization_guidance(
             if isinstance(optimization_report.get("document_execution_drift_summary"), dict)
             else intake_case_summary.get("document_execution_drift_summary")
         )
+        document_grounding_improvement_summary = (
+            optimization_report.get("document_grounding_improvement_summary")
+            if isinstance(optimization_report.get("document_grounding_improvement_summary"), dict)
+            else intake_case_summary.get("document_grounding_improvement_summary")
+        )
         evidence_workflow_action_queue = (
             intake_case_summary.get("evidence_workflow_action_queue")
             if isinstance(intake_case_summary.get("evidence_workflow_action_queue"), list)
@@ -587,6 +595,11 @@ def _build_runtime_workflow_optimization_guidance(
             and isinstance(document_execution_drift_summary, dict)
         ):
             guidance["document_execution_drift_summary"] = dict(document_execution_drift_summary)
+        if (
+            "document_grounding_improvement_summary" not in guidance
+            and isinstance(document_grounding_improvement_summary, dict)
+        ):
+            guidance["document_grounding_improvement_summary"] = dict(document_grounding_improvement_summary)
         if (
             "document_drafting_next_action" not in guidance
             and isinstance(document_drafting_next_action, dict)
@@ -696,6 +709,15 @@ def _build_runtime_workflow_optimization_guidance(
         else (
             intake_case_summary.get("document_execution_drift_summary")
             if isinstance(intake_case_summary.get("document_execution_drift_summary"), dict)
+            else {}
+        )
+    )
+    document_grounding_improvement_summary = (
+        optimization_report.get("document_grounding_improvement_summary")
+        if isinstance(optimization_report.get("document_grounding_improvement_summary"), dict)
+        else (
+            intake_case_summary.get("document_grounding_improvement_summary")
+            if isinstance(intake_case_summary.get("document_grounding_improvement_summary"), dict)
             else {}
         )
     )
@@ -843,6 +865,7 @@ def _build_runtime_workflow_optimization_guidance(
         "workflow_targeting_summary": dict(workflow_targeting_summary),
         "document_workflow_execution_summary": dict(document_workflow_execution_summary),
         "document_execution_drift_summary": dict(document_execution_drift_summary),
+        "document_grounding_improvement_summary": dict(document_grounding_improvement_summary),
         "document_drafting_next_action": dict(document_drafting_next_action),
         "complaint_type_generalization_summary": {
             "complaint_types": claim_types,
@@ -1260,6 +1283,16 @@ class FormalComplaintDocumentBuilder:
                 else {}
             )
         )
+        document_grounding_improvement_summary = (
+            workflow_optimization_guidance.get("document_grounding_improvement_summary")
+            if isinstance(workflow_optimization_guidance.get("document_grounding_improvement_summary"), dict)
+            else (
+                document_optimization.get("document_grounding_improvement_summary")
+                if isinstance(document_optimization, dict)
+                and isinstance(document_optimization.get("document_grounding_improvement_summary"), dict)
+                else {}
+            )
+        )
         filing_checklist = self._build_filing_checklist(drafting_readiness)
         self._annotate_filing_checklist_review_links(
             filing_checklist=filing_checklist,
@@ -1277,6 +1310,8 @@ class FormalComplaintDocumentBuilder:
             draft["document_workflow_execution_summary"] = dict(document_workflow_execution_summary)
         if document_execution_drift_summary:
             draft["document_execution_drift_summary"] = dict(document_execution_drift_summary)
+        if document_grounding_improvement_summary:
+            draft["document_grounding_improvement_summary"] = dict(document_grounding_improvement_summary)
         if document_drafting_next_action:
             draft["document_drafting_next_action"] = dict(document_drafting_next_action)
         if isinstance(draft.get("document_provenance_summary"), dict) and draft.get("document_provenance_summary"):
@@ -1317,6 +1352,7 @@ class FormalComplaintDocumentBuilder:
             "workflow_targeting_summary": dict(workflow_targeting_summary),
             "document_workflow_execution_summary": dict(document_workflow_execution_summary),
             "document_execution_drift_summary": dict(document_execution_drift_summary),
+            "document_grounding_improvement_summary": dict(document_grounding_improvement_summary),
             "document_drafting_next_action": dict(document_drafting_next_action),
             "document_provenance_summary": (
                 dict(draft.get("document_provenance_summary") or {})
@@ -1783,67 +1819,7 @@ class FormalComplaintDocumentBuilder:
             intake_case_summary = build_intake_case_review_summary(self.mediator)
         if not isinstance(intake_case_summary, dict) or not intake_case_summary:
             return {}
-
-        packet_summary = intake_case_summary.get("claim_support_packet_summary")
-        packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
-        alignment_tasks = intake_case_summary.get("alignment_evidence_tasks")
-        alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
-
-        unresolved_temporal_issue_ids = _dedupe_text_values(
-            packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
-        )
-        event_ids: List[str] = []
-        temporal_fact_ids: List[str] = []
-        temporal_relation_ids: List[str] = []
-        timeline_issue_ids: List[str] = []
-        temporal_issue_ids: List[str] = []
-        temporal_proof_bundle_ids: List[str] = []
-        temporal_proof_objectives: List[str] = []
-
-        for task in alignment_tasks:
-            if not isinstance(task, dict):
-                continue
-            event_ids.extend(_dedupe_text_values(task.get("event_ids") or []))
-            temporal_fact_ids.extend(_dedupe_text_values(task.get("temporal_fact_ids") or []))
-            temporal_relation_ids.extend(_dedupe_text_values(task.get("temporal_relation_ids") or []))
-            timeline_issue_ids.extend(_dedupe_text_values(task.get("timeline_issue_ids") or []))
-            temporal_issue_ids.extend(_dedupe_text_values(task.get("temporal_issue_ids") or []))
-            proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
-            if proof_bundle_id:
-                temporal_proof_bundle_ids.append(proof_bundle_id)
-            proof_objective = str(task.get("temporal_proof_objective") or "").strip()
-            if proof_objective:
-                temporal_proof_objectives.append(proof_objective)
-
-        temporal_handoff = {
-            "unresolved_temporal_issue_count": int(
-                packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
-            ),
-            "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
-            "chronology_task_count": int(packet_summary.get("temporal_gap_task_count", 0) or 0),
-            "event_ids": _dedupe_text_values(event_ids),
-            "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids),
-            "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids),
-            "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids),
-            "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids),
-            "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
-            "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
-        }
-        if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
-            temporal_handoff[key]
-            for key in (
-                "unresolved_temporal_issue_ids",
-                "event_ids",
-                "temporal_fact_ids",
-                "temporal_relation_ids",
-                "timeline_issue_ids",
-                "temporal_issue_ids",
-                "temporal_proof_bundle_ids",
-                "temporal_proof_objectives",
-            )
-        ):
-            return {}
-        return temporal_handoff
+        return build_claim_support_temporal_handoff_from_intake_case_summary(intake_case_summary)
 
     def _adapt_formal_complaint_to_package_draft(self, formal_complaint: Dict[str, Any]) -> Dict[str, Any]:
         caption = formal_complaint.get("caption", {}) if isinstance(formal_complaint.get("caption"), dict) else {}

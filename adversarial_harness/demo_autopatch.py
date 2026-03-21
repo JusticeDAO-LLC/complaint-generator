@@ -72,6 +72,11 @@ def _build_runtime_optimization_guidance(
         if isinstance(report.get("document_execution_drift_summary"), dict)
         else shared_context.get("document_execution_drift_summary")
     )
+    document_grounding_improvement_summary = (
+        report.get("document_grounding_improvement_summary")
+        if isinstance(report.get("document_grounding_improvement_summary"), dict)
+        else shared_context.get("document_grounding_improvement_summary")
+    )
 
     if not any(
         (
@@ -85,6 +90,7 @@ def _build_runtime_optimization_guidance(
             workflow_targeting_summary,
             document_workflow_execution_summary,
             document_execution_drift_summary,
+            document_grounding_improvement_summary,
         )
     ):
         return {}
@@ -99,6 +105,7 @@ def _build_runtime_optimization_guidance(
         "document_evidence_targeting_summary": dict(document_evidence_targeting_summary or {}),
         "document_workflow_execution_summary": dict(document_workflow_execution_summary or {}),
         "document_execution_drift_summary": dict(document_execution_drift_summary or {}),
+        "document_grounding_improvement_summary": dict(document_grounding_improvement_summary or {}),
         "complaint_type_generalization_summary": dict(complaint_targets or {}),
         "evidence_modality_generalization_summary": dict(evidence_targets or {}),
     }
