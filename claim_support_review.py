@@ -537,6 +537,8 @@ def _build_review_workflow_phase_priority(
 
     if prioritized_phase_name == "document_generation":
         proof_readiness_score = float(prioritized_signals.get("proof_readiness_score") or 0.0)
+        chronology_blocked = bool(prioritized_signals.get("chronology_blocked"))
+        temporal_gap_task_count = int(prioritized_signals.get("temporal_gap_task_count") or 0)
         unresolved_temporal_issue_count = int(prioritized_signals.get("unresolved_temporal_issue_count") or 0)
         unresolved_without_review_path_count = int(
             prioritized_signals.get("unresolved_without_review_path_count") or 0
@@ -549,6 +551,10 @@ def _build_review_workflow_phase_priority(
             f"unresolved temporal issues: {unresolved_temporal_issue_count}",
             f"unresolved without review path: {unresolved_without_review_path_count}",
         ]
+        if chronology_blocked:
+            chip_labels.append("chronology blocked: Yes")
+        if temporal_gap_task_count > 0:
+            chip_labels.append(f"chronology gap tasks: {temporal_gap_task_count}")
         if recommended_next_action:
             chip_labels.append(f"recommended action: {recommended_next_action}")
         return {

@@ -523,8 +523,24 @@ class PhaseManager:
             reviewable_escalation_ratio = round(reviewable_escalation_count / total_elements, 3)
         contradiction_penalty = 0.15 if blocking_contradictions > 0 else 0.0
         unresolved_temporal_issue_ids = self._build_unresolved_temporal_issue_ids(data)
+        unresolved_temporal_issue_count = len(unresolved_temporal_issue_ids)
+        chronology_penalty = min(
+            0.15,
+            (unresolved_temporal_issue_count * 0.03)
+            + (temporal_gap_task_count * 0.02),
+        )
         proof_readiness_score = round(
-            max(0.0, min(1.0, (credible_support_ratio * 0.45) + (draft_ready_element_ratio * 0.4) + (high_quality_parse_ratio * 0.15) - contradiction_penalty)),
+            max(
+                0.0,
+                min(
+                    1.0,
+                    (credible_support_ratio * 0.45)
+                    + (draft_ready_element_ratio * 0.4)
+                    + (high_quality_parse_ratio * 0.15)
+                    - contradiction_penalty
+                    - chronology_penalty,
+                ),
+            ),
             3,
         )
         evidence_completion_ready = (
@@ -549,7 +565,7 @@ class PhaseManager:
             'reviewable_escalation_ratio': reviewable_escalation_ratio,
             'claim_support_reviewable_escalation_count': reviewable_escalation_count,
             'claim_support_unresolved_without_review_path_count': unresolved_without_review_path_count,
-            'claim_support_unresolved_temporal_issue_count': len(unresolved_temporal_issue_ids),
+            'claim_support_unresolved_temporal_issue_count': unresolved_temporal_issue_count,
             'claim_support_unresolved_temporal_issue_ids': unresolved_temporal_issue_ids,
             'temporal_gap_task_count': temporal_gap_task_count,
             'temporal_gap_targeted_task_count': temporal_gap_targeted_task_count,

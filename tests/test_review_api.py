@@ -2597,6 +2597,8 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
             "proof readiness: 0.00",
             "unresolved temporal issues: 0",
             "unresolved without review path: 0",
+            "chronology blocked: Yes",
+            "chronology gap tasks: 1",
         ],
         "action_id": "review_packet_readiness",
         "button_id": "intake-next-action-review-packet-readiness",
@@ -2621,6 +2623,8 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
             "proof readiness: 0.00",
             "unresolved temporal issues: 0",
             "unresolved without review path: 0",
+            "chronology blocked: Yes",
+            "chronology gap tasks: 1",
         ],
         "notes": [
             "Document generation should wait until evidence review and packet blockers are reduced further.",

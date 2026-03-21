@@ -41,5 +41,6 @@ def test_evidence_phase_blocks_on_unresolved_temporal_issue_registry_entries():
         ComplaintPhase.EVIDENCE,
         "claim_support_unresolved_temporal_issue_ids",
     ) == ["temporal_issue_registry_001"]
+    assert pm.get_phase_data(ComplaintPhase.EVIDENCE, "proof_readiness_score") == 0.97
     assert pm.get_phase_data(ComplaintPhase.EVIDENCE, "evidence_completion_ready") is False
     assert pm.is_phase_complete(ComplaintPhase.EVIDENCE) is False
