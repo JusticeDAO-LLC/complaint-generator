@@ -3809,6 +3809,10 @@ class FormalComplaintDocumentBuilder:
         if references_notice and not any(
             "without providing the prompt written notice required" in str(item).lower()
             for item in allegations
+        ) and not any(
+            "notice to the applicant requires prompt written notice" in str(item).lower()
+            or "requires prompt written notice of a decision denying assistance" in str(item).lower()
+            for item in allegations
         ):
             synthesized.append(
                 f"Plaintiff alleges that {actor_label} took or maintained the challenged adverse housing action without providing the prompt written notice required for a decision denying assistance."
@@ -5412,7 +5416,29 @@ class FormalComplaintDocumentBuilder:
                     ],
                 }
             )
+        claims.sort(key=self._claim_order_score)
         return claims
+
+    def _claim_order_score(self, claim: Dict[str, Any]) -> tuple[int, int, int, str]:
+        if not isinstance(claim, dict):
+            return (9, 999, 999, "")
+        claim_type = normalize_claim_type(claim.get("claim_type") or "")
+        priority_map = {
+            "due_process_failure": 0,
+            "housing_discrimination": 1,
+            "retaliation": 2,
+            "disability_discrimination": 3,
+        }
+        support_summary = claim.get("support_summary") if isinstance(claim.get("support_summary"), dict) else {}
+        authority_count = len(_coerce_list(claim.get("supporting_exhibits")))
+        covered = int(support_summary.get("covered_elements", 0) or 0)
+        uncovered = int(support_summary.get("uncovered_elements", 0) or 0)
+        return (
+            priority_map.get(claim_type, 8),
+            -covered,
+            uncovered - authority_count,
+            str(claim.get("count_title") or claim_type),
+        )
 
     def _humanize_claim_title(self, claim_type: str, claim_facts: Optional[List[str]] = None) -> str:
         normalized = normalize_claim_type(claim_type or "")
@@ -8255,9 +8281,31 @@ class FormalComplaintDocumentBuilder:
 
         best_match: Optional[Dict[str, Any]] = None
         best_score = 0
+        lowered_line = str(line or "").lower()
+        prefers_evidence = any(
+            marker in lowered_line
+            for marker in (
+                "on march",
+                "on april",
+                "on may",
+                "on june",
+                "on july",
+                "on august",
+                "on september",
+                "on october",
+                "on november",
+                "on december",
+                "denial notice",
+                "grievance request",
+                "review decision",
+                "hearing officer",
+                "sent plaintiff",
+            )
+        ) or _contains_date_anchor(line)
         for exhibit in exhibits:
             if not isinstance(exhibit, dict):
                 continue
+            exhibit_kind = str(exhibit.get("kind") or "").strip().lower()
             exhibit_tokens = self._text_tokens(
                 " ".join(
                     str(exhibit.get(field) or "")
@@ -8265,6 +8313,10 @@ class FormalComplaintDocumentBuilder:
                 )
             )
             score = len(line_tokens & exhibit_tokens)
+            if prefers_evidence and exhibit_kind == "evidence":
+                score += 4
+            if prefers_evidence and exhibit_kind == "authority":
+                score -= 2
             if score > best_score:
                 best_score = score
                 best_match = exhibit

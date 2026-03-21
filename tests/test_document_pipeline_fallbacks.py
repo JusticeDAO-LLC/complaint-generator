@@ -339,8 +339,8 @@ def test_factual_allegations_synthesize_policy_violation_allegations_from_notice
         "failed to provide the informal review, grievance, or appeal process" in item
         for item in allegations
     )
-    assert any(
-        ("denial of assistance" in item) or ("denied Plaintiff housing assistance" in item)
+    assert not any(
+        "without providing the prompt written notice required" in item
         for item in allegations
     )
     assert any(("the Housing Authority" in item) or ("HACC" in item) for item in allegations)
@@ -491,6 +491,7 @@ def test_build_draft_uses_claim_specific_titles_and_housing_process_relief():
     )
 
     count_titles = [claim.get("count_title") for claim in draft["claims_for_relief"]]
+    assert count_titles[0] == "Denial of Required Notice and Informal Review"
     assert "Housing Discrimination and Wrongful Denial of Assistance" in count_titles
     assert "Denial of Required Notice and Informal Review" in count_titles
     assert any(
