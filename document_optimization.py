@@ -623,6 +623,36 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     alignment_tasks = summary.get("alignment_evidence_tasks")
     alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
 
+    def _collect_temporal_registry_identifiers(registry: Any, *keys: str) -> List[str]:
+        identifiers: List[str] = []
+        for entry in registry if isinstance(registry, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            for key in keys:
+                text = str(entry.get(key) or "").strip()
+                if text:
+                    identifiers.append(text)
+                    break
+        return _dedupe_text_values(identifiers)
+
+    def _collect_unresolved_temporal_issue_identifiers(registry: Any) -> List[str]:
+        issue_ids: List[str] = []
+        for entry in registry if isinstance(registry, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            status = str(entry.get("current_resolution_status") or entry.get("status") or "open").strip().lower()
+            if status in {"resolved", "closed", "complete", "completed"}:
+                continue
+            issue_id = str(
+                entry.get("temporal_issue_id")
+                or entry.get("issue_id")
+                or entry.get("timeline_issue_id")
+                or ""
+            ).strip()
+            if issue_id:
+                issue_ids.append(issue_id)
+        return _dedupe_text_values(issue_ids)
+
     unresolved_temporal_issue_ids = _dedupe_text_values(
         packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
     )
@@ -649,17 +679,63 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
         if proof_objective:
             temporal_proof_objectives.append(proof_objective)
 
+    raw_event_ids = _collect_temporal_registry_identifiers(
+        summary.get("event_ledger"),
+        "event_id",
+        "temporal_fact_id",
+        "fact_id",
+    )
+    raw_temporal_fact_ids = _collect_temporal_registry_identifiers(
+        summary.get("temporal_fact_registry"),
+        "temporal_fact_id",
+        "fact_id",
+        "event_id",
+    )
+    if not raw_temporal_fact_ids:
+        raw_temporal_fact_ids = _collect_temporal_registry_identifiers(
+            summary.get("event_ledger"),
+            "temporal_fact_id",
+            "event_id",
+            "fact_id",
+        )
+    raw_temporal_relation_ids = _collect_temporal_registry_identifiers(
+        summary.get("temporal_relation_registry"),
+        "temporal_relation_id",
+        "relation_id",
+    )
+    if not raw_temporal_relation_ids:
+        raw_temporal_relation_ids = _collect_temporal_registry_identifiers(
+            summary.get("timeline_relations"),
+            "temporal_relation_id",
+            "relation_id",
+        )
+    raw_temporal_issue_ids = _collect_temporal_registry_identifiers(
+        summary.get("temporal_issue_registry"),
+        "temporal_issue_id",
+        "issue_id",
+        "timeline_issue_id",
+    )
+    raw_unresolved_temporal_issue_ids = _collect_unresolved_temporal_issue_identifiers(
+        summary.get("temporal_issue_registry")
+    )
+
+    unresolved_temporal_issue_count = int(
+        packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
+    )
+    if not unresolved_temporal_issue_count and raw_unresolved_temporal_issue_ids:
+        unresolved_temporal_issue_count = len(raw_unresolved_temporal_issue_ids)
+    if not unresolved_temporal_issue_ids:
+        unresolved_temporal_issue_ids = raw_unresolved_temporal_issue_ids
+
     temporal_handoff = {
-        "unresolved_temporal_issue_count": int(
-            packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
-        ),
+        "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
         "unresolved_temporal_issue_ids": unresolved_temporal_issue_ids,
         "chronology_task_count": int(packet_summary.get("temporal_gap_task_count", 0) or 0),
-        "event_ids": _dedupe_text_values(event_ids),
-        "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids),
-        "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids),
-        "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids),
-        "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids),
+        "event_ids": _dedupe_text_values(event_ids) or raw_event_ids,
+        "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids) or raw_temporal_fact_ids,
+        "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids) or raw_temporal_relation_ids,
+        "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids,
+        "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids,
         "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
         "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
     }
@@ -2011,6 +2087,16 @@ class AgenticDocumentOptimizer:
             if isinstance(document_drafting_next_action, dict)
             else {}
         )
+        document_grounding_improvement_next_action = (
+            workflow_guidance.get("document_grounding_improvement_next_action")
+            if isinstance(workflow_guidance.get("document_grounding_improvement_next_action"), dict)
+            else intake_status.get("document_grounding_improvement_next_action")
+        )
+        document_grounding_improvement_next_action = (
+            dict(document_grounding_improvement_next_action)
+            if isinstance(document_grounding_improvement_next_action, dict)
+            else {}
+        )
         intake_handoff = intake_status.get("intake_summary_handoff") if isinstance(intake_status, dict) else {}
         intake_handoff = intake_handoff if isinstance(intake_handoff, dict) else {}
         blocker_follow_up_summary = intake_case_file.get("blocker_follow_up_summary") if isinstance(intake_case_file.get("blocker_follow_up_summary"), dict) else {}
@@ -2440,6 +2526,7 @@ class AgenticDocumentOptimizer:
                 else []
             ),
             "document_drafting_next_action": document_drafting_next_action,
+            "document_grounding_improvement_next_action": document_grounding_improvement_next_action,
             "intake_priorities": {
                 "covered_objectives": covered_objectives,
                 "uncovered_objectives": uncovered_objectives,
@@ -3691,6 +3778,17 @@ class AgenticDocumentOptimizer:
             if isinstance(support_context.get("document_drafting_next_action"), dict)
             else {}
         )
+        document_grounding_improvement_next_action = (
+            support_context.get("document_grounding_improvement_next_action")
+            if isinstance(support_context.get("document_grounding_improvement_next_action"), dict)
+            else {}
+        )
+        grounding_focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "").strip()
+        if (
+            str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy"
+            and grounding_focus_section in self.VALID_FOCUS_SECTIONS
+        ):
+            return grounding_focus_section
         drafting_focus_section = str(document_drafting_next_action.get("focus_section") or "").strip()
         if (
             str(document_drafting_next_action.get("action") or "").strip().lower() == "realign_document_drafting"
@@ -3845,6 +3943,32 @@ class AgenticDocumentOptimizer:
                     "executed_claim_element_id": executed_claim_element,
                     "preferred_support_kind": preferred_support_kind,
                     "focus_section": focus_section_hint,
+                }
+            )
+        document_grounding_improvement_next_action = (
+            support_context.get("document_grounding_improvement_next_action")
+            if isinstance(support_context.get("document_grounding_improvement_next_action"), dict)
+            else {}
+        )
+        if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
+            target_claim_element = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
+            current_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
+            suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
+            candidate_rows.append(
+                {
+                    "claim_type": "document_generation",
+                    "text": (
+                        f"Refine grounding for {target_claim_element.replace('_', ' ')}"
+                        + (
+                            f" by trying {suggested_support_kind.replace('_', ' ')} instead of {current_support_kind.replace('_', ' ')}."
+                            if target_claim_element and suggested_support_kind and current_support_kind
+                            else "."
+                        )
+                    ),
+                    "kind": "document_grounding_improvement_next_action",
+                    "claim_element_id": target_claim_element,
+                    "preferred_support_kind": suggested_support_kind or current_support_kind,
+                    "focus_section": str(document_grounding_improvement_next_action.get("focus_section") or "").strip(),
                 }
             )
         workflow_targeting_summary = (

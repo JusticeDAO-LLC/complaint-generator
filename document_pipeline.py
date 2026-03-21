@@ -1898,8 +1898,6 @@ class FormalComplaintDocumentBuilder:
         raw_event_ids = _collect_temporal_registry_identifiers(
             intake_case_summary.get("event_ledger"),
             "event_id",
-            "temporal_fact_id",
-            "fact_id",
         )
         raw_temporal_fact_ids = _collect_temporal_registry_identifiers(
             intake_case_summary.get("temporal_fact_registry"),
@@ -1991,6 +1989,15 @@ class FormalComplaintDocumentBuilder:
         if not callable(validation_getter):
             return {}
 
+        mediator_state = getattr(self.mediator, "state", None)
+        legal_classification = getattr(mediator_state, "legal_classification", {})
+        legal_classification = legal_classification if isinstance(legal_classification, dict) else {}
+        legal_classification_claim_types = legal_classification.get("claim_types")
+        legal_classification_claim_types = (
+            legal_classification_claim_types
+            if isinstance(legal_classification_claim_types, list)
+            else []
+        )
         claim_types = _unique_preserving_order(
             [
                 *[
@@ -2000,7 +2007,7 @@ class FormalComplaintDocumentBuilder:
                 ],
                 *[
                     str(item).strip()
-                    for item in (((getattr(self.mediator, "state", None) or object()).legal_classification or {}).get("claim_types") or [])
+                    for item in legal_classification_claim_types
                 ],
             ]
         )

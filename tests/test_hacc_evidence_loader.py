@@ -207,6 +207,36 @@ def test_repository_grounding_scoring_prefers_curated_hacc_excerpt_sources(tmp_p
     assert hits[0]["source_path"] == str(synth)
 
 
+def test_repository_grounding_scoring_demotes_operational_regression_docs(tmp_path, monkeypatch):
+    synth = tmp_path / "scripts" / "synthesize_hacc_complaint.py"
+    synth.parent.mkdir(parents=True)
+    synth.write_text(
+        "HACC policy describes scheduling and procedures for informal review. Notice to the Applicant requires prompt written notice.",
+        encoding="utf-8",
+    )
+    regression = tmp_path / "docs" / "HACC_GROUNDING_REGRESSION.md"
+    regression.parent.mkdir(parents=True, exist_ok=True)
+    regression.write_text(
+        "HACC Grounding Regression. VS Code task. Related smoke-matrix task. Guarded smoke-matrix task.",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [regression, synth])
+    monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: tmp_path)
+
+    hits = hacc_evidence_module._build_repository_grounding_hits(
+        query="written notice informal review",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Notice to the Applicant", "Scheduling an Informal Review"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        top_k=2,
+    )
+
+    assert hits[0]["source_path"] == str(synth)
+
+
 def test_build_hacc_repository_grounded_seed_produces_curated_packets_without_engine(monkeypatch):
     candidate = {
         "title": "ADMINISTRATIVE PLAN",
@@ -258,3 +288,40 @@ def test_build_hacc_repository_grounded_seed_produces_curated_packets_without_en
     assert seed["key_facts"]["search_summary"]["effective_search_mode"] == "repository_fallback"
     assert seed["key_facts"]["repository_evidence_candidates"][0]["title"] == "ADMINISTRATIVE PLAN"
     assert seed["key_facts"]["mediator_evidence_packets"][0]["document_text"].startswith("Notice to the Applicant")
+
+
+def test_repository_grounding_refines_python_source_snippet_to_policy_literal(tmp_path, monkeypatch):
+    source = tmp_path / "synthesize_hacc_complaint.py"
+    source.write_text(
+        """
+import argparse
+
+PATTERNS = [
+    (
+        r"Scheduling an Informal Review",
+        "HACC policy describes scheduling and procedures for informal review.",
+    ),
+    (
+        r"Notice to the Applicant",
+        "HACC must give an applicant prompt notice of a decision denying assistance.",
+    ),
+]
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(hacc_evidence_module, "_repository_grounding_paths", lambda: [source])
+    monkeypatch.setattr(hacc_evidence_module, "_repo_root", lambda: tmp_path)
+
+    hits = hacc_evidence_module._build_repository_grounding_hits(
+        query="Scheduling an Informal Review",
+        complaint_type="housing_discrimination",
+        description="Repository-grounded HACC complaint",
+        anchor_terms=["Scheduling an Informal Review", "Notice to the Applicant"],
+        theory_labels=["due_process_failure"],
+        protected_bases=None,
+        top_k=1,
+    )
+
+    assert len(hits) == 1
+    assert hits[0]["snippet"] == "HACC policy describes scheduling and procedures for informal review."

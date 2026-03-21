@@ -4,6 +4,7 @@ HACC evidence-backed seed generation for the adversarial harness.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import logging
 import re
@@ -149,11 +150,11 @@ def _repository_grounding_path_weight(path: Path) -> float:
         score += 6.0
     if normalized.endswith("tests/test_synthesize_hacc_complaint.py"):
         score += 4.5
-    if "hacc_grounding_regression" in normalized:
-        score += 2.0
     if "/docs/" in normalized and "hacc_" in normalized:
         score += 1.0
     if normalized.endswith("/readme.md") or normalized.endswith("readme.md"):
+        score -= 6.0
+    if "hacc_grounding_regression" in normalized:
         score -= 6.0
     if any(marker in normalized for marker in ("integration_architecture", "files_summary", "improvement_plan", "optimization_plan")):
         score -= 2.5
@@ -230,6 +231,12 @@ def _build_repository_grounding_hits(
             anchor_terms=list(anchor_terms or []) or [query, complaint_type, description],
             fallback_snippet=raw_text[:520],
         )
+        snippet = _refine_repository_grounding_snippet(
+            path=path,
+            raw_text=raw_text,
+            current_snippet=snippet,
+            anchor_terms=list(anchor_terms or []) or [query, complaint_type, description],
+        )
         excerpt_quality = _score_excerpt_match(snippet, list(anchor_terms or []) or [query, complaint_type, description])
         score += (
             2.5 * excerpt_quality[0]
@@ -255,6 +262,102 @@ def _build_repository_grounding_hits(
         )
     hits.sort(key=lambda item: (-float(item.get("score") or 0.0), str(item.get("title") or "")))
     return hits[: max(1, int(top_k))]
+
+
+def _extract_python_string_literals(raw_text: str) -> List[str]:
+    if not raw_text.strip():
+        return []
+    try:
+        tree = ast.parse(raw_text)
+    except Exception:
+        return []
+    literals: List[str] = []
+    for node in ast.walk(tree):
+        value = None
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            value = node.value
+        if value is None:
+            continue
+        cleaned = _clean_extracted_excerpt(value)
+        if len(cleaned) < 20:
+            continue
+        if len(cleaned.split()) <= 6 and not re.search(r"[.!?]", cleaned):
+            continue
+        literals.append(cleaned)
+    return literals
+
+
+def _looks_like_code_text(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "import ",
+            "def ",
+            "class ",
+            "assert ",
+            "pytest",
+            "module.",
+            " = [",
+            "return ",
+            "pathlib",
+        )
+    )
+
+
+def _anchor_priority_score(text: str, anchor_terms: Sequence[str]) -> int:
+    lowered = str(text or "").lower()
+    for index, term in enumerate(anchor_terms):
+        normalized = str(term or "").strip().lower()
+        if not normalized:
+            continue
+        if normalized in lowered:
+            return max(0, 20 - index)
+        term_tokens = [token for token in re.findall(r"[a-z0-9]+", normalized) if len(token) > 2]
+        if not term_tokens:
+            continue
+        overlap = sum(1 for token in term_tokens if token in lowered)
+        if overlap >= max(2, len(term_tokens) - 1):
+            return max(0, 18 - index)
+    return 0
+
+
+def _refine_repository_grounding_snippet(
+    *,
+    path: Path,
+    raw_text: str,
+    current_snippet: str,
+    anchor_terms: Sequence[str],
+) -> str:
+    current = _clean_extracted_excerpt(current_snippet)
+    current_score = _score_excerpt_match(current, anchor_terms)
+    current_is_code = _looks_like_code_text(current)
+    if current_is_code:
+        current_rank = (-1, -5, 0, 0, 0)
+    else:
+        current_rank = (_anchor_priority_score(current, anchor_terms), *current_score)
+    best_snippet = current
+    best_score = current_rank
+
+    candidates: List[str] = []
+    if path.suffix.lower() == ".py":
+        candidates.extend(_extract_python_string_literals(raw_text))
+
+    for candidate in candidates:
+        cleaned = _clean_extracted_excerpt(candidate)
+        if not cleaned:
+            continue
+        score = _score_excerpt_match(cleaned, anchor_terms)
+        if "hacc policy" in cleaned.lower():
+            score = (score[0] + 1, score[1], score[2], score[3])
+        if _looks_like_code_text(cleaned):
+            score = (max(-5, score[0] - 2), 0, max(0, score[2] - 1), min(score[3], 160))
+        rank = (_anchor_priority_score(cleaned, anchor_terms), *score)
+        if rank > best_score:
+            best_snippet = cleaned
+            best_score = rank
+
+    return best_snippet or current
 
 
 def _build_repository_grounding_bundle(

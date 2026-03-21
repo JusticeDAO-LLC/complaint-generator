@@ -1,6 +1,24 @@
 from typing import Any, Dict, List
 
 
+def _build_alternate_support_kinds(
+    current_support_kind: Any,
+    candidate_support_kinds: Any,
+) -> List[str]:
+    normalized_current = str(current_support_kind or "").strip().lower()
+    ordered: List[str] = []
+    for item in candidate_support_kinds if isinstance(candidate_support_kinds, list) else []:
+        normalized = str(item or "").strip().lower()
+        if not normalized or normalized == normalized_current or normalized in ordered:
+            continue
+        ordered.append(normalized)
+    for fallback in ["testimony", "evidence", "authority"]:
+        if fallback == normalized_current or fallback in ordered:
+            continue
+        ordered.append(fallback)
+    return ordered
+
+
 def _build_document_drafting_next_action(document_execution_drift_summary: Any) -> Dict[str, Any]:
     drift_summary = (
         document_execution_drift_summary
@@ -103,6 +121,94 @@ def _build_document_grounding_recovery_action(
         "fact_backed_ratio": fact_backed_ratio,
         "missing_fact_bundle": missing_fact_bundle[:4],
         "recovery_source": recovery_source,
+    }
+
+
+def _build_document_grounding_improvement_next_action(
+    document_grounding_improvement_summary: Any,
+    document_grounding_recovery_action: Any,
+) -> Dict[str, Any]:
+    improvement_summary = (
+        document_grounding_improvement_summary
+        if isinstance(document_grounding_improvement_summary, dict)
+        else {}
+    )
+    if not improvement_summary:
+        return {}
+
+    regressed_flag = bool(improvement_summary.get("regressed_flag"))
+    stalled_flag = bool(improvement_summary.get("stalled_flag"))
+    if not regressed_flag and not stalled_flag:
+        return {}
+
+    recovery_action = (
+        document_grounding_recovery_action
+        if isinstance(document_grounding_recovery_action, dict)
+        else {}
+    )
+    targeted_claim_elements = [
+        str(item).strip()
+        for item in list(improvement_summary.get("targeted_claim_elements") or [])
+        if str(item).strip()
+    ]
+    preferred_support_kinds = [
+        str(item).strip()
+        for item in list(improvement_summary.get("preferred_support_kinds") or [])
+        if str(item).strip()
+    ]
+    claim_element_id = (
+        str(recovery_action.get("claim_element_id") or "").strip()
+        or (targeted_claim_elements[0] if targeted_claim_elements else "")
+    )
+    preferred_support_kind = (
+        str(recovery_action.get("preferred_support_kind") or "").strip()
+        or (preferred_support_kinds[0] if preferred_support_kinds else "")
+    )
+    alternate_support_kinds = _build_alternate_support_kinds(
+        preferred_support_kind,
+        preferred_support_kinds,
+    )
+    suggested_support_kind = alternate_support_kinds[0] if alternate_support_kinds else ""
+    focus_section = str(recovery_action.get("focus_section") or "factual_allegations").strip() or "factual_allegations"
+    claim_type = str(recovery_action.get("claim_type") or "").strip()
+    initial_ratio = float(improvement_summary.get("initial_fact_backed_ratio") or 0.0)
+    final_ratio = float(improvement_summary.get("final_fact_backed_ratio") or 0.0)
+    ratio_delta = float(improvement_summary.get("fact_backed_ratio_delta") or 0.0)
+    status = "regressed" if regressed_flag else "stalled"
+    if regressed_flag:
+        description = "Grounding recovery regressed; switch support lanes or retarget the next grounding cycle."
+    else:
+        description = "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle."
+    if claim_element_id and preferred_support_kind and suggested_support_kind:
+        description = (
+            f"{description[:-1]} for {claim_element_id} by trying {suggested_support_kind} instead of "
+            f"{preferred_support_kind}."
+        )
+    elif claim_element_id and preferred_support_kind:
+        description = (
+            f"{description[:-1]} for {claim_element_id} using a different support lane than "
+            f"{preferred_support_kind}."
+        )
+    elif claim_element_id:
+        description = f"{description[:-1]} for {claim_element_id}."
+
+    return {
+        "action": "refine_document_grounding_strategy",
+        "phase_name": "document_generation",
+        "description": description,
+        "status": status,
+        "claim_type": claim_type,
+        "claim_element_id": claim_element_id,
+        "focus_section": focus_section,
+        "preferred_support_kind": preferred_support_kind,
+        "suggested_support_kind": suggested_support_kind,
+        "alternate_support_kinds": alternate_support_kinds,
+        "initial_fact_backed_ratio": initial_ratio,
+        "final_fact_backed_ratio": final_ratio,
+        "fact_backed_ratio_delta": ratio_delta,
+        "recovery_attempted_flag": bool(improvement_summary.get("recovery_attempted_flag")),
+        "targeted_claim_elements": targeted_claim_elements,
+        "preferred_support_kinds": preferred_support_kinds,
     }
 
 
@@ -537,6 +643,10 @@ def build_intake_status_summary(
     )
     if isinstance(raw_document_grounding_recovery_action, dict) and raw_document_grounding_recovery_action:
         document_grounding_recovery_action = dict(raw_document_grounding_recovery_action)
+    document_grounding_improvement_next_action = _build_document_grounding_improvement_next_action(
+        document_grounding_improvement_summary,
+        document_grounding_recovery_action,
+    )
     compact_next_action: Dict[str, Any] = {}
     primary_validation_target = {}
     if next_action:
@@ -563,6 +673,8 @@ def build_intake_status_summary(
         compact_next_action["document_drafting_next_action"] = dict(document_drafting_next_action)
     if document_grounding_recovery_action:
         compact_next_action["document_grounding_recovery_action"] = dict(document_grounding_recovery_action)
+    if document_grounding_improvement_next_action:
+        compact_next_action["document_grounding_improvement_next_action"] = dict(document_grounding_improvement_next_action)
 
     summary = {
         "current_phase": str(raw_status.get("current_phase") or "").strip(),
@@ -592,6 +704,8 @@ def build_intake_status_summary(
     }
     if document_grounding_recovery_action:
         summary["document_grounding_recovery_action"] = document_grounding_recovery_action
+    if document_grounding_improvement_next_action:
+        summary["document_grounding_improvement_next_action"] = document_grounding_improvement_next_action
     if isinstance(document_grounding_improvement_summary, dict) and document_grounding_improvement_summary:
         summary["document_grounding_improvement_summary"] = dict(document_grounding_improvement_summary)
     if include_iteration_count:
@@ -670,6 +784,10 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     )
     if isinstance(raw_document_grounding_recovery_action, dict) and raw_document_grounding_recovery_action:
         document_grounding_recovery_action = dict(raw_document_grounding_recovery_action)
+    document_grounding_improvement_next_action = _build_document_grounding_improvement_next_action(
+        document_grounding_improvement_summary,
+        document_grounding_recovery_action,
+    )
     next_action = raw_status.get("next_action")
     question_candidate_summary = raw_status.get("question_candidate_summary")
     adversarial_intake_priority_summary = raw_status.get("adversarial_intake_priority_summary")
@@ -855,6 +973,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         ),
         "document_drafting_next_action": document_drafting_next_action,
         "document_grounding_recovery_action": document_grounding_recovery_action,
+        "document_grounding_improvement_next_action": document_grounding_improvement_next_action,
         "next_action": next_action if isinstance(next_action, dict) else {},
         "question_candidate_summary": (
             question_candidate_summary if isinstance(question_candidate_summary, dict) else {}

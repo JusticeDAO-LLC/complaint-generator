@@ -194,6 +194,68 @@ def test_build_intake_status_summary_includes_document_grounding_recovery_action
     assert summary["next_action"]["document_grounding_recovery_action"] == summary["document_grounding_recovery_action"]
 
 
+def test_build_intake_status_summary_includes_document_grounding_improvement_next_action():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "intake_readiness": {
+            "score": 0.51,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": [],
+            "criteria": {},
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 1,
+            "proof_lead_count": 1,
+        },
+        "document_provenance_summary": {
+            "fact_backed_ratio": 0.25,
+            "low_grounding_flag": True,
+        },
+        "document_grounding_improvement_summary": {
+            "initial_fact_backed_ratio": 0.25,
+            "final_fact_backed_ratio": 0.25,
+            "fact_backed_ratio_delta": 0.0,
+            "stalled_flag": True,
+            "targeted_claim_elements": ["protected_activity"],
+            "preferred_support_kinds": ["authority"],
+            "recovery_attempted_flag": True,
+        },
+        "alignment_evidence_tasks": [
+            {
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "fallback_lanes": ["authority", "testimony"],
+                "missing_fact_bundle": ["Complaint timing", "Manager knowledge"],
+            }
+        ],
+        "next_action": {"action": "complete_evidence"},
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["document_grounding_improvement_next_action"] == {
+        "action": "refine_document_grounding_strategy",
+        "phase_name": "document_generation",
+        "description": "Grounding recovery stalled; switch support lanes or retarget the next grounding cycle for protected_activity by trying testimony instead of authority.",
+        "status": "stalled",
+        "claim_type": "retaliation",
+        "claim_element_id": "protected_activity",
+        "focus_section": "factual_allegations",
+        "preferred_support_kind": "authority",
+        "suggested_support_kind": "testimony",
+        "alternate_support_kinds": ["testimony", "evidence"],
+        "initial_fact_backed_ratio": 0.25,
+        "final_fact_backed_ratio": 0.25,
+        "fact_backed_ratio_delta": 0.0,
+        "recovery_attempted_flag": True,
+        "targeted_claim_elements": ["protected_activity"],
+        "preferred_support_kinds": ["authority"],
+    }
+    assert summary["next_action"]["document_grounding_improvement_next_action"] == summary["document_grounding_improvement_next_action"]
+
+
 def test_build_intake_case_review_summary_returns_additive_structured_fields():
     mediator = Mock()
     mediator.get_three_phase_status.return_value = {

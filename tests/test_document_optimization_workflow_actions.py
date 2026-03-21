@@ -381,3 +381,30 @@ def test_build_document_grounding_improvement_summary_detects_improvement():
     assert summary["low_grounding_resolved_flag"] is True
     assert summary["recovery_attempted_flag"] is True
     assert summary["targeted_claim_elements"] == ["protected_activity"]
+
+
+def test_select_support_context_includes_document_grounding_improvement_action():
+    optimizer = AgenticDocumentOptimizer(Mock())
+    selected = optimizer._select_support_context(
+        support_context={
+            "claims": [],
+            "evidence": [],
+            "workflow_action_queue": [],
+            "evidence_workflow_action_queue": [],
+            "document_drafting_next_action": {},
+            "document_grounding_improvement_next_action": {
+                "action": "refine_document_grounding_strategy",
+                "claim_element_id": "protected_activity",
+                "preferred_support_kind": "authority",
+                "suggested_support_kind": "testimony",
+                "focus_section": "factual_allegations",
+            },
+            "workflow_targeting_summary": {},
+        },
+        focus_section="factual_allegations",
+        draft={"factual_allegations": []},
+    )
+
+    assert selected["top_support"]
+    assert selected["top_support"][0]["kind"] == "document_grounding_improvement_next_action"
+    assert selected["top_support"][0]["preferred_support_kind"] == "testimony"

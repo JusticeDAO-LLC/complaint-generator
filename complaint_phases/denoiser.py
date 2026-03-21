@@ -4814,6 +4814,29 @@ class ComplaintDenoiser:
                     question_text = (
                         f"What evidence would best ground {claim_element_label} for {claim_type}?{bundle_hint}"
                     )
+            elif action_code == 'refine_document_grounding_strategy':
+                suggested_support_kind = str(action.get('suggested_support_kind') or '').strip().lower()
+                alternate_support_kinds = [
+                    str(item).strip().lower()
+                    for item in (action.get('alternate_support_kinds') or [])
+                    if str(item).strip()
+                ]
+                next_lane = suggested_support_kind or (alternate_support_kinds[0] if alternate_support_kinds else '')
+                if next_lane == 'authority':
+                    question_text = (
+                        f"The last grounding pass did not improve enough. What legal authority, policy, or official document can better ground "
+                        f"{claim_element_label} for {claim_type}?"
+                    )
+                elif next_lane == 'testimony':
+                    question_text = (
+                        f"The last grounding pass did not improve enough. What first-hand testimony or witness detail can better ground "
+                        f"{claim_element_label} for {claim_type}?"
+                    )
+                else:
+                    question_text = (
+                        f"The last grounding pass did not improve enough. What stronger evidence can better ground "
+                        f"{claim_element_label} for {claim_type}?"
+                    )
             else:
                 question_text = (
                     f"What evidence would best help us {action_text.lower()}"
@@ -4832,8 +4855,11 @@ class ComplaintDenoiser:
                     'claim_element_id': claim_element_id,
                     'claim_element_label': claim_element_label,
                     'preferred_support_kind': preferred_support_kind,
+                    'suggested_support_kind': str(action.get('suggested_support_kind') or '').strip().lower(),
+                    'alternate_support_kinds': list(action.get('alternate_support_kinds') or []),
                     'missing_fact_bundle': missing_fact_bundle,
                     'document_grounding_recovery': action_code == 'recover_document_grounding',
+                    'document_grounding_strategy_refinement': action_code == 'refine_document_grounding_strategy',
                 },
                 'priority': 'high',
                 'proof_priority': 0,

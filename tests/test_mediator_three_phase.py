@@ -2019,6 +2019,100 @@ class TestMediatorThreePhaseIntegration:
         assert calls[0]['preferred_support_kind'] == 'authority'
         assert result['document_grounding_recovery_action']['claim_element_id'] == 'protected_activity'
 
+    def test_grounding_improvement_action_drives_alternate_support_lane_in_evidence_queue(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_provenance_summary',
+            {'fact_backed_ratio': 0.25, 'low_grounding_flag': True},
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_recovery_action',
+            {
+                'action': 'recover_document_grounding',
+                'phase_name': 'document_generation',
+                'description': 'Strengthen draft grounding for protected_activity before formalization.',
+                'claim_type': 'retaliation',
+                'claim_element_id': 'protected_activity',
+                'focus_section': 'factual_allegations',
+                'preferred_support_kind': 'authority',
+                'fact_backed_ratio': 0.25,
+                'missing_fact_bundle': ['Complaint timing'],
+                'recovery_source': 'alignment_evidence_task',
+            },
+        )
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.FORMALIZATION,
+            'document_grounding_improvement_summary',
+            {
+                'initial_fact_backed_ratio': 0.25,
+                'final_fact_backed_ratio': 0.25,
+                'fact_backed_ratio_delta': 0.0,
+                'stalled_flag': True,
+                'targeted_claim_elements': ['protected_activity'],
+                'preferred_support_kinds': ['authority'],
+                'recovery_attempted_flag': True,
+            },
+        )
+
+        queue = mediator._build_evidence_workflow_action_queue([], [])
+
+        assert queue[0]['action_code'] == 'refine_document_grounding_strategy'
+        assert queue[0]['preferred_support_kind'] == 'authority'
+        assert queue[0]['suggested_support_kind'] == 'testimony'
+
+    def test_process_evidence_denoising_uses_suggested_support_lane_for_grounding_refinement(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph', mediator.kg_builder.build_from_text("I complained to HR."))
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'dependency_graph', mediator.dg_builder.build_from_claims([{'name': 'Retaliation', 'type': 'retaliation'}], {}))
+
+        calls = []
+
+        def fake_add_evidence(evidence_data):
+            calls.append(evidence_data)
+            return {'added': True}
+
+        mediator.add_evidence_to_graphs = fake_add_evidence
+
+        mediator.process_evidence_denoising(
+            {
+                'type': 'evidence_clarification',
+                'question': 'The last grounding pass did not improve enough. What first-hand testimony or witness detail can better ground Protected activity for retaliation?',
+                'context': {
+                    'workflow_action': True,
+                    'document_grounding_strategy_refinement': True,
+                    'claim_type': 'retaliation',
+                    'claim_element_id': 'protected_activity',
+                    'preferred_support_kind': 'authority',
+                    'suggested_support_kind': 'testimony',
+                },
+            },
+            'I told HR directly on January 5.',
+        )
+
+        assert calls
+        assert calls[0]['claim_element_id'] == 'protected_activity'
+        assert calls[0]['preferred_support_kind'] == 'authority'
+
     def test_process_evidence_and_legal_denoising_include_confirmed_intake_handoff(self):
         """Evidence and formalization workflow payloads should preserve the confirmed intake handoff."""
         from mediator.mediator import Mediator

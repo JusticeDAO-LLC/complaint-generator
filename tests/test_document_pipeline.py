@@ -674,39 +674,6 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
         for fact in claim.get("supporting_facts", [])
     )
     assert result["draft"]["verification"]["title"] == "Verification"
-
-
-def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
-    mediator = Mock()
-    mediator.get_user_evidence.return_value = [
-        {
-            "id": 7,
-            "cid": "bafy-evidence",
-            "description": "Hearing request email",
-            "claim_type": "retaliation",
-            "metadata": {
-                "document_graph_summary": {
-                    "entity_count": 2,
-                    "relationship_count": 1,
-                }
-            },
-        }
-    ]
-    mediator.get_evidence_facts.return_value = [
-        {"text": "Email requested a grievance hearing on March 3, 2026."},
-        {"text": "Response denied the request on March 10, 2026."},
-    ]
-    builder = FormalComplaintDocumentBuilder(mediator)
-
-    exhibits = builder._collect_exhibits(
-        user_id="user-1",
-        claim_types=["retaliation"],
-        support_claims={},
-    )
-
-    assert len(exhibits) == 1
-    assert "Email requested a grievance hearing on March 3, 2026." in exhibits[0]["summary"]
-    assert "Graph extraction: 2 entities, 1 relationships." in exhibits[0]["summary"]
     assert result["draft"]["certificate_of_service"]["title"] == "Certificate of Service"
     assert result["draft"]["signature_block"]["signature_line"] == "/s/ Jane Doe, Esq."
     assert result["draft"]["signature_block"]["title"] == "Counsel for Plaintiff"
@@ -766,6 +733,39 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
     assert result["draft"]["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
+
+
+def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
+    mediator = Mock()
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 7,
+            "cid": "bafy-evidence",
+            "description": "Hearing request email",
+            "claim_type": "retaliation",
+            "metadata": {
+                "document_graph_summary": {
+                    "entity_count": 2,
+                    "relationship_count": 1,
+                }
+            },
+        }
+    ]
+    mediator.get_evidence_facts.return_value = [
+        {"text": "Email requested a grievance hearing on March 3, 2026."},
+        {"text": "Response denied the request on March 10, 2026."},
+    ]
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    exhibits = builder._collect_exhibits(
+        user_id="user-1",
+        claim_types=["retaliation"],
+        support_claims={},
+    )
+
+    assert len(exhibits) == 1
+    assert "Email requested a grievance hearing on March 3, 2026." in exhibits[0]["summary"]
+    assert "Graph extraction: 2 entities, 1 relationships." in exhibits[0]["summary"]
 
 
 def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_registries():
@@ -1189,7 +1189,11 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert any(item["status"] == "warning" for item in result["filing_checklist"])
     assert any(item["scope"] == "claim" for item in result["filing_checklist"])
     assert result["drafting_readiness"]["sections"]["claims_for_relief"]["status"] == "warning"
-    assert result["drafting_readiness"]["sections"]["summary_of_facts"]["status"] == "ready"
+    assert result["drafting_readiness"]["sections"]["summary_of_facts"]["status"] == "warning"
+    assert any(
+        warning["code"] == "document_provenance_grounding_thin"
+        for warning in result["drafting_readiness"]["sections"]["summary_of_facts"]["warnings"]
+    )
     assert any(
         entry["claim_type"] == "employment discrimination" and entry["status"] == "warning"
         for entry in result["drafting_readiness"]["claims"]
