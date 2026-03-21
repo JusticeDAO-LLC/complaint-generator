@@ -911,6 +911,59 @@ def test_build_package_applies_document_drafting_focus_to_factual_allegations():
     )
 
 
+def test_build_package_uses_grounding_retarget_action_for_initial_focus():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "document_grounding_improvement_next_action": {
+            "action": "retarget_document_grounding",
+            "phase_name": "document_generation",
+            "claim_element_id": "protected_activity",
+            "suggested_claim_element_id": "causation",
+            "focus_section": "factual_allegations",
+            "preferred_support_kind": "testimony",
+        }
+    }
+    builder = FormalComplaintDocumentBuilder(mediator)
+    builder.build_draft = Mock(
+        return_value={
+            "summary_of_facts": [
+                "Plaintiff engaged in protected activity.",
+                "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+            ],
+            "factual_allegations": [
+                "Plaintiff engaged in protected activity.",
+                "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+            ],
+            "claims_for_relief": [],
+        }
+    )
+    builder._build_drafting_readiness = Mock(
+        return_value={"status": "ready", "sections": {}, "claims": [], "warning_count": 0}
+    )
+    builder._build_runtime_workflow_phase_plan = Mock(return_value={})
+    builder._build_filing_checklist = Mock(return_value=[])
+    builder._annotate_filing_checklist_review_links = Mock()
+    builder._build_affidavit = Mock(return_value={})
+    builder._build_claim_support_temporal_handoff = Mock(return_value={})
+    builder._build_intake_summary_handoff = Mock(return_value={})
+    builder.render_artifacts = Mock(return_value={})
+
+    result = builder.build_package(
+        district="Northern District of California",
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Acme Corporation"],
+        output_formats=["txt"],
+    )
+
+    draft = result["draft"]
+    assert draft["document_grounding_improvement_next_action"]["action"] == "retarget_document_grounding"
+    assert draft["document_drafting_focus_source"] == "document_grounding_improvement_next_action"
+    assert draft["document_drafting_focus_claim_element_id"] == "causation"
+    assert draft["factual_allegations"][0] == (
+        "Days after the complaint, Defendant terminated Plaintiff in retaliation."
+    )
+
+
 def test_build_package_uses_claim_registry_keywords_for_document_drafting_focus():
     mediator = Mock()
     mediator.get_three_phase_status.return_value = {
@@ -1471,6 +1524,83 @@ def test_document_api_annotation_promotes_document_grounding_improvement_next_ac
             "grounding delta: +0.00",
         ],
     }
+
+
+def test_document_api_annotation_promotes_document_grounding_retargeting_into_workflow_priority():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "intake_readiness": {
+            "score": 0.5,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": [],
+            "criteria": {},
+        },
+        "document_provenance_summary": {"fact_backed_ratio": 0.25, "low_grounding_flag": True},
+        "document_grounding_improvement_summary": {
+            "initial_fact_backed_ratio": 0.25,
+            "final_fact_backed_ratio": 0.2,
+            "fact_backed_ratio_delta": -0.05,
+            "regressed_flag": True,
+            "targeted_claim_elements": ["protected_activity"],
+            "preferred_support_kinds": ["authority"],
+            "recovery_attempted_flag": True,
+        },
+        "document_grounding_lane_outcome_summary": {
+            "attempted_support_kind": "testimony",
+            "outcome_status": "regressed",
+            "recommended_future_support_kind": "testimony",
+            "recommended_future_claim_element": "causation",
+            "learned_support_lane_attempted_flag": True,
+            "learned_support_lane_effective_flag": False,
+        },
+        "document_grounding_recovery_action": {
+            "action": "recover_document_grounding",
+            "phase_name": "document_generation",
+            "description": "Strengthen draft grounding for protected_activity before formalization.",
+            "claim_type": "retaliation",
+            "claim_element_id": "protected_activity",
+            "focus_section": "factual_allegations",
+            "preferred_support_kind": "authority",
+            "fact_backed_ratio": 0.25,
+            "missing_fact_bundle": ["Complaint timing"],
+            "recovery_source": "alignment_evidence_task",
+        },
+        "next_action": {"action": "complete_evidence"},
+    }
+    payload = _annotate_review_links(
+        {
+            "draft": {
+                "title": "Jane Doe v. Acme Corporation",
+                "source_context": {"user_id": "Jane Doe"},
+                "document_provenance_summary": {
+                    "summary_fact_count": 4,
+                    "summary_fact_backed_count": 1,
+                    "claim_supporting_fact_count": 3,
+                    "claim_supporting_fact_backed_count": 1,
+                    "fact_backed_ratio": 0.25,
+                    "low_grounding_flag": True,
+                },
+            },
+            "drafting_readiness": {
+                "status": "warning",
+                "workflow_phase_plan": {"recommended_order": ["document_generation"], "phases": {}},
+                "sections": {"factual_allegations": {"status": "warning", "title": "Factual Allegations"}},
+                "claims": [{"claim_type": "retaliation", "status": "warning"}],
+            },
+            "document_optimization": {},
+        },
+        mediator=mediator,
+        user_id="Jane Doe",
+    )
+
+    assert payload["review_links"]["document_grounding_improvement_next_action"]["action"] == "retarget_document_grounding"
+    assert payload["review_links"]["document_grounding_improvement_next_action"]["suggested_claim_element_id"] == "causation"
+    assert payload["review_links"]["workflow_priority"]["title"] == "Retarget document grounding"
+    assert payload["review_links"]["workflow_priority"]["action_label"] == "Review grounding retargeting"
+    assert "next target element: Causation" in payload["review_links"]["workflow_priority"]["chip_labels"]
 
 
 def test_document_optimizer_prioritizes_graph_phase_for_unresolved_blockers():

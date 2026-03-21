@@ -1147,11 +1147,26 @@ class FormalComplaintDocumentBuilder:
         resolved_user_id = self._resolve_user_id(user_id)
         formats = self._normalize_formats(output_formats)
         intake_status = build_intake_status_summary(self.mediator)
+        raw_status = {}
+        get_three_phase_status = getattr(self.mediator, "get_three_phase_status", None)
+        if callable(get_three_phase_status):
+            candidate_raw_status = get_three_phase_status()
+            if isinstance(candidate_raw_status, dict):
+                raw_status = candidate_raw_status
         document_drafting_next_action = (
             intake_status.get("document_drafting_next_action")
             if isinstance(intake_status.get("document_drafting_next_action"), dict)
             else {}
         )
+        document_grounding_improvement_next_action = (
+            intake_status.get("document_grounding_improvement_next_action")
+            if isinstance(intake_status.get("document_grounding_improvement_next_action"), dict)
+            else {}
+        )
+        if not document_drafting_next_action and isinstance(raw_status.get("document_drafting_next_action"), dict):
+            document_drafting_next_action = dict(raw_status.get("document_drafting_next_action") or {})
+        if not document_grounding_improvement_next_action and isinstance(raw_status.get("document_grounding_improvement_next_action"), dict):
+            document_grounding_improvement_next_action = dict(raw_status.get("document_grounding_improvement_next_action") or {})
         draft = self.build_draft(
             user_id=resolved_user_id,
             court_name=court_name,
@@ -1195,6 +1210,7 @@ class FormalComplaintDocumentBuilder:
         draft = self._apply_document_drafting_focus(
             draft,
             document_drafting_next_action=document_drafting_next_action,
+            document_grounding_improvement_next_action=document_grounding_improvement_next_action,
         )
         self._attach_allegation_references(draft)
         document_optimization = None
@@ -1465,6 +1481,8 @@ class FormalComplaintDocumentBuilder:
             draft["document_grounding_lane_outcome_summary"] = dict(document_grounding_lane_outcome_summary)
         if document_drafting_next_action:
             draft["document_drafting_next_action"] = dict(document_drafting_next_action)
+        if document_grounding_improvement_next_action:
+            draft["document_grounding_improvement_next_action"] = dict(document_grounding_improvement_next_action)
         if isinstance(draft.get("document_provenance_summary"), dict) and draft.get("document_provenance_summary"):
             draft["document_provenance_summary"] = dict(draft.get("document_provenance_summary") or {})
         draft["filing_checklist"] = filing_checklist
@@ -1784,6 +1802,7 @@ class FormalComplaintDocumentBuilder:
             list(requested_relief or [])
             + list(generated_complaint.get("prayer_for_relief", []) or [])
             + self._extract_requested_relief_from_facts(facts)
+            + self._build_claim_specific_relief(claim_types=claim_types, facts=facts)
             + (STATE_DEFAULT_RELIEF if str(classification.get("jurisdiction") or "").strip().lower() == "state" else DEFAULT_RELIEF)
         )
         jury_demand_block = self._build_jury_demand(jury_demand=jury_demand, jury_demand_text=jury_demand_text)
@@ -2743,13 +2762,32 @@ class FormalComplaintDocumentBuilder:
         draft: Dict[str, Any],
         *,
         document_drafting_next_action: Dict[str, Any],
+        document_grounding_improvement_next_action: Dict[str, Any],
     ) -> Dict[str, Any]:
         action = (
             document_drafting_next_action
             if isinstance(document_drafting_next_action, dict)
             else {}
         )
-        if str(action.get("action") or "").strip().lower() != "realign_document_drafting":
+        action_code = str(action.get("action") or "").strip().lower()
+        focus_source = "document_drafting_next_action"
+        if action_code != "realign_document_drafting":
+            grounding_action = (
+                document_grounding_improvement_next_action
+                if isinstance(document_grounding_improvement_next_action, dict)
+                else {}
+            )
+            grounding_action_code = str(grounding_action.get("action") or "").strip().lower()
+            if grounding_action_code == "retarget_document_grounding":
+                action = dict(grounding_action)
+                suggested_claim_element_id = str(action.get("suggested_claim_element_id") or "").strip()
+                if suggested_claim_element_id:
+                    action["claim_element_id"] = suggested_claim_element_id
+                action_code = grounding_action_code
+                focus_source = "document_grounding_improvement_next_action"
+            else:
+                return draft
+        if action_code not in {"realign_document_drafting", "retarget_document_grounding"}:
             return draft
 
         focused_draft = deepcopy(draft)
@@ -2821,6 +2859,7 @@ class FormalComplaintDocumentBuilder:
 
         focused_draft["document_drafting_focus_section"] = focus_section
         focused_draft["document_drafting_focus_claim_element_id"] = claim_element_id
+        focused_draft["document_drafting_focus_source"] = focus_source
         if preferred_support_kind:
             focused_draft["document_drafting_focus_support_kind"] = preferred_support_kind
         if executed_claim_element_id:
@@ -5337,7 +5376,7 @@ class FormalComplaintDocumentBuilder:
             claims.append(
                 {
                     "claim_type": claim_type,
-                    "count_title": claim_type.title(),
+                    "count_title": self._humanize_claim_title(claim_type, claim_facts),
                     "legal_standards": self._build_claim_legal_standards(
                         claim_type=claim_type,
                         requirements=requirements,
@@ -5372,6 +5411,63 @@ class FormalComplaintDocumentBuilder:
                 }
             )
         return claims
+
+    def _humanize_claim_title(self, claim_type: str, claim_facts: Optional[List[str]] = None) -> str:
+        normalized = normalize_claim_type(claim_type or "")
+        combined_facts = " ".join(str(item or "") for item in (claim_facts or []))
+        lowered = combined_facts.lower()
+        if normalized == "housing_discrimination":
+            if any(
+                marker in lowered
+                for marker in (
+                    "denial notice",
+                    "denied assistance",
+                    "denying assistance",
+                    "loss of assistance",
+                    "voucher",
+                    "informal review",
+                    "grievance",
+                )
+            ):
+                return "Housing Discrimination and Wrongful Denial of Assistance"
+            return "Housing Discrimination"
+        if normalized == "due_process_failure":
+            return "Denial of Required Notice and Informal Review"
+        if normalized == "retaliation":
+            return "Retaliation"
+        if normalized == "disability_discrimination":
+            return "Disability Discrimination"
+        label = str(claim_type or "").strip().replace("_", " ")
+        return label.title() if label else "Claim"
+
+    def _build_claim_specific_relief(self, *, claim_types: List[str], facts: List[str]) -> List[str]:
+        combined = " ".join(str(item or "") for item in facts).lower()
+        normalized_claim_types = {normalize_claim_type(item) for item in claim_types if str(item or "").strip()}
+        relief: List[str] = []
+        housing_process_context = bool(
+            normalized_claim_types & {"housing_discrimination", "due_process_failure"}
+        ) and any(
+            marker in combined
+            for marker in (
+                "denial notice",
+                "written notice",
+                "denied assistance",
+                "denying assistance",
+                "loss of assistance",
+                "informal review",
+                "grievance",
+                "review decision",
+            )
+        )
+        if housing_process_context:
+            relief.extend(
+                [
+                    "Declaratory relief that Defendant's challenged denial or loss of housing assistance was imposed without the notice and review protections required by law.",
+                    "Injunctive relief requiring Defendant to rescind or stay the challenged denial or loss of housing assistance unless and until lawful notice and review procedures are provided.",
+                    "Injunctive relief requiring Defendant to provide the informal review, grievance hearing, appeal, or other process required before any final adverse housing decision is enforced.",
+                ]
+            )
+        return relief
 
     def _extract_support_source_context_counts(self, support_claim: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
         packet_summary = (
@@ -5789,7 +5885,30 @@ class FormalComplaintDocumentBuilder:
             parts = [part for part in [citation, title, relevance] if part]
             if parts:
                 standards.append(" - ".join(parts))
-        return standards or [f"Plaintiff must prove the elements of {claim_type} under the applicable law."]
+        if standards:
+            return standards
+        return self._build_claim_legal_standard_fallbacks(claim_type)
+
+    def _build_claim_legal_standard_fallbacks(self, claim_type: str) -> List[str]:
+        normalized = normalize_claim_type(claim_type or "")
+        if normalized == "housing_discrimination":
+            return [
+                "Plaintiff alleges that Defendant denied, limited, or otherwise interfered with housing assistance or related housing rights.",
+                "Plaintiff further alleges that the challenged housing action was unlawful because it was imposed without the process, neutrality, or equal treatment required by governing housing law and program rules.",
+                "Plaintiff seeks relief for the resulting denial of housing opportunity, loss of assistance, and related harms caused by that unlawful housing decision.",
+            ]
+        if normalized == "due_process_failure":
+            return [
+                "Before enforcing a final adverse housing decision, Defendant was required to provide the written notice, review opportunity, hearing, grievance, appeal, or comparable process required by law or program rules.",
+                "Plaintiff alleges that Defendant failed to provide those required procedural protections before or while imposing the challenged denial or loss of assistance.",
+                "Plaintiff seeks relief for the deprivation of housing benefits and review rights caused by that failure of notice and process.",
+            ]
+        if normalized == "retaliation":
+            return [
+                "Plaintiff alleges that Plaintiff engaged in protected activity and that Defendant thereafter took materially adverse action.",
+                "Plaintiff further alleges that the adverse action was motivated, at least in part, by Plaintiff's protected conduct.",
+            ]
+        return [f"Plaintiff must prove the elements of {claim_type} under the applicable law."]
 
     def _build_legal_standards_summary(
         self,

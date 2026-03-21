@@ -520,6 +520,67 @@ class TestMediatorThreePhaseIntegration:
         assert result['question_candidates']
         assert mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'question_candidates')
 
+    def test_process_denoising_answer_authors_temporal_state_before_refresh(self, monkeypatch):
+        """Timeline answers should populate authored chronology objects before the full case-file refresh runs."""
+        import mediator.mediator as mediator_module
+        from mediator.mediator import Mediator
+        from complaint_phases.intake_case_file import refresh_intake_case_file as real_refresh_intake_case_file
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        captured_payloads = []
+
+        def _capturing_refresh(case_file, knowledge_graph, *, append_snapshot=False):
+            captured_payloads.append(
+                {
+                    'canonical_facts': [dict(item) for item in (case_file.get('canonical_facts') or []) if isinstance(item, dict)],
+                    'timeline_anchors': [dict(item) for item in (case_file.get('timeline_anchors') or []) if isinstance(item, dict)],
+                    'timeline_relations': [dict(item) for item in (case_file.get('timeline_relations') or []) if isinstance(item, dict)],
+                    'temporal_fact_registry': [dict(item) for item in (case_file.get('temporal_fact_registry') or []) if isinstance(item, dict)],
+                    'event_ledger': [dict(item) for item in (case_file.get('event_ledger') or []) if isinstance(item, dict)],
+                    'temporal_relation_registry': [dict(item) for item in (case_file.get('temporal_relation_registry') or []) if isinstance(item, dict)],
+                }
+            )
+            return real_refresh_intake_case_file(case_file, knowledge_graph, append_snapshot=append_snapshot)
+
+        monkeypatch.setattr(mediator_module, 'refresh_intake_case_file', _capturing_refresh)
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process("I was fired after I complained about discrimination.")
+
+        question = {
+            'type': 'timeline',
+            'question': 'When did this happen?',
+            'question_objective': 'establish_chronology',
+            'expected_update_kind': 'timeline_anchor',
+            'target_claim_type': 'employment_discrimination',
+        }
+        mediator.process_denoising_answer(question, 'I complained on March 1, 2025.')
+        mediator.process_denoising_answer(question, 'I was fired on April 15, 2025.')
+
+        assert len(captured_payloads) >= 2
+        first_refresh_payload = captured_payloads[0]
+        second_refresh_payload = captured_payloads[-1]
+
+        first_timeline_fact = next(
+            fact
+            for fact in first_refresh_payload['canonical_facts']
+            if str(fact.get('fact_type') or '').strip().lower() == 'timeline'
+            and 'March 1, 2025' in str(fact.get('text') or '')
+        )
+
+        assert first_timeline_fact['temporal_context']['start_date'] == '2025-03-01'
+        assert first_refresh_payload['timeline_anchors']
+        assert first_refresh_payload['event_ledger']
+        assert any(item.get('temporal_status') == 'anchored' for item in first_refresh_payload['temporal_fact_registry'])
+        assert second_refresh_payload['timeline_relations']
+        assert second_refresh_payload['temporal_relation_registry']
+        assert second_refresh_payload['temporal_relation_registry'][0]['relation_type'] == 'before'
+
     def test_process_denoising_answer_marks_temporal_issue_resolved_for_temporal_gap_candidate(self):
         """Answering a native temporal-gap question should resolve the matching temporal issue in the intake case file."""
         from mediator.mediator import Mediator

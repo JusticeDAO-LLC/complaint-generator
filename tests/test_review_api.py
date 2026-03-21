@@ -2897,6 +2897,93 @@ def test_claim_support_review_payload_promotes_document_grounding_improvement_ne
     }
 
 
+def test_claim_support_review_payload_promotes_document_grounding_retargeting_into_workflow_priority():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "iteration_count": 2,
+        "intake_readiness": {
+            "score": 0.77,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 2, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "current_summary_snapshot": {},
+        },
+        "question_candidate_summary": {},
+        "document_provenance_summary": {"fact_backed_ratio": 0.25, "low_grounding_flag": True},
+        "document_grounding_improvement_summary": {
+            "initial_fact_backed_ratio": 0.25,
+            "final_fact_backed_ratio": 0.20,
+            "fact_backed_ratio_delta": -0.05,
+            "regressed_flag": True,
+            "targeted_claim_elements": ["protected_activity"],
+            "preferred_support_kinds": ["authority"],
+            "recovery_attempted_flag": True,
+        },
+        "document_grounding_lane_outcome_summary": {
+            "attempted_support_kind": "testimony",
+            "outcome_status": "regressed",
+            "recommended_future_support_kind": "testimony",
+            "recommended_future_claim_element": "causation",
+            "learned_support_lane_attempted_flag": True,
+            "learned_support_lane_effective_flag": False,
+        },
+        "document_grounding_recovery_action": {
+            "action": "recover_document_grounding",
+            "phase_name": "document_generation",
+            "description": "Strengthen draft grounding for protected_activity before formalization.",
+            "claim_type": "retaliation",
+            "claim_element_id": "protected_activity",
+            "focus_section": "factual_allegations",
+            "preferred_support_kind": "authority",
+            "fact_backed_ratio": 0.25,
+            "missing_fact_bundle": ["Complaint timing"],
+            "recovery_source": "alignment_evidence_task",
+        },
+        "next_action": {"action": "complete_evidence"},
+    }
+    mediator.phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: None)
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["document_grounding_improvement_next_action"]["action"] == "retarget_document_grounding"
+    assert payload["document_grounding_improvement_next_action"]["suggested_claim_element_id"] == "causation"
+    assert payload["workflow_priority"]["title"] == "Retarget document grounding"
+    assert "next target element: Causation" in payload["workflow_priority"]["chip_labels"]
+    assert any("Shift the next grounding pass from Protected Activity to Causation." == note for note in payload["workflow_priority"]["notes"])
+
+
 def test_claim_support_review_payload_builds_explicit_workflow_priority_for_support_conflicts():
     mediator = Mock()
     mediator.state = SimpleNamespace(username="state-user", hashed_username=None)

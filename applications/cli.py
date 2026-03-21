@@ -316,6 +316,11 @@ class CLI:
 			if isinstance(intake_status.get('document_grounding_improvement_summary'), dict)
 			else {}
 		)
+		document_grounding_improvement_next_action = (
+			intake_status.get('document_grounding_improvement_next_action')
+			if isinstance(intake_status.get('document_grounding_improvement_next_action'), dict)
+			else {}
+		)
 		if document_grounding_improvement_summary:
 			delta = float(document_grounding_improvement_summary.get('fact_backed_ratio_delta') or 0.0)
 			status = (
@@ -337,6 +342,11 @@ class CLI:
 				grounding_line += (
 					f" target={self._humanize_cli_label(str(targeted_claim_elements[0] or ''))}"
 				)
+			suggested_claim_element_id = str(
+				document_grounding_improvement_next_action.get('suggested_claim_element_id') or ''
+			).strip()
+			if suggested_claim_element_id:
+				grounding_line += f" next_target={self._humanize_cli_label(suggested_claim_element_id)}"
 			lines.append(grounding_line)
 		document_grounding_lane_outcome_summary = (
 			intake_status.get('document_grounding_lane_outcome_summary')

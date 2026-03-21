@@ -81,6 +81,7 @@ from complaint_phases import (
 	NeurosymbolicMatcher,
 	NodeType
 )
+import complaint_phases.intake_case_file as intake_case_file_module
 
 
 class Mediator:
@@ -5872,6 +5873,41 @@ class Mediator:
 			return 'photos'
 		return 'supporting evidence'
 
+	def _author_temporal_case_file_state(
+		self,
+		intake_case_file: Dict[str, Any],
+		*,
+		focus_fact_id: str = '',
+	) -> None:
+		canonical_facts = intake_case_file.get('canonical_facts')
+		if not isinstance(canonical_facts, list):
+			return
+		for fact in canonical_facts:
+			if not isinstance(fact, dict):
+				continue
+			fact_type = str(fact.get('fact_type') or '').strip().lower()
+			event_date_or_range = str(fact.get('event_date_or_range') or '').strip()
+			if fact_type != 'timeline' and not event_date_or_range:
+				continue
+			fact['temporal_context'] = intake_case_file_module._build_temporal_context(
+				event_date_or_range,
+				fallback_text=str(fact.get('text') or ''),
+			)
+			if focus_fact_id and str(fact.get('fact_id') or '').strip() == focus_fact_id:
+				fact.setdefault('event_label', str(fact.get('text') or '').strip())
+
+		timeline_anchors = intake_case_file_module.build_timeline_anchors(canonical_facts)
+		timeline_relations = intake_case_file_module.build_timeline_relations(canonical_facts)
+		temporal_fact_registry = intake_case_file_module.build_temporal_fact_registry(canonical_facts, timeline_anchors)
+		intake_case_file['timeline_anchors'] = timeline_anchors
+		intake_case_file['timeline_relations'] = timeline_relations
+		intake_case_file['temporal_fact_registry'] = temporal_fact_registry
+		intake_case_file['event_ledger'] = intake_case_file_module.build_event_ledger(temporal_fact_registry)
+		intake_case_file['temporal_relation_registry'] = intake_case_file_module.build_temporal_relation_registry(
+			canonical_facts,
+			timeline_relations,
+		)
+
 	def _apply_intake_answer_to_case_file(
 		self,
 		question: Dict[str, Any],
@@ -6089,6 +6125,12 @@ class Mediator:
 
 		if created_fact and intake_case_file.get('candidate_claims'):
 			created_fact['claim_types'] = list(dict.fromkeys(list(created_fact.get('claim_types', []) or []) + resolved_claim_types))
+
+		if created_fact:
+			self._author_temporal_case_file_state(
+				intake_case_file,
+				focus_fact_id=str(created_fact.get('fact_id') or '').strip(),
+			)
 
 		return refresh_intake_case_file(intake_case_file, knowledge_graph, append_snapshot=True)
 	

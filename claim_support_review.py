@@ -662,8 +662,10 @@ def _build_review_workflow_priority(
         if isinstance(intake_case_summary.get("document_grounding_improvement_next_action"), dict)
         else {}
     )
-    if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
+    grounding_action = str(document_grounding_improvement_next_action.get("action") or "").strip().lower()
+    if grounding_action in {"refine_document_grounding_strategy", "retarget_document_grounding"}:
         claim_element_id = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
+        suggested_claim_element_id = str(document_grounding_improvement_next_action.get("suggested_claim_element_id") or "").strip()
         preferred_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
         suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
         focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "").strip()
@@ -673,6 +675,8 @@ def _build_review_workflow_priority(
         chip_labels = [f"grounding status: {humanize_workflow_priority_label(status)}"]
         if claim_element_id:
             chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
+        if suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
+            chip_labels.append(f"next target element: {humanize_workflow_priority_label(suggested_claim_element_id)}")
         if focus_section:
             chip_labels.append(f"focus section: {humanize_workflow_priority_label(focus_section)}")
         if preferred_support_kind:
@@ -694,10 +698,18 @@ def _build_review_workflow_priority(
             notes.append(
                 f"Recent grounding cycles suggest {humanize_workflow_priority_label(learned_support_kind)} is the stronger lane for the next recovery pass."
             )
+        if grounding_action == "retarget_document_grounding" and suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
+            notes.append(
+                f"Shift the next grounding pass from {humanize_workflow_priority_label(claim_element_id)} to {humanize_workflow_priority_label(suggested_claim_element_id)}."
+            )
         return {
             "status": "warning",
-            "status_id": "refine_document_grounding_strategy",
-            "title": "Refine document grounding strategy",
+            "status_id": grounding_action,
+            "title": (
+                "Retarget document grounding"
+                if grounding_action == "retarget_document_grounding"
+                else "Refine document grounding strategy"
+            ),
             "chip_labels": chip_labels,
             "notes": notes,
             "buttons": [
@@ -706,8 +718,12 @@ def _build_review_workflow_priority(
                     "Review grounding strategy",
                 )
             ],
-            "action_id": "refine_document_grounding_strategy",
-            "status_message": "Reviewing document grounding strategy and support-lane targeting.",
+            "action_id": grounding_action,
+            "status_message": (
+                "Reviewing document grounding strategy, support-lane targeting, and next claim-element focus."
+                if grounding_action == "retarget_document_grounding"
+                else "Reviewing document grounding strategy and support-lane targeting."
+            ),
         }
 
     document_drafting_next_action = (

@@ -73,6 +73,65 @@ class _EvidenceClaimTypeMediator(_ExplodingMediator):
         ]
 
 
+class _HousingProcessMediator(_ExplodingMediator):
+    def __init__(self):
+        self.phase_manager = None
+        self.state = type(
+            "_State",
+            (),
+            {
+                "legal_classification": {},
+                "applicable_statutes": [],
+                "summary_judgment_requirements": {},
+                "inquiries": [],
+                "complaint": None,
+                "original_complaint": None,
+            },
+        )()
+
+    def get_user_evidence(self, *, user_id):
+        assert user_id == "housing-process-user"
+        return [
+            {
+                "id": 303,
+                "cid": "bafy-housing-process-1",
+                "claim_type": "housing_discrimination",
+                "description": "HACC denial notice and review chronology",
+                "parsed_text_preview": (
+                    "On March 3, 2026, HACC sent Plaintiff a written denial notice signed by HACC hearing officer Maria Lopez. "
+                    "On March 4, 2026, Plaintiff submitted a grievance request challenging the denial notice. "
+                    "On March 8, 2026, HACC hearing officer Maria Lopez issued the review decision."
+                ),
+                "metadata": {"claim_types": ["housing_discrimination", "due_process_failure"]},
+            }
+        ]
+
+    def get_evidence_facts(self, *, evidence_id):
+        assert evidence_id == 303
+        return [
+            {
+                "fact_id": "fact-303-1",
+                "text": "On March 3, 2026, HACC sent Plaintiff a written denial notice signed by HACC hearing officer Maria Lopez.",
+            },
+            {
+                "fact_id": "fact-303-2",
+                "text": "On March 4, 2026, Plaintiff submitted a grievance request challenging the denial notice.",
+            },
+            {
+                "fact_id": "fact-303-3",
+                "text": "On March 8, 2026, HACC hearing officer Maria Lopez issued the review decision.",
+            },
+            {
+                "fact_id": "fact-303-4",
+                "text": "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+            },
+            {
+                "fact_id": "fact-303-5",
+                "text": "Scheduling an Informal Review requires a written request for review.",
+            },
+        ]
+
+
 def test_build_draft_falls_back_to_legacy_builder_when_canonical_generation_crashes(monkeypatch):
     builder = FormalComplaintDocumentBuilder(_ExplodingMediator())
     legacy_calls = {}
@@ -362,3 +421,69 @@ def test_factual_allegations_suppress_missing_detail_fallbacks_when_evidence_has
         for item in allegations
     )
     assert not any("occurred in close sequence" in item for item in allegations)
+
+
+def test_build_draft_uses_claim_specific_titles_and_housing_process_relief():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    count_titles = [claim.get("count_title") for claim in draft["claims_for_relief"]]
+    assert "Housing Discrimination and Wrongful Denial of Assistance" in count_titles
+    assert "Denial of Required Notice and Informal Review" in count_titles
+    assert any(
+        "rescind or stay the challenged denial or loss of housing assistance" in item
+        for item in draft["requested_relief"]
+    )
+    assert any(
+        "provide the informal review, grievance hearing, appeal, or other process required" in item
+        for item in draft["requested_relief"]
+    )
+    by_type = {claim.get("claim_type"): claim for claim in draft["claims_for_relief"]}
+    assert any(
+        "denied, limited, or otherwise interfered with housing assistance" in item
+        for item in by_type["housing_discrimination"]["legal_standards"]
+    )
+    assert any(
+        "required to provide the written notice, review opportunity, hearing, grievance, appeal, or comparable process" in item
+        for item in by_type["due_process_failure"]["legal_standards"]
+    )
