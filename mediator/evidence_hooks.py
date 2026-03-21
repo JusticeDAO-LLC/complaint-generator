@@ -330,6 +330,9 @@ class EvidenceStateHook:
     def __init__(self, mediator, db_path: Optional[str] = None):
         self.mediator = mediator
         self.db_path = db_path or self._get_default_db_path()
+        self._memory_records: List[Dict[str, Any]] = []
+        self._memory_graphs: Dict[int, Dict[str, Any]] = {}
+        self._memory_facts: Dict[int, List[Dict[str, Any]]] = {}
         self._check_duckdb_availability()
         if DUCKDB_AVAILABLE:
             self._prepare_duckdb_path()
@@ -841,8 +844,144 @@ class EvidenceStateHook:
             Dictionary describing whether the record was newly inserted or reused.
         """
         if not DUCKDB_AVAILABLE:
-            self.mediator.log('evidence_state_unavailable')
-            return {'record_id': -1, 'created': False, 'reused': False}
+            normalized_evidence_metadata = _merge_intake_summary_handoff_metadata(
+                evidence_info.get('metadata', {}),
+                self.mediator,
+            )
+            document_parse = evidence_info.get('document_parse') if isinstance(evidence_info.get('document_parse'), dict) else {}
+            document_graph = evidence_info.get('document_graph') if isinstance(evidence_info.get('document_graph'), dict) else {}
+            parse_contract = build_document_parse_contract(
+                document_parse,
+                default_source=str(
+                    document_parse.get('metadata', {}).get('source')
+                    or normalized_evidence_metadata.get('parse_source')
+                    or ''
+                ),
+            )
+            parse_metadata = _merge_intake_summary_handoff_metadata(
+                parse_contract['storage_metadata'],
+                self.mediator,
+            )
+            parsed_text = parse_contract['text']
+            parsed_text_preview = parse_contract['text_preview']
+            if not document_graph and parsed_text:
+                document_graph = extract_graph_from_text(
+                    parsed_text,
+                    source_id=evidence_info.get('artifact_id') or evidence_info.get('cid'),
+                    metadata={
+                        'artifact_id': evidence_info.get('artifact_id', ''),
+                        'source_url': evidence_info.get('source_url', ''),
+                        'claim_type': claim_type or '',
+                        'claim_element_id': claim_element_id or '',
+                        'claim_element_text': claim_element or '',
+                        'filename': document_parse.get('metadata', {}).get('filename', ''),
+                        'mime_type': document_parse.get('metadata', {}).get('mime_type', ''),
+                    },
+                )
+            existing_record = next(
+                (
+                    record for record in self._memory_records
+                    if str(record.get('user_id') or '') == str(user_id)
+                    and str(record.get('cid') or '') == str(evidence_info.get('cid') or '')
+                    and str(record.get('claim_type') or '') == str(claim_type or '')
+                    and str(record.get('claim_element_id') or '') == str(claim_element_id or '')
+                ),
+                None,
+            )
+            if existing_record is not None:
+                return {'record_id': int(existing_record.get('id') or -1), 'created': False, 'reused': True}
+
+            record_id = len(self._memory_records) + 1
+            state = getattr(self.mediator, 'state', None)
+            username = getattr(state, 'username', None) if state is not None else None
+            if not isinstance(username, str) or not username:
+                username = user_id
+            record = {
+                'id': record_id,
+                'user_id': user_id,
+                'username': username,
+                'cid': evidence_info.get('cid'),
+                'type': evidence_info.get('type'),
+                'size': evidence_info.get('size'),
+                'timestamp': evidence_info.get('timestamp'),
+                'metadata': normalized_evidence_metadata,
+                'complaint_id': complaint_id,
+                'claim_type': claim_type,
+                'description': description,
+                'content_hash': evidence_info.get('content_hash'),
+                'source_url': evidence_info.get('source_url'),
+                'acquisition_method': evidence_info.get('acquisition_method'),
+                'provenance': evidence_info.get('provenance') or {},
+                'claim_element_id': claim_element_id,
+                'claim_element': claim_element,
+                'parse_status': parse_contract.get('status') or parse_metadata.get('status'),
+                'chunk_count': parse_contract.get('chunk_count', 0),
+                'parsed_text_preview': parsed_text_preview,
+                'parse_metadata': parse_metadata,
+                'graph_status': document_graph.get('status', ''),
+                'graph_entity_count': len(document_graph.get('entities', []) or []),
+                'graph_relationship_count': len(document_graph.get('relationships', []) or []),
+                'graph_metadata': document_graph.get('metadata', {}) if isinstance(document_graph.get('metadata'), dict) else {},
+                'fact_count': 0,
+            }
+            memory_facts: List[Dict[str, Any]] = []
+            for index, fact in enumerate(list(document_graph.get('facts', []) or []), start=1):
+                if not isinstance(fact, dict):
+                    continue
+                text = str(fact.get('text') or '').strip()
+                if not text:
+                    continue
+                memory_facts.append(
+                    {
+                        'fact_id': fact.get('fact_id') or f'evidence:{record_id}:fact:{index}',
+                        'text': text,
+                        'source_artifact_id': evidence_info.get('artifact_id') or evidence_info.get('cid'),
+                        'confidence': float(fact.get('confidence') or 0.0),
+                        'metadata': dict(fact.get('metadata') or {}),
+                        'provenance': dict(fact.get('provenance') or {}),
+                        'source_family': 'evidence',
+                        'source_record_id': record_id,
+                        'source_ref': str(evidence_info.get('cid') or ''),
+                        'record_scope': 'evidence',
+                        'artifact_family': '',
+                        'corpus_family': '',
+                        'content_origin': '',
+                        'parse_source': '',
+                        'input_format': '',
+                        'quality_tier': '',
+                        'quality_score': 0.0,
+                        'page_count': 0,
+                    }
+                )
+            if not memory_facts and parsed_text_preview:
+                memory_facts.append(
+                    {
+                        'fact_id': f'evidence:{record_id}:fact:1',
+                        'text': parsed_text_preview,
+                        'source_artifact_id': evidence_info.get('artifact_id') or evidence_info.get('cid'),
+                        'confidence': 0.5,
+                        'metadata': {},
+                        'provenance': {},
+                        'source_family': 'evidence',
+                        'source_record_id': record_id,
+                        'source_ref': str(evidence_info.get('cid') or ''),
+                        'record_scope': 'evidence',
+                        'artifact_family': '',
+                        'corpus_family': '',
+                        'content_origin': '',
+                        'parse_source': '',
+                        'input_format': '',
+                        'quality_tier': '',
+                        'quality_score': 0.0,
+                        'page_count': 0,
+                    }
+                )
+            record['fact_count'] = len(memory_facts)
+            self._memory_records.append(record)
+            self._memory_graphs[record_id] = document_graph if isinstance(document_graph, dict) else {'status': 'unavailable', 'entities': [], 'relationships': []}
+            self._memory_facts[record_id] = memory_facts
+            self.mediator.log('evidence_record_added_memory', record_id=record_id, cid=evidence_info.get('cid'))
+            return {'record_id': record_id, 'created': True, 'reused': False}
         
         try:
             conn = duckdb.connect(self.db_path)
@@ -1004,7 +1143,15 @@ class EvidenceStateHook:
             List of evidence records
         """
         if not DUCKDB_AVAILABLE:
-            return []
+            return [
+                dict(record)
+                for record in sorted(
+                    self._memory_records,
+                    key=lambda item: str(item.get('timestamp') or ''),
+                    reverse=True,
+                )
+                if str(record.get('user_id') or '') == str(user_id)
+            ]
         
         try:
             conn = duckdb.connect(self.db_path)
@@ -1074,6 +1221,9 @@ class EvidenceStateHook:
             Evidence record or None if not found
         """
         if not DUCKDB_AVAILABLE:
+            for record in self._memory_records:
+                if str(record.get('cid') or '') == str(cid):
+                    return dict(record)
             return None
         
         try:
@@ -1166,6 +1316,9 @@ class EvidenceStateHook:
     def get_evidence_graph(self, evidence_id: int) -> Dict[str, Any]:
         """Get normalized graph entities and relationships for a stored evidence record."""
         if not DUCKDB_AVAILABLE:
+            graph_payload = self._memory_graphs.get(int(evidence_id), {})
+            if isinstance(graph_payload, dict) and graph_payload:
+                return dict(graph_payload)
             return {'status': 'unavailable', 'entities': [], 'relationships': []}
 
         try:
@@ -1220,7 +1373,7 @@ class EvidenceStateHook:
     def get_evidence_facts(self, evidence_id: int) -> List[Dict[str, Any]]:
         """Get persisted fact records for a stored evidence record."""
         if not DUCKDB_AVAILABLE:
-            return []
+            return [dict(item) for item in list(self._memory_facts.get(int(evidence_id), []))]
 
         try:
             conn = duckdb.connect(self.db_path)

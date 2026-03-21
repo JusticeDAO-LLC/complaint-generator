@@ -14,8 +14,10 @@ on:
       - claim_support_review.py
       - document_optimization.py
       - document_pipeline.py
+      - mediator/claim_support_hooks.py
       - mediator/formal_document.py
       - mediator/mediator.py
+      - scripts/backfill_claim_testimony_links.py
       - templates/claim_support_review.html
       - templates/document.html
       - workflow_phase_guidance.py
@@ -45,8 +47,10 @@ on:
       - claim_support_review.py
       - document_optimization.py
       - document_pipeline.py
+      - mediator/claim_support_hooks.py
       - mediator/formal_document.py
       - mediator/mediator.py
+      - scripts/backfill_claim_testimony_links.py
       - templates/claim_support_review.html
       - templates/document.html
       - workflow_phase_guidance.py

@@ -4316,10 +4316,16 @@ class AdversarialSession:
             dg_summary = None
             kg_dict = None
             dg_dict = None
+            intake_case_file_snapshot = None
+            uploaded_evidence_summary = None
+            claim_support_packet_summary = None
             try:
                 from complaint_phases import ComplaintPhase
                 kg = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
                 dg = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
+                intake_case_file_snapshot = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+                uploaded_evidence_summary = self.mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary')
+                claim_support_packet_summary = self.mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packet_summary')
                 if kg:
                     kg_summary = kg.summary()
                     try:
@@ -4334,6 +4340,14 @@ class AdversarialSession:
                         dg_dict = None
             except Exception as e:
                 logger.warning(f"Could not get graph summaries: {e}")
+
+            if isinstance(final_state, dict):
+                if isinstance(intake_case_file_snapshot, dict) and intake_case_file_snapshot:
+                    final_state['intake_case_file'] = intake_case_file_snapshot
+                if isinstance(uploaded_evidence_summary, dict) and uploaded_evidence_summary:
+                    final_state['uploaded_evidence_summary'] = uploaded_evidence_summary
+                if isinstance(claim_support_packet_summary, dict) and claim_support_packet_summary:
+                    final_state['claim_support_packet_summary'] = claim_support_packet_summary
             
             # Step 5: Evaluate with critic
             conversation_history = self.complainant.get_conversation_history()

@@ -677,6 +677,25 @@ def test_run_does_not_require_blocker_questions_when_seed_has_no_blocker_objecti
 
 def test_session_runs_document_generation_handoff_and_records_grounding_summary():
     mediator = _DocumentMediator()
+    class _PhaseManager:
+        def __init__(self):
+            self.current_phase = None
+            self._data = {
+                "intake_case_file": {
+                    "canonical_facts": [{"fact_id": "fact_1", "text": "A dated notice was sent.", "fact_type": "timeline"}],
+                    "timeline_relations": [{"source_fact_id": "fact_1", "target_fact_id": "fact_1", "relation_type": "before"}],
+                },
+                "uploaded_evidence_summary": {"count": 1, "items": [{"filename": "notice.pdf"}]},
+                "claim_support_packet_summary": {"claim_count": 1},
+            }
+
+        def get_phase_data(self, phase, key):
+            return self._data.get(key)
+
+        def update_phase_data(self, phase, key, value):
+            self._data[key] = value
+
+    mediator.phase_manager = _PhaseManager()
     session = _make_document_session(mediator)
     seed = {
         "summary": "Repository-grounded grievance complaint.",
@@ -703,6 +722,9 @@ def test_session_runs_document_generation_handoff_and_records_grounding_summary(
     assert result.final_state["document_generation"]["document_optimization_available"] is True
     assert result.final_state["grounding_summary"]["preloaded_mediator_evidence_count"] == 1
     assert result.final_state["grounding_summary"]["has_evidence_upload_prompt"] is True
+    assert result.final_state["intake_case_file"]["canonical_facts"][0]["text"] == "A dated notice was sent."
+    assert result.final_state["uploaded_evidence_summary"]["count"] == 1
+    assert result.final_state["claim_support_packet_summary"]["claim_count"] == 1
 
 
 def test_session_builds_fallback_document_packet_when_builder_is_unavailable():

@@ -5923,6 +5923,8 @@ class FormalComplaintDocumentBuilder:
             "unresolved_legal_gaps": unresolved_legal_gaps[:6],
             "weak_complaint_types": list(drafting_readiness.get("weak_complaint_types") or []),
             "weak_evidence_modalities": list(drafting_readiness.get("weak_evidence_modalities") or []),
+            "document_fact_backed_ratio": _safe_float(drafting_readiness.get("document_fact_backed_ratio"), 0.0),
+            "document_low_grounding_flag": bool(drafting_readiness.get("document_low_grounding_flag")),
         }
 
     def _build_graph_completeness_signals(self, phase_manager: Any) -> Dict[str, Any]:
@@ -6212,6 +6214,13 @@ class FormalComplaintDocumentBuilder:
         summary_fact_count = len(self._normalize_text_lines(draft.get("summary_of_facts", [])))
         exhibits = _coerce_list(draft.get("exhibits"))
         relief_items = self._normalize_text_lines(draft.get("requested_relief", []))
+        document_provenance_summary = (
+            dict(draft.get("document_provenance_summary") or {})
+            if isinstance(draft.get("document_provenance_summary"), dict)
+            else {}
+        )
+        document_fact_backed_ratio = _safe_float(document_provenance_summary.get("fact_backed_ratio"), 0.0)
+        document_low_grounding_flag = bool(document_provenance_summary.get("low_grounding_flag"))
 
         sections: Dict[str, Dict[str, Any]] = {}
 
@@ -6231,9 +6240,23 @@ class FormalComplaintDocumentBuilder:
             "metrics": {
                 "summary_fact_count": summary_fact_count,
                 "support_fact_count": total_fact_count,
+                "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
             },
             "warnings": facts_warnings,
         }
+        if document_low_grounding_flag:
+            sections["summary_of_facts"]["status"] = _merge_status(
+                str(sections["summary_of_facts"].get("status") or "ready"),
+                "warning",
+            )
+            sections["summary_of_facts"].setdefault("warnings", []).append(
+                {
+                    "code": "document_provenance_grounding_thin",
+                    "severity": "warning",
+                    "message": "The current draft is not grounded enough in canonical facts or artifact-backed support rows.",
+                }
+            )
+            aggregate_warning_count += 1
 
         jurisdiction_status = "ready" if draft.get("jurisdiction_statement") and draft.get("venue_statement") else "warning"
         jurisdiction_warnings: List[Dict[str, Any]] = []
@@ -6552,6 +6575,7 @@ class FormalComplaintDocumentBuilder:
             or missing_required_intake_objectives
             or targeted_weak_evidence_modalities
             or weak_complaint_types
+            or document_low_grounding_flag
         ):
             phase_status = _merge_status(phase_status, "warning")
         if coverage <= 0.05 and (
@@ -6561,6 +6585,8 @@ class FormalComplaintDocumentBuilder:
             or unresolved_legal_gaps
         ):
             phase_status = "critical"
+        if document_fact_backed_ratio < 0.25 and document_low_grounding_flag:
+            phase_status = _merge_status(phase_status, "blocked")
 
         blockers: List[str] = []
         if graph_gate_active:
@@ -6581,6 +6607,8 @@ class FormalComplaintDocumentBuilder:
             blockers.append("weak_complaint_type_generalization_needed")
         if targeted_weak_evidence_modalities:
             blockers.append("weak_evidence_modality_support_needed")
+        if document_low_grounding_flag:
+            blockers.append("document_provenance_grounding_needed")
         blockers = _dedupe_text_values(blockers)
 
         readiness_payload = {
@@ -6602,6 +6630,9 @@ class FormalComplaintDocumentBuilder:
             "evidence_modalities": dict(evidence_modality_signals.get("modalities") or {}),
             "weak_evidence_modalities": weak_evidence_modalities,
             "graph_completeness_signals": graph_signals,
+            "document_provenance_summary": document_provenance_summary,
+            "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
+            "document_low_grounding_flag": document_low_grounding_flag,
             "drafting_handoff": {
                 "gate_on_graph_completeness": bool(graph_gate_active),
                 "graph_phase_status": str(graph_signals.get("status") or "ready").strip().lower() or "ready",
@@ -6614,6 +6645,8 @@ class FormalComplaintDocumentBuilder:
                 "exhibit_count": len(exhibits),
                 "policy_document_count": int(policy_document_count),
                 "file_evidence_count": int(file_evidence_count),
+                "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
+                "document_low_grounding_flag": bool(document_low_grounding_flag),
                 "uncovered_intake_objectives": uncovered_intake_objectives[:8],
                 "missing_required_intake_objectives": missing_required_intake_objectives[:8],
                 "unresolved_factual_gaps": unresolved_factual_gaps[:6],
@@ -6632,6 +6665,8 @@ class FormalComplaintDocumentBuilder:
                     "structured_handoff_gap_count": int(structured_handoff_signals.get("gap_count", 0) or 0),
                     "weak_complaint_type_count": len(weak_complaint_types),
                     "weak_evidence_modality_count": len(targeted_weak_evidence_modalities),
+                    "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
+                    "document_low_grounding_flag": bool(document_low_grounding_flag),
                     "ready_for_formalization": phase_status == "ready" and not blockers,
                 },
             },

@@ -9100,27 +9100,35 @@ class Mediator:
 			},
 			'blocker_follow_up_summary': blocker_follow_up_summary if isinstance(blocker_follow_up_summary, dict) else {},
 			'open_items': open_items if isinstance(open_items, list) else [],
+			'event_ledger': event_ledger if isinstance(event_ledger, list) else [],
 			'event_ledger_summary': {
 				'count': len(event_ledger) if isinstance(event_ledger, list) else 0,
 				'events': event_ledger if isinstance(event_ledger, list) else [],
 			},
 			'proof_lead_intent_summary': self._summarize_intake_record_intents(proof_leads),
+			'temporal_fact_registry': temporal_fact_registry if isinstance(temporal_fact_registry, list) else [],
 			'temporal_fact_registry_summary': {
 				'count': len(temporal_fact_registry) if isinstance(temporal_fact_registry, list) else 0,
 				'facts': temporal_fact_registry if isinstance(temporal_fact_registry, list) else [],
 			},
+			'timeline_anchors': timeline_anchors if isinstance(timeline_anchors, list) else [],
 			'timeline_anchor_summary': {
 				'count': len(timeline_anchors) if isinstance(timeline_anchors, list) else 0,
 				'anchors': timeline_anchors if isinstance(timeline_anchors, list) else [],
 			},
+			'temporal_relation_registry': (
+				temporal_relation_registry if isinstance(temporal_relation_registry, list) else []
+			),
 			'temporal_relation_registry_summary': {
 				'count': len(temporal_relation_registry) if isinstance(temporal_relation_registry, list) else 0,
 				'relations': temporal_relation_registry if isinstance(temporal_relation_registry, list) else [],
 			},
+			'timeline_relations': timeline_relations if isinstance(timeline_relations, list) else [],
 			'timeline_relation_summary': {
 				'count': len(timeline_relations) if isinstance(timeline_relations, list) else 0,
 				'relations': timeline_relations if isinstance(timeline_relations, list) else [],
 			},
+			'temporal_issue_registry': temporal_issue_registry if isinstance(temporal_issue_registry, list) else [],
 			'temporal_issue_registry_summary': {
 				'count': len(temporal_issue_registry) if isinstance(temporal_issue_registry, list) else 0,
 				'issues': temporal_issue_registry if isinstance(temporal_issue_registry, list) else [],

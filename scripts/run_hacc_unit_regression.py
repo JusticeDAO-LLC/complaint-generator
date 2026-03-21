@@ -15,6 +15,9 @@ HACC_UNIT_TESTS = [
     "tests/test_hacc_evidence_loader.py",
     "tests/test_synthesize_hacc_complaint.py",
     "tests/test_run_hacc_adversarial_report.py",
+    "tests/test_run_hacc_unit_regression_cli.py",
+    "tests/test_run_hacc_grounding_regression_cli.py",
+    "tests/test_run_hacc_grounded_pipeline_cli.py",
 ]
 
 

@@ -8,6 +8,7 @@ on:
       - adversarial_harness/hacc_evidence.py
       - scripts/run_hacc_unit_regression.py
       - scripts/run_hacc_grounding_regression.py
+      - scripts/run_hacc_grounded_pipeline.py
       - scripts/run_hacc_adversarial_report.py
       - scripts/synthesize_hacc_complaint.py
       - tests/test_hacc_evidence_loader.py
@@ -15,6 +16,7 @@ on:
       - tests/test_run_hacc_adversarial_report.py
       - tests/test_run_hacc_unit_regression_cli.py
       - tests/test_run_hacc_grounding_regression_cli.py
+      - tests/test_run_hacc_grounded_pipeline_cli.py
       - pytest.ini
       - requirements.txt
   push:
@@ -25,6 +27,7 @@ on:
       - adversarial_harness/hacc_evidence.py
       - scripts/run_hacc_unit_regression.py
       - scripts/run_hacc_grounding_regression.py
+      - scripts/run_hacc_grounded_pipeline.py
       - scripts/run_hacc_adversarial_report.py
       - scripts/synthesize_hacc_complaint.py
       - tests/test_hacc_evidence_loader.py
@@ -32,6 +35,7 @@ on:
       - tests/test_run_hacc_adversarial_report.py
       - tests/test_run_hacc_unit_regression_cli.py
       - tests/test_run_hacc_grounding_regression_cli.py
+      - tests/test_run_hacc_grounded_pipeline_cli.py
       - pytest.ini
       - requirements.txt
 

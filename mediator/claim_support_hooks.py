@@ -43,6 +43,8 @@ class ClaimSupportHook:
     def __init__(self, mediator, db_path: Optional[str] = None):
         self.mediator = mediator
         self.db_path = db_path or self._get_default_db_path()
+        self._memory_requirements: Dict[str, List[Dict[str, Any]]] = {}
+        self._memory_support_links: List[Dict[str, Any]] = []
         self._check_duckdb_availability()
         if DUCKDB_AVAILABLE:
             self._prepare_duckdb_path()
@@ -3054,7 +3056,24 @@ class ClaimSupportHook:
         complaint_id: Optional[str] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         if not DUCKDB_AVAILABLE:
-            return {}
+            registered: Dict[str, List[Dict[str, Any]]] = {}
+            for claim_type, elements in requirements.items():
+                rows: List[Dict[str, Any]] = []
+                for element_index, element_text in enumerate(elements, start=1):
+                    rows.append(
+                        {
+                            'complaint_id': complaint_id,
+                            'claim_type': claim_type,
+                            'element_id': self._make_element_id(claim_type, element_index),
+                            'element_index': element_index,
+                            'element_text': element_text,
+                            'metadata': requirement_metadata,
+                            'timestamp': datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+                self._memory_requirements[f'{user_id}:{claim_type}'] = rows
+                registered[claim_type] = rows
+            return registered
 
         registered: Dict[str, List[Dict[str, Any]]] = {}
         requirement_metadata = _merge_intake_summary_handoff_metadata(
@@ -3110,7 +3129,15 @@ class ClaimSupportHook:
         claim_type: Optional[str] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         if not DUCKDB_AVAILABLE:
-            return {}
+            grouped: Dict[str, List[Dict[str, Any]]] = {}
+            for key, rows in self._memory_requirements.items():
+                key_user_id, _, key_claim_type = key.partition(':')
+                if key_user_id != str(user_id):
+                    continue
+                if claim_type and key_claim_type != str(claim_type):
+                    continue
+                grouped[key_claim_type] = [dict(row) for row in rows]
+            return grouped
 
         try:
             conn = duckdb.connect(self.db_path)
@@ -3200,8 +3227,52 @@ class ClaimSupportHook:
         complaint_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not DUCKDB_AVAILABLE:
-            self.mediator.log('claim_support_unavailable')
-            return {'record_id': -1, 'created': False, 'reused': False}
+            normalized_metadata = _merge_intake_summary_handoff_metadata(
+                metadata,
+                self.mediator,
+            )
+            resolved_element = self.resolve_claim_element(
+                user_id,
+                claim_type,
+                claim_element_text=claim_element_text,
+                support_label=support_label,
+                metadata=normalized_metadata,
+            )
+            claim_element_id = claim_element_id or resolved_element['claim_element_id']
+            claim_element_text = claim_element_text or resolved_element['claim_element_text']
+            existing = next(
+                (
+                    link for link in self._memory_support_links
+                    if str(link.get('user_id') or '') == str(user_id)
+                    and str(link.get('claim_type') or '') == str(claim_type)
+                    and str(link.get('support_kind') or '') == str(support_kind)
+                    and str(link.get('support_ref') or '') == str(support_ref)
+                    and str(link.get('claim_element_id') or '') == str(claim_element_id or '')
+                    and str(link.get('claim_element_text') or '') == str(claim_element_text or '')
+                ),
+                None,
+            )
+            if existing is not None:
+                return {'record_id': int(existing.get('id') or -1), 'created': False, 'reused': True}
+            record_id = len(self._memory_support_links) + 1
+            self._memory_support_links.append(
+                {
+                    'id': record_id,
+                    'user_id': user_id,
+                    'complaint_id': complaint_id,
+                    'claim_type': claim_type,
+                    'claim_element_id': claim_element_id,
+                    'claim_element_text': claim_element_text,
+                    'support_kind': support_kind,
+                    'support_ref': support_ref,
+                    'support_label': support_label,
+                    'source_table': source_table,
+                    'support_strength': support_strength,
+                    'metadata': normalized_metadata or {},
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            return {'record_id': record_id, 'created': True, 'reused': False}
 
         normalized_metadata = _merge_intake_summary_handoff_metadata(
             metadata,
@@ -3303,7 +3374,25 @@ class ClaimSupportHook:
 
     def get_support_links(self, user_id: str, claim_type: Optional[str] = None) -> List[Dict[str, Any]]:
         if not DUCKDB_AVAILABLE:
-            return []
+            return [
+                {
+                    'id': link.get('id'),
+                    'complaint_id': link.get('complaint_id'),
+                    'claim_type': link.get('claim_type'),
+                    'claim_element_id': link.get('claim_element_id'),
+                    'claim_element_text': link.get('claim_element_text'),
+                    'support_kind': link.get('support_kind'),
+                    'support_ref': link.get('support_ref'),
+                    'support_label': link.get('support_label'),
+                    'source_table': link.get('source_table'),
+                    'support_strength': link.get('support_strength'),
+                    'metadata': dict(link.get('metadata') or {}),
+                    'timestamp': link.get('timestamp'),
+                }
+                for link in self._memory_support_links
+                if str(link.get('user_id') or '') == str(user_id)
+                and (not claim_type or str(link.get('claim_type') or '') == str(claim_type))
+            ]
 
         try:
             conn = duckdb.connect(self.db_path)

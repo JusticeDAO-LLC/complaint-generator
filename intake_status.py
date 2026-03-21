@@ -536,7 +536,13 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
     proof_lead_intent_summary = raw_status.get("proof_lead_intent_summary")
     blocker_follow_up_summary = raw_status.get("blocker_follow_up_summary")
     open_items = raw_status.get("open_items")
+    event_ledger = raw_status.get("event_ledger")
     event_ledger_summary = raw_status.get("event_ledger_summary")
+    timeline_anchors = raw_status.get("timeline_anchors")
+    temporal_fact_registry = raw_status.get("temporal_fact_registry")
+    temporal_relation_registry = raw_status.get("temporal_relation_registry")
+    timeline_relations = raw_status.get("timeline_relations")
+    temporal_issue_registry = raw_status.get("temporal_issue_registry")
     timeline_anchor_summary = raw_status.get("timeline_anchor_summary")
     temporal_fact_registry_summary = raw_status.get("temporal_fact_registry_summary")
     temporal_relation_registry_summary = raw_status.get("temporal_relation_registry_summary")
@@ -621,6 +627,9 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
             if isinstance(proof_lead_intent_summary, dict)
             else {}
         ),
+        "event_ledger": (
+            event_ledger if isinstance(event_ledger, list) else []
+        ),
         "event_ledger_summary": (
             event_ledger_summary
             if isinstance(event_ledger_summary, dict)
@@ -636,17 +645,32 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
                 }
             )
         ),
+        "temporal_fact_registry": (
+            temporal_fact_registry if isinstance(temporal_fact_registry, list) else []
+        ),
         "temporal_fact_registry_summary": (
             temporal_fact_registry_summary if isinstance(temporal_fact_registry_summary, dict) else {}
+        ),
+        "timeline_anchors": (
+            timeline_anchors if isinstance(timeline_anchors, list) else []
         ),
         "timeline_anchor_summary": (
             timeline_anchor_summary if isinstance(timeline_anchor_summary, dict) else {}
         ),
+        "temporal_relation_registry": (
+            temporal_relation_registry if isinstance(temporal_relation_registry, list) else []
+        ),
         "temporal_relation_registry_summary": (
             temporal_relation_registry_summary if isinstance(temporal_relation_registry_summary, dict) else {}
         ),
+        "timeline_relations": (
+            timeline_relations if isinstance(timeline_relations, list) else []
+        ),
         "timeline_relation_summary": (
             timeline_relation_summary if isinstance(timeline_relation_summary, dict) else {}
+        ),
+        "temporal_issue_registry": (
+            temporal_issue_registry if isinstance(temporal_issue_registry, list) else []
         ),
         "temporal_issue_registry_summary": summarize_temporal_issue_registry(
             temporal_issue_registry_summary
