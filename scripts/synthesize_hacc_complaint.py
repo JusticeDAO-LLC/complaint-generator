@@ -2250,6 +2250,7 @@ def _merge_drafting_readiness_signals(seed: Dict[str, Any], grounding_bundle: Di
     blockers: List[str] = []
     unresolved_factual_gaps: List[str] = []
     unresolved_legal_gaps: List[str] = []
+    document_generation_signals: Dict[str, Any] = {}
     for candidate in candidates:
         for item in list(candidate.get("blockers") or []) + list(candidate.get("blocking_codes") or []) + list(candidate.get("warning_codes") or []):
             text = str(item or "").strip()
@@ -2263,6 +2264,42 @@ def _merge_drafting_readiness_signals(seed: Dict[str, Any], grounding_bundle: Di
             text = " ".join(str(item or "").split()).strip()
             if text and not _anchor_mapping_gap_is_satisfied(seed, text) and text not in unresolved_legal_gaps:
                 unresolved_legal_gaps.append(text)
+        nested_document_signals = candidate.get("document_generation_signals")
+        if isinstance(nested_document_signals, dict):
+            document_generation_signals.update(
+                {
+                    key: value
+                    for key, value in dict(nested_document_signals).items()
+                    if value not in (None, "", [], {})
+                }
+            )
+
+    if isinstance(grounding_bundle, dict):
+        for key in ("document_generation", "document_handoff_summary", "drafting_readiness"):
+            candidate = grounding_bundle.get(key)
+            if not isinstance(candidate, dict):
+                continue
+            if key == "document_generation":
+                document_generation_signals.update(
+                    {
+                        entry_key: entry_value
+                        for entry_key, entry_value in candidate.items()
+                        if entry_key
+                        in {
+                            "phase_status",
+                            "coverage",
+                            "document_generation_status",
+                            "document_generation_coverage",
+                            "supported_anchor_sections",
+                            "support_trace_count",
+                            "artifact_support_count",
+                            "blockers",
+                            "unresolved_legal_gaps",
+                            "unresolved_factual_gaps",
+                        }
+                        and entry_value not in (None, "", [], {})
+                    }
+                )
 
     modality_signals = _readiness_modality_signals(seed)
     weak_modalities = list(modality_signals.get("weak_modalities") or [])
@@ -2286,6 +2323,7 @@ def _merge_drafting_readiness_signals(seed: Dict[str, Any], grounding_bundle: Di
         "unresolved_legal_gaps": unresolved_legal_gaps[:5],
         "evidence_modalities": dict(modality_signals.get("modalities") or {}),
         "weak_evidence_modalities": weak_modalities[:3],
+        "document_generation_signals": document_generation_signals,
     }
 
 
