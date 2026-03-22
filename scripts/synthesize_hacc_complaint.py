@@ -4734,11 +4734,23 @@ def _answered_intake_follow_up_items(worksheet: Dict[str, Any]) -> List[Dict[str
         answer = " ".join(str(item.get("answer") or "").split()).strip()
         if not question or not answer:
             continue
-        items.append({"question": question, "answer": answer})
+        items.append(
+            {
+                "question": question,
+                "answer": answer,
+                "objective": _normalize_intake_objective(str(item.get("objective") or "").strip()),
+                "source": str(item.get("source") or "").strip(),
+            }
+        )
     return items
 
 
-def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_completed_intake_worksheet(
+    session: Dict[str, Any],
+    worksheet: Dict[str, Any],
+    *,
+    source_name: str = "completed_intake_follow_up_worksheet",
+) -> Dict[str, Any]:
     answered_items = _answered_intake_follow_up_items(worksheet)
     if not answered_items:
         return session
@@ -4760,11 +4772,11 @@ def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[s
             {
                 "role": "complainant",
                 "content": item["answer"],
-                "source": "completed_intake_follow_up_worksheet",
+                "source": source_name,
                 "question": item["question"],
             }
         )
-        objective = _normalize_intake_objective(_classify_intake_question_objective(item["question"]))
+        objective = _normalize_intake_objective(item.get("objective") or _classify_intake_question_objective(item["question"]))
         if objective:
             counts[objective] = counts.get(objective, 0) + 1
             if objective not in covered:
@@ -5502,6 +5514,11 @@ def main(argv: List[str] | None = None) -> int:
         default=None,
         help="Optional completed intake_follow_up_worksheet.json whose answers should be merged back into the synthesized draft.",
     )
+    parser.add_argument(
+        "--completed-grounded-intake-worksheet",
+        default=None,
+        help="Optional completed grounded_intake_follow_up_worksheet.json whose answers should be merged back into the synthesized draft.",
+    )
     parser.add_argument("--grounded-run-dir", default=None, help="Optional grounded pipeline run directory containing grounding_bundle.json and evidence_upload_report.json.")
     parser.add_argument("--grounding-bundle", default=None, help="Optional explicit grounding_bundle.json path.")
     parser.add_argument("--evidence-upload-report", default=None, help="Optional explicit evidence_upload_report.json path.")
@@ -5565,8 +5582,19 @@ def main(argv: List[str] | None = None) -> int:
     grounded_research_action_queue = list(_load_optional_json(grounded_research_action_queue_path) or [])
     completed_intake_worksheet_path = Path(args.completed_intake_worksheet).resolve() if args.completed_intake_worksheet else None
     completed_intake_worksheet = _load_optional_json(completed_intake_worksheet_path)
+    completed_grounded_intake_worksheet_path = (
+        Path(args.completed_grounded_intake_worksheet).resolve()
+        if args.completed_grounded_intake_worksheet
+        else None
+    )
+    completed_grounded_intake_worksheet = _load_optional_json(completed_grounded_intake_worksheet_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
     best_session = _merge_completed_intake_worksheet(best_session, completed_intake_worksheet)
+    best_session = _merge_completed_intake_worksheet(
+        best_session,
+        completed_grounded_intake_worksheet,
+        source_name="completed_grounded_intake_follow_up_worksheet",
+    )
     actor_critic_metrics = _extract_actor_critic_metrics(best_session)
     phase_focus_order = _actor_critic_phase_focus_order(best_session)
     router_backed_question_quality = _actor_critic_router_backed_question_quality(best_session)
@@ -5641,6 +5669,7 @@ def main(argv: List[str] | None = None) -> int:
             "grounded_recommended_next_action_json": str(grounded_recommended_next_action_path) if grounded_recommended_next_action_path else None,
             "grounded_research_action_queue_json": str(grounded_research_action_queue_path) if grounded_research_action_queue_path else None,
             "completed_intake_worksheet_json": str(completed_intake_worksheet_path) if completed_intake_worksheet_path else None,
+            "completed_grounded_intake_worksheet_json": str(completed_grounded_intake_worksheet_path) if completed_grounded_intake_worksheet_path else None,
             "search_summary": search_summary,
         },
     }

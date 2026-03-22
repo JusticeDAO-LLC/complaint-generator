@@ -865,6 +865,47 @@ def test_merge_completed_intake_worksheet_adds_answers_and_closes_matching_gaps(
     assert summary["objective_question_counts"]["timeline"] == 1
 
 
+def test_merge_completed_grounded_intake_worksheet_preserves_grounded_source_and_objective():
+    session = {
+        "conversation_history": [],
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "exact_dates"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["documents", "exact_dates"],
+                "objective_question_counts": {
+                    "documents": 0,
+                    "exact_dates": 0,
+                },
+            }
+        },
+    }
+    worksheet = {
+        "follow_up_items": [
+            {
+                "id": "grounded_priority_01",
+                "objective": "documents",
+                "question": "Which repository-backed file should be uploaded first, and what exact fact does it prove?",
+                "answer": "Upload the termination notice first because it proves the date and reason for the adverse action.",
+                "status": "answered",
+                "source": "grounded_recommended_next_action",
+            }
+        ]
+    }
+
+    merged = MODULE._merge_completed_intake_worksheet(
+        session,
+        worksheet,
+        source_name="completed_grounded_intake_follow_up_worksheet",
+    )
+
+    assert merged["conversation_history"][-1]["source"] == "completed_grounded_intake_follow_up_worksheet"
+    summary = merged["final_state"]["adversarial_intake_priority_summary"]
+    assert summary["covered_objectives"] == ["documents"]
+    assert summary["uncovered_objectives"] == ["exact_dates"]
+    assert summary["objective_question_counts"]["documents"] == 1
+
+
 def test_render_intake_follow_up_worksheet_markdown_includes_fillable_items():
     worksheet = {
         "generated_at": "2026-03-17T00:00:00+00:00",
