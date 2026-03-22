@@ -602,6 +602,7 @@ def _render_grounded_workflow_history_inspection(inspection: Dict[str, Any]) -> 
     status = dict(inspection.get("workflow_status") or {})
     recent_history = [dict(item) for item in list(inspection.get("recent_workflow_history") or []) if isinstance(item, dict)]
     effective_next_action = dict(status.get("effective_next_action") or {})
+    recommended_commands = dict(status.get("recommended_commands") or {})
     refreshed_grounding_state = dict(inspection.get("refreshed_grounding_state") or {})
     grounded_follow_up_answer_summary = dict(inspection.get("grounded_follow_up_answer_summary") or {})
     lines = [
@@ -625,6 +626,22 @@ def _render_grounded_workflow_history_inspection(inspection: Dict[str, Any]) -> 
     answered_item_count = int(grounded_follow_up_answer_summary.get("answered_item_count", 0) or 0)
     if answered_item_count:
         lines.append(f"Grounded follow-up answers: {answered_item_count}")
+    if recommended_commands:
+        inspect_command = str(recommended_commands.get("inspect_command") or "").strip()
+        recommended_command = str(recommended_commands.get("recommended_command") or "").strip()
+        recommended_command_kind = str(recommended_commands.get("recommended_command_kind") or "").strip()
+        pipeline_resume_command = str(recommended_commands.get("pipeline_resume_command") or "").strip()
+        if inspect_command:
+            lines.append(f"Inspect: {inspect_command}")
+        if recommended_command:
+            recommended_label = "Recommended command"
+            if recommended_command_kind == "synthesize":
+                recommended_label = "Recommended synthesis"
+            elif recommended_command_kind == "rerun":
+                recommended_label = "Recommended rerun"
+            lines.append(f"{recommended_label}: {recommended_command}")
+        if pipeline_resume_command:
+            lines.append(f"Pipeline resume: {pipeline_resume_command}")
     if recent_history:
         lines.append("Recent transitions:")
         for item in recent_history:

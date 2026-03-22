@@ -4077,6 +4077,7 @@ def test_claim_support_testimony_payload_persists_and_refreshes_review():
             "claim_support_temporal_handoff": {
                 "unresolved_temporal_issue_count": 1,
                 "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                "chronology_task_count": 1,
                 "claim_type": "retaliation",
                 "claim_element_id": "retaliation:2",
                 "event_ids": ["event_001"],
@@ -4462,6 +4463,7 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
             "claim_support_temporal_handoff": {
                 "unresolved_temporal_issue_count": 1,
                 "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+                "chronology_task_count": 1,
                 "claim_type": "retaliation",
                 "claim_element_id": "retaliation:2",
                 "event_ids": ["event_001"],

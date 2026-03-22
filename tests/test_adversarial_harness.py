@@ -2559,6 +2559,67 @@ class TestOptimizer:
         assert any(item.startswith("Increase exhibit-ready intake prompts") for item in report.priority_improvements)
         assert "exhibit_ready_questions" in report.phase_scorecards["intake_questioning"]["focus_areas"]
 
+    def test_optimizer_flags_document_theory_alignment_drift(self):
+        optimizer = Optimizer()
+        result = SessionResult(
+            session_id="session_theory_drift",
+            timestamp="2024-01-01",
+            seed_complaint={
+                "type": "housing_discrimination",
+                "key_facts": {
+                    "theory_labels": ["due_process_failure"],
+                    "anchor_sections": ["appeal_rights", "adverse_action"],
+                    "synthetic_prompts": {
+                        "document_generation_prompt": (
+                            "Emphasize notice, hearing or review procedures, denial and review-decision chronology, "
+                            "due-process counts when supported, and relief requiring rescission, stay, or a proper hearing or review."
+                        )
+                    },
+                },
+            },
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={
+                "workflow_phase_plan": {
+                    "phases": {
+                        "intake_questioning": {"status": "ready"},
+                        "graph_analysis": {"status": "ready"},
+                        "document_generation": {"status": "warning"},
+                    }
+                },
+                "document_generation": {
+                    "claim_count": 1,
+                    "requested_relief_count": 1,
+                    "claim_types": ["housing_discrimination"],
+                    "count_titles": ["Count I - Housing Discrimination and Wrongful Denial of Assistance"],
+                    "requested_relief_preview": ["Compensatory damages according to proof."],
+                },
+            },
+            critic_score=CriticScore(
+                overall_score=0.72,
+                question_quality=0.72,
+                information_extraction=0.72,
+                empathy=0.72,
+                efficiency=0.72,
+                coverage=0.72,
+                feedback="Test",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+            ),
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert report.document_theory_alignment_summary["low_alignment_flag"] is True
+        assert report.document_theory_alignment_summary["missing_tag_counts"]["notice_review"] >= 1
+        assert any("theory-specific seed guidance" in rec for rec in report.recommendations)
+        assert any(item.startswith("Align drafted counts and relief with seed theory guidance") for item in report.priority_improvements)
+        assert "theory_alignment" in report.phase_scorecards["document_generation"]["focus_areas"]
+
     def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
         optimizer = Optimizer()
 

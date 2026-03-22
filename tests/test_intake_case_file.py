@@ -925,6 +925,53 @@ def test_refresh_intake_case_file_ignores_policy_titles_for_staff_name_blockers(
     assert "missing_staff_name_title_mapping" not in blocker_ids
 
 
+def test_refresh_intake_case_file_suppresses_hearing_and_response_blockers_for_structured_artifact_backed_sequence():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_structured_1",
+                "text": "me requested informal hearing/review. Artifact: hearing request submission record.",
+                "fact_type": "timeline",
+                "predicate_family": "hearing_process",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+                "source_artifact_ids": ["hearing request submission record."],
+            },
+            {
+                "fact_id": "fact_structured_2",
+                "text": "HACC decision-maker(s) delayed/unclear response or limited process. Artifact: response letter/email.",
+                "fact_type": "timeline",
+                "predicate_family": "response_timeline",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "source_artifact_ids": ["response letter/email."],
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": (
+            "I requested informal hearing/review and the response was delayed/unclear."
+        ),
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    blocker_ids = [
+        item["blocker_id"]
+        for item in refreshed["blocker_follow_up_summary"]["blocking_items"]
+    ]
+    assert "missing_hearing_request_timing" not in blocker_ids
+    assert "missing_response_timing" not in blocker_ids
+
+
 def test_refresh_intake_case_file_still_detects_named_staff_when_org_name_is_present():
     intake_case_file = {
         "candidate_claims": [],

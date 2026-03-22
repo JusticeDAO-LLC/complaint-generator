@@ -3775,7 +3775,14 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
     canonical_facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
     timeline_relations = [dict(item) for item in list(intake_case_file.get("timeline_relations") or []) if isinstance(item, dict)]
     timeline_anchors = [dict(item) for item in list(intake_case_file.get("timeline_anchors") or []) if isinstance(item, dict)]
+    temporal_issue_registry = [dict(item) for item in list(intake_case_file.get("temporal_issue_registry") or []) if isinstance(item, dict)]
     graph_complete = bool(canonical_facts) and bool(timeline_relations or timeline_anchors)
+    blocking_temporal_issues = [
+        item
+        for item in temporal_issue_registry
+        if str(item.get("status") or item.get("current_resolution_status") or "").strip().lower() not in {"resolved", "closed"}
+        and (bool(item.get("blocking", True)) or str(item.get("severity") or "").strip().lower() == "blocking")
+    ]
     if not graph_complete:
         phase_status = "warning"
         if "graph_analysis_not_ready" not in blockers:
@@ -3805,6 +3812,34 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
         phase_status = "warning"
         if "document_generation_not_ready" not in blockers:
             blockers.append("document_generation_not_ready")
+
+    chronology_gap_markers = (
+        "case chronology remains incomplete",
+        "chronology anchors still need ordering cleanup",
+        "graph analysis remains incomplete at drafting handoff",
+        "hearing/appeal request timing is missing day-level anchors",
+        "response or non-response events are described without date anchors",
+    )
+    coverage_gap_marker = "document generation coverage is below handoff threshold"
+    if graph_complete and not blocking_temporal_issues and not live_intake_gaps:
+        factual_gaps = [
+            item for item in factual_gaps
+            if not any(marker in " ".join(str(item).split()).strip().lower() for marker in chronology_gap_markers)
+        ]
+        legal_gaps = [
+            item for item in legal_gaps
+            if not any(marker in " ".join(str(item).split()).strip().lower() for marker in chronology_gap_markers[-2:])
+        ]
+        blockers = [
+            item for item in blockers
+            if item not in {"chronology_partial_order_not_ready", "graph_analysis_not_ready"}
+        ]
+    if graph_complete and not blocking_temporal_issues and not live_intake_gaps and not legal_gaps:
+        factual_gaps = [
+            item for item in factual_gaps
+            if coverage_gap_marker not in " ".join(str(item).split()).strip().lower()
+        ]
+        blockers = [item for item in blockers if item != "document_generation_not_ready"]
 
     if live_intake_gaps and "uncovered_intake_objectives" not in blockers:
         blockers.append("uncovered_intake_objectives")

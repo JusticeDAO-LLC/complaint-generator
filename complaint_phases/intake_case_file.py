@@ -2452,6 +2452,20 @@ def build_blocker_follow_up_summary(
             )
         )
 
+    def _has_structured_artifact_backed_sequence(fact: Dict[str, Any], families: set[str], tokens: tuple[str, ...]) -> bool:
+        predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+        text_value = _fact_text(fact)
+        structured_group = _normalize_text(fact.get("structured_timeline_group") or "")
+        sequence_index = fact.get("sequence_index")
+        source_artifact_ids = _unique_normalized_strings(fact.get("source_artifact_ids") or [])
+        event_support_refs = _unique_normalized_strings(fact.get("event_support_refs") or [])
+        return bool(
+            structured_group
+            and isinstance(sequence_index, int)
+            and (predicate_family in families or any(token in text_value for token in tokens))
+            and (source_artifact_ids or event_support_refs)
+        )
+
     blocking_items: List[Dict[str, Any]] = []
     seen_ids = set()
 
@@ -2487,7 +2501,11 @@ def build_blocker_follow_up_summary(
         or bool(_coerce_dict(fact.get("temporal_context")).get("start_date"))
         for fact in hearing_facts
     )
-    if hearing_reference and not hearing_has_date:
+    hearing_has_structured_sequence_support = any(
+        _has_structured_artifact_backed_sequence(fact, {"hearing_process"}, ("hearing", "appeal", "grievance", "review"))
+        for fact in hearing_facts
+    )
+    if hearing_reference and not hearing_has_date and not hearing_has_structured_sequence_support:
         _add_blocker(
             _build_blocker_record("missing_hearing_request_timing", {
                 "blocker_id": "missing_hearing_request_timing",
@@ -2507,7 +2525,11 @@ def build_blocker_follow_up_summary(
         or bool(_coerce_dict(fact.get("temporal_context")).get("start_date"))
         for fact in response_facts
     )
-    if response_reference and not response_has_date:
+    response_has_structured_sequence_support = any(
+        _has_structured_artifact_backed_sequence(fact, {"response_timeline"}, ("response", "responded", "replied", "denied", "approved", "ignored"))
+        for fact in response_facts
+    )
+    if response_reference and not response_has_date and not response_has_structured_sequence_support:
         _add_blocker(
             _build_blocker_record("missing_response_timing", {
                 "blocker_id": "missing_response_timing",

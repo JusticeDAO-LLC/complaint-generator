@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HACC_UNIT_TESTS = [
     "tests/test_adversarial_session_intake_prompts.py",
     "tests/test_hacc_evidence_loader.py",
+    "tests/test_hacc_grounded_history_docs.py",
     "tests/test_synthesize_hacc_complaint.py",
     "tests/test_run_hacc_adversarial_report.py",
     "tests/test_run_hacc_unit_regression_cli.py",

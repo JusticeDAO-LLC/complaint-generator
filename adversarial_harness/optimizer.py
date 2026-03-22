@@ -88,6 +88,7 @@ class OptimizationReport:
     workflow_action_queue: List[Dict[str, Any]] | None = None
     document_provenance_summary: Dict[str, Any] | None = None
     intake_question_structure_summary: Dict[str, Any] | None = None
+    document_theory_alignment_summary: Dict[str, Any] | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -148,6 +149,7 @@ class OptimizationReport:
             'cross_phase_findings': list(self.cross_phase_findings or []),
             'workflow_action_queue': list(self.workflow_action_queue or []),
             'intake_question_structure_summary': self.intake_question_structure_summary or {},
+            'document_theory_alignment_summary': self.document_theory_alignment_summary or {},
         }
 
 
@@ -1563,6 +1565,135 @@ class Optimizer:
         }
 
     @staticmethod
+    def _derive_expected_document_theory_tags(seed_complaint: Dict[str, Any]) -> List[str]:
+        key_facts = seed_complaint.get("key_facts") if isinstance(seed_complaint.get("key_facts"), dict) else {}
+        synthetic_prompts = key_facts.get("synthetic_prompts") if isinstance(key_facts.get("synthetic_prompts"), dict) else {}
+        theory_labels = {
+            str(value or "").strip().lower()
+            for value in list(key_facts.get("theory_labels") or [])
+            if str(value or "").strip()
+        }
+        anchor_sections = {
+            str(value or "").strip().lower()
+            for value in list(key_facts.get("anchor_sections") or [])
+            if str(value or "").strip()
+        }
+        prompt_text = " ".join(
+            [
+                str(synthetic_prompts.get("document_generation_prompt") or ""),
+                str(seed_complaint.get("summary") or ""),
+            ]
+        ).lower()
+        expected_tags: List[str] = []
+        if (
+            {"due_process_failure", "adverse_action", "retaliation"} & theory_labels
+            or {"appeal_rights", "grievance_hearing", "adverse_action"} & anchor_sections
+            or any(token in prompt_text for token in ("due-process", "due process", "review", "hearing", "written notice"))
+        ):
+            expected_tags.append("notice_review")
+        if (
+            {"retaliation"} & theory_labels
+            or any(token in prompt_text for token in ("retaliation", "retaliatory"))
+        ):
+            expected_tags.append("retaliation")
+        if (
+            {"reasonable_accommodation", "disability_discrimination"} & theory_labels
+            or {"reasonable_accommodation"} & anchor_sections
+            or any(token in prompt_text for token in ("accommodation", "interactive process", "disability"))
+        ):
+            expected_tags.append("accommodation")
+        if (
+            {"housing_discrimination", "adverse_action"} & theory_labels
+            or {"adverse_action"} & anchor_sections
+            or any(token in prompt_text for token in ("denial", "termination", "loss of assistance", "rescission", "restoration"))
+        ):
+            expected_tags.append("adverse_action")
+        return expected_tags
+
+    @staticmethod
+    def _derive_actual_document_theory_tags(final_state: Dict[str, Any]) -> List[str]:
+        document_generation = (
+            final_state.get("document_generation")
+            if isinstance(final_state.get("document_generation"), dict)
+            else {}
+        )
+        content_parts = [
+            *[str(value or "") for value in list(document_generation.get("claim_types") or [])],
+            *[str(value or "") for value in list(document_generation.get("count_titles") or [])],
+            *[str(value or "") for value in list(document_generation.get("requested_relief_preview") or [])],
+            str(document_generation.get("document_optimization_method") or ""),
+        ]
+        content_text = " ".join(content_parts).lower()
+        actual_tags: List[str] = []
+        if any(token in content_text for token in ("due_process", "due process", "notice", "review", "hearing", "appeal", "grievance")):
+            actual_tags.append("notice_review")
+        if any(token in content_text for token in ("retaliation", "retaliatory")):
+            actual_tags.append("retaliation")
+        if any(token in content_text for token in ("accommodation", "interactive process", "disability", "medical")):
+            actual_tags.append("accommodation")
+        if any(token in content_text for token in ("housing_discrimination", "denial", "termination", "loss of assistance", "rescind", "restore", "reinstat")):
+            actual_tags.append("adverse_action")
+        return actual_tags
+
+    def _build_document_theory_alignment_summary(self, successful_results: List[Any]) -> Dict[str, Any]:
+        sessions_with_expectation = 0
+        aligned_session_count = 0
+        drift_session_count = 0
+        expected_coverages: List[float] = []
+        missing_tag_counter: Counter[str] = Counter()
+        expected_tag_counter: Counter[str] = Counter()
+        aligned_tag_counter: Counter[str] = Counter()
+
+        for result in successful_results:
+            seed_complaint = result.seed_complaint if isinstance(getattr(result, "seed_complaint", None), dict) else {}
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            expected_tags = self._derive_expected_document_theory_tags(seed_complaint)
+            if not expected_tags:
+                continue
+            sessions_with_expectation += 1
+            actual_tags = set(self._derive_actual_document_theory_tags(final_state))
+            expected_set = set(expected_tags)
+            matched_tags = expected_set & actual_tags
+            coverage = len(matched_tags) / len(expected_set) if expected_set else 0.0
+            expected_coverages.append(coverage)
+            if coverage >= 0.75:
+                aligned_session_count += 1
+            else:
+                drift_session_count += 1
+            for tag in expected_set:
+                expected_tag_counter[tag] += 1
+            for tag in matched_tags:
+                aligned_tag_counter[tag] += 1
+            for tag in sorted(expected_set - actual_tags):
+                missing_tag_counter[tag] += 1
+
+        if sessions_with_expectation == 0:
+            return {
+                "count": 0,
+                "sessions_with_expectation": 0,
+                "aligned_session_count": 0,
+                "drift_session_count": 0,
+                "avg_expected_tag_coverage": 1.0,
+                "low_alignment_flag": False,
+                "expected_tag_counts": {},
+                "aligned_tag_counts": {},
+                "missing_tag_counts": {},
+            }
+
+        avg_expected_tag_coverage = round(sum(expected_coverages) / len(expected_coverages), 4) if expected_coverages else 0.0
+        return {
+            "count": sessions_with_expectation,
+            "sessions_with_expectation": sessions_with_expectation,
+            "aligned_session_count": aligned_session_count,
+            "drift_session_count": drift_session_count,
+            "avg_expected_tag_coverage": avg_expected_tag_coverage,
+            "low_alignment_flag": avg_expected_tag_coverage < 0.75,
+            "expected_tag_counts": dict(expected_tag_counter),
+            "aligned_tag_counts": dict(aligned_tag_counter),
+            "missing_tag_counts": dict(missing_tag_counter),
+        }
+
+    @staticmethod
     def _build_document_grounding_improvement_summary(successful_results: List[Any]) -> Dict[str, Any]:
         summaries: List[Dict[str, Any]] = []
         for result in successful_results:
@@ -2072,6 +2203,7 @@ class Optimizer:
         document_evidence_targeting_summary: Dict[str, Any],
         document_provenance_summary: Dict[str, Any],
         intake_question_structure_summary: Dict[str, Any],
+        document_theory_alignment_summary: Dict[str, Any],
         document_grounding_improvement_summary: Dict[str, Any],
         document_grounding_lane_outcome_summary: Dict[str, Any],
         document_workflow_execution_summary: Dict[str, Any],
@@ -2131,6 +2263,9 @@ class Optimizer:
         intake_needs_exhibit_grounding = int(
             (intake_question_structure_summary or {}).get("sessions_needing_exhibit_grounding") or 0
         ) > 0
+        document_theory_alignment_ratio = self._safe_float(
+            (document_theory_alignment_summary or {}).get("avg_expected_tag_coverage")
+        ) or 0.0
         document_fact_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_fact_backed_ratio")) or 0.0
         document_exhibit_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_exhibit_backed_ratio")) or 0.0
         execution_mismatch_flag = bool(
@@ -2184,6 +2319,7 @@ class Optimizer:
                     4,
                 ),
                 "focus_areas": [
+                    *(["theory_alignment"] if bool((document_theory_alignment_summary or {}).get("low_alignment_flag")) else []),
                     *(["exhibit_grounding"] if document_exhibit_backed_ratio < 0.6 else []),
                     *(["chronology_closure"] if chronology_pressure_flag else []),
                     *list((document_handoff_summary or {}).get("unresolved_intake_objectives") or [])[:2],
@@ -2198,8 +2334,10 @@ class Optimizer:
                 "first_top_support_kind": str((document_workflow_execution_summary or {}).get("first_top_support_kind") or ""),
                 "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
                 "document_exhibit_backed_ratio": round(document_exhibit_backed_ratio, 4),
+                "document_theory_alignment_ratio": round(document_theory_alignment_ratio, 4),
                 "document_low_grounding_flag": bool((document_provenance_summary or {}).get("low_grounding_flag")),
                 "document_provenance_summary": dict(document_provenance_summary or {}),
+                "document_theory_alignment_summary": dict(document_theory_alignment_summary or {}),
                 "document_grounding_improvement_summary": dict(document_grounding_improvement_summary or {}),
                 "document_grounding_lane_outcome_summary": dict(document_grounding_lane_outcome_summary or {}),
                 "document_grounding_improved_flag": bool((document_grounding_improvement_summary or {}).get("improved_flag")),
@@ -3279,6 +3417,7 @@ class Optimizer:
         document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(successful)
         document_provenance_summary = self._build_document_provenance_summary(successful)
         intake_question_structure_summary = self._build_intake_question_structure_summary(successful)
+        document_theory_alignment_summary = self._build_document_theory_alignment_summary(successful)
         document_grounding_improvement_summary = self._build_document_grounding_improvement_summary(successful)
         document_grounding_lane_outcome_summary = self._build_document_grounding_lane_outcome_summary(successful)
         document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
@@ -3483,6 +3622,29 @@ class Optimizer:
                 + (
                     f": exhibit-backed ratio {exhibit_backed_ratio:.2f}"
                     if document_provenance_summary.get("avg_exhibit_backed_ratio") is not None
+                    else ""
+                ),
+            )
+        theory_alignment_ratio = float(document_theory_alignment_summary.get("avg_expected_tag_coverage") or 0.0)
+        if bool(document_theory_alignment_summary.get("low_alignment_flag")):
+            missing_tags = [
+                str(name)
+                for name, _count in sorted(
+                    dict(document_theory_alignment_summary.get("missing_tag_counts") or {}).items(),
+                    key=lambda item: (-int(item[1] or 0), item[0]),
+                )[:3]
+                if str(name)
+            ]
+            recommendations.append(
+                "Document generation is drifting from theory-specific seed guidance. Make drafted counts and requested relief track the seed's expected theory lanes"
+                + (f": {', '.join(missing_tags)}." if missing_tags else ".")
+            )
+            priority_improvements.insert(
+                0,
+                "Align drafted counts and relief with seed theory guidance"
+                + (
+                    f": alignment ratio {theory_alignment_ratio:.2f}"
+                    if document_theory_alignment_summary.get("avg_expected_tag_coverage") is not None
                     else ""
                 ),
             )
@@ -3706,6 +3868,7 @@ class Optimizer:
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
             intake_question_structure_summary=intake_question_structure_summary,
+            document_theory_alignment_summary=document_theory_alignment_summary,
             document_grounding_improvement_summary=document_grounding_improvement_summary,
             document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
@@ -3725,6 +3888,7 @@ class Optimizer:
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
             intake_question_structure_summary=intake_question_structure_summary,
+            document_theory_alignment_summary=document_theory_alignment_summary,
             document_grounding_improvement_summary=document_grounding_improvement_summary,
             document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,

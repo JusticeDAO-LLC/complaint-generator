@@ -4182,17 +4182,38 @@ class AdversarialSession:
         draft_readiness = payload.get('drafting_readiness') if isinstance(payload.get('drafting_readiness'), dict) else {}
         document_optimization = payload.get('document_optimization') if isinstance(payload.get('document_optimization'), dict) else {}
         workflow_guidance = payload.get('workflow_optimization_guidance') if isinstance(payload.get('workflow_optimization_guidance'), dict) else {}
+        claims_for_relief = [
+            claim
+            for claim in list(draft.get('claims_for_relief') or [])
+            if isinstance(claim, dict)
+        ]
+        requested_relief = [
+            str(item).strip()
+            for item in list(draft.get('requested_relief') or [])
+            if str(item).strip()
+        ]
         return {
             'status': 'completed' if payload else 'unavailable',
             'ready_to_file': bool(payload.get('ready_to_file', False)),
-            'claim_count': len(list(draft.get('claims_for_relief') or [])),
+            'claim_count': len(claims_for_relief),
             'factual_allegation_count': len(list(draft.get('factual_allegations') or [])),
             'exhibit_count': len(list(draft.get('exhibits') or [])),
-            'requested_relief_count': len(list(draft.get('requested_relief') or [])),
+            'requested_relief_count': len(requested_relief),
             'draft_text_available': bool(str(draft.get('draft_text') or '').strip()),
             'document_optimization_available': bool(document_optimization),
             'document_optimization_method': str(document_optimization.get('optimization_method') or ''),
             'workflow_recommended_order': list(workflow_guidance.get('recommended_order') or []),
+            'claim_types': [
+                str(claim.get('claim_type') or '').strip()
+                for claim in claims_for_relief
+                if str(claim.get('claim_type') or '').strip()
+            ],
+            'count_titles': [
+                str(claim.get('count_title') or '').strip()
+                for claim in claims_for_relief
+                if str(claim.get('count_title') or '').strip()
+            ],
+            'requested_relief_preview': requested_relief[:5],
             'blocker_codes': [
                 str(item.get('code') or '')
                 for item in list(draft_readiness.get('blockers') or [])
