@@ -1384,6 +1384,16 @@ def _relief_selection_summary(relief_annotations: List[Dict[str, Any]]) -> List[
 
 def _render_grouped_lines(lines: List[str], section_kind: str, exhibit_index: Dict[str, str]) -> List[str]:
     rendered: List[str] = []
+    if section_kind == "authority":
+        for item in lines:
+            exhibit_id = exhibit_index.get(_line_exhibit_key(item))
+            if exhibit_id:
+                rendered.append(f"- {exhibit_id}: {item}")
+            else:
+                rendered.append(f"- {item}")
+        rendered.append("")
+        return rendered
+
     grouped = _group_lines_by_tag(lines)
     first_heading_for_line: Dict[str, str] = {}
 
@@ -2055,6 +2065,107 @@ def _grounding_prompt_summary(
         "uploaded_titles": upload_titles,
         "upload_count": int(upload_report.get("upload_count") or 0),
     }
+
+
+def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) -> List[str]:
+    external_bundle = dict(grounding_bundle.get("external_research_bundle") or {})
+    legal_results = [
+        dict(item)
+        for item in list((external_bundle.get("legal_authorities") or {}).get("results") or [])
+        if isinstance(item, dict)
+    ]
+    web_results = [
+        dict(item)
+        for item in list((external_bundle.get("web_discovery") or {}).get("results") or [])
+        if isinstance(item, dict)
+    ]
+    lines: List[str] = []
+
+    def _looks_like_formal_authority(item: Dict[str, Any]) -> bool:
+        title = str(item.get("title") or "").lower()
+        url = str(item.get("url") or "").lower()
+        citation = str(item.get("citation") or "").strip()
+        authority_source = str(item.get("authority_source") or "").strip()
+        if citation or authority_source:
+            return True
+        authority_markers = (
+            "u.s.c.",
+            "c.f.r.",
+            "ecfr",
+            "federal register",
+            "hud.gov",
+            "courtlistener",
+            "casetext",
+            "govinfo",
+            "justia",
+            "subpart",
+            "part 966",
+            "part 982",
+        )
+        return any(marker in title or marker in url for marker in authority_markers)
+
+    promoted_web_authorities = [item for item in web_results if _looks_like_formal_authority(item)]
+    remaining_web_results = [item for item in web_results if item not in promoted_web_authorities]
+
+    for item in legal_results[:limit]:
+        citation = str(item.get("citation") or "").strip()
+        title = str(item.get("title") or "").strip()
+        authority_source = str(item.get("authority_source") or "").strip()
+        summary = str(item.get("summary") or item.get("description") or "").strip()
+        reasons = [str(value).strip() for value in list(item.get("research_priority_reasons") or []) if str(value).strip()]
+        label = citation or title
+        if not label:
+            continue
+        line = label
+        if title and citation and title != citation:
+            line += f" — {title}"
+        details: List[str] = []
+        if authority_source:
+            details.append(f"source: {authority_source}")
+        if reasons:
+            details.append(f"ranking: {', '.join(reasons[:3])}")
+        if summary:
+            details.append(f"summary: {summary}")
+        if details:
+            line += ". " + " ".join(details)
+        lines.append(line)
+
+    remaining = max(0, limit - len(lines))
+    if remaining:
+        for item in promoted_web_authorities[:remaining]:
+            title = str(item.get("title") or item.get("url") or "").strip()
+            url = str(item.get("url") or "").strip()
+            reasons = [str(value).strip() for value in list(item.get("research_priority_reasons") or []) if str(value).strip()]
+            if not title:
+                continue
+            line = title
+            if url and url != title:
+                line += f" — {url}"
+            line += ". source: promoted_web_authority"
+            if reasons:
+                line += f" ranking: {', '.join(reasons[:3])}"
+            lines.append(line)
+            if len(lines) >= limit:
+                break
+
+    remaining = max(0, limit - len(lines))
+    if remaining:
+        for item in remaining_web_results[:remaining]:
+            title = str(item.get("title") or item.get("url") or "").strip()
+            url = str(item.get("url") or "").strip()
+            reasons = [str(value).strip() for value in list(item.get("research_priority_reasons") or []) if str(value).strip()]
+            if not title:
+                continue
+            line = title
+            if url and url != title:
+                line += f" — {url}"
+            if reasons:
+                line += f". ranking: {', '.join(reasons[:3])}"
+            lines.append(line)
+            if len(lines) >= limit:
+                break
+
+    return _dedupe_sentences(lines, limit=limit)
 
 
 def _derive_grounding_overview(
@@ -5677,6 +5788,14 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
     ])
     lines.extend(_render_grouped_lines(list(package["policy_basis"]), "basis", exhibit_index))
+    authority_basis = [str(item) for item in list(package.get("authorities_and_research_basis") or []) if str(item)]
+    if authority_basis:
+        lines.extend([
+            "",
+            "## Authorities And Research Basis",
+            "",
+        ])
+        lines.extend(_render_grouped_lines(authority_basis, "authority", exhibit_index))
     lines.extend([
         f"## {section_labels['causes']}",
         "",
@@ -6014,6 +6133,7 @@ def main(argv: List[str] | None = None) -> int:
         "factual_allegations": _factual_allegations(seed, best_session),
         "claims_theory": _claims_theory(seed, best_session, args.filing_forum),
         "policy_basis": _policy_basis(seed),
+        "authorities_and_research_basis": _external_authority_basis(grounding_bundle),
         "causes_of_action": _causes_of_action(seed, best_session, args.filing_forum),
         "anchor_passages": _anchor_passage_lines(seed),
         "supporting_evidence": _dedupe_sentences(

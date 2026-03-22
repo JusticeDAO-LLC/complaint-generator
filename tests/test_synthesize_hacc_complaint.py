@@ -199,6 +199,68 @@ def test_grounding_prompt_summary_exposes_upload_and_document_generation_prompts
     assert summary["complaint_chatbot_prompt"] == "Use uploaded evidence to ground the complaint chatbot."
     assert summary["document_generation_prompt"] == "Promote exhibits into the complaint draft."
     assert summary["upload_count"] == 1
+
+
+def test_external_authority_basis_prefers_ranked_legal_authorities():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "24 C.F.R. 982.555",
+                        "title": "Informal hearing for participants",
+                        "authority_source": "federal_register",
+                        "research_priority_reasons": ["has formal citation", "contains chronology cues"],
+                        "summary": "Discusses informal hearing notice, appeal rights, and decision timing.",
+                    }
+                ]
+            },
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "HUD hearing notice retaliation guidance",
+                        "url": "https://www.hud.gov/example/hearing-rights",
+                        "research_priority_reasons": ["trusted domain: www.hud.gov"],
+                    }
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert lines
+    assert "24 C.F.R. 982.555" in lines[0]
+    assert "source: federal_register" in lines[0]
+    assert "ranking: has formal citation, contains chronology cues" in lines[0]
+
+
+def test_external_authority_basis_promotes_formal_authority_like_web_results_when_legal_bucket_is_empty():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {"results": []},
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "24 CFR Part 966 Subpart B -- Grievance Procedures and Requirements",
+                        "url": "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-966/subpart-B",
+                        "research_priority_reasons": ["matched query terms: grievance", "trusted domain: www.ecfr.gov"],
+                    },
+                    {
+                        "title": "Housing blog post",
+                        "url": "https://example.org/blog-post",
+                        "research_priority_reasons": ["matched query terms: housing"],
+                    },
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert lines
+    assert "source: promoted_web_authority" in lines[0]
+    assert "24 CFR Part 966 Subpart B" in lines[0]
     assert summary["uploaded_titles"] == ["Denial Notice"]
     assert summary["evidence_upload_questions"] == ["Please upload the notice if you have it."]
 
@@ -828,6 +890,9 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "factual_allegations": [],
         "claims_theory": [],
         "policy_basis": [],
+        "authorities_and_research_basis": [
+            "24 C.F.R. 982.555 — Informal hearing for participants. source: federal_register ranking: has formal citation, contains chronology cues",
+        ],
         "causes_of_action": [],
         "proposed_allegations": ["Narrative line."],
         "anchored_chronology_summary": [
@@ -895,6 +960,8 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "- Top documents: ADMINISTRATIVE PLAN, ADMISSIONS AND CONTINUED OCCUPANCY POLICY" in markdown
     assert "## Evidence Attachments" in markdown
     assert "- ADMINISTRATIVE PLAN (hacc_website/admin-plan.txt): prepared for mediator; uploaded to mediator evidence store for housing_discrimination; anchors: grievance_hearing, appeal_rights" in markdown
+    assert "## Authorities And Research Basis" in markdown
+    assert "24 C.F.R. 982.555 — Informal hearing for participants." in markdown
     assert "## Search Summary" in markdown
     assert "- Requested search mode: hybrid" in markdown
     assert "- Effective search mode: lexical_only" in markdown
