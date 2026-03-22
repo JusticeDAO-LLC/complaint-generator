@@ -15,7 +15,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 from starlette.responses import RedirectResponse
 
 from .review_api import attach_claim_support_review_routes
-from .review_ui import attach_claim_support_review_ui_routes
+from .review_ui import attach_claim_support_review_ui_routes, attach_static_asset_routes
 from .complaint_workspace_api import attach_complaint_workspace_routes
 from .document_api import attach_document_routes
 from .document_ui import load_document_html
@@ -28,6 +28,7 @@ class SERVER:
 
  
         app = FastAPI()
+        attach_static_asset_routes(app)
         attach_complaint_workspace_routes(app)
         attach_claim_support_review_routes(app, mediator)
         attach_claim_support_review_ui_routes(app)

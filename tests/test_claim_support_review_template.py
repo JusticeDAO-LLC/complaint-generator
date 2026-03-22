@@ -710,7 +710,9 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         "/chat",
         "/profile",
         "/results",
+        "/workspace",
         "/cookies",
+        "/mcp",
         "/claim-support-review",
         "/document",
         "/document/optimization-trace",
@@ -729,6 +731,7 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
     for path, method in [
         ("/api/claim-support/review", "POST"),
         ("/api/claim-support/execute-follow-up", "POST"),
+        ("/api/mcp/analytics/history", "GET"),
         ("/api/documents/optimization-trace", "GET"),
         ("/api/claim-support/save-testimony", "POST"),
         ("/api/claim-support/save-document", "POST"),
@@ -766,9 +769,12 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     chat_response = client.get("/chat")
     profile_response = client.get("/profile")
     results_response = client.get("/results")
+    workspace_response = client.get("/workspace")
     cookies_response = client.get("/cookies")
     wysiwyg_response = client.get("/mlwysiwyg")
     dashboard_hub_response = client.get("/dashboards")
+    mcp_response = client.get("/mcp")
+    analytics_history_response = client.get("/api/mcp/analytics/history")
     sdk_response = client.get("/ipfs-datasets/sdk-playground")
 
     assert root_response.status_code == 200
@@ -776,9 +782,12 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert chat_response.status_code == 200
     assert profile_response.status_code == 200
     assert results_response.status_code == 200
+    assert workspace_response.status_code == 200
     assert cookies_response.status_code == 200
     assert wysiwyg_response.status_code == 200
     assert dashboard_hub_response.status_code == 200
+    assert mcp_response.status_code == 200
+    assert analytics_history_response.status_code == 200
     assert sdk_response.status_code == 200
     assert "/claim-support-review" in root_response.text
     assert "/document" in root_response.text
@@ -795,8 +804,12 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert "/claim-support-review" in results_response.text
     assert "/document" in results_response.text
     assert "/dashboards" in results_response.text
+    assert "Unified Complaint Workspace" in workspace_response.text
+    assert "/static/complaint_mcp_sdk.js" in workspace_response.text
     assert "Complaint Editor Workshop" in wysiwyg_response.text
     assert "Unified Dashboard Hub" in dashboard_hub_response.text
+    assert "IPFS Datasets MCP Dashboard" in mcp_response.text
+    assert analytics_history_response.json()["history"]
     assert "SDK Playground" in sdk_response.text
     assert cookies_response.text == "{}"
 
@@ -816,6 +829,7 @@ def test_review_surface_serves_every_registered_ipfs_dashboard_shell_and_raw_rou
         assert entry.title in shell_response.text
         assert "Complaint Generator Dashboard Shell" in shell_response.text
         assert "<html" in raw_response.text.lower()
+        assert "Compatibility Preview" not in raw_response.text
 
 
 def test_review_surface_optimization_trace_route_serves_trace_template():

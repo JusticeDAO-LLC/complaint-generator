@@ -1,0 +1,129 @@
+class ComplaintMcpClient {
+    constructor(options = {}) {
+        this.baseUrl = options.baseUrl || '/api/complaint-workspace';
+        this.mcpBaseUrl = options.mcpBaseUrl || `${this.baseUrl}/mcp`;
+        this.origin = options.origin || (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost');
+        this.fetchImpl = options.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+        this._requestId = 1;
+    }
+
+    initialize() {
+        return this.callJsonRpc('initialize', {
+            clientInfo: {
+                name: 'complaint-generator-browser-sdk',
+                version: '0.1.0',
+            },
+        });
+    }
+
+    async _request(path, options = {}) {
+        if (typeof this.fetchImpl !== 'function') {
+            throw new Error('ComplaintMcpClient requires a fetch implementation.');
+        }
+        const response = await this.fetchImpl(path, Object.assign({
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+        }, options));
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || (`Request failed with status ${response.status}`));
+        }
+        return response.json();
+    }
+
+    async _rpc(method, params) {
+        const payload = await this._request(`${this.mcpBaseUrl}/rpc`, {
+            method: 'POST',
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: this._requestId++,
+                method,
+                params: params || {},
+            }),
+        });
+        if (payload.error) {
+            throw new Error(payload.error.message || 'JSON-RPC request failed');
+        }
+        return payload.result;
+    }
+
+    callJsonRpc(method, params) {
+        return this._rpc(method, params);
+    }
+
+    ping() {
+        return this.callJsonRpc('ping', {});
+    }
+
+    async listTools() {
+        const result = await this._rpc('tools/list', {});
+        return result.tools || [];
+    }
+
+    async callTool(toolName, argumentsPayload) {
+        const result = await this._rpc('tools/call', {
+            name: toolName,
+            arguments: argumentsPayload || {},
+        });
+        if (result && result.structuredContent) {
+            return result.structuredContent;
+        }
+        return result;
+    }
+
+    startSession(userId) {
+        return this.callTool('complaint.start_session', {
+            user_id: userId,
+        });
+    }
+
+    getSession(userId) {
+        const url = new URL(`${this.baseUrl}/session`, this.origin);
+        if (userId) {
+            url.searchParams.set('user_id', userId);
+        }
+        return this._request(url.toString());
+    }
+
+    submitIntake(userId, answers) {
+        return this.callTool('complaint.submit_intake', {
+            user_id: userId,
+            answers: answers || {},
+        });
+    }
+
+    saveEvidence(userId, payload) {
+        return this.callTool('complaint.save_evidence', Object.assign({
+            user_id: userId,
+        }, payload || {}));
+    }
+
+    reviewCase(userId) {
+        return this.callTool('complaint.review_case', {
+            user_id: userId,
+        });
+    }
+
+    generateComplaint(userId, payload) {
+        return this.callTool('complaint.generate_complaint', Object.assign({
+            user_id: userId,
+        }, payload || {}));
+    }
+
+    updateDraft(userId, payload) {
+        return this.callTool('complaint.update_draft', Object.assign({
+            user_id: userId,
+        }, payload || {}));
+    }
+
+    resetSession(userId) {
+        return this.callTool('complaint.reset_session', {
+            user_id: userId,
+        });
+    }
+}
+
+export { ComplaintMcpClient };
+export default ComplaintMcpClient;

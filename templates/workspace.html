@@ -434,14 +434,29 @@
                     <p class="muted">The website is using the JavaScript MCP SDK below. The same service is also available through a Python CLI and a lightweight stdio MCP tool server.</p>
                     <div class="integration-grid">
                         <div class="tool-card">
+                            <h3>Python package imports</h3>
+                            <pre>from complaint_generator import ComplaintWorkspaceService, create_review_surface_app
+from complaint_generator.mcp import handle_jsonrpc_message
+
+service = ComplaintWorkspaceService()
+session = service.get_session("demo-user")</pre>
+                        </div>
+                        <div class="tool-card">
                             <h3>Python CLI</h3>
-                            <pre>python -m applications.complaint_cli session
-python -m applications.complaint_cli answer --question-id protected_activity --answer-text "Reported discrimination to HR"
-python -m applications.complaint_cli generate --requested-relief "Back pay|Injunctive relief"</pre>
+                            <pre>complaint-generator-workspace session
+complaint-generator-workspace answer --question-id protected_activity --answer-text "Reported discrimination to HR"
+complaint-generator-workspace generate --requested-relief "Back pay|Injunctive relief"</pre>
                         </div>
                         <div class="tool-card">
                             <h3>MCP stdio server</h3>
-                            <pre>python -m applications.complaint_mcp_server</pre>
+                            <pre>complaint-generator-mcp</pre>
+                        </div>
+                        <div class="tool-card">
+                            <h3>JavaScript MCP SDK</h3>
+                            <pre>const client = new window.ComplaintMcpSdk.ComplaintMcpClient();
+await client.initialize();
+await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
+                            <div class="chip-row" id="sdk-server-info"></div>
                         </div>
                         <div class="tool-card">
                             <h3>Available MCP Tools</h3>
@@ -557,14 +572,25 @@ python -m applications.complaint_cli generate --requested-relief "Back pay|Injun
             document.getElementById('draft-status').textContent = draft ? `Draft updated ${draft.updated_at || draft.generated_at || ''}` : 'No draft generated yet.';
         }
 
-        function renderTools(toolPayload) {
+        function renderTools(tools) {
             const toolList = document.getElementById('tool-list');
-            toolList.innerHTML = (toolPayload.tools || []).map((tool) => `
+            toolList.innerHTML = (tools || []).map((tool) => `
                 <div class="item">
                     <strong>${escapeHtml(tool.name)}</strong>
                     <div class="muted">${escapeHtml(tool.description)}</div>
                 </div>
             `).join('');
+        }
+
+        function renderSdkServerInfo(initializationPayload, tools) {
+            const serverInfo = (initializationPayload && initializationPayload.serverInfo) || {};
+            const protocolVersion = (initializationPayload && initializationPayload.protocolVersion) || 'unknown';
+            document.getElementById('sdk-server-info').innerHTML = `
+                <span class="chip good">server: ${escapeHtml(serverInfo.name || 'unknown')}</span>
+                <span class="chip">version: ${escapeHtml(serverInfo.version || 'unknown')}</span>
+                <span class="chip">protocol: ${escapeHtml(protocolVersion)}</span>
+                <span class="chip">tools: ${escapeHtml(String((tools || []).length))}</span>
+            `;
         }
 
         async function refreshWorkspace() {
@@ -643,7 +669,12 @@ python -m applications.complaint_cli generate --requested-relief "Back pay|Injun
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
 
-        Promise.all([refreshWorkspace(), client.listTools().then(renderTools)]).catch((error) => {
+        Promise.all([client.initialize(), refreshWorkspace(), client.listTools()]).then((results) => {
+            const initializationPayload = results[0];
+            const tools = results[2];
+            renderTools(tools);
+            renderSdkServerInfo(initializationPayload, tools);
+        }).catch((error) => {
             setStatus(`Workspace failed to load: ${error.message}`);
         });
     </script>

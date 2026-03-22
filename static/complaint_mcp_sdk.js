@@ -1,6 +1,8 @@
 (function (globalFactory) {
     if (typeof module === 'object' && module.exports) {
         module.exports = globalFactory();
+    } else if (typeof globalThis !== 'undefined') {
+        globalThis.ComplaintMcpSdk = globalFactory();
     } else {
         window.ComplaintMcpSdk = globalFactory();
     }
@@ -10,10 +12,25 @@
             const config = options || {};
             this.baseUrl = config.baseUrl || '/api/complaint-workspace';
             this.mcpBaseUrl = config.mcpBaseUrl || (this.baseUrl + '/mcp');
+            this.origin = config.origin || (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost');
+            this.fetchImpl = config.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+            this._requestId = 1;
+        }
+
+        initialize() {
+            return this.callJsonRpc('initialize', {
+                clientInfo: {
+                    name: 'complaint-generator-browser-sdk',
+                    version: '0.1.0',
+                },
+            });
         }
 
         async _request(path, options) {
-            const response = await fetch(path, Object.assign({
+            if (typeof this.fetchImpl !== 'function') {
+                throw new Error('ComplaintMcpClient requires a fetch implementation.');
+            }
+            const response = await this.fetchImpl(path, Object.assign({
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -26,22 +43,54 @@
             return response.json();
         }
 
-        listTools() {
-            return this._request(this.mcpBaseUrl + '/tools');
+        ping() {
+            return this.callJsonRpc('ping', {});
         }
 
-        callTool(toolName, argumentsPayload) {
-            return this._request(this.mcpBaseUrl + '/call', {
+        async _rpc(method, params) {
+            const payload = await this._request(this.mcpBaseUrl + '/rpc', {
                 method: 'POST',
                 body: JSON.stringify({
-                    tool_name: toolName,
-                    arguments: argumentsPayload || {},
+                    jsonrpc: '2.0',
+                    id: this._requestId++,
+                    method: method,
+                    params: params || {},
                 }),
+            });
+            if (payload.error) {
+                throw new Error(payload.error.message || 'JSON-RPC request failed');
+            }
+            return payload.result;
+        }
+
+        callJsonRpc(method, params) {
+            return this._rpc(method, params);
+        }
+
+        async listTools() {
+            const result = await this._rpc('tools/list', {});
+            return result.tools || [];
+        }
+
+        async callTool(toolName, argumentsPayload) {
+            const result = await this._rpc('tools/call', {
+                name: toolName,
+                arguments: argumentsPayload || {},
+            });
+            if (result && result.structuredContent) {
+                return result.structuredContent;
+            }
+            return result;
+        }
+
+        startSession(userId) {
+            return this.callTool('complaint.start_session', {
+                user_id: userId,
             });
         }
 
         getSession(userId) {
-            const url = new URL(this.baseUrl + '/session', window.location.origin);
+            const url = new URL(this.baseUrl + '/session', this.origin);
             if (userId) {
                 url.searchParams.set('user_id', userId);
             }

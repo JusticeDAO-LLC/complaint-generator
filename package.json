@@ -1,6 +1,15 @@
 {
   "name": "complaint-generator",
   "private": true,
+  "main": "./static/complaint_mcp_sdk.js",
+  "module": "./static/complaint_mcp_sdk.mjs",
+  "exports": {
+    "./complaint-mcp-sdk": {
+      "require": "./static/complaint_mcp_sdk.js",
+      "import": "./static/complaint_mcp_sdk.mjs",
+      "default": "./static/complaint_mcp_sdk.mjs"
+    }
+  },
   "scripts": {
     "test:e2e": "playwright test"
   },

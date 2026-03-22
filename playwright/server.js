@@ -452,14 +452,126 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/complaint-workspace/mcp/tools') {
     return sendJson(response, {
       tools: [
-        { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.' },
-        { name: 'complaint.submit_intake', description: 'Save complaint intake answers.' },
-        { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.' },
-        { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.' },
-        { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.' },
-        { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.' },
-        { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.' },
+        { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.', inputSchema: { type: 'object' } },
+        { name: 'complaint.submit_intake', description: 'Save complaint intake answers.', inputSchema: { type: 'object' } },
+        { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
+        { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
+        { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
+        { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
+        { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
       ],
+    });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/complaint-workspace/mcp/rpc') {
+    const rawBody = await collectRequestBody(request);
+    const parsed = rawBody ? JSON.parse(rawBody) : {};
+    const requestId = Object.prototype.hasOwnProperty.call(parsed, 'id') ? parsed.id : null;
+    const method = parsed.method;
+    const params = parsed.params || {};
+
+    if (method === 'tools/list') {
+      return sendJson(response, {
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {
+          tools: [
+            { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.', inputSchema: { type: 'object' } },
+            { name: 'complaint.submit_intake', description: 'Save complaint intake answers.', inputSchema: { type: 'object' } },
+            { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
+            { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
+            { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
+            { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
+            { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
+          ],
+        },
+      });
+    }
+
+    if (method === 'tools/call') {
+      const toolName = params.name;
+      const args = params.arguments || {};
+      let structuredContent = null;
+
+      if (toolName === 'complaint.submit_intake') {
+        Object.assign(workspaceState.intake_answers, args.answers || {});
+        structuredContent = workspaceSessionPayload();
+      } else if (toolName === 'complaint.save_evidence') {
+        const collection = args.kind === 'document' ? workspaceState.evidence.documents : workspaceState.evidence.testimony;
+        collection.push({
+          id: `${args.kind || 'testimony'}-${collection.length + 1}`,
+          kind: args.kind || 'testimony',
+          claim_element_id: args.claim_element_id,
+          title: args.title,
+          content: args.content,
+          source: args.source || '',
+        });
+        structuredContent = workspaceSessionPayload();
+      } else if (toolName === 'complaint.review_case' || toolName === 'complaint.start_session') {
+        structuredContent = workspaceSessionPayload();
+      } else if (toolName === 'complaint.generate_complaint') {
+        generateWorkspaceDraft(args.requested_relief || []);
+        if (args.title_override) {
+          workspaceState.draft.title = args.title_override;
+        }
+        structuredContent = workspaceSessionPayload();
+      } else if (toolName === 'complaint.update_draft') {
+        workspaceState.draft = workspaceState.draft || { title: '', requested_relief: [], body: '' };
+        if (typeof args.title === 'string') workspaceState.draft.title = args.title;
+        if (typeof args.body === 'string') workspaceState.draft.body = args.body;
+        if (Array.isArray(args.requested_relief)) workspaceState.draft.requested_relief = args.requested_relief;
+        structuredContent = workspaceSessionPayload();
+      } else if (toolName === 'complaint.reset_session') {
+        workspaceState.intake_answers = {};
+        workspaceState.evidence = { testimony: [], documents: [] };
+        workspaceState.draft = null;
+        structuredContent = workspaceSessionPayload();
+      } else {
+        return sendJson(response, {
+          jsonrpc: '2.0',
+          id: requestId,
+          error: {
+            code: -32601,
+            message: 'Method not found',
+          },
+        });
+      }
+
+      return sendJson(response, {
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(structuredContent),
+            },
+          ],
+          structuredContent,
+          isError: false,
+        },
+      });
+    }
+
+    if (method === 'initialize') {
+      return sendJson(response, {
+        jsonrpc: '2.0',
+        id: requestId,
+        result: {
+          protocolVersion: '2026-03-22',
+          serverInfo: { name: 'complaint-workspace-mcp', version: '1.0.0' },
+          capabilities: { tools: { listChanged: false } },
+        },
+      });
+    }
+
+    return sendJson(response, {
+      jsonrpc: '2.0',
+      id: requestId,
+      error: {
+        code: -32601,
+        message: 'Method not found',
+      },
     });
   }
 
@@ -519,6 +631,20 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/ipfs-datasets/sdk-playground') {
     return sendFile(response, sdkPreviewPath);
+  }
+
+  if (request.method === 'GET' && url.pathname === '/mcp') {
+    return sendText(response, renderDashboardShell(dashboardEntries[0]), 'text/html; charset=utf-8');
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/mcp/analytics/history') {
+    return sendJson(response, {
+      history: [
+        { last_updated: '2026-03-22T09:00:00+00:00', success_rate: 91.2, average_query_time: 1.42 },
+        { last_updated: '2026-03-22T10:00:00+00:00', success_rate: 94.8, average_query_time: 1.35 },
+        { last_updated: '2026-03-22T11:00:00+00:00', success_rate: 96.4, average_query_time: 1.28 },
+      ],
+    });
   }
 
   if (request.method === 'GET' && url.pathname === '/dashboards') {

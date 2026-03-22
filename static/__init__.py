@@ -1,0 +1,1 @@
+"""Packaged complaint-generator static assets."""

@@ -20,6 +20,8 @@ Response = pytest.importorskip("fastapi.responses").Response
 
 from applications.document_api import attach_document_routes
 from applications.document_ui import attach_document_ui_routes
+from applications.complaint_workspace import ComplaintWorkspaceService
+from applications.complaint_workspace_api import attach_complaint_workspace_routes
 from applications.review_api import attach_claim_support_review_routes
 from applications.review_ui import attach_claim_support_review_ui_routes, attach_review_health_routes
 from tests.test_claim_support_review_playwright_smoke import _build_hook_backed_browser_mediator
@@ -42,6 +44,7 @@ STATIC_DIR = REPO_ROOT / "static"
 FIXTURE_HASHED_USERNAME = "browser-smoke-text-link"
 FIXTURE_HASHED_PASSWORD = "browser-smoke-password"
 FIXTURE_TOKEN = "fixture-token"
+LAYOUT_AUDIT_VIEWPORT = {"width": 1440, "height": 1200}
 
 
 class _FixtureProfileStore:
@@ -216,9 +219,14 @@ def _build_document_payload(**kwargs) -> dict:
     }
 
 
-def _build_fixture_app(mediator, profile_store: _FixtureProfileStore) -> FastAPI:
+def _build_fixture_app(
+    mediator,
+    profile_store: _FixtureProfileStore,
+    workspace_service: ComplaintWorkspaceService,
+) -> FastAPI:
     app = FastAPI(title="Website Cohesion Browser Fixture")
 
+    attach_complaint_workspace_routes(app, workspace_service)
     attach_claim_support_review_routes(app, mediator)
     attach_claim_support_review_ui_routes(app)
     attach_document_routes(app, mediator)
@@ -245,6 +253,10 @@ def _build_fixture_app(mediator, profile_store: _FixtureProfileStore) -> FastAPI
     @app.get("/results", response_class=HTMLResponse)
     async def results_page() -> str:
         return _load_template("results.html")
+
+    @app.get("/workspace", response_class=HTMLResponse)
+    async def workspace_page() -> str:
+        return _load_template("workspace.html")
 
     @app.get("/cookies")
     async def cookies_page(request: Request) -> Response:
@@ -377,6 +389,7 @@ def _serve_app(app: FastAPI):
 def _launch_fixture_site():
     with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
         db_path = handle.name
+    workspace_root = Path(tempfile.mkdtemp(prefix="complaint-workspace-browser-"))
 
     mediator, _hook = _build_hook_backed_browser_mediator(db_path)
     mediator.save_claim_testimony_record(
@@ -389,7 +402,8 @@ def _launch_fixture_site():
     )
     mediator.build_formal_complaint_document_package.side_effect = _build_document_payload
     profile_store = _FixtureProfileStore()
-    app = _build_fixture_app(mediator, profile_store)
+    workspace_service = ComplaintWorkspaceService(root_dir=workspace_root)
+    app = _build_fixture_app(mediator, profile_store, workspace_service)
     return app, mediator
 
 
@@ -405,6 +419,98 @@ def _create_account_and_open_chat(page, base_url: str) -> None:
     page.wait_for_function(
         "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
     )
+
+
+def _create_account_from_root_iframe(page) -> None:
+    home_frame = page.frame_locator("iframe[src='/home/']")
+    home_frame.locator("#create-form button").click()
+    home_frame.locator("#create-form .username_input").fill("ExampleUser1")
+    home_frame.locator("#create-form .password_input").fill("StrongPass1!")
+    home_frame.locator("#create-form .password_verify_input").fill("StrongPass1!")
+    home_frame.locator("#create-form .email_input").fill("jordan@example.com")
+    home_frame.locator("#create-form button").click()
+
+
+def _capture_screenshot(page, target_dir: Path, name: str) -> Path:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    screenshot_path = target_dir / f"{name}.png"
+    page.screenshot(path=str(screenshot_path), full_page=True)
+    assert screenshot_path.exists()
+    assert screenshot_path.stat().st_size > 0
+    return screenshot_path
+
+
+def _assert_surface_layout(page, *, min_content_height: int = 160) -> None:
+    metrics = page.evaluate(
+        """() => {
+            const body = document.body;
+            const root = document.documentElement;
+            const navLinks = Array.from(document.querySelectorAll('a[href]'))
+                .map((node) => String(node.textContent || '').trim())
+                .filter(Boolean);
+            const mainLike = document.querySelector('main, .shell, .workspace, .hero, .container, body');
+            const primaryAction = document.querySelector('button, a[href="/document"], a[href="/claim-support-review"]');
+            const rect = mainLike ? mainLike.getBoundingClientRect() : null;
+            return {
+                viewportWidth: window.innerWidth,
+                scrollWidth: Math.max(body.scrollWidth, root.scrollWidth),
+                scrollHeight: Math.max(body.scrollHeight, root.scrollHeight),
+                renderedWidth: Math.max(body.clientWidth, root.clientWidth),
+                navCount: navLinks.length,
+                hasBuilderLink: navLinks.includes('Builder') || !!document.querySelector('a[href="/document"]'),
+                hasReviewLink: navLinks.includes('Review') || !!document.querySelector('a[href="/claim-support-review"]'),
+                hasPrimaryAction: !!primaryAction,
+                contentHeight: Math.max(rect ? rect.height : 0, body.scrollHeight, root.scrollHeight),
+                contentWidth: Math.max(rect ? rect.width : 0, body.scrollWidth, root.scrollWidth),
+            };
+        }"""
+    )
+    assert metrics["navCount"] >= 2
+    assert metrics["hasBuilderLink"]
+    assert metrics["hasReviewLink"]
+    assert metrics["hasPrimaryAction"]
+    assert metrics["contentHeight"] >= min_content_height
+    assert metrics["contentWidth"] >= 300
+    assert metrics["renderedWidth"] <= metrics["viewportWidth"] + 4
+
+
+def _wait_for_surface(page, path: str) -> None:
+    if path == "/":
+        page.wait_for_function("() => document.querySelector(\"iframe[src='/home/']\") !== null")
+        return
+    if path == "/home":
+        page.wait_for_function("() => document.body && document.body.innerText.trim().length > 20")
+        return
+    if path == "/chat":
+        page.wait_for_function(
+            "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
+        )
+        return
+    if path == "/profile":
+        page.wait_for_function(
+            "() => document.getElementById('profile_data').innerText.includes('browser-smoke-text-link')"
+        )
+        return
+    if path == "/results":
+        page.wait_for_function(
+            "() => document.getElementById('profile_data').innerText.includes('browser-smoke-text-link')"
+        )
+        return
+    if path == "/workspace":
+        page.wait_for_function(
+            "() => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp')"
+        )
+        return
+    if path.startswith("/claim-support-review"):
+        page.wait_for_function(
+            "() => document.getElementById('raw-output').textContent.includes('retaliation')"
+        )
+        return
+    if path.startswith("/document"):
+        page.wait_for_function(
+            "() => document.body.innerText.includes('Generate Formal Complaint')"
+        )
+        return
 
 
 def test_legacy_site_pages_share_profile_state_and_navigation():
@@ -446,6 +552,36 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
             assert "browser-smoke-text-link" in results_text
             assert page.locator("a[href='/document']").count() >= 1
             assert page.locator("a[href='/claim-support-review']").count() >= 1
+
+            browser.close()
+
+
+def test_root_landing_iframe_expands_into_connected_preview_workspace_after_signup():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+
+            page.goto(base_url)
+            assert page.locator("iframe[src='/home/']").count() == 1
+
+            _create_account_from_root_iframe(page)
+
+            page.wait_for_function(
+                "() => document.querySelector(\"#profile_box iframe[src*='/profile']\") !== null"
+            )
+            page.wait_for_function(
+                "() => document.querySelector(\"#document_box iframe[src*='/document']\") !== null"
+            )
+
+            assert page.locator("#profile_box iframe").get_attribute("src") == f"{base_url}/profile"
+            assert page.locator("#document_box iframe").get_attribute("src") == f"{base_url}/document"
+            assert page.locator("a[href='/claim-support-review']").count() >= 1
+            assert page.locator("a[href='/document']").count() >= 1
 
             browser.close()
 
@@ -510,5 +646,231 @@ def test_document_and_review_surfaces_complete_single_site_generation_flow():
             page.click("a[href='/document']")
             page.wait_for_url(f"{base_url}/document")
             assert "Generate Formal Complaint" in page.locator("body").inner_text()
+
+            browser.close()
+
+
+def test_review_dashboard_banner_routes_back_to_document_builder_with_claim_context():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, mediator = _launch_fixture_site()
+    status_payload = mediator.get_three_phase_status.return_value
+    status_payload["next_action"] = {"action": "generate_formal_complaint"}
+    status_payload["claim_support_packet_summary"] = {
+        **dict(status_payload.get("claim_support_packet_summary") or {}),
+        "claim_count": 1,
+        "element_count": 3,
+        "draft_ready_element_ratio": 1.0,
+        "proof_readiness_score": 0.98,
+    }
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+
+            _create_account_and_open_chat(page, base_url)
+            page.goto(
+                f"{base_url}/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('status-line').textContent.includes('Review payload loaded.')"
+            )
+
+            next_action_banner = page.locator("#intake-next-action-banner").inner_text()
+            assert "Generate formal complaint" in next_action_banner
+            assert "recommended action: generate_formal_complaint" in next_action_banner
+            assert "claims: 1" in next_action_banner
+            assert "elements: 3" in next_action_banner
+            assert "proof readiness: 0.98" in next_action_banner
+
+            page.click("#intake-next-action-open-formal-generator")
+            page.wait_for_url(
+                f"{base_url}/document?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}"
+            )
+
+            document_text = page.locator("body").inner_text()
+            assert "Formal Complaint Builder" in document_text
+            assert "Generate Formal Complaint" in document_text
+
+            browser.close()
+
+
+def test_shared_builder_and_review_shortcuts_connect_the_site_surfaces():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+
+            _create_account_and_open_chat(page, base_url)
+
+            pages_with_shared_shortcuts = [
+                "/",
+                "/chat",
+                "/results",
+                "/document",
+                f"/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}",
+            ]
+
+            for path in pages_with_shared_shortcuts:
+                page.goto(f"{base_url}{path}")
+                if path.startswith("/claim-support-review"):
+                    page.wait_for_function(
+                        "() => document.getElementById('raw-output').textContent.includes('retaliation')"
+                    )
+                elif path == "/results":
+                    page.wait_for_function(
+                        "() => document.getElementById('profile_data').innerText.includes('browser-smoke-text-link')"
+                    )
+                elif path == "/chat":
+                    page.wait_for_function(
+                        "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
+                    )
+
+                assert page.locator("a[href='/document']").count() >= 1
+                assert page.locator("a[href='/claim-support-review']").count() >= 1
+
+            page.goto(f"{base_url}/document")
+            page.click("a[href='/claim-support-review']")
+            page.wait_for_url(f"{base_url}/claim-support-review")
+
+            page.click("a[href='/document']")
+            page.wait_for_url(f"{base_url}/document")
+
+            browser.close()
+
+
+def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+
+            page.goto(f"{base_url}/workspace")
+            page.wait_for_function(
+                "() => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('tool-list').innerText.includes('complaint.generate_complaint')"
+            )
+
+            page.fill("#intake-party_name", "Jordan Example")
+            page.fill("#intake-opposing_party", "Acme Corporation")
+            page.fill("#intake-protected_activity", "Reported discrimination to HR")
+            page.fill("#intake-adverse_action", "Terminated two days later")
+            page.fill("#intake-timeline", "Complaint on March 8, termination on March 10")
+            page.fill("#intake-harm", "Lost wages and emotional distress")
+            page.click("#save-intake-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('supported-count').innerText !== '0'"
+            )
+
+            page.click("button[data-tab-target='integrations']")
+            integrations_text = page.locator("[data-tab-panel='integrations']").inner_text()
+            assert "complaint-generator-workspace session" in integrations_text
+            assert "complaint-generator-mcp" in integrations_text
+            assert "window.ComplaintMcpSdk.ComplaintMcpClient" in integrations_text
+
+            page.click("button[data-tab-target='evidence']")
+            page.select_option("#evidence-kind", "testimony")
+            page.select_option("#evidence-claim-element", "causation")
+            page.fill("#evidence-title", "Timeline statement")
+            page.fill("#evidence-source", "Witness interview")
+            page.fill(
+                "#evidence-content",
+                "A witness confirmed the termination followed immediately after the HR report.",
+            )
+            page.click("#save-evidence-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Evidence saved')"
+            )
+            assert "Timeline statement" in page.locator("#evidence-list").inner_text()
+
+            page.click("button[data-tab-target='draft']")
+            page.fill("#requested-relief", "Back pay\nInjunctive relief")
+            page.click("#generate-draft-button")
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+            )
+            draft_text = page.locator("#draft-preview").inner_text()
+            assert "Reported discrimination to HR" in draft_text
+            assert "Back pay; Injunctive relief." in draft_text
+
+            page.fill("#draft-title", "Custom retaliation complaint")
+            page.fill("#draft-body", "Custom revised complaint body.")
+            page.click("#save-draft-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Draft edits saved.')"
+            )
+            assert page.locator("#draft-preview").inner_text() == "Custom revised complaint body."
+
+            page.click("#reset-session-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Workspace reset to a clean state.')"
+            )
+            assert page.locator("#draft-preview").inner_text() == "No complaint generated yet."
+            assert "Who is bringing the complaint?" in page.locator("#next-question-label").inner_text()
+
+            browser.close()
+
+
+def test_user_interfaces_capture_screenshots_and_preserve_coherent_layout(tmp_path):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    screenshot_dir = tmp_path / "playwright-ui-snapshots"
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+
+            _create_account_and_open_chat(page, base_url)
+
+            page.goto(f"{base_url}/document")
+            page.fill("#district", "Northern District of California")
+            page.fill("#plaintiffs", "Jordan Example")
+            page.fill("#defendants", "Acme Corporation")
+            page.fill("#requestedRelief", "Compensatory damages")
+            page.fill("#signerName", "Jordan Example")
+            page.fill("#signerTitle", "Plaintiff, Pro Se")
+            page.click("#generateButton")
+            page.wait_for_function(
+                "() => document.getElementById('previewRoot').innerText.includes('Plaintiff alleges retaliation')"
+            )
+
+            audited_surfaces = [
+                ("/", "landing"),
+                ("/home", "account"),
+                ("/chat", "chat"),
+                ("/profile", "profile"),
+                ("/results", "results"),
+                ("/workspace", "workspace"),
+                (f"/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}", "review"),
+                ("/document", "document"),
+            ]
+
+            screenshot_paths = []
+            for path, name in audited_surfaces:
+                page.goto(f"{base_url}{path}")
+                _wait_for_surface(page, path)
+                _assert_surface_layout(page)
+                screenshot_paths.append(_capture_screenshot(page, screenshot_dir, name))
+
+            assert len(screenshot_paths) == len(audited_surfaces)
+            assert all(path.exists() and path.stat().st_size > 0 for path in screenshot_paths)
 
             browser.close()

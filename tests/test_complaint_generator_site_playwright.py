@@ -478,3 +478,59 @@ def test_optimization_trace_loads_review_handoff_links(site_app: FastAPI):
             assert "proof_leads" in page.url
 
             browser.close()
+
+
+def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with _serve_app(site_app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.on("dialog", _dismiss_dialog)
+
+            page.goto(f"{base_url}/workspace?user_id=site-sdk-user")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').textContent.includes('site-sdk-user')"
+            )
+
+            assert page.evaluate(
+                "() => typeof window.ComplaintMcpSdk?.ComplaintMcpClient === 'function'"
+            )
+
+            page.locator('#intake-party_name').fill('Jane Doe')
+            page.locator('#intake-opposing_party').fill('Acme Corporation')
+            page.locator('#intake-protected_activity').fill('Reported discrimination to HR')
+            page.locator('#intake-adverse_action').fill('Termination two days later')
+            page.locator('#intake-timeline').fill('Report on March 8, termination on March 10')
+            page.locator('#intake-harm').fill('Lost wages and emotional distress')
+            page.locator('#save-intake-button').click()
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').textContent.includes('Intake answers saved.')"
+            )
+
+            page.locator('#evidence-title').fill('HR complaint email')
+            page.locator('#evidence-content').fill('Email confirming the protected report and management response.')
+            page.locator('#save-evidence-button').click()
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').textContent.includes('Evidence saved')"
+            )
+
+            page.locator('#generate-draft-button').click()
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').textContent.includes('Complaint draft generated')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').textContent.includes('Jane Doe brings this retaliation complaint against Acme Corporation.')"
+            )
+
+            tool_names = page.locator('#tool-list .item strong')
+            tool_count = tool_names.count()
+            assert tool_count >= 3
+            assert any(
+                'complaint.generate_complaint' in tool_names.nth(index).inner_text()
+                for index in range(tool_count)
+            )
+
+            browser.close()

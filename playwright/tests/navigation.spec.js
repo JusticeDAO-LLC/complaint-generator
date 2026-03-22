@@ -48,6 +48,7 @@ test.describe('website surface navigation', () => {
       ['/claim-support-review', /Operator Review Surface/i],
       ['/document/optimization-trace', /Optimization Trace Viewer/i],
       ['/ipfs-datasets/sdk-playground', /SDK Playground Preview|SDK Playground/i],
+      ['/mcp', /IPFS Datasets MCP Dashboard/i],
       ['/dashboards', /Unified Dashboard Hub/i],
       ...dashboardRoutes,
     ];

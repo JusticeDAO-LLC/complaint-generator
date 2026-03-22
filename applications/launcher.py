@@ -6,6 +6,8 @@ from typing import Any, Dict, List
 from adversarial_harness.demo_autopatch import run_adversarial_autopatch_batch
 
 from .cli import CLI
+from .complaint_cli import main as complaint_workspace_cli_main
+from .complaint_mcp_server import main as complaint_workspace_mcp_main
 from .review_api import create_review_api_app
 from .review_ui import create_review_dashboard_app, create_review_surface_app
 from .server import SERVER
@@ -34,7 +36,20 @@ def normalize_application_types(type_config: Any) -> List[str]:
 
 def canonicalize_application_type(app_type: Any) -> str:
     normalized = str(app_type or "").strip().lower().replace("_", "-")
-    if normalized in {"cli", "server", "review-api", "review-dashboard", "review-surface", "adversarial-autopatch"}:
+    normalized = {
+        "workspace-cli": "complaint-workspace-cli",
+        "workspace-mcp": "complaint-workspace-mcp",
+    }.get(normalized, normalized)
+    if normalized in {
+        "cli",
+        "server",
+        "review-api",
+        "review-dashboard",
+        "review-surface",
+        "adversarial-autopatch",
+        "complaint-workspace-cli",
+        "complaint-workspace-mcp",
+    }:
         return normalized
     raise ValueError(f"unknown application type: {app_type}")
 
@@ -109,6 +124,18 @@ def launch_application(
         if background:
             raise ValueError("adversarial-autopatch cannot be launched in background mode")
         _run_adversarial_autopatch_app(mediator, application_config)
+        return
+
+    if canonical == "complaint-workspace-cli":
+        if background:
+            raise ValueError("complaint-workspace-cli cannot be launched in background mode")
+        complaint_workspace_cli_main()
+        return
+
+    if canonical == "complaint-workspace-mcp":
+        if background:
+            raise ValueError("complaint-workspace-mcp cannot be launched in background mode")
+        complaint_workspace_mcp_main()
         return
 
     if canonical == "server":

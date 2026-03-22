@@ -4,6 +4,7 @@ import json
 import sys
 from typing import Any, Dict
 
+from .complaint_mcp_protocol import handle_jsonrpc_message
 from .complaint_workspace import ComplaintWorkspaceService
 
 
@@ -21,32 +22,21 @@ def main() -> None:
         try:
             request = json.loads(line)
         except json.JSONDecodeError as exc:
-            _write({"error": f"Invalid JSON: {exc}"})
+            _write({
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32700,
+                    "message": "Parse error",
+                    "data": str(exc),
+                },
+            })
             continue
-
-        method = request.get("method")
-        params = request.get("params") or {}
-        request_id = request.get("id")
-
-        try:
-            if method == "initialize":
-                result = {
-                    "server": "complaint-workspace-mcp",
-                    "version": "1.0.0",
-                    "capabilities": {"tools": True},
-                }
-            elif method == "tools/list":
-                result = service.list_mcp_tools()
-            elif method == "tools/call":
-                result = service.call_mcp_tool(
-                    str(params.get("name") or ""),
-                    params.get("arguments") or {},
-                )
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-            _write({"id": request_id, "result": result})
-        except Exception as exc:
-            _write({"id": request_id, "error": str(exc)})
+        response = handle_jsonrpc_message(service, request)
+        if response is not None:
+            _write(response)
+        if isinstance(request, dict) and request.get("method") == "exit":
+            break
 
 
 if __name__ == "__main__":

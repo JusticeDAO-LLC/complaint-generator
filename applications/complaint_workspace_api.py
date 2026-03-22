@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel, Field
 
+from .complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
 from .complaint_workspace import ComplaintWorkspaceService
 
 
@@ -38,6 +39,13 @@ class DraftUpdateRequest(BaseModel):
 class McpCallRequest(BaseModel):
     tool_name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
+
+
+class JsonRpcRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Optional[Any] = None
+    method: str
+    params: Dict[str, Any] = Field(default_factory=dict)
 
 
 def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceService] = None) -> APIRouter:
@@ -90,11 +98,16 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
 
     @router.get("/api/complaint-workspace/mcp/tools")
     async def list_mcp_tools() -> Dict[str, Any]:
-        return workspace.list_mcp_tools()
+        return tool_list_payload(workspace)
 
     @router.post("/api/complaint-workspace/mcp/call")
     async def call_mcp_tool(request: McpCallRequest) -> Dict[str, Any]:
         return workspace.call_mcp_tool(request.tool_name, request.arguments)
+
+    @router.post("/api/complaint-workspace/mcp/rpc")
+    async def call_jsonrpc(request: JsonRpcRequest) -> Dict[str, Any]:
+        response = handle_jsonrpc_message(workspace, request.model_dump())
+        return response or {"jsonrpc": "2.0", "id": request.id, "result": None}
 
     return router
 
@@ -105,4 +118,3 @@ def attach_complaint_workspace_routes(
 ) -> FastAPI:
     app.include_router(create_complaint_workspace_router(service))
     return app
-

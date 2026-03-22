@@ -94,6 +94,33 @@ class _DashboardUndefined(ChainableUndefined):
         return ()
 
 
+class _DashboardMetrics:
+    def __init__(self) -> None:
+        self.total_websites_processed = 27
+        self.success_rate = 96.4
+        self.total_rag_queries = 43
+        self.average_query_time = 1.28
+        self._custom_metrics = {
+            "pipeline_runs": [
+                {
+                    "type": "counter",
+                    "value": 14,
+                    "labels": {"surface": "complaint-generator"},
+                    "timestamp": "2026-03-22T12:00:00+00:00",
+                }
+            ]
+        }
+
+    def items(self):
+        return self._custom_metrics.items()
+
+    def keys(self):
+        return self._custom_metrics.keys()
+
+    def values(self):
+        return self._custom_metrics.values()
+
+
 _IPFS_DASHBOARD_ENV = Environment(
     loader=FileSystemLoader(str(_IPFS_DATASETS_TEMPLATES_DIR)),
     autoescape=select_autoescape(("html", "xml")),
@@ -139,16 +166,7 @@ def _build_ipfs_dashboard_context(entry: DashboardEntry) -> dict[str, Any]:
             "disk_total": "128 GB",
             "disk_percent": 9,
         },
-        "metrics": {
-            "pipeline_runs": [
-                {
-                    "type": "counter",
-                    "value": 14,
-                    "labels": {"surface": "complaint-generator"},
-                    "timestamp": "2026-03-22T12:00:00+00:00",
-                }
-            ]
-        },
+        "metrics": _DashboardMetrics(),
         "logs": [
             {
                 "timestamp": "2026-03-22T12:00:00+00:00",
@@ -364,6 +382,32 @@ def _render_dashboard_hub() -> str:
 
 def create_dashboard_ui_router() -> APIRouter:
     router = APIRouter()
+
+    @router.get("/mcp", response_class=HTMLResponse)
+    async def legacy_mcp_dashboard_root() -> str:
+        return _render_shell_page(_IPFS_DASHBOARD_MAP["mcp"])
+
+    @router.get("/api/mcp/analytics/history")
+    async def mcp_analytics_history() -> dict[str, Any]:
+        return {
+            "history": [
+                {
+                    "last_updated": "2026-03-22T09:00:00+00:00",
+                    "success_rate": 91.2,
+                    "average_query_time": 1.42,
+                },
+                {
+                    "last_updated": "2026-03-22T10:00:00+00:00",
+                    "success_rate": 94.8,
+                    "average_query_time": 1.35,
+                },
+                {
+                    "last_updated": "2026-03-22T11:00:00+00:00",
+                    "success_rate": 96.4,
+                    "average_query_time": 1.28,
+                },
+            ]
+        }
 
     @router.get("/dashboards", response_class=HTMLResponse)
     async def dashboard_hub() -> str:

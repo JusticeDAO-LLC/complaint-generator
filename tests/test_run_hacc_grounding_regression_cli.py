@@ -62,3 +62,34 @@ def test_build_smoke_command_uses_output_dir_and_core_preset():
     assert "core_hacc_policies" in command
     assert "--top-k" in command
     assert command[-1] == "/tmp/hacc-smoke"
+
+
+def test_main_list_prints_grounding_regression_commands(capsys):
+    cli = _load_cli_module()
+
+    result = cli.main(["--list", "--python", ".venv/bin/python", "--smoke-output-dir", "/tmp/hacc-smoke"])
+    captured = capsys.readouterr()
+    lines = [line for line in captured.out.strip().splitlines() if line.strip()]
+
+    assert result == 0
+    assert len(lines) == 3
+    assert lines[0].startswith(".venv/bin/python -m pytest -q ")
+    assert "test_hacc_evidence_seed_generation.py" in lines[0]
+    assert "test_hacc_evidence_loader.py" in lines[0]
+    assert lines[1] == ".venv/bin/python -m pytest -q complaint-generator/tests/test_adversarial_harness.py"
+    assert lines[2].startswith(".venv/bin/python ")
+    assert "scripts/run_hacc_grounded_pipeline.py" in lines[2]
+    assert "--output-dir /tmp/hacc-smoke" in lines[2]
+
+
+def test_main_list_omits_smoke_command_when_skip_smoke_is_set(capsys):
+    cli = _load_cli_module()
+
+    result = cli.main(["--list", "--skip-smoke", "--python", ".venv/bin/python"])
+    captured = capsys.readouterr()
+    lines = [line for line in captured.out.strip().splitlines() if line.strip()]
+
+    assert result == 0
+    assert len(lines) == 2
+    assert "test_hacc_evidence_seed_generation.py" in lines[0]
+    assert lines[1] == ".venv/bin/python -m pytest -q complaint-generator/tests/test_adversarial_harness.py"
