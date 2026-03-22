@@ -1501,6 +1501,55 @@ class Optimizer:
         }
 
     @staticmethod
+    def _build_intake_question_structure_summary(successful_results: List[Any]) -> Dict[str, Any]:
+        summaries: List[Dict[str, Any]] = []
+        for result in successful_results:
+            final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
+            summary = (
+                final_state.get("intake_question_structure_summary")
+                if isinstance(final_state.get("intake_question_structure_summary"), dict)
+                else {}
+            )
+            if summary:
+                summaries.append(summary)
+
+        if not summaries:
+            return {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "sessions_needing_exhibit_grounding": 0,
+                "avg_documentary_question_count": 0.0,
+                "avg_exhibit_ready_question_count": 0.0,
+                "avg_temporal_exhibit_ready_question_count": 0.0,
+                "avg_documentary_exhibit_ready_ratio": 0.0,
+                "low_exhibit_ready_question_session_count": 0,
+            }
+
+        ratios = [float(summary.get("documentary_exhibit_ready_ratio") or 0.0) for summary in summaries]
+        documentary_counts = [int(summary.get("documentary_question_count") or 0) for summary in summaries]
+        exhibit_ready_counts = [int(summary.get("exhibit_ready_question_count") or 0) for summary in summaries]
+        temporal_counts = [int(summary.get("temporal_exhibit_ready_question_count") or 0) for summary in summaries]
+        sessions_needing_exhibit_grounding = sum(
+            1 for summary in summaries if bool(summary.get("needs_exhibit_grounding"))
+        )
+        low_exhibit_ready_question_session_count = sum(
+            1
+            for summary in summaries
+            if bool(summary.get("needs_exhibit_grounding"))
+            and float(summary.get("documentary_exhibit_ready_ratio") or 0.0) < 0.6
+        )
+        return {
+            "count": len(summaries),
+            "sessions_with_summary": len(summaries),
+            "sessions_needing_exhibit_grounding": sessions_needing_exhibit_grounding,
+            "avg_documentary_question_count": round(sum(documentary_counts) / len(documentary_counts), 4),
+            "avg_exhibit_ready_question_count": round(sum(exhibit_ready_counts) / len(exhibit_ready_counts), 4),
+            "avg_temporal_exhibit_ready_question_count": round(sum(temporal_counts) / len(temporal_counts), 4),
+            "avg_documentary_exhibit_ready_ratio": round(sum(ratios) / len(ratios), 4),
+            "low_exhibit_ready_question_session_count": low_exhibit_ready_question_session_count,
+        }
+
+    @staticmethod
     def _build_document_grounding_improvement_summary(successful_results: List[Any]) -> Dict[str, Any]:
         summaries: List[Dict[str, Any]] = []
         for result in successful_results:
