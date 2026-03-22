@@ -1,0 +1,166 @@
+[
+  {
+    "document_id": "document:c8dc2af6ee6996a0",
+    "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+    "source_type": "knowledge_graph",
+    "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+    "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+    "score": 4399.3864,
+    "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+    "metadata": {
+      "backend": "markitdown",
+      "backend_available": true,
+      "details": {
+        "backend": "markitdown",
+        "backend_available": true,
+        "implementation_status": "implemented",
+        "operation": "extract_policy_rules_from_pdf",
+        "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b"
+      },
+      "document_id": "document:c8dc2af6ee6996a0",
+      "document_title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "implementation_status": "implemented",
+      "operation": "extract_policy_rules_from_pdf",
+      "provider": "ipfs_datasets_py",
+      "rule_count": 5318,
+      "section_count": 3423,
+      "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "text_length": 1401793,
+      "status": "success"
+    },
+    "matched_rules": [
+      {
+        "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "section_title": "EXHIBIT 14-1: SAMPLE GRIEVANCE PROCEDURE",
+        "rule_type": "discretion",
+        "modality": "discretionary",
+        "overlap": 3
+      },
+      {
+        "text": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+        "section_title": "ACOP 11/1/24",
+        "rule_type": "discretion",
+        "modality": "discretionary",
+        "overlap": 3
+      },
+      {
+        "text": "In states without due process determinations, HACC must grant opportunity for grievance",
+        "section_title": "ACOP 11/1/24",
+        "rule_type": "obligation",
+        "modality": "required",
+        "overlap": 3
+      }
+    ],
+    "matched_entities": [
+      {
+        "name": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "type": "policy_rule",
+        "overlap": 3
+      },
+      {
+        "name": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+        "type": "policy_rule",
+        "overlap": 3
+      },
+      {
+        "name": "In states without due process determinations, HACC must grant opportunity for grievance",
+        "type": "policy_rule",
+        "overlap": 3
+      },
+      {
+        "name": "The notice must also state that the tenant may request a grievance hearing on the HACC’s",
+        "type": "policy_rule",
+        "overlap": 3
+      },
+      {
+        "name": "adverse action and will provide the subject of the record and the tenant a copy of such",
+        "type": "policy_rule",
+        "overlap": 3
+      }
+    ],
+    "parse_summary": {},
+    "graph_status": ""
+  },
+  {
+    "document_id": "document:be93a165d00f0101",
+    "title": "ADMINISTRATIVE PLAN",
+    "source_type": "knowledge_graph",
+    "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+    "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+    "score": 4196.7273,
+    "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+    "metadata": {
+      "backend": "markitdown",
+      "backend_available": true,
+      "details": {
+        "backend": "markitdown",
+        "backend_available": true,
+        "implementation_status": "implemented",
+        "operation": "extract_policy_rules_from_pdf",
+        "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858"
+      },
+      "document_id": "document:be93a165d00f0101",
+      "document_title": "ADMINISTRATIVE PLAN",
+      "implementation_status": "implemented",
+      "operation": "extract_policy_rules_from_pdf",
+      "provider": "ipfs_datasets_py",
+      "rule_count": 7441,
+      "section_count": 4968,
+      "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "text_length": 1927962,
+      "status": "success"
+    },
+    "matched_rules": [
+      {
+        "text": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+        "section_title": "HACC Policy",
+        "rule_type": "discretion",
+        "modality": "discretionary",
+        "overlap": 2
+      },
+      {
+        "text": "HACC informal hearing process, does not preclude the family from exercising the right, that may",
+        "section_title": "Adminplan 7/1/2025",
+        "rule_type": "discretion",
+        "modality": "discretionary",
+        "overlap": 2
+      },
+      {
+        "text": "HACC must be the principal party initiating or sustaining the action to recover amounts due from",
+        "section_title": "HACC Policy",
+        "rule_type": "obligation",
+        "modality": "required",
+        "overlap": 2
+      }
+    ],
+    "matched_entities": [
+      {
+        "name": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+        "type": "policy_rule",
+        "overlap": 2
+      },
+      {
+        "name": "HACC informal hearing process, does not preclude the family from exercising the right, that may",
+        "type": "policy_rule",
+        "overlap": 2
+      },
+      {
+        "name": "HACC must be the principal party initiating or sustaining the action to recover amounts due from",
+        "type": "policy_rule",
+        "overlap": 2
+      },
+      {
+        "name": "HACC will inform the family of its policy regarding moves denied due to insufficient",
+        "type": "policy_rule",
+        "overlap": 2
+      },
+      {
+        "name": "See Chapter 9 for more detail on unit eligibility policies and process.",
+        "type": "policy_rule",
+        "overlap": 2
+      }
+    ],
+    "parse_summary": {},
+    "graph_status": ""
+  }
+]

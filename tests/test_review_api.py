@@ -1129,6 +1129,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["workflow_targeting_summary"] == {}
         assert payload["document_workflow_execution_summary"] == {}
         assert payload["document_drafting_next_action"] == {}
+        assert payload["document_focus_preview"] == []
         if "claim_support_unresolved_without_review_path_count" in claim_support_packet_summary:
             assert claim_support_packet_summary["claim_support_unresolved_without_review_path_count"] == 2
         if "claim_support_unresolved_temporal_issue_count" in claim_support_packet_summary:
@@ -2763,6 +2764,87 @@ def test_claim_support_review_payload_promotes_document_drafting_next_action_int
         "action_id": "realign_document_drafting",
         "status_message": "Opening the formal complaint builder for drafting realignment.",
     }
+
+
+def test_claim_support_review_payload_includes_document_focus_preview_from_formalization_state():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "formalization",
+        "iteration_count": 1,
+        "intake_readiness": {
+            "score": 0.91,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 2, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {
+            "status": "confirmed",
+            "confirmed": True,
+            "current_summary_snapshot": {},
+        },
+        "question_candidate_summary": {},
+        "next_action": {"action": "generate_formal_complaint"},
+    }
+    formal_complaint = {
+        "factual_allegation_paragraphs": [
+            {
+                "text": "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+                "document_focus": {
+                    "focus_source": "document_grounding_improvement_next_action",
+                    "action": "retarget_document_grounding",
+                    "target_claim_element_id": "causation",
+                    "original_claim_element_id": "protected_activity",
+                    "preferred_support_kind": "testimony",
+                },
+                "document_focus_priority_rank": 1,
+            }
+        ]
+    }
+    mediator.phase_manager = SimpleNamespace(
+        get_phase_data=lambda phase, key: formal_complaint if key == "formal_complaint" else None
+    )
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    assert payload["document_focus_preview"] == [
+        {
+            "section": "factual_allegations",
+            "text": "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+            "focus_source": "document_grounding_improvement_next_action",
+            "action": "retarget_document_grounding",
+            "target_claim_element_id": "causation",
+            "original_claim_element_id": "protected_activity",
+            "preferred_support_kind": "testimony",
+            "priority_rank": 1,
+        }
+    ]
 
 
 def test_claim_support_review_payload_promotes_document_grounding_improvement_next_action_into_workflow_priority():

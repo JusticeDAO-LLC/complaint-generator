@@ -1,0 +1,614 @@
+{
+  "metadata": {
+    "created_at": "2026-03-22T00:33:48.923917+00:00",
+    "last_updated": "2026-03-22T00:34:24.882355+00:00",
+    "version": "1.0",
+    "actor_critic": {
+      "enabled": true,
+      "entity_count": 26,
+      "relationship_count": 9,
+      "avg_entity_score": 2.0388,
+      "avg_relationship_score": 1.3167,
+      "entity_score_floor": -0.3,
+      "relationship_score_floor": -0.1
+    }
+  },
+  "entities": {
+    "entity_1": {
+      "id": "entity_1",
+      "type": "claim",
+      "name": "Retaliation Claim",
+      "attributes": {
+        "claim_type": "retaliation",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 2.5700000000000003,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.5700000000000003
+      },
+      "confidence": 0.98,
+      "source": "complaint"
+    },
+    "entity_2": {
+      "id": "entity_2",
+      "type": "claim",
+      "name": "Denial/Refusal Claim",
+      "attributes": {
+        "claim_type": "denial",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 2.42,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.42
+      },
+      "confidence": 0.9771428571428571,
+      "source": "complaint"
+    },
+    "entity_3": {
+      "id": "entity_3",
+      "type": "fact",
+      "name": "Hearing request event: I also understand that I should receive notice of my abil...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "hearing_process",
+        "event_label": "Hearing request event",
+        "description": "I also understand that I should receive notice of my ability to request a hearing.",
+        "actor_score": 2.16,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.16
+      },
+      "confidence": 0.9028571428571429,
+      "source": "complaint"
+    },
+    "entity_4": {
+      "id": "entity_4",
+      "type": "fact",
+      "name": "Hearing request event: There are still key facts that need to be confirmed as pa...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "hearing_process",
+        "event_label": "Hearing request event",
+        "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+        "actor_score": 2.16,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.16
+      },
+      "confidence": 0.9028571428571429,
+      "source": "complaint"
+    },
+    "entity_5": {
+      "id": "entity_5",
+      "type": "fact",
+      "name": "Protected activity event: I am asking for a full review of the adverse actions take...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "protected_activity",
+        "event_label": "Protected activity",
+        "description": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_6": {
+      "id": "entity_6",
+      "type": "fact",
+      "name": "Protected activity event: I am filing this complaint because I believe HACC retalia...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "protected_activity",
+        "event_label": "Protected activity",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_7": {
+      "id": "entity_7",
+      "type": "fact",
+      "name": "Protected activity event: I want this complaint to address both the retaliation and...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "protected_activity",
+        "event_label": "Protected activity",
+        "description": "I want this complaint to address both the retaliation and the due process problems.",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_8": {
+      "id": "entity_8",
+      "type": "fact",
+      "name": "Protected activity event: My understanding from HACC’s own policies is that a griev...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "protected_activity",
+        "event_label": "Protected activity",
+        "description": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_9": {
+      "id": "entity_9",
+      "type": "fact",
+      "name": "Protected activity event: There are still key facts that need to be confirmed as pa...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "protected_activity",
+        "event_label": "Protected activity",
+        "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_10": {
+      "id": "entity_10",
+      "type": "fact",
+      "name": "Response event: I felt ignored, and the response I got did not match what...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "response_timeline",
+        "event_label": "Response event",
+        "description": "I felt ignored, and the response I got did not match what I believed the policy required.",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_11": {
+      "id": "entity_11",
+      "type": "fact",
+      "name": "Response event: I have spent time trying to figure out who made these dec...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "response_timeline",
+        "event_label": "Response event",
+        "description": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_12": {
+      "id": "entity_12",
+      "type": "fact",
+      "name": "Response event: My understanding from HACC’s own policies is that a griev...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "response_timeline",
+        "event_label": "Response event",
+        "description": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_13": {
+      "id": "entity_13",
+      "type": "fact",
+      "name": "Response event: There are still key facts that need to be confirmed as pa...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "response_timeline",
+        "event_label": "Response event",
+        "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+        "actor_score": 2.15,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.15
+      },
+      "confidence": 0.9,
+      "source": "complaint"
+    },
+    "entity_14": {
+      "id": "entity_14",
+      "type": "fact",
+      "name": "Notice event: I also understand that I should receive notice of my abil...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "notice_chain",
+        "event_label": "Notice communication",
+        "description": "I also understand that I should receive notice of my ability to request a hearing.",
+        "actor_score": 2.14,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.14
+      },
+      "confidence": 0.8971428571428571,
+      "source": "complaint"
+    },
+    "entity_15": {
+      "id": "entity_15",
+      "type": "fact",
+      "name": "Notice event: I am asking for a full review of the adverse actions take...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "notice_chain",
+        "event_label": "Notice communication",
+        "description": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+        "actor_score": 2.14,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.14
+      },
+      "confidence": 0.8971428571428571,
+      "source": "complaint"
+    },
+    "entity_16": {
+      "id": "entity_16",
+      "type": "fact",
+      "name": "Notice event: There are still key facts that need to be confirmed as pa...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "notice_chain",
+        "event_label": "Notice communication",
+        "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+        "actor_score": 2.14,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.14
+      },
+      "confidence": 0.8971428571428571,
+      "source": "complaint"
+    },
+    "entity_17": {
+      "id": "entity_17",
+      "type": "fact",
+      "name": "Hearing event: I am asking for a full review of the adverse actions take...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "hearing_process",
+        "event_label": "Hearing/appeal event",
+        "description": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+        "actor_score": 2.13,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.13
+      },
+      "confidence": 0.8942857142857142,
+      "source": "complaint"
+    },
+    "entity_18": {
+      "id": "entity_18",
+      "type": "fact",
+      "name": "Hearing event: I am filing this complaint because I believe HACC retalia...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "hearing_process",
+        "event_label": "Hearing/appeal event",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+        "actor_score": 2.13,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.13
+      },
+      "confidence": 0.8942857142857142,
+      "source": "complaint"
+    },
+    "entity_19": {
+      "id": "entity_19",
+      "type": "fact",
+      "name": "Hearing event: I have spent time trying to figure out who made these dec...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "hearing_process",
+        "event_label": "Hearing/appeal event",
+        "description": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+        "actor_score": 2.13,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.13
+      },
+      "confidence": 0.8942857142857142,
+      "source": "complaint"
+    },
+    "entity_20": {
+      "id": "entity_20",
+      "type": "fact",
+      "name": "Hearing event: My understanding from HACC’s own policies is that a griev...",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "hearing_process",
+        "event_label": "Hearing/appeal event",
+        "description": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+        "actor_score": 2.13,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.13
+      },
+      "confidence": 0.8942857142857142,
+      "source": "complaint"
+    },
+    "entity_21": {
+      "id": "entity_21",
+      "type": "fact",
+      "name": "Retaliation causation link",
+      "attributes": {
+        "fact_type": "timeline",
+        "predicate_family": "causation",
+        "event_label": "Causation sequence",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 2.12,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 2.12
+      },
+      "confidence": 0.8914285714285715,
+      "source": "complaint"
+    },
+    "entity_22": {
+      "id": "entity_22",
+      "type": "organization",
+      "name": "HACC",
+      "attributes": {
+        "role": "respondent",
+        "actor_score": 1.8499999999999999,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 1.8499999999999999
+      },
+      "confidence": 0.8142857142857142,
+      "source": "complaint"
+    },
+    "entity_23": {
+      "id": "entity_23",
+      "type": "fact",
+      "name": "Impact: I am filing this complaint because I believe HACC retalia...",
+      "attributes": {
+        "fact_type": "impact",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 1.77,
+        "critic_penalty": 0.35,
+        "actor_critic_score": 1.42
+      },
+      "confidence": 0.6914285714285714,
+      "source": "complaint"
+    },
+    "entity_24": {
+      "id": "entity_24",
+      "type": "fact",
+      "name": "Requested remedy: I am filing this complaint because I believe HACC retalia...",
+      "attributes": {
+        "fact_type": "remedy",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 1.77,
+        "critic_penalty": 0.35,
+        "actor_critic_score": 1.42
+      },
+      "confidence": 0.6914285714285714,
+      "source": "complaint"
+    },
+    "entity_25": {
+      "id": "entity_25",
+      "type": "evidence",
+      "name": "Notice",
+      "attributes": {
+        "evidence_type": "notice",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 1.65,
+        "critic_penalty": 0.35,
+        "actor_critic_score": 1.2999999999999998
+      },
+      "confidence": 0.6571428571428571,
+      "source": "complaint"
+    },
+    "entity_26": {
+      "id": "entity_26",
+      "type": "evidence",
+      "name": "Policy",
+      "attributes": {
+        "evidence_type": "policy",
+        "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "actor_score": 1.65,
+        "critic_penalty": 0.35,
+        "actor_critic_score": 1.2999999999999998
+      },
+      "confidence": 0.6571428571428571,
+      "source": "complaint"
+    },
+    "entity_27": {
+      "id": "entity_27",
+      "type": "person",
+      "name": "stressed by this",
+      "attributes": {
+        "role": "but i want to be as clear as i can about the timeline"
+      },
+      "confidence": 0.72,
+      "source": "complaint"
+    },
+    "entity_28": {
+      "id": "entity_28",
+      "type": "organization",
+      "name": "Supportive Housing Services",
+      "attributes": {
+        "role": "respondent"
+      },
+      "confidence": 0.6,
+      "source": "complaint"
+    },
+    "entity_29": {
+      "id": "entity_29",
+      "type": "date",
+      "name": "July 1, 2025",
+      "attributes": {},
+      "confidence": 0.7,
+      "source": "complaint"
+    },
+    "entity_30": {
+      "id": "entity_30",
+      "type": "fact",
+      "name": "Timeline detail: I’m very stressed by this, but I want to be as clear as I...",
+      "attributes": {
+        "fact_type": "timeline",
+        "description": "I’m very stressed by this, but I want to be as clear as I can about the timeline. - `Me (tenant)` | Raised concerns a...",
+        "event_order": "captured"
+      },
+      "confidence": 0.6,
+      "source": "complaint"
+    },
+    "entity_31": {
+      "id": "entity_31",
+      "type": "fact",
+      "name": "Notice: I’m very stressed by this, but I want to be as clear as I can...",
+      "attributes": {
+        "fact_type": "documentary_artifact",
+        "document_type": "Notice",
+        "description": "I’m very stressed by this, but I want to be as clear as I can about the timeline. - `Me (tenant)` | Raised concerns a..."
+      },
+      "confidence": 0.58,
+      "source": "complaint"
+    },
+    "entity_32": {
+      "id": "entity_32",
+      "type": "fact",
+      "name": "Letter: I’m very stressed by this, but I want to be as clear as I can...",
+      "attributes": {
+        "fact_type": "documentary_artifact",
+        "document_type": "Letter",
+        "description": "I’m very stressed by this, but I want to be as clear as I can about the timeline. - `Me (tenant)` | Raised concerns a..."
+      },
+      "confidence": 0.58,
+      "source": "complaint"
+    },
+    "entity_33": {
+      "id": "entity_33",
+      "type": "fact",
+      "name": "Email: I’m very stressed by this, but I want to be as clear as I can...",
+      "attributes": {
+        "fact_type": "documentary_artifact",
+        "document_type": "Email",
+        "description": "I’m very stressed by this, but I want to be as clear as I can about the timeline. - `Me (tenant)` | Raised concerns a..."
+      },
+      "confidence": 0.58,
+      "source": "complaint"
+    }
+  },
+  "relationships": {
+    "rel_1": {
+      "id": "rel_1",
+      "source_id": "entity_1",
+      "target_id": "entity_22",
+      "relation_type": "involves",
+      "attributes": {
+        "actor_score": 1.5499999999999998,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 1.5499999999999998
+      },
+      "confidence": 0.7285714285714285,
+      "source": "complaint"
+    },
+    "rel_2": {
+      "id": "rel_2",
+      "source_id": "entity_2",
+      "target_id": "entity_22",
+      "relation_type": "involves",
+      "attributes": {
+        "actor_score": 1.5499999999999998,
+        "critic_penalty": 0.0,
+        "actor_critic_score": 1.5499999999999998
+      },
+      "confidence": 0.7285714285714285,
+      "source": "complaint"
+    },
+    "rel_3": {
+      "id": "rel_3",
+      "source_id": "entity_1",
+      "target_id": "entity_5",
+      "relation_type": "causal_link",
+      "attributes": {
+        "actor_score": 1.8499999999999999,
+        "critic_penalty": 0.4,
+        "actor_critic_score": 1.4499999999999997
+      },
+      "confidence": 0.7,
+      "source": "complaint"
+    },
+    "rel_4": {
+      "id": "rel_4",
+      "source_id": "entity_1",
+      "target_id": "entity_6",
+      "relation_type": "causal_link",
+      "attributes": {
+        "actor_score": 1.8499999999999999,
+        "critic_penalty": 0.4,
+        "actor_critic_score": 1.4499999999999997
+      },
+      "confidence": 0.7,
+      "source": "complaint"
+    },
+    "rel_5": {
+      "id": "rel_5",
+      "source_id": "entity_1",
+      "target_id": "entity_7",
+      "relation_type": "causal_link",
+      "attributes": {
+        "actor_score": 1.8499999999999999,
+        "critic_penalty": 0.4,
+        "actor_critic_score": 1.4499999999999997
+      },
+      "confidence": 0.7,
+      "source": "complaint"
+    },
+    "rel_6": {
+      "id": "rel_6",
+      "source_id": "entity_1",
+      "target_id": "entity_8",
+      "relation_type": "causal_link",
+      "attributes": {
+        "actor_score": 1.8499999999999999,
+        "critic_penalty": 0.4,
+        "actor_critic_score": 1.4499999999999997
+      },
+      "confidence": 0.7,
+      "source": "complaint"
+    },
+    "rel_7": {
+      "id": "rel_7",
+      "source_id": "entity_1",
+      "target_id": "entity_9",
+      "relation_type": "causal_link",
+      "attributes": {
+        "actor_score": 1.8499999999999999,
+        "critic_penalty": 0.4,
+        "actor_critic_score": 1.4499999999999997
+      },
+      "confidence": 0.7,
+      "source": "complaint"
+    },
+    "rel_8": {
+      "id": "rel_8",
+      "source_id": "entity_25",
+      "target_id": "entity_22",
+      "relation_type": "associated_with",
+      "attributes": {
+        "actor_score": 1.35,
+        "critic_penalty": 0.6000000000000001,
+        "actor_critic_score": 0.75
+      },
+      "confidence": 0.5,
+      "source": "complaint"
+    },
+    "rel_9": {
+      "id": "rel_9",
+      "source_id": "entity_26",
+      "target_id": "entity_22",
+      "relation_type": "associated_with",
+      "attributes": {
+        "actor_score": 1.35,
+        "critic_penalty": 0.6000000000000001,
+        "actor_critic_score": 0.75
+      },
+      "confidence": 0.5,
+      "source": "complaint"
+    }
+  }
+}

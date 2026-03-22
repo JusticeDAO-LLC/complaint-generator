@@ -2921,6 +2921,9 @@
             const documentGroundingLaneOutcomeSummary = intakeCaseSummary.document_grounding_lane_outcome_summary && typeof intakeCaseSummary.document_grounding_lane_outcome_summary === 'object'
                 ? intakeCaseSummary.document_grounding_lane_outcome_summary
                 : {};
+            const documentFocusPreview = reviewRenderState.payload && Array.isArray(reviewRenderState.payload.document_focus_preview)
+                ? reviewRenderState.payload.document_focus_preview.filter((item) => item && typeof item === 'object')
+                : [];
             const workflowPhasePlan = reviewRenderState.payload && reviewRenderState.payload.workflow_phase_plan && typeof reviewRenderState.payload.workflow_phase_plan === 'object'
                 ? reviewRenderState.payload.workflow_phase_plan
                 : {};
@@ -3259,6 +3262,22 @@
                     : 'Grounding lane outcomes are available for the current draft recovery cycle.';
                 workflowPhaseGuidanceCard.hidden = false;
                 workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-grounding-lane-outcome-summary-block" style="margin-top: 10px;"><strong>Document Grounding Lane Outcome Summary</strong><div class="chip-row" id="document-grounding-lane-outcome-summary-chips" style="margin-top: 8px;">${laneOutcomeChips.join('')}</div><div id="document-grounding-lane-outcome-summary-notes" style="margin-top: 8px;">${escapeHtml(laneOutcomeNotes)}</div></div>`;
+            }
+            if (documentFocusPreview.length) {
+                const focusPreviewMarkup = documentFocusPreview.map((entry) => {
+                    const focusChips = [
+                        entry.section ? `<span class="chip">section: ${humanizeQueryValue(entry.section)}</span>` : '',
+                        entry.focus_source ? `<span class="chip">focus source: ${humanizeQueryValue(entry.focus_source)}</span>` : '',
+                        entry.action ? `<span class="chip">action: ${humanizeQueryValue(entry.action)}</span>` : '',
+                        entry.target_claim_element_id ? `<span class="chip">next target: ${humanizeQueryValue(entry.target_claim_element_id)}</span>` : '',
+                        entry.original_claim_element_id ? `<span class="chip">original target: ${humanizeQueryValue(entry.original_claim_element_id)}</span>` : '',
+                        entry.preferred_support_kind ? `<span class="chip">support lane: ${humanizeQueryValue(entry.preferred_support_kind)}</span>` : '',
+                        Number(entry.priority_rank || 0) ? `<span class="chip">priority rank: ${Number(entry.priority_rank || 0)}</span>` : '',
+                    ].filter(Boolean).join('');
+                    return `<div class="card" style="margin-top: 8px;"><div class="chip-row">${focusChips}</div><div style="margin-top: 8px;">${escapeHtml(String(entry.text || '').trim() || '(no text)')}</div></div>`;
+                }).join('');
+                workflowPhaseGuidanceCard.hidden = false;
+                workflowPhaseGuidanceNotes.innerHTML = `${workflowPhaseGuidanceNotes.innerHTML || ''}<div id="document-focus-preview-block" style="margin-top: 10px;"><strong>Document Focus Preview</strong><div id="document-focus-preview-notes" style="margin-top: 8px;">Focused draft rows currently prioritized by workflow guidance.</div><div id="document-focus-preview-list" style="margin-top: 8px;">${focusPreviewMarkup}</div></div>`;
             }
 
             if (recentValidationOutcome.claim_element_id || recentValidationOutcome.claim_type) {

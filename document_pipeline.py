@@ -6149,8 +6149,8 @@ class FormalComplaintDocumentBuilder:
 
         merged_entry = {
             "text": (
-                "HACC's written-notice and informal-review requirements show that HACC "
-                "wrongfully denied or maintained the denial of housing assistance without the process "
+                "HACC wrongfully denied or maintained the denial of housing assistance without the written notice "
+                "and informal review "
                 f"required before enforcement of that adverse action ({self._merge_support_exhibit_labels(notice_entry, review_entry)})."
             ),
             "fact_ids": _normalize_identifier_list(
@@ -6934,7 +6934,7 @@ class FormalComplaintDocumentBuilder:
         if normalized == "housing_discrimination":
             return [
                 "Plaintiff alleges that Defendant denied, limited, or otherwise interfered with housing assistance or related housing rights.",
-                "Plaintiff further alleges that the challenged housing action was unlawful because it was imposed without the process, neutrality, or equal treatment required by governing housing law and program rules.",
+                "Plaintiff further alleges that the challenged housing action was unlawful because Defendant enforced or maintained the denial of housing assistance without the notice, review, and fair treatment required by governing housing law and program rules.",
                 "Plaintiff seeks relief for the resulting denial of housing opportunity, loss of assistance, and related harms caused by that unlawful housing decision.",
             ]
         if normalized == "due_process_failure":

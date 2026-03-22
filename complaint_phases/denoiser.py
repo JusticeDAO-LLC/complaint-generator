@@ -489,6 +489,10 @@ class ComplaintDenoiser:
             "denied",
             "denial",
             "rejected",
+            "threatened",
+            "adverse steps",
+            "status change",
+            "status-change",
             "written up",
             "write-up",
             "adverse action",
@@ -531,6 +535,8 @@ class ComplaintDenoiser:
                 for token in ("after ", "before ", "shortly after", "ongoing", "same day", "next day")
             ):
                 return normalized_without_parenthetical
+        if any(token in lowered for token in ("exact date still unconfirmed", "request date still", "response date unconfirmed")):
+            return ""
         parenthetical = re.findall(r"\(([^()]+)\)", cleaned)
         for item in parenthetical:
             normalized_item = self._normalize_structured_timeline_field(item)

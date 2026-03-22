@@ -1,0 +1,42 @@
+[
+  {
+    "document_label": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+    "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+    "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+    "filename": "a38c7914-ea37-4c2f-a815-711d4a97c92b.txt",
+    "mime_type": "text/plain",
+    "metadata": {
+      "source_type": "knowledge_graph",
+      "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "anchor_sections": [
+        "grievance_hearing",
+        "appeal_rights",
+        "adverse_action"
+      ],
+      "parse_summary": {},
+      "graph_status": "",
+      "original_mime_type": "application/pdf",
+      "original_filename": "a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "upload_strategy": "extracted_text_fallback"
+    }
+  },
+  {
+    "document_label": "ADMINISTRATIVE PLAN",
+    "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+    "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+    "filename": "8ee6f7d1-0c36-48e4-9677-336b95fb9858.txt",
+    "mime_type": "text/plain",
+    "metadata": {
+      "source_type": "knowledge_graph",
+      "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "anchor_sections": [
+        "grievance_hearing"
+      ],
+      "parse_summary": {},
+      "graph_status": "",
+      "original_mime_type": "application/pdf",
+      "original_filename": "8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "upload_strategy": "extracted_text_fallback"
+    }
+  }
+]

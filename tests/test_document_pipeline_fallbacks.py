@@ -938,7 +938,7 @@ def test_housing_claim_support_entries_prune_preview_style_duplicates():
     assert not any("HACC denial notice and review chronology" in text for text in texts)
     assert any("On March 3, 2026, HACC sent Plaintiff a written denial notice" in text for text in texts)
     assert any(
-        "HACC's written-notice and informal-review requirements show that HACC wrongfully denied or maintained the denial of housing assistance"
+        "HACC wrongfully denied or maintained the denial of housing assistance without the written notice and informal review"
         in text
         for text in texts
     )
@@ -996,6 +996,7 @@ def test_rendered_draft_uses_compact_count_paragraphs():
     assert "Claim-Specific Support:" not in draft_text
     assert "Before enforcing a final adverse housing decision, Defendant was required to" in claims_section
     assert "Defendant denied, limited, or otherwise interfered with Plaintiff's housing assistance or related housing rights" in claims_section
+    assert "Defendant enforced or maintained the denial of housing assistance without the notice, review, and fair treatment required" in claims_section
     assert "That unlawful housing decision caused the resulting denial of housing opportunity" in claims_section
     assert "That failure of notice and process caused the deprivation of housing benefits and review rights" in claims_section
     assert "Plaintiff alleges that Plaintiff alleges that" not in claims_section

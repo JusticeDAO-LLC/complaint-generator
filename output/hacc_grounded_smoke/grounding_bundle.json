@@ -1,0 +1,1827 @@
+{
+  "status": "success",
+  "query": "retaliation grievance complaint appeal hearing due process tenant policy adverse action",
+  "claim_type": "housing_discrimination",
+  "search_mode": "package",
+  "use_vector": false,
+  "search_summary": {
+    "requested_search_mode": "package",
+    "requested_use_vector": false,
+    "effective_search_mode": "lexical_only",
+    "status": "success",
+    "backend_mode": "shared_hybrid",
+    "vector_status": "unavailable",
+    "vector_error": "",
+    "fallback_note": "Requested package/shared hybrid search, but vector support is unavailable; using lexical results instead."
+  },
+  "search_payload": {
+    "status": "success",
+    "query": "retaliation grievance complaint appeal hearing due process tenant policy adverse action",
+    "results": [
+      {
+        "document_id": "document:c8dc2af6ee6996a0",
+        "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+        "score": 4399.3864,
+        "source_type": "knowledge_graph",
+        "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "matched_rules": [
+          {
+            "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+            "section_title": "EXHIBIT 14-1: SAMPLE GRIEVANCE PROCEDURE",
+            "rule_type": "discretion",
+            "modality": "discretionary",
+            "overlap": 3
+          },
+          {
+            "text": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+            "section_title": "ACOP 11/1/24",
+            "rule_type": "discretion",
+            "modality": "discretionary",
+            "overlap": 3
+          },
+          {
+            "text": "In states without due process determinations, HACC must grant opportunity for grievance",
+            "section_title": "ACOP 11/1/24",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 3
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+            "type": "policy_rule",
+            "overlap": 3
+          },
+          {
+            "name": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+            "type": "policy_rule",
+            "overlap": 3
+          },
+          {
+            "name": "In states without due process determinations, HACC must grant opportunity for grievance",
+            "type": "policy_rule",
+            "overlap": 3
+          },
+          {
+            "name": "The notice must also state that the tenant may request a grievance hearing on the HACC’s",
+            "type": "policy_rule",
+            "overlap": 3
+          },
+          {
+            "name": "adverse action and will provide the subject of the record and the tenant a copy of such",
+            "type": "policy_rule",
+            "overlap": 3
+          }
+        ],
+        "metadata": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "details": {
+            "backend": "markitdown",
+            "backend_available": true,
+            "implementation_status": "implemented",
+            "operation": "extract_policy_rules_from_pdf",
+            "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b"
+          },
+          "document_id": "document:c8dc2af6ee6996a0",
+          "document_title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "provider": "ipfs_datasets_py",
+          "rule_count": 5318,
+          "section_count": 3423,
+          "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+          "text_length": 1401793,
+          "status": "success"
+        },
+        "lexical_score": 4399.3864,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "document:be93a165d00f0101",
+        "title": "ADMINISTRATIVE PLAN",
+        "score": 4196.7273,
+        "source_type": "knowledge_graph",
+        "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+        "matched_rules": [
+          {
+            "text": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+            "section_title": "HACC Policy",
+            "rule_type": "discretion",
+            "modality": "discretionary",
+            "overlap": 2
+          },
+          {
+            "text": "HACC informal hearing process, does not preclude the family from exercising the right, that may",
+            "section_title": "Adminplan 7/1/2025",
+            "rule_type": "discretion",
+            "modality": "discretionary",
+            "overlap": 2
+          },
+          {
+            "text": "HACC must be the principal party initiating or sustaining the action to recover amounts due from",
+            "section_title": "HACC Policy",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 2
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "HACC informal hearing process, does not preclude the family from exercising the right, that may",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "HACC must be the principal party initiating or sustaining the action to recover amounts due from",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "HACC will inform the family of its policy regarding moves denied due to insufficient",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "See Chapter 9 for more detail on unit eligibility policies and process.",
+            "type": "policy_rule",
+            "overlap": 2
+          }
+        ],
+        "metadata": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "details": {
+            "backend": "markitdown",
+            "backend_available": true,
+            "implementation_status": "implemented",
+            "operation": "extract_policy_rules_from_pdf",
+            "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858"
+          },
+          "document_id": "document:be93a165d00f0101",
+          "document_title": "ADMINISTRATIVE PLAN",
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "provider": "ipfs_datasets_py",
+          "rule_count": 7441,
+          "section_count": 4968,
+          "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+          "text_length": 1927962,
+          "status": "success"
+        },
+        "lexical_score": 4196.7273,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "document:1badd86efbbad087",
+        "title": "Supportive Housing Services Program",
+        "score": 142.6136,
+        "source_type": "knowledge_graph",
+        "source_path": "/home/barberb/HACC/hacc_website/945af141-c7d1-4973-88c0-b57024243114",
+        "snippet": "Appeals process: Participants will be provided with a formal appeals process that at a minimum must consist of",
+        "matched_rules": [
+          {
+            "text": "Appeals process: Participants will be provided with a formal appeals process that at a minimum must consist of",
+            "section_title": "Discontinuation of Rent Assistance",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 2
+          },
+          {
+            "text": "A landlord liaison function will be included in each county’s implementation of the tenant-based RLRA program.",
+            "section_title": "Landlord liaison function",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 1
+          },
+          {
+            "text": "All landlords leasing to tenant-based RLRA voucher holders will have access to a risk mitigation fund administered",
+            "section_title": "Risk mitigation fund",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 1
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "Appeals process: Participants will be provided with a formal appeals process that at a minimum must consist of",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "Tenant-based RLRA Policies",
+            "type": "policy_section",
+            "overlap": 2
+          },
+          {
+            "name": "A landlord liaison function will be included in each county’s implementation of the tenant-based RLRA program.",
+            "type": "policy_rule",
+            "overlap": 1
+          },
+          {
+            "name": "All landlords leasing to tenant-based RLRA voucher holders will have access to a risk mitigation fund administered",
+            "type": "policy_rule",
+            "overlap": 1
+          },
+          {
+            "name": "Existing tenants that are displaced by a new development with a project-based RLRA contract will be",
+            "type": "policy_rule",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "details": {
+            "backend": "markitdown",
+            "backend_available": true,
+            "implementation_status": "implemented",
+            "operation": "extract_policy_rules_from_pdf",
+            "source_path": "/home/barberb/HACC/hacc_website/945af141-c7d1-4973-88c0-b57024243114"
+          },
+          "document_id": "document:1badd86efbbad087",
+          "document_title": "Supportive Housing Services Program",
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "provider": "ipfs_datasets_py",
+          "rule_count": 166,
+          "section_count": 42,
+          "source_path": "/home/barberb/HACC/hacc_website/945af141-c7d1-4973-88c0-b57024243114",
+          "text_length": 33964,
+          "status": "success"
+        },
+        "lexical_score": 142.6136,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "document:10a43e9d70ec57bc",
+        "title": "HOUSING AUTHORITY OF CLACKAMAS COUNTY",
+        "score": 100.2727,
+        "source_type": "knowledge_graph",
+        "source_path": "/home/barberb/HACC/hacc_website/dd7daaf8-3391-4e6e-b5b9-539456b237c3",
+        "snippet": "information, the Authority estimates the amounts due from tenants that may be uncollectible.",
+        "matched_rules": [
+          {
+            "text": "information, the Authority estimates the amounts due from tenants that may be uncollectible.",
+            "section_title": "Accounts Receivable",
+            "rule_type": "discretion",
+            "modality": "discretionary",
+            "overlap": 2
+          },
+          {
+            "text": "OPERS funding policy provides for monthly employer contributions at actuarially determined",
+            "section_title": "Contributions:",
+            "rule_type": "deadline",
+            "modality": "time_bound",
+            "overlap": 1
+          },
+          {
+            "text": "Principal and interest are due monthly based on a 30-year amortization.",
+            "section_title": "LONG-TERM LIABILITIES (Continued)",
+            "rule_type": "deadline",
+            "modality": "time_bound",
+            "overlap": 1
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "information, the Authority estimates the amounts due from tenants that may be uncollectible.",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "Accounts payable (due within 30 days)",
+            "type": "policy_section",
+            "overlap": 1
+          },
+          {
+            "name": "Bad debt - tenant rents",
+            "type": "policy_section",
+            "overlap": 1
+          },
+          {
+            "name": "Corrective Action Plan:",
+            "type": "policy_section",
+            "overlap": 1
+          },
+          {
+            "name": "Decrease in due to Clackamas County",
+            "type": "policy_section",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "details": {
+            "backend": "markitdown",
+            "backend_available": true,
+            "implementation_status": "implemented",
+            "operation": "extract_policy_rules_from_pdf",
+            "source_path": "/home/barberb/HACC/hacc_website/dd7daaf8-3391-4e6e-b5b9-539456b237c3"
+          },
+          "document_id": "document:10a43e9d70ec57bc",
+          "document_title": "HOUSING AUTHORITY OF CLACKAMAS COUNTY",
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "provider": "ipfs_datasets_py",
+          "rule_count": 107,
+          "section_count": 1533,
+          "source_path": "/home/barberb/HACC/hacc_website/dd7daaf8-3391-4e6e-b5b9-539456b237c3",
+          "text_length": 167583,
+          "status": "success"
+        },
+        "lexical_score": 100.2727,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "document:c22e106e297025b1",
+        "title": "CLACKAMAS COUNTY CONTINUUM OF CARE (COC) PROGRAM",
+        "score": 98.8409,
+        "source_type": "knowledge_graph",
+        "source_path": "/home/barberb/HACC/hacc_website/76861a83-9a1a-43ee-becb-f8556827f676",
+        "snippet": "If termination is necessary, principles of due process must be followed.",
+        "matched_rules": [
+          {
+            "text": "If termination is necessary, principles of due process must be followed.",
+            "section_title": "Termination Requirements:",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 2
+          },
+          {
+            "text": "At these times, the Sponsor will work toward a satisfactory resolution for both the tenant and the landlord in",
+            "section_title": "Occupancy Issues:",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 1
+          },
+          {
+            "text": "Death: In the case of death, rent will be paid for the lesser of up to the date the tenant’s possessions are",
+            "section_title": "Occupancy Issues:",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 1
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "Appeal Process:",
+            "type": "policy_section",
+            "overlap": 2
+          },
+          {
+            "name": "If termination is necessary, principles of due process must be followed.",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "At these times, the Sponsor will work toward a satisfactory resolution for both the tenant and the landlord in",
+            "type": "policy_rule",
+            "overlap": 1
+          },
+          {
+            "name": "Calculating Tenant Rent Payments:",
+            "type": "policy_section",
+            "overlap": 1
+          },
+          {
+            "name": "Death: In the case of death, rent will be paid for the lesser of up to the date the tenant’s possessions are",
+            "type": "policy_rule",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "details": {
+            "backend": "markitdown",
+            "backend_available": true,
+            "implementation_status": "implemented",
+            "operation": "extract_policy_rules_from_pdf",
+            "source_path": "/home/barberb/HACC/hacc_website/76861a83-9a1a-43ee-becb-f8556827f676"
+          },
+          "document_id": "document:c22e106e297025b1",
+          "document_title": "CLACKAMAS COUNTY CONTINUUM OF CARE (COC) PROGRAM",
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "provider": "ipfs_datasets_py",
+          "rule_count": 230,
+          "section_count": 104,
+          "source_path": "/home/barberb/HACC/hacc_website/76861a83-9a1a-43ee-becb-f8556827f676",
+          "text_length": 82212,
+          "status": "success"
+        },
+        "lexical_score": 98.8409,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "repo::research_data/raw_documents/Executive_Orders_Index.html",
+        "title": "Governor of Oregon : Executive Orders : State of Oregon",
+        "score": 83.1136,
+        "source_type": "repository_evidence",
+        "source_path": "/home/barberb/HACC/research_data/raw_documents/Executive_Orders_Index.html",
+        "snippet": "Governor of Oregon : Executive Orders : State of Oregon Search this site Submit close --> Skip to main content An official website of the State of Oregon Learn How you know » (how to identify a Oregon.gov website) An official website of the State of Oregon » Office of Oregon Governor Tina Kotek Governor’s Priorities Governor's Councils Resources About Contact Us Translate this site into other Languages Arabic / اللغة العربية Chinese (Simplified) / 简体中文 Chinese (Traditional) / 繁體中文 English Hindi ",
+        "matched_rules": [
+          {
+            "text": "Governor of Oregon : Executive Orders : State of Oregon Search this site Submit close --> Skip to main content An official website of the State of Oregon Learn How you know » (how to identify a Oregon.gov website) An official website of the State of Oregon » Office of Oregon Governor Tina Kotek Governor’s Priorities Governor's Councils Resources About Contact Us Translate this site into other Languages Arabic / اللغة العربية Chinese (Simplified) / 简体中文 Chinese (Traditional) / 繁體中文 English Hindi Hmong / Lus Hmoob Korean Russian / Русский Somali / Af Soomaali Spanish / Español Vietnamese / Tiếng Việt Full Menu Resources About Governor Kotek News & Updates Contact Us Regional Solutions Sign up for Press Releases Accomplishments Search Office of the Governor 900 Court Street, Suite 254 Salem, OR 97301-4047 Phone: 503-378-4582 Find us on Instagram Friend us on Facebook Follow us on Twitter View us on YouTube Oregon.gov Accessibility Terms & Conditions Supported Browsers Privacy Policy Executive Orders tag, as divs are not allowed in 's --> Executive Orders Site Navigation All executive orders from 2003 to present Executive Order Description Download Link 2025-31 Rescinding Executive Order 25-30 Download 2025-31 2025-30 Proclamation of State of Emergency Due to Impacts of the Olympic Pipeline Shutdown Download 2025-30 2025-29 Executive Order on Reducing Greenhouse Gas Emissions and Advancing Oregon's Clean Energy Future Download 2025-29 2025-28 Second Extension of Executive Order 25-08 Declaring a State of Emergency in Wasco County due to the Rowena Fire Download 2025-28 2025-27 Declaring a Hunger Emergency to Protect Oregonians from the Suspension of Federal Supplemental Nutrition Assistance Program (SNAP) Download 2025-27 2025-26 Directing State Agencies to Take Urgent Action to Promote the Resilience of our Communities and Natural and Working Lands and Waters Download 2025-26 2025-25 Accelerating Wind and Solar Energy Development in Advance of Elimination of Federal Clean Energy Tax Credits Download 2025-25 2025-24 Invocation of Emergency Conflagration Act for the Moon Complex Fire in Curry County Download 2025-24 2025-23 Determination of a State of Drought Emergency on Jefferson County Download 2025-23 2025-22 Constructing Seismically Resilient State Buildings Download 2025-22 2025-21 Tobacco Prevention and Education Program Council Download 2025-21 2025-20 Invocation of Emergency Conflagration Act for the Flat Fire in Jefferson and Deschutes Counties Download 2025-20 2025-19 Determination of a State of Drought Emergency in Coos and Wheeler Counties Download 2025-19 2025-18 Determination of a State of Drought Emergency in Morrow, Douglas, and Union Counties.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 3
+          },
+          {
+            "text": "19-03 Download 2019-7 2019-6 Establishing the Behavioral Health Advisory Council Download 2019-6 2019-5 Designating Segments of the Nehalem River (Clatsop and Tillamook Counties) as State Scenic Waterway and Directing Scenic Waterway Studies to Use a Collaborative Process Download 2019-5 2019-4 Determination of State of Emergency in Baker, Coos, Curry, Douglas, Grant, Harney, Lane, Linn, Malheur, Umatilla, Union, Wallowa, and Wheeler Counties Due to a Severe Winter Storm that Includes High Winds, Flooding, and Landslides Download 2019-4 2019-3 Establishing an Oversight Board to Address the Crisis in Oregon's Child Welfare System Download 2019-3 2019-2 Determination of State of Emergency in Coos, Curry, Deschutes, Douglas, Jackson, Josephine, Klamath, Lane, Linn, and Marion Counties due to a Severe Winter Storm that includes Heavy Snow and Ice Accumulation, High Winds, Flooding, and Landslides, Download 2019-2 2019-1 Establishing the Governor's Council on Wildfire Response Download 2019-1 2018-31 Establishing the Oregon Broadband Office Download 2018-31 2018-30 Continuing Oregon Commission on Autism Spectrum Disorder Download 2018-30 2018-29 Amending Executive Order No.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 2
+          },
+          {
+            "text": "20-07 (Prohibiting On-Premises Consumption of Food or Drink) Download 2020-14 2020-13 Temporary Moratorium on Certain Evictions and Terminations of Rental Agreements and Leases, in Response to Coronavirus (COVID-19) Outbreak Download 2020-13 2020-12 Stay Home, Save Lives: Ordering Oregonians to Stay at Home, Closing Specified Retail Businesses, Requiring Social Distancing Measures for Other Public and Private Facilities, and Imposing Requirements for Outdoor Areas and Licensed Childcare Facilities Download 2020-12 2020-11 Temporary Moratorium on Residential Evictions for Nonpayment, in Response to Coronavirus (COVID-19) Outbreak Download 2020-11 2020-10 Conserving Personal Protective Equipment and Hospital Beds, Protecting Health Care Workers, Postponing Non-urgent Health Care Procedures, and Restricting Visitation in Response to Coronavirus (COVID-19) Outbreaks Download 2020-10 2020-9 Suspension of In-Person Instructional Activities at Higher Education Institutions in Response to Coronavirus (COVID-19) Outbreak Download 2020-9 2020-8 School Closures and the Provision of School-based and Child Care Services in Response to Coronavirus (COVID-19) Outbreak Download 2020-8 2020-7 Prohibiting On-Premises Consumption of Food or Drink and Gatherings of More Than 25 People Download 2020-7 2020-6 Declaration of Abnormal Disruption of the Market due to COVID-19 Download 2020-6 2020-5 Prohibiting Large Gatherings Due to Coronavirus (COVID-19) Outbreak in Oregon Download 2020-5 2020-4 Directing State Agencies to Take Actions to Reduce and Regulate Greenhouse Gas Emissions Download 2020-4 2020-3 Declaration of Emergency due to Corona Virus (COVID-19) outbreak in Oregon Download 2020-3 2020-2 Determination of a State of Drought Emergency in Klamath County due to low snowpack, precipitation, streamflow, and warming temperatures Download 2020-2 2020-1 Determination of State of Emergency in Umatilla, Union and Wallowa Counties due to a Severe Storm that includes Heavy Rain, Snowmelt, Flooding and Landslides Download 2020-1 2019-9 Directing State Agencies to Take Immediate Action to Address the Vaping Public Health Crisis Download 2019-9 2019-8 Ensuring Equal Treatment Under Law to Oregon's LGBT+ Community Download 2019-8 2019-7 Amending Executive Order No.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 2
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "20-06 (Declaration of Abnormal Disruption of the Market Due to COVID-19) Download 2020-15 2020-14 Extending the Duration",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "20-42 (Declaration of Abnornal Disruption of the Market Due to Wildfires) Download 2020-57 2020-56 Temporary Moratorium ",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "Counties due to a Severe Winter Storm with High Winds, Flooding, and Landslides Download 2016-2 2016-1 Amends Executive ",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "Download 2018-8 2018-7 Determination of a State of Drought Emergency in Lake County due to Low Snowpack, Precipitation, ",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "Download 2021-13 2021-12 Determination of a State of Drought Emergency in Deschutes and Jefferson Counties Due to Lack o",
+            "type": "fact",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "relative_path": "research_data/raw_documents/Executive_Orders_Index.html",
+          "category": "research_data",
+          "size_bytes": 1305399,
+          "graph_status": "available-fallback",
+          "graph_entity_count": 26,
+          "graph_relationship_count": 25,
+          "document_ingest_status": "success",
+          "content_type": "text/html",
+          "extraction_method": "html_to_text",
+          "parse_status": "available-fallback",
+          "parse_summary": {
+            "status": "available-fallback",
+            "chunk_count": 78,
+            "text_length": 64660,
+            "parser_version": "documents-adapter:1",
+            "input_format": "html",
+            "paragraph_count": 1,
+            "extraction_method": "html_to_text",
+            "quality_tier": "medium",
+            "quality_score": 80.0,
+            "page_count": 1
+          },
+          "parse_metadata": {
+            "filename": "Executive_Orders_Index.html",
+            "mime_type": "text/html",
+            "size": 1305399,
+            "backend_available": true,
+            "parser_version": "documents-adapter:1",
+            "source": "file",
+            "chunk_count": 78,
+            "paragraph_count": 1,
+            "text_length": 64660,
+            "input_format": "html",
+            "page_count": 1,
+            "extraction_method": "html_to_text",
+            "parse_quality": {
+              "quality_score": 80.0,
+              "quality_tier": "medium",
+              "quality_flags": [
+                "low_text_density"
+              ],
+              "ocr_used": false
+            },
+            "source_span": {
+              "char_start": 0,
+              "char_end": 64660,
+              "text_length": 64660,
+              "raw_size": 1305399,
+              "page_count": 1
+            },
+            "transform_lineage": {
+              "source": "file",
+              "parser_version": "documents-adapter:1",
+              "input_format": "html",
+              "normalization": "html_to_text",
+              "chunking": {
+                "chunk_size": 1000,
+                "overlap": 100,
+                "chunk_count": 78
+              },
+              "extraction": {
+                "method": "html_to_text",
+                "ocr_used": false,
+                "page_count": 1
+              },
+              "source_span": {
+                "char_start": 0,
+                "char_end": 64660,
+                "text_length": 64660,
+                "raw_size": 1305399,
+                "page_count": 1
+              }
+            },
+            "operation": "parse_document_text",
+            "provider": "ipfs_datasets_py",
+            "implementation_status": "implemented",
+            "details": {
+              "operation": "parse_document_text",
+              "backend_available": true,
+              "implementation_status": "implemented"
+            }
+          },
+          "quality_tier": "medium",
+          "quality_score": 80.0,
+          "parsed_text_path": "/home/barberb/HACC/research_results/documents/repository_ingest/a5a88041b7f197c16cb4df07dc3c0b79.txt",
+          "metadata_path": "/home/barberb/HACC/research_results/documents/repository_ingest/a5a88041b7f197c16cb4df07dc3c0b79.json",
+          "checksum": "0f7b8760b2c5440e5ba07c6cf9f7a3aefab80386aac0efa270577078b688e8b8",
+          "source_record_id": "a5a88041b7f197c16cb4df07dc3c0b79"
+        },
+        "lexical_score": 83.1136,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "repo::COLLECTION_COMPLETE_SUMMARY.md",
+        "title": "# Complete DEI Audit Summary - Housing Authority of Clackamas County",
+        "score": 72.1136,
+        "source_type": "repository_evidence",
+        "source_path": "/home/barberb/HACC/COLLECTION_COMPLETE_SUMMARY.md",
+        "snippet": "**Detailed Policy Analysis** - Compare Oregon findings against Housing Authority policies - Identify conflicts with Bondi memo guidance - Draft remediation recommendations --- ## Success Metrics | Objective | Target | Status | |-----------|--------|--------| | Discover Oregon DEI policies | 15+ | ✅ 24 documents | | Identify housing-specific policies | 10+ | ✅ 22 documents | | Find OHCS governance documents | 2+ | ✅ 4 board packets | | Rate documents for risk | 100% | ✅ 24/24 scored | | Create se",
+        "matched_rules": [
+          {
+            "text": "**Detailed Policy Analysis** - Compare Oregon findings against Housing Authority policies - Identify conflicts with Bondi memo guidance - Draft remediation recommendations --- ## Success Metrics | Objective | Target | Status | |-----------|--------|--------| | Discover Oregon DEI policies | 15+ | ✅ 24 documents | | Identify housing-specific policies | 10+ | ✅ 22 documents | | Find OHCS governance documents | 2+ | ✅ 4 board packets | | Rate documents for risk | 100% | ✅ 24/24 scored | | Create searchable index | 1 | ✅ JSON + CSV | | Generate priority analysis | 1 | ✅ Multiple docs | | Identify Clackamas County links | TBD | ⏳ Manual search needed | --- ## Technical Details ### Search Queries Used **Run 1 (Broad):** ``` site:oregon.gov filetype:pdf \"diversity\" OR \"equity\" OR \"DEI\" site:oregon.gov filetype:pdf \"underrepresented\" OR \"underserved\" site:oregon.gov filetype:pdf \"cultural competence\" OR \"lived experience\" site:clackamas.us filetype:pdf \"diversity\" OR \"equity\" site:oregonlegislature.gov filetype:pdf \"diversity\" OR \"equity\" ``` **Run 2 (Housing-Focused):** ``` site:oregon.gov filetype:pdf \"housing\" AND (\"diversity\" OR \"equity\" OR \"DEI\") site:oregon.gov filetype:pdf \"affordable housing\" AND (\"equity\" OR \"diversity\") site:oregon.gov/biz/dsc filetype:pdf \"diversity\" OR \"equity\" site:oregon.gov/lcd filetype:pdf \"housing\" AND (\"diversity\" OR \"equity\") site:oregon.gov filetype:pdf \"fair housing\" AND (\"equity\" OR \"diversity\") site:clackamas.us filetype:pdf \"housing\" AND (\"diversity\" OR \"equity\") site:clackamas.us/housing filetype:pdf \"diversity\" OR \"equity\" OR \"DEI\" site:clackamas.us filetype:pdf \"fair housing\" OR \"housing authority\" site:clackamas.us filetype:pdf \"procurement\" AND (\"diversity\" OR \"minority\" OR \"women\") site:clackamas.us filetype:pdf \"diversity\" AND (\"policy\" OR \"plan\" OR \"action plan\") ``` ### Keyword Matching Algorithm **DEI Keywords (16):** diversity, equity, DEI, inclusion, underserved, underrepresented, DEIB, equitable **Proxy Keywords (9):** BIPOC, cultural competence, lived experience, equity plan, safe space, environmental justice, underserved communities **Binding Indicators (11):** shall, must, required, mandatory, agreement, contract, policy, statewide, applicable, ordinance, standard **Scoring Logic:** - Score 3: All three keyword types present - Score 2: Two keyword types present (usually DEI + binding) - Score 1: One keyword type present - Score 0: No keywords detected --- ## Conclusion The DEI Compliance Audit for Housing Authority of Clackamas County has completed its **collection phase** with comprehensive discovery of 24 Oregon state and local documents containing DEI language and binding policy indicators.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 2
+          },
+          {
+            "text": "**Operational Mandates** - Specific requirements for housing programs ### What We Found 4 OHCS Board packets (Jan, Nov, Dec 2025) all rated **SCORE 3** with: - Explicit DEI language - Binding indicators: \"shall\", \"must\", \"statewide\", \"policy\", \"contract\", \"required\", \"mandatory\" - Direct applicability to housing authorities ### Action Item **CRITICAL:** Review these board packets to identify: - Any explicit DEI mandates for housing authorities - Funding conditions related to DEI - Compliance requirements - Mentions of Clackamas County Housing Authority --- ## Risk Assessment Per Bondi Memo Categories ### Category 1: Preferential Treatment **Documents Found:** 18+ documents with \"diversity\", \"underrepresented\", \"BIPOC\" language **Risk:** HIGH - Language suggests diversity-based preferences in hiring and selection **Example:** \"equity plan\", \"BIPOC\", \"lived experience\", \"underrepresented\" ### Category 2: Proxy Criteria **Documents Found:** 16+ documents with proxy language **Risk:** HIGH - \"Underserved\", \"disadvantaged\", \"underrepresented\" could serve as proxies for race **Example:** DEI plans tie housing/hiring to geographic equity (zip codes), education level, language ### Category 3: Segregation **Documents Found:** 12+ documents with segregated program language **Risk:** MEDIUM - Some documents reference separate tracks or targeted programs **Example:** \"Targeted recruitment\", \"community-specific outreach\", \"populations experiencing homelessness\" ### Category 4: Selection Practices **Documents Found:** 21+ documents with hiring/selection mandates **Risk:** HIGH - DEI action plans explicitly require diversity in hiring committees, selection criteria **Example:** \"Diverse hiring panel\", \"diversity requirement\", \"equity-focused recruitment\" ### Category 5: Training Mandates **Documents Found:** 21+ documents with training requirements **Risk:** HIGH - DEI/DEIB training appears mandatory in many state plans **Example:** \"Mandatory DEI training\", \"cultural competence requirements\", \"implicit bias training\" ### Category 6: Third-Party Funding **Documents Found:** 18+ documents reference grants/federal funding **Risk:** HIGH - May create binding compliance obligations **Example:** \"Federal grant condition\", \"funding requirement\", \"HUD grant compliance\" --- ## Clackamas County Status ### Current Search Results The Brave API rate-limited before completing searches of site:clackamas.us.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 2
+          },
+          {
+            "text": "- **Queries Attempted:** 4 Clackamas-specific searches - **Results:** All returned 429 (Rate Limited) errors - **Status:** Manual follow-up needed ### Recommended Next Step **Manual Web Search:** Go to Clackamas County government website and search for: - Housing Authority policies - DEI/diversity policies - Hiring practices - Procurement policies - Board meeting minutes (2024-2025) **Resources:** - Clackamas County website: clackamas.us - Clackamas County Housing Authority: clackamas.us/housing or housing.clackamas.us - County Board minutes, policies, plans --- ## Data Summary ### Collection Statistics | Metric | Value | |--------|-------| | Total PDFs Downloaded | 17 (8 new in run 2) | | PDFs Successfully Parsed | 15 (2 corrupted/invalid) | | Documents Indexed | 24 (consolidated after dedup) | | Total Raw Data | 42MB | | Total Parsed Text | ~1.2MB | | Analysis Timestamp | 2025-12-31T00:12:52 UTC | ### Risk Distribution ``` Score 3 (Critical): ██████████████ 12 documents (50%) Score 2 (High): ███████████ 11 documents (46%) Score 1 (Monitor): █ 1 document (4%) ``` ### Applicability Distribution ``` Housing Policies: ████████████████████████ 22 (92%) Hiring Policies: ███████████████████████ 21 (88%) Training Requirements: ███████████████████████ 21 (88%) Procurement DEI: ██████████████████ 18 (75%) ``` --- ## Files & Locations ### Summary Reports - [FINDINGS_20251231_001230.txt](research_results/FINDINGS_20251231_001230.txt) - Latest one-page summary - [FINDINGS_20251231_000908.txt](research_results/FINDINGS_20251231_000908.txt) - First run summary - [HOUSING_FOCUS_FINDINGS.md](HOUSING_FOCUS_FINDINGS.md) - Housing-specific analysis ### Detailed Reports - [DETAILED_REPORT_20251231_001230.txt](research_results/DETAILED_REPORT_20251231_001230.txt) - Latest technical report - [DETAILED_REPORT_20251231_000908.txt](research_results/DETAILED_REPORT_20251231_000908.txt) - First run report ### Data Files - [document_index_20251231_001230.json](research_results/document_index_20251231_001230.json) - Full searchable index - [summary_20251231_001230.csv](research_results/summary_20251231_001230.csv) - Spreadsheet with all documents ### Raw Documents - PDFs: `research_results/documents/raw/` (26 files, 42MB) - Parsed Text: `research_results/documents/parsed/` (24 files + metadata JSON) ### Framework Documents - [agent.md](agent.md) - Bondi memo + audit framework + search strategy - [EVIDENCE_REQUEST_TEMPLATE.md](EVIDENCE_REQUEST_TEMPLATE.md) - Email template for evidence collection - [FINDINGS_PRIORITY_ANALYSIS.md](FINDINGS_PRIORITY_ANALYSIS.md) - Tier 1/2/3 priority guide - [QUICK_START.md](QUICK_START.md) - How to use the toolkit --- ## Next Actions (Prioritized) ### IMMEDIATE (Today/Tomorrow) 1.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 2
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "### Applicability to Housing Authority - **Housing Policies:** 22/24 documents (92%) - **Hiring Policies:** 21/24 docume",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "**Detailed Policy Analysis** - Compare Oregon findings against Housing Authority policies - Identify conflicts with Bond",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "**Policy Decisions** - May mandate compliance for recipients 2.",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "**Strategic Directives** - Long-term DEI policy commitments 4.",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "- Cross-reference Bondi memo against Housing Authority's current policies 4.",
+            "type": "fact",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "relative_path": "COLLECTION_COMPLETE_SUMMARY.md",
+          "category": "root",
+          "size_bytes": 16628,
+          "graph_status": "available-fallback",
+          "graph_entity_count": 26,
+          "graph_relationship_count": 25,
+          "document_ingest_status": "success",
+          "content_type": "text/markdown",
+          "extraction_method": "text_normalization",
+          "parse_status": "available-fallback",
+          "parse_summary": {
+            "status": "available-fallback",
+            "chunk_count": 19,
+            "text_length": 16072,
+            "parser_version": "documents-adapter:1",
+            "input_format": "text",
+            "paragraph_count": 1,
+            "extraction_method": "text_normalization",
+            "quality_tier": "high",
+            "quality_score": 98.0,
+            "page_count": 1
+          },
+          "parse_metadata": {
+            "filename": "COLLECTION_COMPLETE_SUMMARY.md",
+            "mime_type": "text/markdown",
+            "size": 16628,
+            "backend_available": true,
+            "parser_version": "documents-adapter:1",
+            "source": "file",
+            "chunk_count": 19,
+            "paragraph_count": 1,
+            "text_length": 16072,
+            "input_format": "text",
+            "page_count": 1,
+            "extraction_method": "text_normalization",
+            "parse_quality": {
+              "quality_score": 98.0,
+              "quality_tier": "high",
+              "quality_flags": [],
+              "ocr_used": false
+            },
+            "source_span": {
+              "char_start": 0,
+              "char_end": 16072,
+              "text_length": 16072,
+              "raw_size": 16628,
+              "page_count": 1
+            },
+            "transform_lineage": {
+              "source": "file",
+              "parser_version": "documents-adapter:1",
+              "input_format": "text",
+              "normalization": "text_normalization",
+              "chunking": {
+                "chunk_size": 1000,
+                "overlap": 100,
+                "chunk_count": 19
+              },
+              "extraction": {
+                "method": "text_normalization",
+                "ocr_used": false,
+                "page_count": 1
+              },
+              "source_span": {
+                "char_start": 0,
+                "char_end": 16072,
+                "text_length": 16072,
+                "raw_size": 16628,
+                "page_count": 1
+              }
+            },
+            "operation": "parse_document_text",
+            "provider": "ipfs_datasets_py",
+            "implementation_status": "implemented",
+            "details": {
+              "operation": "parse_document_text",
+              "backend_available": true,
+              "implementation_status": "implemented"
+            }
+          },
+          "quality_tier": "high",
+          "quality_score": 98.0,
+          "parsed_text_path": "/home/barberb/HACC/research_results/documents/repository_ingest/e6803aae629e173021ba09ffc0fb5baf.txt",
+          "metadata_path": "/home/barberb/HACC/research_results/documents/repository_ingest/e6803aae629e173021ba09ffc0fb5baf.json",
+          "checksum": "ac5515d6a40ee4749918338087b1b665290c86c370aee0103d37646dc56e94e4",
+          "source_record_id": "e6803aae629e173021ba09ffc0fb5baf"
+        },
+        "lexical_score": 72.1136,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "document:b9b8827abb6e07a5",
+        "title": "Long-term Rent Assistance (LTRA)",
+        "score": 70.6364,
+        "source_type": "knowledge_graph",
+        "source_path": "/home/barberb/HACC/hacc_website/b53a0523-fa60-4df6-bba3-6ae34a47cb02",
+        "snippet": "Appeals process: Participants will be provided with a formal appeals process that at a minimum must",
+        "matched_rules": [
+          {
+            "text": "Appeals process: Participants will be provided with a formal appeals process that at a minimum must",
+            "section_title": "Grievance/Appeals Procedure",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 2
+          },
+          {
+            "text": "A formal policy regarding LTRA transfers is pending and will be developed upon receiving further",
+            "section_title": "Transfers within program jurisdiction",
+            "rule_type": "obligation",
+            "modality": "required",
+            "overlap": 1
+          },
+          {
+            "text": "An LTRA participant may only be discontinued from the program due to serious violations of program",
+            "section_title": "Discontinuation of Rent Assistance",
+            "rule_type": "discretion",
+            "modality": "discretionary",
+            "overlap": 1
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "Appeals process: Participants will be provided with a formal appeals process that at a minimum must",
+            "type": "policy_rule",
+            "overlap": 2
+          },
+          {
+            "name": "Grievance/Appeals Procedure",
+            "type": "policy_section",
+            "overlap": 2
+          },
+          {
+            "name": "A formal policy regarding LTRA transfers is pending and will be developed upon receiving further",
+            "type": "policy_rule",
+            "overlap": 1
+          },
+          {
+            "name": "An LTRA participant may only be discontinued from the program due to serious violations of program",
+            "type": "policy_rule",
+            "overlap": 1
+          },
+          {
+            "name": "Application Process",
+            "type": "policy_section",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "details": {
+            "backend": "markitdown",
+            "backend_available": true,
+            "implementation_status": "implemented",
+            "operation": "extract_policy_rules_from_pdf",
+            "source_path": "/home/barberb/HACC/hacc_website/b53a0523-fa60-4df6-bba3-6ae34a47cb02"
+          },
+          "document_id": "document:b9b8827abb6e07a5",
+          "document_title": "Long-term Rent Assistance (LTRA)",
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "provider": "ipfs_datasets_py",
+          "rule_count": 78,
+          "section_count": 24,
+          "source_path": "/home/barberb/HACC/hacc_website/b53a0523-fa60-4df6-bba3-6ae34a47cb02",
+          "text_length": 17649,
+          "status": "success"
+        },
+        "lexical_score": 70.6364,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "repo::research_results/risk_review_20251231.md",
+        "title": "# Risk Review (risk_score > 0)",
+        "score": 68.0,
+        "source_type": "repository_evidence",
+        "source_path": "/home/barberb/HACC/research_results/risk_review_20251231.md",
+        "snippet": "# Risk Review (risk_score > 0) Generated: 2025-12-31T10:40:05 Index: research_results/document_index_20251231_100922.json Total indexed docs: 480 Docs with risk_score > 0: 253 Focused docs (excluding QuantumResidential assets/images/js/css): 115 ## Top domains (focused) - (no-domain): max_risk=3 docs=35 - risk=2 url=file://research_results/documents/raw/592594abd4eb6a8bad89ce62855bb42e.pdf file=research_results/documents/parsed/592594abd4eb6a8bad89ce62855bb42e.txt id=592594abd4eb6a8bad89ce62855b",
+        "matched_rules": [
+          {
+            "text": "# Risk Review (risk_score > 0) Generated: 2025-12-31T10:40:05 Index: research_results/document_index_20251231_100922.json Total indexed docs: 480 Docs with risk_score > 0: 253 Focused docs (excluding QuantumResidential assets/images/js/css): 115 ## Top domains (focused) - (no-domain): max_risk=3 docs=35 - risk=2 url=file://research_results/documents/raw/592594abd4eb6a8bad89ce62855bb42e.pdf file=research_results/documents/parsed/592594abd4eb6a8bad89ce62855bb42e.txt id=592594abd4eb6a8bad89ce62855bb42e - risk=3 url=file://research_results/documents/raw/74c6bb8d3aa480a95207e0085fc1c4c0.pdf file=research_results/documents/parsed/74c6bb8d3aa480a95207e0085fc1c4c0.txt id=74c6bb8d3aa480a95207e0085fc1c4c0 - risk=3 url=file://research_results/documents/raw/e074d302eac8c1251ce84c7611f87a01.pdf file=research_results/documents/parsed/e074d302eac8c1251ce84c7611f87a01.txt id=e074d302eac8c1251ce84c7611f87a01 - risk=3 url=file://research_results/documents/raw/003c0bf391f9060e15360bb52c763605.pdf file=research_results/documents/parsed/003c0bf391f9060e15360bb52c763605.txt id=003c0bf391f9060e15360bb52c763605 - risk=3 url=file://research_results/documents/raw/2cb743c45485324adc632bb0642bc614.pdf file=research_results/documents/parsed/2cb743c45485324adc632bb0642bc614.txt id=2cb743c45485324adc632bb0642bc614 - www.racialequityalliance.org: max_risk=3 docs=9 - risk=2 url=https://www.racialequityalliance.org/viewdocument/democracy-resilience-toolkit-promp file=research_results/documents/parsed/b5954653ff0f6fe3eeb0aa5b63479bda.txt id=b5954653ff0f6fe3eeb0aa5b63479bda - risk=3 url=https://www.racialequityalliance.org/blogs/gare-team/2025/12/16/government-at-just-narratives file=research_results/documents/parsed/0907648c5876f269eb95f4122bbe6150.txt id=0907648c5876f269eb95f4122bbe6150 - risk=2 url=https://www.racialequityalliance.org/resources/public-sector-jobs- file=research_results/documents/parsed/c03fa557fce41394cb3254c013c5736b.txt id=c03fa557fce41394cb3254c013c5736b - risk=3 url=https://www.racialequityalliance.org/resources/state-of-the-field-25 file=research_results/documents/parsed/181bd6ec8cfef085a9c88f92bf6a1ca5.txt id=181bd6ec8cfef085a9c88f92bf6a1ca5 - risk=2 url=https://www.racialequityalliance.org/home file=research_results/documents/parsed/0e1e03d72717fb6325339c86021d7ea8.txt id=0e1e03d72717fb6325339c86021d7ea8 - obiu.org: max_risk=3 docs=6 - risk=3 url=https://obiu.org/about file=research_results/documents/parsed/a626e07c5852ed3bdb811988165371fe.txt id=a626e07c5852ed3bdb811988165371fe - risk=3 url=https://obiu.org/course/stages-of-targeted-univeralism-part2 file=research_results/documents/parsed/dc398148018f34aaa217529c5dbcce3b.txt id=dc398148018f34aaa217529c5dbcce3b - risk=3 url=https://obiu.org/ file=research_results/documents/parsed/3118d8dcd1c708d5160b1108a9b231ea.txt id=3118d8dcd1c708d5160b1108a9b231ea - risk=3 url=https://obiu.org/course/what-is-targeted-universalism file=research_results/documents/parsed/65855a9e72d39c381c793fccf7e2afd0.txt id=65855a9e72d39c381c793fccf7e2afd0 - risk=3 url=https://obiu.org/courses file=research_results/documents/parsed/385a88a7fe2da014385f69da14fe3381.txt id=385a88a7fe2da014385f69da14fe3381 - www.raceforward.org: max_risk=3 docs=6 - risk=2 url=https://www.raceforward.org/resources/toolkits/messages-grow-and-uproot-narrative-strategy-amid-attacks-diversity-equity file=research_results/documents/parsed/19fe65d220983b78d9b82406f68a7436.txt id=19fe65d220983b78d9b82406f68a7436 - risk=2 url=https://www.raceforward.org/2024-annual-report file=research_results/documents/parsed/3280f67cdb07a327ce492b515521ebce.txt id=3280f67cdb07a327ce492b515521ebce - risk=2 url=https://www.raceforward.org/ file=research_results/documents/parsed/6edb45aeefba069c869f50585373f1c6.txt id=6edb45aeefba069c869f50585373f1c6 - risk=3 url=https://www.raceforward.org/what-racial-equity file=research_results/documents/parsed/a190e1e7829daedea88c07cffb922811.txt id=a190e1e7829daedea88c07cffb922811 - risk=3 url=https://www.raceforward.org/training-and-events/just-narratives file=research_results/documents/parsed/d000a9697b5ecd1908fdc47f91470b1e.txt id=d000a9697b5ecd1908fdc47f91470b1e - www.oregonmetro.gov: max_risk=3 docs=4 - risk=2 url=https://www.oregonmetro.gov/ file=research_results/documents/parsed/78c1b6400b5d5a077a730e1abdd3a397.txt id=78c1b6400b5d5a077a730e1abdd3a397 - risk=2 url=https://www.oregonmetro.gov/what-metro-does/housing-and-homelessness/affordable-housing-bond/racial-equity file=research_results/documents/parsed/d1b57d035c043d274245fea7ac99f95a.txt id=d1b57d035c043d274245fea7ac99f95a - risk=2 url=https://www.oregonmetro.gov/committees file=research_results/documents/parsed/ebc99fc1209f8c2c5f749b2004124f65.txt id=ebc99fc1209f8c2c5f749b2004124f65 - risk=3 url=https://www.oregonmetro.gov/projects file=research_results/documents/parsed/0fa504280ae86dd4e5ccf8c473b7d22c.txt id=0fa504280ae86dd4e5ccf8c473b7d22c - en.wikipedia.org: max_risk=2 docs=6 - risk=2 url=https://en.wikipedia.org/wiki/RDFa file=research_results/documents/parsed/70cd1c5a92bcf53af2ccfbe1bb03108d.txt id=70cd1c5a92bcf53af2ccfbe1bb03108d - risk=2 url=https://en.wikipedia.org/wiki/Main_Page file=research_results/documents/parsed/ac8b3b54df4124a34387d7e8da8f3838.txt id=ac8b3b54df4124a34387d7e8da8f3838 - risk=2 url=https://en.wikipedia.org/wiki/Dublin_Core file=research_results/documents/parsed/244dee6f75bb503ebdcf3d3df5729d4a.txt id=244dee6f75bb503ebdcf3d3df5729d4a - risk=2 url=https://en.wikipedia.org/wiki/ISO_4217 file=research_results/documents/parsed/db13e23918ccc7cc83dae317c32a5d58.txt id=db13e23918ccc7cc83dae317c32a5d58 - risk=2 url=https://en.wikipedia.org/wiki/CURIE file=research_results/documents/parsed/e09418552bffc631d834012946662292.txt id=e09418552bffc631d834012946662292 - opportunityagenda.org: max_risk=2 docs=5 - risk=2 url=https://opportunityagenda.org/wp-json/ file=research_results/documents/parsed/7ab1c698e9aca12f84f98488520ed0a0.txt id=7ab1c698e9aca12f84f98488520ed0a0 - risk=1 url=https://opportunityagenda.org/comments/feed/ file=research_results/documents/parsed/457312611cef31a2cfe6e349011f468e.txt id=457312611cef31a2cfe6e349011f468e - risk=1 url=https://opportunityagenda.org/feed/ file=research_results/documents/parsed/a6118b290fad4b795a070b61557b3182.txt id=a6118b290fad4b795a070b61557b3182 - risk=2 url=https://opportunityagenda.org/events/?ical=1 file=research_results/documents/parsed/942ef0696af0624037562a90533f3a2f.txt id=942ef0696af0624037562a90533f3a2f - risk=2 url=https://opportunityagenda.org/?s=%7Bsearch_term_string file=research_results/documents/parsed/3d2f61921dcdc94801c90a0fee237047.txt id=3d2f61921dcdc94801c90a0fee237047 - www.drupal.org: max_risk=2 docs=4 - risk=2 url=https://www.drupal.org/about/values-and-principles file=research_results/documents/parsed/adcf7235f7f3bbc0db58cf35869d2d55.txt id=adcf7235f7f3bbc0db58cf35869d2d55 - risk=2 url=https://www.drupal.org/drupal-services file=research_results/documents/parsed/3624845de3c2316d6c0dbf0f2893e487.txt id=3624845de3c2316d6c0dbf0f2893e487 - risk=2 url=https://new.drupal.org/home file=research_results/documents/parsed/11f8c5e1123008295d7e64cc85216997.txt id=11f8c5e1123008295d7e64cc85216997 - risk=2 url=https://www.drupal.org/about file=research_results/documents/parsed/9afc03806c436d495f9b35661514a4c4.txt id=9afc03806c436d495f9b35661514a4c4 - www.hudexchange.info: max_risk=2 docs=4 - risk=2 url=https://www.hudexchange.info/resource/3824/hmis-data-dictionary/ file=research_results/documents/parsed/022621fee8894629a4293f7bcd169817.txt id=022621fee8894629a4293f7bcd169817 - risk=2 url=https://www.hudexchange.info/homelessness-assistance/ file=research_results/documents/parsed/b8db36676c4c140396b695f791f8e0b9.txt id=b8db36676c4c140396b695f791f8e0b9 - risk=2 url=https://www.hudexchange.info/ file=research_results/documents/parsed/5b94e8a5df0af6d0ee9bdeaa10261e5e.txt id=5b94e8a5df0af6d0ee9bdeaa10261e5e - risk=2 url=https://www.hudexchange.info/about/ file=research_results/documents/parsed/03f0b1ced9a67059ca7c1c803601a4f1.txt id=03f0b1ced9a67059ca7c1c803601a4f1 - www.hud.gov: max_risk=2 docs=4 - risk=1 url=https://www.hud.gov/contactus/fairhousing file=research_results/documents/parsed/60836bb392b2f12f39e28102c4ae36fa.txt id=60836bb392b2f12f39e28102c4ae36fa - risk=1 url=https://www.hud.gov/no-fear-act file=research_results/documents/parsed/ce61429f7a2184a4678907a98c463d66.txt id=ce61429f7a2184a4678907a98c463d66 - risk=2 url=https://www.hud.gov/ file=research_results/documents/parsed/1171b9007c447304c2078fde38778fb3.txt id=1171b9007c447304c2078fde38778fb3 - risk=2 url=https://www.hud.gov/news file=research_results/documents/parsed/07191d2e982a998b5c108d04213e94bb.txt id=07191d2e982a998b5c108d04213e94bb - www.charitynavigator.org: max_risk=2 docs=3 - risk=2 url=https://www.charitynavigator.org/about-us file=research_results/documents/parsed/173fee7c4d1bd41609fa6be5bfb8d359.txt id=173fee7c4d1bd41609fa6be5bfb8d359 - risk=2 url=https://www.charitynavigator.org/ein/942759879 file=research_results/documents/parsed/17d6cf0baacf85a5dc3bdc2d4e886207.txt id=17d6cf0baacf85a5dc3bdc2d4e886207 - risk=2 url=https://www.charitynavigator.org/ein/843935514 file=research_results/documents/parsed/ee02c83be8b5d732d469696cbae371d2.txt id=ee02c83be8b5d732d469696cbae371d2 - d3uf7shreuzboy.cloudfront.net: max_risk=2 docs=3 - risk=2 url=https://d3uf7shreuzboy.cloudfront.net/WebRoot/stable/i18n/react-en.d711bacb.json file=research_results/documents/parsed/4aacabcdbcf635327d725f4d380c2cc3.txt id=4aacabcdbcf635327d725f4d380c2cc3 - risk=2 url=https://d3uf7shreuzboy.cloudfront.net/WebRoot/stable/i18n/react-fr.c24098db.json file=research_results/documents/parsed/7a83b025fa586877c6a5ea8493dc7719.txt id=7a83b025fa586877c6a5ea8493dc7719 - risk=2 url=https://d3uf7shreuzboy.cloudfront.net/WebRoot/stable/i18n/react-es.5f80097a.json file=research_results/documents/parsed/18a4457561e7c756d769d5af38c56b27.txt id=18a4457561e7c756d769d5af38c56b27 - www.osba.org: max_risk=2 docs=3 - risk=2 url=https://www.osba.org/feed/ file=research_results/documents/parsed/592c84071aa2e1e2c199fe14a36d610c.txt id=592c84071aa2e1e2c199fe14a36d610c - risk=2 url=https://www.osba.org/ file=research_results/documents/parsed/07815e32e695fa0202bb1b593746c401.txt id=07815e32e695fa0202bb1b593746c401 - risk=2 url=https://www.osba.org/?s=%7Bsearch_term_string file=research_results/documents/parsed/a1550d1abc15f930d2e7861bcdf06840.txt id=a1550d1abc15f930d2e7861bcdf06840 - schema.org: max_risk=2 docs=3 - risk=2 url=https://schema.org/ImageObject file=research_results/documents/parsed/2195e7212f1c4ad1e4ee1c0bb15a46b1.txt id=2195e7212f1c4ad1e4ee1c0bb15a46b1 - risk=2 url=https://schema.org/VideoObject file=research_results/documents/parsed/5184c7c35874f7f32dd9b11fd5c0851e.txt id=5184c7c35874f7f32dd9b11fd5c0851e - risk=2 url=https://schema.org/Person file=research_results/documents/parsed/9e9cb48c1174c31afed273d1a674e5ba.txt id=9e9cb48c1174c31afed273d1a674e5ba - raceforward.org: max_risk=2 docs=2 - risk=2 url=https://www.raceforward.org/reporting-guide file=research_results/documents/parsed/9e33ebe3140361da05a5258ac1ccdc88.txt id=9e33ebe3140361da05a5258ac1ccdc88 - risk=2 url=https://www.raceforward.org/projects-programs-%26-initiatives/cultural-week-of-action file=research_results/documents/parsed/4b919881b559c56832bdfb54da9e035e.txt id=4b919881b559c56832bdfb54da9e035e - tinyurl.com: max_risk=2 docs=2 - risk=2 url=https://www.douglasesd.k12.or.us/about-douglas-esd/news/default-board-post-page/~board/news/post/american-education-week file=research_results/documents/parsed/d99adba5f859153dc055e701f3b00cc8.txt id=d99adba5f859153dc055e701f3b00cc8 - risk=1 url=https://www.umatilla.k12.or.us/article/2583213 file=research_results/documents/parsed/3ab0972aa46f257cd03b2af722485308.txt id=3ab0972aa46f257cd03b2af722485308 - www.oregon.gov: max_risk=2 docs=2 - risk=2 url=https://www.oregon.gov/ohcs/rental-housing/housing-development/oregon-centralized-application-orca/pages/orca-diversity-equity-inclusion-agreement.aspx file=research_results/documents/parsed/0033be02ec78316625017000c92e110e.txt id=0033be02ec78316625017000c92e110e - risk=1 url=https://www.oregon.gov/Pages/index.aspx file=research_results/documents/parsed/43a842a53cfa511e1bc88276a0352d1c.txt id=43a842a53cfa511e1bc88276a0352d1c - paycom.com: max_risk=2 docs=2 - risk=2 url=https://www.paycom.com/terms-of-use/ file=research_results/documents/parsed/4fada016a1e7290916d8640a92a5bb4b.txt id=4fada016a1e7290916d8640a92a5bb4b - risk=2 url=https://www.paycom.com/privacy/ file=research_results/documents/parsed/7c609bec3dc012696d3ba11191567f46.txt id=7c609bec3dc012696d3ba11191567f46 - belonging.berkeley.edu: max_risk=2 docs=2 - risk=2 url=https://belonging.berkeley.edu/ file=research_results/documents/parsed/e1ab2e335f7e813fd3cfbd5c10ab62b6.txt id=e1ab2e335f7e813fd3cfbd5c10ab62b6 - risk=2 url=https://belonging.berkeley.edu/targeted-universalism file=research_results/documents/parsed/f220833a1ebb227c820ffdcc641e2779.txt id=f220833a1ebb227c820ffdcc641e2779 - github.com: max_risk=2 docs=2 - risk=2 url=https://github.com/about file=research_results/documents/parsed/5148e0039f816c8b620f360dfaa24d24.txt id=5148e0039f816c8b620f360dfaa24d24 - risk=2 url=https://github.com/ file=research_results/documents/parsed/008ec4453ff31513f43893cba7aa31c8.txt id=008ec4453ff31513f43893cba7aa31c8 - oregonbuys.gov: max_risk=2 docs=2 - risk=2 url=https://www.periscopeholdings.com/who-we-are?p=who-we-are file=research_results/documents/parsed/98c9506cf4fdebe9ad866266418748db.txt id=98c9506cf4fdebe9ad866266418748db - risk=2 url=https://oregonbuys.gov:443/bso/ file=research_results/documents/parsed/f6741790087ba13efcf09ff18aaee9d6.txt id=f6741790087ba13efcf09ff18aaee9d6 - x.com: max_risk=2 docs=1 - risk=2 url=https://about.x.com/en file=research_results/documents/parsed/41cd297c4c4771fffe814705e9bd37fd.txt id=41cd297c4c4771fffe814705e9bd37fd - www.opportunityagenda.org: max_risk=2 docs=1 - risk=2 url=https://opportunityagenda.org/ file=research_results/documents/parsed/bf83699c0a4f2001dd2920dd6d60b502.txt id=bf83699c0a4f2001dd2920dd6d60b502 - dockets.justia.com: max_risk=2 docs=1 - risk=2 url=https://dockets.justia.com/ file=research_results/documents/parsed/9fd5bea8a1a6cb3ee89674f6d06a3d6c.txt id=9fd5bea8a1a6cb3ee89674f6d06a3d6c - relatednorthwest.com: max_risk=2 docs=1 - risk=2 url=https://www.relatedcalifornia.com/our-company/related-northwest file=research_results/documents/parsed/8444b9d83856f5d89ff54709a5e8a7f1.txt id=8444b9d83856f5d89ff54709a5e8a7f1 - portal-applicant-tracking.us-cent.paycomonline.net: max_risk=2 docs=1 - risk=2 url=https://portal-applicant-tracking.us-cent.paycomonline.net/career-portal/main/index-sprawl-6ETZXKZJ.js file=research_results/documents/parsed/cb1ac965894e26608da47802bbcd2ed2.txt id=cb1ac965894e26608da47802bbcd2ed2 - www.colorlines.com: max_risk=2 docs=1 - risk=2 url=https://colorlines.com/ file=research_results/documents/parsed/b03119e6b8cde2b7df224e42d8cdd827.txt id=b03119e6b8cde2b7df224e42d8cdd827 ## Top documents (focused) - 01.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 1
+          },
+          {
+            "text": "risk=3 domain=None content_type=None len=104349 id=f05cefc6c4eb4225c881409d8daadc29 - url=file://research_results/documents/raw/f05cefc6c4eb4225c881409d8daadc29.pdf - file=research_results/documents/parsed/f05cefc6c4eb4225c881409d8daadc29.txt - dei=equity; inclusion; equity lens; diversity; equitable; racial justice; underserved; bipoc; minority; dei - proxy=equity lens; bipoc - binding=shall; standard; statewide; policy; contract; agreement; obligated; compliance; required - tags=hiring; procurement; training; housing; community engagement - 12.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 1
+          },
+          {
+            "text": "risk=3 domain=None content_type=None len=1288890 id=003c0bf391f9060e15360bb52c763605 - url=file://research_results/documents/raw/003c0bf391f9060e15360bb52c763605.pdf - file=research_results/documents/parsed/003c0bf391f9060e15360bb52c763605.txt - dei=equity; inclusion; equity lens; social justice; diversity; minority; marginalized; underrepresented; inclusive; equity initiatives; equitable; racial justice; underserved; bipoc; equity framework; people of color; accessibility; dei - proxy=equity lens; barrier reduction; equity initiatives; bipoc; equity framework; lived experience; equity plan - binding=shall; mandatory; standard; statewide; rule; policy; contract; agreement; must; regulation; applicable to; compliance; required - tags=hiring; procurement; training; housing; community engagement - 02.",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 1
+          }
+        ],
+        "matched_entities": [],
+        "metadata": {
+          "relative_path": "research_results/risk_review_20251231.md",
+          "category": "research_results",
+          "size_bytes": 55117,
+          "graph_status": "available-fallback",
+          "graph_entity_count": 26,
+          "graph_relationship_count": 25,
+          "document_ingest_status": "success",
+          "content_type": "text/markdown",
+          "extraction_method": "text_normalization",
+          "parse_status": "available-fallback",
+          "parse_summary": {
+            "status": "available-fallback",
+            "chunk_count": 64,
+            "text_length": 53992,
+            "parser_version": "documents-adapter:1",
+            "input_format": "text",
+            "paragraph_count": 1,
+            "extraction_method": "text_normalization",
+            "quality_tier": "high",
+            "quality_score": 98.0,
+            "page_count": 1
+          },
+          "parse_metadata": {
+            "filename": "risk_review_20251231.md",
+            "mime_type": "text/markdown",
+            "size": 55117,
+            "backend_available": true,
+            "parser_version": "documents-adapter:1",
+            "source": "file",
+            "chunk_count": 64,
+            "paragraph_count": 1,
+            "text_length": 53992,
+            "input_format": "text",
+            "page_count": 1,
+            "extraction_method": "text_normalization",
+            "parse_quality": {
+              "quality_score": 98.0,
+              "quality_tier": "high",
+              "quality_flags": [],
+              "ocr_used": false
+            },
+            "source_span": {
+              "char_start": 0,
+              "char_end": 53992,
+              "text_length": 53992,
+              "raw_size": 55117,
+              "page_count": 1
+            },
+            "transform_lineage": {
+              "source": "file",
+              "parser_version": "documents-adapter:1",
+              "input_format": "text",
+              "normalization": "text_normalization",
+              "chunking": {
+                "chunk_size": 1000,
+                "overlap": 100,
+                "chunk_count": 64
+              },
+              "extraction": {
+                "method": "text_normalization",
+                "ocr_used": false,
+                "page_count": 1
+              },
+              "source_span": {
+                "char_start": 0,
+                "char_end": 53992,
+                "text_length": 53992,
+                "raw_size": 55117,
+                "page_count": 1
+              }
+            },
+            "operation": "parse_document_text",
+            "provider": "ipfs_datasets_py",
+            "implementation_status": "implemented",
+            "details": {
+              "operation": "parse_document_text",
+              "backend_available": true,
+              "implementation_status": "implemented"
+            }
+          },
+          "quality_tier": "high",
+          "quality_score": 98.0,
+          "parsed_text_path": "/home/barberb/HACC/research_results/documents/repository_ingest/f8b33b022ddfaaadfbb03361a60ad3ee.txt",
+          "metadata_path": "/home/barberb/HACC/research_results/documents/repository_ingest/f8b33b022ddfaaadfbb03361a60ad3ee.json",
+          "checksum": "a27fa39113224d2fe01d97ef3b68a505bd77c57b90ea3fa3ea311050a1591bee",
+          "source_record_id": "f8b33b022ddfaaadfbb03361a60ad3ee"
+        },
+        "lexical_score": 68.0,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      },
+      {
+        "document_id": "repo::research_results/third_party_downloads/foundation.wikimedia.org/foundation.wikimedia.org_wiki_Special:MyLanguage_Policy:Privacy_policy.html",
+        "title": "Wikimedia Foundation Privacy Policy - Wikimedia Foundation Governance Wiki",
+        "score": 67.6591,
+        "source_type": "repository_evidence",
+        "source_path": "/home/barberb/HACC/research_results/third_party_downloads/foundation.wikimedia.org/foundation.wikimedia.org_wiki_Special:MyLanguage_Policy:Privacy_policy.html",
+        "snippet": "Toggle the table of contents Wikimedia Foundation Privacy Policy Add languages Add links Policy Discussion English Read View source View history Tools Tools move to sidebar hide Actions Read View source View history General What links here Related changes Permanent link Page information Get shortened URL Download QR code Print/export Create a book Download as PDF Printable version In other projects Wikidata item Appearance move to sidebar hide From Wikimedia Foundation Governance Wiki Translate ",
+        "matched_rules": [
+          {
+            "text": "Toggle the table of contents Wikimedia Foundation Privacy Policy Add languages Add links Policy Discussion English Read View source View history Tools Tools move to sidebar hide Actions Read View source View history General What links here Related changes Permanent link Page information Get shortened URL Download QR code Print/export Create a book Download as PDF Printable version In other projects Wikidata item Appearance move to sidebar hide From Wikimedia Foundation Governance Wiki Translate this page Other languages: Avañe'ẽ Bahasa Indonesia Bahasa Melayu Basa Banyumasan Cebuano Cymraeg Deutsch Deutsch (Sie-Form) English Esperanto Frysk Hausa Ido Kiswahili Kreyòl ayisyen Ligure Lëtzebuergesch Malagasy Mara Napulitano Nederlands Nederlands (informeel) Nordfriisk Oromoo Qaraqalpaqsha Ripoarisch Scots Soomaaliga Tiếng Việt Türkçe Yorùbá Zazaki asturianu azərbaycanca bosanski català dansk eesti español euskara français galego hrvatski interlingua italiano latviešu lietuvių magyar norsk bokmål occitan oʻzbekcha / ўзбекча polski português português do Brasil română sardu shqip sicilianu slovenščina suomi svenska toki pona čeština Ελληνικά башҡортса беларуская беларуская (тарашкевіца) български кыргызча македонски нохчийн русский српски / srpski тоҷикӣ удмурт українська հայերեն ייִדיש עברית اردو الدارجة العربية تۆرکجه روچ کپتین بلوچی سرائیکی سنڌي فارسی مازِرونی پښتو کوردی کٲشُر नेपाली भोजपुरी मराठी संस्कृतम् हिन्दी অসমীয়া বাংলা ਪੰਜਾਬੀ ગુજરાતી தமிழ் తెలుగు ತುಳು മലയാളം සිංහල ไทย ລາວ တႆး ပအိုဝ်ႏဘာႏသာႏ ဖၠုံလိက် ဘာသာမန် မြန်မာဘာသာ მარგალური ქართული ភាសាខ្មែរ ᱥᱟᱱᱛᱟᱲᱤ 中文 日本語 粵語 ꠍꠤꠟꠐꠤ ꯃꯤꯇꯩ ꯂꯣꯟ 한국어 Want to help translate?",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 2
+          },
+          {
+            "text": "1.1.1 Definitions 1.1.2 What This Privacy Policy Does and Does Not Cover 2 Collection & Use of Info Toggle Collection & Use of Info subsection 2.1 Types of Information We Receive From You & How We Get It 2.1.1 Your Public Contributions 2.1.2 Account Information & Registration 2.1.3 Location Information 2.1.3.1 GPS & Other Location Technologies 2.1.3.2 Metadata 2.1.3.3 IP Addresses 2.2 Information Related to Your Use of the Wikimedia Sites 2.2.1 Information We Receive Automatically 2.2.2 Information We Collect 2.3 How We Use Information We Receive From You 2.3.1 General 2.4 Other 2.4.1 Location information 2.4.1.1 GPS & Other Location Technologies 2.4.1.2 Metadata 2.4.1.3 IP Addresses 3 Sharing Toggle Sharing subsection 3.1 When May We Share Your Information?",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 1
+          },
+          {
+            "text": "5.2 Our Response to Do Not Track (DNT) signals 5.3 Changes to This Privacy Policy 5.4 Contact Us 5.5 Thank You!",
+            "section_title": "repository_evidence",
+            "rule_type": "fact",
+            "modality": "evidence",
+            "overlap": 1
+          }
+        ],
+        "matched_entities": [
+          {
+            "name": "1.1.1 Definitions 1.1.2 What This Privacy Policy Does and Does Not Cover 2 Collection & Use of Info Toggle Collection & ",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "5.2 Our Response to Do Not Track (DNT) signals 5.3 Changes to This Privacy Policy 5.4 Contact Us 5.5 Thank You!",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "Disclaimer: This summary is not a part of the Privacy Policy and is not a legal document.",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "It is simply a handy reference for understanding the full Privacy Policy.",
+            "type": "fact",
+            "overlap": 1
+          },
+          {
+            "name": "It may not be circumvented, eroded, or ignored by Wikimedia Foundation officers or staff nor local policies of any Wikim",
+            "type": "fact",
+            "overlap": 1
+          }
+        ],
+        "metadata": {
+          "relative_path": "research_results/third_party_downloads/foundation.wikimedia.org/foundation.wikimedia.org_wiki_Special:MyLanguage_Policy:Privacy_policy.html",
+          "category": "research_results",
+          "size_bytes": 199556,
+          "graph_status": "available-fallback",
+          "graph_entity_count": 26,
+          "graph_relationship_count": 25,
+          "document_ingest_status": "success",
+          "content_type": "text/html",
+          "extraction_method": "html_to_text",
+          "parse_status": "available-fallback",
+          "parse_summary": {
+            "status": "available-fallback",
+            "chunk_count": 66,
+            "text_length": 54825,
+            "parser_version": "documents-adapter:1",
+            "input_format": "html",
+            "paragraph_count": 1,
+            "extraction_method": "html_to_text",
+            "quality_tier": "high",
+            "quality_score": 95.0,
+            "page_count": 1
+          },
+          "parse_metadata": {
+            "filename": "foundation.wikimedia.org_wiki_Special:MyLanguage_Policy:Privacy_policy.html",
+            "mime_type": "text/html",
+            "size": 199556,
+            "backend_available": true,
+            "parser_version": "documents-adapter:1",
+            "source": "file",
+            "chunk_count": 66,
+            "paragraph_count": 1,
+            "text_length": 54825,
+            "input_format": "html",
+            "page_count": 1,
+            "extraction_method": "html_to_text",
+            "parse_quality": {
+              "quality_score": 95.0,
+              "quality_tier": "high",
+              "quality_flags": [],
+              "ocr_used": false
+            },
+            "source_span": {
+              "char_start": 0,
+              "char_end": 54825,
+              "text_length": 54825,
+              "raw_size": 199556,
+              "page_count": 1
+            },
+            "transform_lineage": {
+              "source": "file",
+              "parser_version": "documents-adapter:1",
+              "input_format": "html",
+              "normalization": "html_to_text",
+              "chunking": {
+                "chunk_size": 1000,
+                "overlap": 100,
+                "chunk_count": 66
+              },
+              "extraction": {
+                "method": "html_to_text",
+                "ocr_used": false,
+                "page_count": 1
+              },
+              "source_span": {
+                "char_start": 0,
+                "char_end": 54825,
+                "text_length": 54825,
+                "raw_size": 199556,
+                "page_count": 1
+              }
+            },
+            "operation": "parse_document_text",
+            "provider": "ipfs_datasets_py",
+            "implementation_status": "implemented",
+            "details": {
+              "operation": "parse_document_text",
+              "backend_available": true,
+              "implementation_status": "implemented"
+            }
+          },
+          "quality_tier": "high",
+          "quality_score": 95.0,
+          "parsed_text_path": "/home/barberb/HACC/research_results/documents/repository_ingest/ebe25b1d036f6f9ec6ad01c5b8f8ebde.txt",
+          "metadata_path": "/home/barberb/HACC/research_results/documents/repository_ingest/ebe25b1d036f6f9ec6ad01c5b8f8ebde.json",
+          "checksum": "b937cfd4d8b2e808536a316dc9c6f0cc44a4af635cefdf5dba0ba28ed0d5f227",
+          "source_record_id": "ebe25b1d036f6f9ec6ad01c5b8f8ebde"
+        },
+        "lexical_score": 67.6591,
+        "vector_score": 0.0,
+        "search_modes": [
+          "lexical"
+        ]
+      }
+    ],
+    "returned_result_count": 10,
+    "lexical_status": "success",
+    "vector_status": "unavailable",
+    "vector_error": "",
+    "integration_status": {
+      "complaint_generator_root": "/home/barberb/HACC/complaint-generator",
+      "adapter_available": true,
+      "degraded_reason": null,
+      "preferred_vector_indexes": [
+        {
+          "index_name": "hacc_policy_graph",
+          "index_dir": "/home/barberb/HACC/hacc_website/knowledge_graph/embeddings"
+        },
+        {
+          "index_name": "hacc_text_chunks",
+          "index_dir": "/home/barberb/HACC/hacc_website/knowledge_graph/embeddings"
+        }
+      ],
+      "capability_report": {
+        "status": "degraded",
+        "available_count": 8,
+        "degraded_count": 3,
+        "available_capabilities": [
+          "documents",
+          "graphrag",
+          "ipfs_storage",
+          "knowledge_graphs",
+          "llm_router",
+          "logic_tools",
+          "mcp_gateway",
+          "vector_store"
+        ],
+        "degraded_capabilities": {
+          "web_archiving": "No module named 'bs4'",
+          "common_crawl": "No module named 'bs4'",
+          "legal_scrapers": "No module named 'bs4'"
+        },
+        "family_counts": {
+          "generation": 1,
+          "storage": 1,
+          "acquisition": 2,
+          "documents": 1,
+          "legal": 1,
+          "graphs": 1,
+          "validation": 2,
+          "retrieval": 1,
+          "mcp": 1
+        },
+        "capabilities": {
+          "llm_router": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.llm_router",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "llm_router",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.llm",
+              "contract_family": "generation"
+            }
+          },
+          "ipfs_storage": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.ipfs_backend_router",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "ipfs_storage",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.storage",
+              "contract_family": "storage"
+            }
+          },
+          "web_archiving": {
+            "status": "degraded",
+            "available": false,
+            "module_path": "ipfs_datasets_py.web_archiving",
+            "degraded_reason": "No module named 'bs4'",
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "web_archiving",
+              "error_type": "ModuleNotFoundError",
+              "adapter_module": "integrations.ipfs_datasets.search",
+              "contract_family": "acquisition"
+            }
+          },
+          "common_crawl": {
+            "status": "degraded",
+            "available": false,
+            "module_path": "ipfs_datasets_py.processors.web_archiving.common_crawl_integration",
+            "degraded_reason": "No module named 'bs4'",
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "common_crawl",
+              "error_type": "ModuleNotFoundError",
+              "adapter_module": "integrations.ipfs_datasets.search",
+              "contract_family": "acquisition"
+            }
+          },
+          "documents": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.processors",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "documents",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.documents",
+              "contract_family": "documents"
+            }
+          },
+          "legal_scrapers": {
+            "status": "degraded",
+            "available": false,
+            "module_path": "ipfs_datasets_py.processors.legal_scrapers",
+            "degraded_reason": "No module named 'bs4'",
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "legal_scrapers",
+              "error_type": "ModuleNotFoundError",
+              "adapter_module": "integrations.ipfs_datasets.legal",
+              "contract_family": "legal"
+            }
+          },
+          "knowledge_graphs": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.knowledge_graphs",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "knowledge_graphs",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.graphs",
+              "contract_family": "graphs"
+            }
+          },
+          "graphrag": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.optimizers.graphrag",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "graphrag",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.graphrag",
+              "contract_family": "validation"
+            }
+          },
+          "logic_tools": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.logic",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "logic_tools",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.logic",
+              "contract_family": "validation"
+            }
+          },
+          "vector_store": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.vector_stores",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "vector_store",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.vector_store",
+              "contract_family": "retrieval"
+            }
+          },
+          "mcp_gateway": {
+            "status": "available",
+            "available": true,
+            "module_path": "ipfs_datasets_py.mcp_server",
+            "degraded_reason": null,
+            "provider": "ipfs_datasets_py",
+            "details": {
+              "capability": "mcp_gateway",
+              "error_type": "",
+              "adapter_module": "integrations.ipfs_datasets.mcp_gateway",
+              "contract_family": "mcp"
+            }
+          }
+        }
+      },
+      "capabilities": {
+        "discovery_available": true,
+        "seeded_commoncrawl_available": true,
+        "legal_discovery_available": false,
+        "scrape_available": true,
+        "graph_available": true,
+        "documents_available": true,
+        "vector_available": true,
+        "embeddings_available": true,
+        "documents_degraded_reason": null,
+        "vector_degraded_reason": null,
+        "legal_degraded_reason": "No module named 'bs4'"
+      }
+    },
+    "effective_search_mode": "lexical_only",
+    "fallback_note": "Requested package/shared hybrid search, but vector support is unavailable; using lexical results instead.",
+    "backend_mode": "shared_hybrid",
+    "index_status": {
+      "status": "existing",
+      "index_name": "hacc_corpus",
+      "index_dir": "/home/barberb/HACC/research_results/search_indexes"
+    }
+  },
+  "upload_candidates": [
+    {
+      "document_id": "document:c8dc2af6ee6996a0",
+      "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "source_type": "knowledge_graph",
+      "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "score": 4399.3864,
+      "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+      "metadata": {
+        "backend": "markitdown",
+        "backend_available": true,
+        "details": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b"
+        },
+        "document_id": "document:c8dc2af6ee6996a0",
+        "document_title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+        "implementation_status": "implemented",
+        "operation": "extract_policy_rules_from_pdf",
+        "provider": "ipfs_datasets_py",
+        "rule_count": 5318,
+        "section_count": 3423,
+        "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "text_length": 1401793,
+        "status": "success"
+      },
+      "matched_rules": [
+        {
+          "text": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+          "section_title": "EXHIBIT 14-1: SAMPLE GRIEVANCE PROCEDURE",
+          "rule_type": "discretion",
+          "modality": "discretionary",
+          "overlap": 3
+        },
+        {
+          "text": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+          "section_title": "ACOP 11/1/24",
+          "rule_type": "discretion",
+          "modality": "discretionary",
+          "overlap": 3
+        },
+        {
+          "text": "In states without due process determinations, HACC must grant opportunity for grievance",
+          "section_title": "ACOP 11/1/24",
+          "rule_type": "obligation",
+          "modality": "required",
+          "overlap": 3
+        }
+      ],
+      "matched_entities": [
+        {
+          "name": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+          "type": "policy_rule",
+          "overlap": 3
+        },
+        {
+          "name": "If HUD has issued a due process determination, HACC may exclude from HACC grievance",
+          "type": "policy_rule",
+          "overlap": 3
+        },
+        {
+          "name": "In states without due process determinations, HACC must grant opportunity for grievance",
+          "type": "policy_rule",
+          "overlap": 3
+        },
+        {
+          "name": "The notice must also state that the tenant may request a grievance hearing on the HACC’s",
+          "type": "policy_rule",
+          "overlap": 3
+        },
+        {
+          "name": "adverse action and will provide the subject of the record and the tenant a copy of such",
+          "type": "policy_rule",
+          "overlap": 3
+        }
+      ],
+      "parse_summary": {},
+      "graph_status": ""
+    },
+    {
+      "document_id": "document:be93a165d00f0101",
+      "title": "ADMINISTRATIVE PLAN",
+      "source_type": "knowledge_graph",
+      "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "score": 4196.7273,
+      "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+      "metadata": {
+        "backend": "markitdown",
+        "backend_available": true,
+        "details": {
+          "backend": "markitdown",
+          "backend_available": true,
+          "implementation_status": "implemented",
+          "operation": "extract_policy_rules_from_pdf",
+          "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858"
+        },
+        "document_id": "document:be93a165d00f0101",
+        "document_title": "ADMINISTRATIVE PLAN",
+        "implementation_status": "implemented",
+        "operation": "extract_policy_rules_from_pdf",
+        "provider": "ipfs_datasets_py",
+        "rule_count": 7441,
+        "section_count": 4968,
+        "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "text_length": 1927962,
+        "status": "success"
+      },
+      "matched_rules": [
+        {
+          "text": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+          "section_title": "HACC Policy",
+          "rule_type": "discretion",
+          "modality": "discretionary",
+          "overlap": 2
+        },
+        {
+          "text": "HACC informal hearing process, does not preclude the family from exercising the right, that may",
+          "section_title": "Adminplan 7/1/2025",
+          "rule_type": "discretion",
+          "modality": "discretionary",
+          "overlap": 2
+        },
+        {
+          "text": "HACC must be the principal party initiating or sustaining the action to recover amounts due from",
+          "section_title": "HACC Policy",
+          "rule_type": "obligation",
+          "modality": "required",
+          "overlap": 2
+        }
+      ],
+      "matched_entities": [
+        {
+          "name": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+          "type": "policy_rule",
+          "overlap": 2
+        },
+        {
+          "name": "HACC informal hearing process, does not preclude the family from exercising the right, that may",
+          "type": "policy_rule",
+          "overlap": 2
+        },
+        {
+          "name": "HACC must be the principal party initiating or sustaining the action to recover amounts due from",
+          "type": "policy_rule",
+          "overlap": 2
+        },
+        {
+          "name": "HACC will inform the family of its policy regarding moves denied due to insufficient",
+          "type": "policy_rule",
+          "overlap": 2
+        },
+        {
+          "name": "See Chapter 9 for more detail on unit eligibility policies and process.",
+          "type": "policy_rule",
+          "overlap": 2
+        }
+      ],
+      "parse_summary": {},
+      "graph_status": ""
+    }
+  ],
+  "evidence_summary": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+  "anchor_passages": [
+    {
+      "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+      "section_labels": [
+        "grievance_hearing",
+        "appeal_rights",
+        "adverse_action"
+      ]
+    },
+    {
+      "title": "ADMINISTRATIVE PLAN",
+      "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+      "section_labels": [
+        "grievance_hearing"
+      ]
+    }
+  ],
+  "anchor_sections": [
+    "grievance_hearing",
+    "appeal_rights",
+    "adverse_action"
+  ],
+  "mediator_evidence_packets": [
+    {
+      "document_label": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "filename": "a38c7914-ea37-4c2f-a815-711d4a97c92b.txt",
+      "mime_type": "text/plain",
+      "metadata": {
+        "source_type": "knowledge_graph",
+        "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "anchor_sections": [
+          "grievance_hearing",
+          "appeal_rights",
+          "adverse_action"
+        ],
+        "parse_summary": {},
+        "graph_status": "",
+        "original_mime_type": "application/pdf",
+        "original_filename": "a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "upload_strategy": "extracted_text_fallback"
+      }
+    },
+    {
+      "document_label": "ADMINISTRATIVE PLAN",
+      "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "filename": "8ee6f7d1-0c36-48e4-9677-336b95fb9858.txt",
+      "mime_type": "text/plain",
+      "metadata": {
+        "source_type": "knowledge_graph",
+        "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "anchor_sections": [
+          "grievance_hearing"
+        ],
+        "parse_summary": {},
+        "graph_status": "",
+        "original_mime_type": "application/pdf",
+        "original_filename": "8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "upload_strategy": "extracted_text_fallback"
+      }
+    }
+  ],
+  "synthetic_prompts": {
+    "evidence_upload_prompts": [
+      {
+        "prompt_id": "evidence_upload_1",
+        "prompt_type": "evidence_upload",
+        "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+        "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "anchor_sections": [
+          "grievance_hearing",
+          "appeal_rights",
+          "adverse_action"
+        ],
+        "text": "Upload the evidence file 'hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b' and explain how it supports a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Focus on the most relevant language: Grievance: Any dispute a tenant may have with respect to HACC action or failure to Anchor sections: grievance_hearing, appeal_rights, adverse_action."
+      },
+      {
+        "prompt_id": "evidence_upload_2",
+        "prompt_type": "evidence_upload",
+        "title": "ADMINISTRATIVE PLAN",
+        "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "anchor_sections": [
+          "grievance_hearing"
+        ],
+        "text": "Upload the evidence file 'hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858' and explain how it supports a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Focus on the most relevant language: Applicants or tenant families who wish to file a VAWA complaint against HACC may Anchor sections: grievance_hearing."
+      }
+    ],
+    "complaint_chatbot_prompt": "Ground the complaint chatbot in the uploaded repository evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) as factual grounding, ask the user to connect each document to case-specific events, and identify missing timeline, actor, harm, and remedy facts. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+    "mediator_evaluation_prompt": "Evaluate each uploaded evidence item for a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. For every document, determine what claim element it supports, what facts it proves directly, what facts remain missing, and what follow-up questions the mediator should ask before drafting a complaint. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+    "production_upload_prompt": "A user uploads repository evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Save each file into the complaint-generator evidence store, extract factual support from the parsed document, and route the uploaded materials through mediator evidence analysis before drafting or revising a complaint.",
+    "intake_questionnaire_prompt": "Before drafting a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action', collect concrete case facts from the user. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) to anchor the questions, and ask for the following details in plain language:\n- What happened, and what adverse action did HACC take or threaten to take?\n- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?\n- Who at HACC made, communicated, or carried out each decision?\n- What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?\n- What housing harm resulted, such as denial of assistance, termination, loss of voucher, delay, extra expense, or risk of displacement?\n- What remedy are you seeking now?\n- Anchor the intake to these policy sections: grievance_hearing, appeal_rights, adverse_action",
+    "intake_questions": [
+      "What happened, and what adverse action did HACC take or threaten to take?",
+      "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+      "Who at HACC made, communicated, or carried out each decision?",
+      "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?",
+      "What housing harm resulted, such as denial of assistance, termination, loss of voucher, delay, extra expense, or risk of displacement?",
+      "What remedy are you seeking now?"
+    ],
+    "evidence_summary": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+    "anchor_sections": [
+      "grievance_hearing",
+      "appeal_rights",
+      "adverse_action"
+    ],
+    "anchor_passages": [
+      {
+        "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+        "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+        "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+        "section_labels": [
+          "grievance_hearing",
+          "appeal_rights",
+          "adverse_action"
+        ]
+      },
+      {
+        "title": "ADMINISTRATIVE PLAN",
+        "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+        "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+        "section_labels": [
+          "grievance_hearing"
+        ]
+      }
+    ]
+  },
+  "integration_status": {
+    "complaint_generator_root": "/home/barberb/HACC/complaint-generator",
+    "adapter_available": true,
+    "degraded_reason": null,
+    "preferred_vector_indexes": [
+      {
+        "index_name": "hacc_policy_graph",
+        "index_dir": "/home/barberb/HACC/hacc_website/knowledge_graph/embeddings"
+      },
+      {
+        "index_name": "hacc_text_chunks",
+        "index_dir": "/home/barberb/HACC/hacc_website/knowledge_graph/embeddings"
+      }
+    ],
+    "capability_report": {
+      "status": "degraded",
+      "available_count": 8,
+      "degraded_count": 3,
+      "available_capabilities": [
+        "documents",
+        "graphrag",
+        "ipfs_storage",
+        "knowledge_graphs",
+        "llm_router",
+        "logic_tools",
+        "mcp_gateway",
+        "vector_store"
+      ],
+      "degraded_capabilities": {
+        "web_archiving": "No module named 'bs4'",
+        "common_crawl": "No module named 'bs4'",
+        "legal_scrapers": "No module named 'bs4'"
+      },
+      "family_counts": {
+        "generation": 1,
+        "storage": 1,
+        "acquisition": 2,
+        "documents": 1,
+        "legal": 1,
+        "graphs": 1,
+        "validation": 2,
+        "retrieval": 1,
+        "mcp": 1
+      },
+      "capabilities": {
+        "llm_router": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.llm_router",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "llm_router",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.llm",
+            "contract_family": "generation"
+          }
+        },
+        "ipfs_storage": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.ipfs_backend_router",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "ipfs_storage",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.storage",
+            "contract_family": "storage"
+          }
+        },
+        "web_archiving": {
+          "status": "degraded",
+          "available": false,
+          "module_path": "ipfs_datasets_py.web_archiving",
+          "degraded_reason": "No module named 'bs4'",
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "web_archiving",
+            "error_type": "ModuleNotFoundError",
+            "adapter_module": "integrations.ipfs_datasets.search",
+            "contract_family": "acquisition"
+          }
+        },
+        "common_crawl": {
+          "status": "degraded",
+          "available": false,
+          "module_path": "ipfs_datasets_py.processors.web_archiving.common_crawl_integration",
+          "degraded_reason": "No module named 'bs4'",
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "common_crawl",
+            "error_type": "ModuleNotFoundError",
+            "adapter_module": "integrations.ipfs_datasets.search",
+            "contract_family": "acquisition"
+          }
+        },
+        "documents": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.processors",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "documents",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.documents",
+            "contract_family": "documents"
+          }
+        },
+        "legal_scrapers": {
+          "status": "degraded",
+          "available": false,
+          "module_path": "ipfs_datasets_py.processors.legal_scrapers",
+          "degraded_reason": "No module named 'bs4'",
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "legal_scrapers",
+            "error_type": "ModuleNotFoundError",
+            "adapter_module": "integrations.ipfs_datasets.legal",
+            "contract_family": "legal"
+          }
+        },
+        "knowledge_graphs": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.knowledge_graphs",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "knowledge_graphs",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.graphs",
+            "contract_family": "graphs"
+          }
+        },
+        "graphrag": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.optimizers.graphrag",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "graphrag",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.graphrag",
+            "contract_family": "validation"
+          }
+        },
+        "logic_tools": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.logic",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "logic_tools",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.logic",
+            "contract_family": "validation"
+          }
+        },
+        "vector_store": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.vector_stores",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "vector_store",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.vector_store",
+            "contract_family": "retrieval"
+          }
+        },
+        "mcp_gateway": {
+          "status": "available",
+          "available": true,
+          "module_path": "ipfs_datasets_py.mcp_server",
+          "degraded_reason": null,
+          "provider": "ipfs_datasets_py",
+          "details": {
+            "capability": "mcp_gateway",
+            "error_type": "",
+            "adapter_module": "integrations.ipfs_datasets.mcp_gateway",
+            "contract_family": "mcp"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "discovery_available": true,
+      "seeded_commoncrawl_available": true,
+      "legal_discovery_available": false,
+      "scrape_available": true,
+      "graph_available": true,
+      "documents_available": true,
+      "vector_available": true,
+      "embeddings_available": true,
+      "documents_degraded_reason": null,
+      "vector_degraded_reason": null,
+      "legal_degraded_reason": "No module named 'bs4'"
+    }
+  }
+}

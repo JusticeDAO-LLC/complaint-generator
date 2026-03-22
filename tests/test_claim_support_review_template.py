@@ -84,6 +84,11 @@ def test_claim_support_review_template_exists_and_targets_review_endpoints():
     assert "Document Grounding Lane Outcome Summary" in content
     assert "document-grounding-lane-outcome-summary-block" in content
     assert "document-grounding-lane-outcome-summary-chips" in content
+    assert "Document Focus Preview" in content
+    assert "document-focus-preview-block" in content
+    assert "document-focus-preview-list" in content
+    assert "focus source: ${humanizeQueryValue(entry.focus_source)}" in content
+    assert "next target: ${humanizeQueryValue(entry.target_claim_element_id)}" in content
     assert "grounding recovery: ${escapeHtml(groundingStatus)}" in content
     assert "fact-backed ratio delta: ${groundingDelta.toFixed(2)}" in content
     assert "attempted lane: ${humanizeQueryValue(laneAttemptedSupportKind)}" in content

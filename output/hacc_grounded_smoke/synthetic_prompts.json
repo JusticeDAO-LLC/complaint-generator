@@ -1,0 +1,66 @@
+{
+  "evidence_upload_prompts": [
+    {
+      "prompt_id": "evidence_upload_1",
+      "prompt_type": "evidence_upload",
+      "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "relative_path": "hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "anchor_sections": [
+        "grievance_hearing",
+        "appeal_rights",
+        "adverse_action"
+      ],
+      "text": "Upload the evidence file 'hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b' and explain how it supports a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Focus on the most relevant language: Grievance: Any dispute a tenant may have with respect to HACC action or failure to Anchor sections: grievance_hearing, appeal_rights, adverse_action."
+    },
+    {
+      "prompt_id": "evidence_upload_2",
+      "prompt_type": "evidence_upload",
+      "title": "ADMINISTRATIVE PLAN",
+      "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "relative_path": "hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "anchor_sections": [
+        "grievance_hearing"
+      ],
+      "text": "Upload the evidence file 'hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858' and explain how it supports a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Focus on the most relevant language: Applicants or tenant families who wish to file a VAWA complaint against HACC may Anchor sections: grievance_hearing."
+    }
+  ],
+  "complaint_chatbot_prompt": "Ground the complaint chatbot in the uploaded repository evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) as factual grounding, ask the user to connect each document to case-specific events, and identify missing timeline, actor, harm, and remedy facts. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+  "mediator_evaluation_prompt": "Evaluate each uploaded evidence item for a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. For every document, determine what claim element it supports, what facts it proves directly, what facts remain missing, and what follow-up questions the mediator should ask before drafting a complaint. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+  "production_upload_prompt": "A user uploads repository evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Save each file into the complaint-generator evidence store, extract factual support from the parsed document, and route the uploaded materials through mediator evidence analysis before drafting or revising a complaint.",
+  "intake_questionnaire_prompt": "Before drafting a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action', collect concrete case facts from the user. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) to anchor the questions, and ask for the following details in plain language:\n- What happened, and what adverse action did HACC take or threaten to take?\n- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?\n- Who at HACC made, communicated, or carried out each decision?\n- What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?\n- What housing harm resulted, such as denial of assistance, termination, loss of voucher, delay, extra expense, or risk of displacement?\n- What remedy are you seeking now?\n- Anchor the intake to these policy sections: grievance_hearing, appeal_rights, adverse_action",
+  "intake_questions": [
+    "What happened, and what adverse action did HACC take or threaten to take?",
+    "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+    "Who at HACC made, communicated, or carried out each decision?",
+    "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?",
+    "What housing harm resulted, such as denial of assistance, termination, loss of voucher, delay, extra expense, or risk of displacement?",
+    "What remedy are you seeking now?"
+  ],
+  "evidence_summary": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+  "anchor_sections": [
+    "grievance_hearing",
+    "appeal_rights",
+    "adverse_action"
+  ],
+  "anchor_passages": [
+    {
+      "title": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "source_path": "/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b",
+      "snippet": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to",
+      "section_labels": [
+        "grievance_hearing",
+        "appeal_rights",
+        "adverse_action"
+      ]
+    },
+    {
+      "title": "ADMINISTRATIVE PLAN",
+      "source_path": "/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858",
+      "snippet": "Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+      "section_labels": [
+        "grievance_hearing"
+      ]
+    }
+  ]
+}

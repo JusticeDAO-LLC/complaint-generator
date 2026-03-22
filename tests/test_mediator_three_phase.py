@@ -831,6 +831,8 @@ class TestMediatorThreePhaseIntegration:
         assert len(timeline_facts) >= 5
         assert any(entity.attributes.get('event_date_or_range') == 'shortly after my complaint' for entity in timeline_facts)
         assert any(entity.attributes.get('event_date_or_range') == 'after protected activity, before any fair hearing was completed' for entity in timeline_facts)
+        assert any(entity.attributes.get('predicate_family') == 'adverse_action' for entity in timeline_facts)
+        assert any(entity.attributes.get('event_date_or_range') in {'', None} for entity in timeline_facts)
 
     def test_process_denoising_answer_syncs_temporal_relations_into_dependency_graph(self):
         from mediator.mediator import Mediator

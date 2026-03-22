@@ -1,0 +1,459 @@
+{
+  "generated_at": "2026-03-22T00:34:47.410762+00:00",
+  "preset": "core_hacc_policies",
+  "filing_forum": "court",
+  "session_id": "session_20260322_003333_000",
+  "critic_score": 0.8246923076923077,
+  "summary": "HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+  "caption": {
+    "court": "Court to be determined",
+    "case_title": "Complainant v. Housing Authority of Clackamas County",
+    "document_title": "Draft Complaint for Housing Discrimination",
+    "caption_note": "Retaliation complaint anchored to HACC core housing policies"
+  },
+  "parties": {
+    "plaintiff": "Complainant / tenant or program participant (name to be inserted).",
+    "defendant": "Housing Authority of Clackamas County (HACC)."
+  },
+  "jurisdiction_and_venue": [
+    "Jurisdiction and venue should be tailored to the final filing forum and the specific legal claims asserted.",
+    "The current draft is grounded in HACC housing-policy evidence and is intended as a complaint-development scaffold rather than a filed pleading.",
+    "The dispute appears to arise from housing-program administration, adverse action, and procedural protections connected to HACC operations."
+  ],
+  "legal_theory_summary": {
+    "theory_labels": [
+      "retaliation",
+      "due_process_failure"
+    ],
+    "protected_bases": [],
+    "authority_hints": [
+      "Fair Housing Act anti-retaliation provisions",
+      "24 C.F.R. Part 100"
+    ]
+  },
+  "anchor_sections": [
+    "grievance_hearing",
+    "appeal_rights"
+  ],
+  "factual_allegations": [
+    "Drafting readiness is warning (coverage 0.95); formalization should wait until graph completeness and document-generation blockers are cleared (document_generation_not_ready).",
+    "Document generation remains gated at drafting handoff; unresolved factual and legal gaps must be surfaced and closed before formalization.",
+    "Traceable drafting support row from ADMINISTRATIVE PLAN (/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858): The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision; The notice must describe how to obtain the informal review.",
+    "Artifact-backed support row (policy_document) for ADMINISTRATIVE PLAN: The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision; The notice must describe how to obtain the informal review.",
+    "Document-generation readiness signal: phase_status=ready, coverage=0.95; allegations should track exhibits and unresolved intake gaps before formalization.",
+    "Unresolved factual gaps still require confirmation before formalization, including Written notice chain is referenced but the sending party/date/source artifact is still missing., Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links., facts showing how protected activity led to adverse treatment, including timing, statements, and decision context.",
+    "The core documentary support for these allegations appears in Exhibit A (ADMINISTRATIVE PLAN) and Exhibit B (ADMISSIONS AND CONTINUED OCCUPANCY POLICY)."
+  ],
+  "claims_theory": [
+    "Formalization gate: drafting remains warning (coverage 0.95) because document_generation_not_ready; claims are provisional until unresolved graph and drafting blockers are closed.",
+    "Unresolved legal gaps still need closure before final formalization, including Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+    "Unresolved factual gaps are still blocking final legal framing, including Written notice chain is referenced but the sending party/date/source artifact is still missing., Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+    "Traceable claim-support row from ADMINISTRATIVE PLAN (/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858): The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision; The notice must describe how to obtain the informal review.",
+    "Artifact-backed claim support (policy_document) from ADMINISTRATIVE PLAN: The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision; The notice must describe how to obtain the informal review.",
+    "Document-generation legal-readiness signal remains ready at coverage 0.95; claim elements should stay provisional pending closure of unresolved factual/legal gaps.",
+    "The primary documentary support for these theories appears in Exhibit A (ADMINISTRATIVE PLAN) and Exhibit B (ADMISSIONS AND CONTINUED OCCUPANCY POLICY)."
+  ],
+  "policy_basis": [
+    "ADMINISTRATIVE PLAN supports grievance hearing, appeal rights: [notice, hearing, adverse_action] HACC policy describes scheduling and procedures for informal review. Full passage: Notice to the Applicant [24 CFR 982.554(a)] HACC must give an applicant prompt notice of a decision denying assistance. The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision. The notice must describe how to obtain the informal review. Scheduling an Informal Review HACC Policy A request for an informal review must be made in writing and delivered to HACC either in person or by first class mail, by the close of the business day, no later than 10 business days from the date of HACC\u2019s denial of assistance."
+  ],
+  "causes_of_action": [
+    {
+      "title": "Failure to Provide Required Notice and Process",
+      "theory": "The draft facts suggest denial or termination activity without the clear notice, review, or hearing process described by HACC policy.",
+      "support": [
+        "Formalization gate: drafting remains warning (coverage 0.95) because document_generation_not_ready; claims are provisional until unresolved graph and drafting blockers are closed.",
+        "Unresolved legal gaps still need closure before final formalization, including Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+        "Documentary support: Exhibit A (ADMINISTRATIVE PLAN). Rationale: selected for stronger notice and process language."
+      ],
+      "selected_exhibits": [
+        {
+          "exhibit_id": "Exhibit A",
+          "label": "ADMINISTRATIVE PLAN"
+        }
+      ],
+      "selection_rationale": "selected for stronger notice and process language",
+      "selection_tags": [
+        "notice",
+        "hearing",
+        "adverse_action"
+      ]
+    },
+    {
+      "title": "Retaliation for Protected Complaint Activity",
+      "theory": "The complainant narrative suggests adverse treatment after raising concerns or invoking grievance protections.",
+      "support": [
+        "Unresolved legal gaps still need closure before final formalization, including Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+        "Unresolved factual gaps are still blocking final legal framing, including Written notice chain is referenced but the sending party/date/source artifact is still missing., Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+        "Documentary support: Exhibit B (ADMISSIONS AND CONTINUED OCCUPANCY POLICY). Rationale: selected as the closest documentary match for this claim."
+      ],
+      "selected_exhibits": [
+        {
+          "exhibit_id": "Exhibit B",
+          "label": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"
+        }
+      ],
+      "selection_rationale": "selected as the closest documentary match for this claim",
+      "selection_tags": []
+    }
+  ],
+  "anchor_passages": [
+    "ADMINISTRATIVE PLAN [grievance_hearing, appeal_rights]: [notice, hearing, adverse_action] HACC policy describes scheduling and procedures for informal review. Full passage: Notice to the Applicant [24 CFR 982.554(a)] HACC must give an applicant prompt notice of a decision denying assistance. The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision. The notice must describe how to obtain the informal review. Scheduling an Informal Review HACC Policy A request for an informal review must be made in writing and delivered to HACC either in person or by first class mail, by the close of the business day, no later than 10 business days from the date of HACC\u2019s denial of assistance."
+  ],
+  "supporting_evidence": [
+    "ADMINISTRATIVE PLAN: [notice, hearing, adverse_action] HACC policy describes scheduling and procedures for informal review. Full passage: Notice to the Applicant [24 CFR 982.554(a)] HACC must give an applicant prompt notice of a decision denying assistance. The notice must contain a brief statement of the reasons for HACC decision and must also state that the applicant may request an informal review of the decision. The notice must describe how to obtain the informal review. Scheduling an Informal Review HACC Policy A request for an informal review must be made in writing and delivered to HACC either in person or by first class mail, by the close of the business day, no later than 10 business days from the date of HACC\u2019s denial of assistance. (/home/barberb/HACC/hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858).",
+    "ADMISSIONS AND CONTINUED OCCUPANCY POLICY: [hearing, adverse_action] HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction. Full passage: I. Definitions applicable to the grievance procedure [24 CFR 966.53] A. Grievance: Any dispute a tenant may have with respect to HACC action or failure to act in accordance with the individual tenant\u2019s lease or HACC regulations that adversely affects the individual tenant\u2019s rights, duties, welfare, or status. B. Complainant: Any tenant (as defined below) whose grievance is presented to HACC or at the project management office in accordance with the requirements presented in this procedure. C. Elements of due process: An eviction action or a termination of tenancy in a state or local court in which the following procedural safeguards are required: i. (/home/barberb/HACC/hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b).",
+    "ADMISSIONS AND CONTINUED OCCUPANCY POLICY: prepared as mediator evidence for grounded intake; uploaded into mediator evidence store (hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b).",
+    "ADMINISTRATIVE PLAN: prepared as mediator evidence for grounded intake; uploaded into mediator evidence store (hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858)."
+  ],
+  "proposed_allegations": [
+    "Plaintiff alleges conduct arising from a retaliation and grievance-related housing complaint involving HACC notice and review protections.",
+    "The available HACC materials indicate that HACC policy defines a grievance as a tenant dispute concerning HACC action or inaction.",
+    "The intake record suggests the grievance or hearing process was not handled in the manner described by HACC policy.",
+    "The intake chronology anchors i\u2019m very stressed by this, but i want to be as clear as i can about the timeline. - `me (tenant)` | raised concerns and tried to use grievance process | `exact date still needs confirmation` (estimate: early 2025) | `my grievance request/email (i need to pull the exact file/date)` - `hacc staff (name/title unknown)` | negative housing-assistance action started after i raised concerns (reduction/threat to status and housing stability) | `date still needs confirmation` (estimate: shortly after my complaint) | `notice/communication from hacc (id/date still needed)` - `me (tenant)` | requested hearing/review | `exact request date still needs confirmation` | `hearing request record (email/portal/mail proof still needed)` - `hacc decision-maker(s) (name/title unknown)` | responded, but i did not get a meaningful hearing process or clear notice/timeline | `response date still needs confirmation` | `hacc response letter/email (date and sender still needed)` - `hacc decision-maker(s)` | final/ongoing adverse impact on assistance and housing stability | `final decision date still needs confirmation` | `final notice or case communication still needed` strongest policy anchor: `administrative plan` (effective july 1, 2025) says residents must get notice of the ability to request an informal hearing and hearing opportunity for disputes affecting rights/status. secondary anchors: `admissions and continued occupancy policy` (grievance and appeal language) and `supportive housing services program` (formal appeals process language). inference: the retaliation sequence is based on timing (protected activity followed by adverse treatment), but exact causation proof depends on the missing dated notices and named staff records. concrete impacts: risk to my housing stability and extra financial strain; emotionally, ongoing anxiety. still needs confirmation: `exact_dates`, `staff_names_titles`, `causation_sequence`. at July 1, 2025.",
+    "The intake chronology anchors protected activity at I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. Reported relative timing includes after.",
+    "During intake, the complainant stated that I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process; After I spoke up, I started experiencing negative treatment related to my housing assistance, including actions that affected my housing stability and made me feel like I was being punished for asserting my rights; My understanding from HACC\u2019s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare, or status; I also understand that I should receive notice of my ability to request a hearing.",
+    "During intake, the complainant stated that I\u2019m very stressed by this, but I want to be as clear as I can about the timeline; - `Me (tenant)` | Raised concerns and tried to use grievance process | `exact date still needs confirmation` (estimate: early 2025) | `my grievance request/email (I need to pull the exact file/date)` - `HACC staff (name/title unknown)` | Negative housing-assistance action started after I raised concerns (reduction/threat to status and housing stability) | `date still needs confirmation` (estimate: shortly after my complaint) | `notice/communication from HACC (ID/date still needed)` - `Me (tenant)` | Requested hearing/review | `exact request date still needs confirmation` | `hearing request record (email/portal/mail proof still needed)` - `HACC decision-maker(s) (name/title unknown)` | Responded, but I did not get a meaningful hearing process or clear notice/timeline | `response date still needs confirmation` | `HACC response letter/email (date and sender still needed)` - `HACC decision-maker(s)` | Final/ongoing adverse impact on assistance and housing stability | `final decision date still needs confirmation` | `final notice or case communication still needed` Strongest policy anchor: `ADMINISTRATIVE PLAN` (effective July 1, 2025) says residents must get notice of the ability to request an informal hearing and hearing opportunity for disputes affecting rights/status; Secondary anchors: `ADMISSIONS AND CONTINUED OCCUPANCY POLICY` (grievance and appeal language) and `Supportive Housing Services Program` (formal appeals process language); Inference: the retaliation sequence is based on timing (protected activity followed by adverse treatment), but exact causation proof depends on the missing dated notices and named staff records."
+  ],
+  "anchored_chronology_summary": [
+    "The intake chronology anchors i\u2019m very stressed by this, but i want to be as clear as i can about the timeline. - `me (tenant)` | raised concerns and tried to use grievance process | `exact date still needs confirmation` (estimate: early 2025) | `my grievance request/email (i need to pull the exact file/date)` - `hacc staff (name/title unknown)` | negative housing-assistance action started after i raised concerns (reduction/threat to status and housing stability) | `date still needs confirmation` (estimate: shortly after my complaint) | `notice/communication from hacc (id/date still needed)` - `me (tenant)` | requested hearing/review | `exact request date still needs confirmation` | `hearing request record (email/portal/mail proof still needed)` - `hacc decision-maker(s) (name/title unknown)` | responded, but i did not get a meaningful hearing process or clear notice/timeline | `response date still needs confirmation` | `hacc response letter/email (date and sender still needed)` - `hacc decision-maker(s)` | final/ongoing adverse impact on assistance and housing stability | `final decision date still needs confirmation` | `final notice or case communication still needed` strongest policy anchor: `administrative plan` (effective july 1, 2025) says residents must get notice of the ability to request an informal hearing and hearing opportunity for disputes affecting rights/status. secondary anchors: `admissions and continued occupancy policy` (grievance and appeal language) and `supportive housing services program` (formal appeals process language). inference: the retaliation sequence is based on timing (protected activity followed by adverse treatment), but exact causation proof depends on the missing dated notices and named staff records. concrete impacts: risk to my housing stability and extra financial strain; emotionally, ongoing anxiety. still needs confirmation: `exact_dates`, `staff_names_titles`, `causation_sequence`. at July 1, 2025.",
+    "The intake chronology anchors protected activity at I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. Reported relative timing includes after.",
+    "The intake chronology anchors causation sequence at I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi. Reported relative timing includes after."
+  ],
+  "graph_readiness_summary": {
+    "chronology_complete": true,
+    "canonical_fact_count": 22,
+    "timeline_relation_count": 0,
+    "timeline_anchor_count": 6,
+    "open_temporal_issue_count": 5,
+    "blocking_item_count": 2,
+    "extraction_targets": [
+      "notice_chain",
+      "response_timeline",
+      "timeline_anchors",
+      "retaliation_sequence",
+      "actor_role_mapping"
+    ]
+  },
+  "claim_support_summary": {
+    "claim_count": 2,
+    "element_count": 6,
+    "status_counts": {
+      "supported": 0,
+      "partially_supported": 0,
+      "unsupported": 0,
+      "contradicted": 0
+    },
+    "proof_readiness_score": 0.0,
+    "blocking_item_count": 2,
+    "open_temporal_issue_count": 5,
+    "evidence_completion_ready": false
+  },
+  "drafting_readiness": {
+    "coverage": 0.95,
+    "phase_status": "warning",
+    "blockers": [
+      "document_generation_not_ready"
+    ],
+    "unresolved_factual_gaps": [
+      "Written notice chain is referenced but the sending party/date/source artifact is still missing.",
+      "Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+      "facts showing how protected activity led to adverse treatment, including timing, statements, and decision context"
+    ],
+    "unresolved_legal_gaps": [
+      "Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links."
+    ],
+    "weak_evidence_modalities": [],
+    "evidence_modalities": {
+      "policy_document": 2,
+      "file_evidence": 2
+    }
+  },
+  "intake_blocker_summary": {
+    "blocking_item_count": 2,
+    "blocking_objectives": [
+      "exact_dates",
+      "response_dates",
+      "causation_link",
+      "staff_names_titles"
+    ],
+    "extraction_targets": [
+      "notice_chain",
+      "response_timeline",
+      "timeline_anchors",
+      "retaliation_sequence",
+      "actor_role_mapping"
+    ],
+    "workflow_phases": [
+      "graph_analysis",
+      "intake_questioning",
+      "document_generation"
+    ],
+    "blocking_items": [
+      {
+        "blocker_id": "missing_written_notice_chain",
+        "section": "proof_leads",
+        "reason": "Written notice chain is referenced but the sending party/date/source artifact is still missing.",
+        "next_question_strategy": "capture_notice_chain",
+        "recommended_support_kind": "evidence",
+        "proof_path_status": "missing",
+        "blocker_tags": [
+          "notice_chain",
+          "exact_dates"
+        ],
+        "primary_objective": "exact_dates",
+        "blocker_objectives": [
+          "exact_dates",
+          "response_dates"
+        ],
+        "extraction_targets": [
+          "notice_chain",
+          "response_timeline",
+          "timeline_anchors"
+        ],
+        "workflow_phases": [
+          "graph_analysis",
+          "intake_questioning",
+          "document_generation"
+        ],
+        "issue_family": "notice_chain"
+      },
+      {
+        "blocker_id": "missing_retaliation_causation_sequence",
+        "section": "conduct",
+        "reason": "Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+        "next_question_strategy": "capture_retaliation_sequence",
+        "recommended_support_kind": "intake_clarification",
+        "proof_path_status": "missing",
+        "blocker_tags": [
+          "retaliation_sequence",
+          "exact_dates",
+          "staff_identity"
+        ],
+        "primary_objective": "causation_sequence",
+        "blocker_objectives": [
+          "causation_sequence",
+          "exact_dates",
+          "staff_names_titles"
+        ],
+        "extraction_targets": [
+          "retaliation_sequence",
+          "timeline_anchors",
+          "actor_role_mapping"
+        ],
+        "workflow_phases": [
+          "graph_analysis",
+          "intake_questioning",
+          "document_generation"
+        ],
+        "issue_family": "retaliation_sequence"
+      }
+    ]
+  },
+  "outstanding_intake_gaps": [
+    "Written notice chain is referenced but the sending party/date/source artifact is still missing.",
+    "Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+    "facts showing how protected activity led to adverse treatment, including timing, statements, and decision context"
+  ],
+  "outstanding_intake_follow_up_questions": [
+    "What happened after the protected activity, who was aware of it, what adverse decision followed, and what facts link that sequence to the decision-maker's stated reason?",
+    "What happened after your protected activity, who knew about it, and what facts link that sequence to the adverse action?",
+    "Please provide a closed chronology from first protected activity to final HACC action: exact date (or closest day-level anchor), event, actor/title, document artifact (notice/email/letter/portal), and days until the next event.?",
+    "For each key event, provide the exact date (or closest day-level anchor), the document or communication (notice/email/letter/portal message), who sent it, and the specific decision or instruction stated. Also include days between events.?",
+    "What are the exact dates, or closest day-level anchors, for each notice, review request, response, and final decision?"
+  ],
+  "requested_relief": [
+    "Declaratory relief identifying the challenged conduct and policies.",
+    "Injunctive relief requiring fair review, corrected process, and non-retaliation safeguards.",
+    "Compensatory damages or other available monetary relief according to proof.",
+    "Costs, fees, and any other relief authorized by law."
+  ],
+  "grounded_evidence_summary": [
+    "Grounding query: retaliation grievance complaint appeal hearing due process tenant policy adverse action",
+    "Grounding claim type: housing_discrimination",
+    "Mediator preload / upload count: 2",
+    "Claim-support links recorded: 2",
+    "Ground the complaint chatbot in the uploaded repository evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) as factual grounding, ask the user to connect each document to case-specific events, and identify missing timeline, actor, harm, and remedy facts. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action."
+  ],
+  "grounding_overview": {
+    "evidence_summary": "Grievance: Any dispute a tenant may have with respect to HACC action or failure to Applicants or tenant families who wish to file a VAWA complaint against HACC may",
+    "anchor_sections": [
+      "grievance_hearing",
+      "appeal_rights",
+      "adverse_action"
+    ],
+    "anchor_passage_count": 2,
+    "upload_candidate_count": 2,
+    "mediator_packet_count": 2,
+    "uploaded_evidence_count": 2,
+    "top_documents": [
+      "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "ADMINISTRATIVE PLAN"
+    ]
+  },
+  "grounding_prompt_summary": {
+    "complaint_chatbot_prompt": "Ground the complaint chatbot in the uploaded repository evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) as factual grounding, ask the user to connect each document to case-specific events, and identify missing timeline, actor, harm, and remedy facts. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+    "intake_questionnaire_prompt": "Before drafting a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action', collect concrete case facts from the user. Use the uploaded materials (ADMISSIONS AND CONTINUED OCCUPANCY POLICY, ADMINISTRATIVE PLAN) to anchor the questions, and ask for the following details in plain language:\n- What happened, and what adverse action did HACC take or threaten to take?\n- When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?\n- Who at HACC made, communicated, or carried out each decision?\n- What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?\n- What housing harm resulted, such as denial of assistance, termination, loss of voucher, delay, extra expense, or risk of displacement?\n- What remedy are you seeking now?\n- Anchor the intake to these policy sections: grievance_hearing, appeal_rights, adverse_action",
+    "mediator_evidence_review_prompt": "Evaluate each uploaded evidence item for a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. For every document, determine what claim element it supports, what facts it proves directly, what facts remain missing, and what follow-up questions the mediator should ask before drafting a complaint. Prioritize these anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+    "document_generation_prompt": "Promote uploaded evidence for 'retaliation grievance complaint appeal hearing due process tenant policy adverse action' into chronology anchors, claim-support mappings, exhibit descriptions, and formal allegations. Use the uploaded records and policy anchors together so the complaint draft stays grounded in provable facts and source-linked exhibits.",
+    "intake_questions": [
+      "What happened, and what adverse action did HACC take or threaten to take?",
+      "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+      "Who at HACC made, communicated, or carried out each decision?",
+      "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?",
+      "What housing harm resulted, such as denial of assistance, termination, loss of voucher, delay, extra expense, or risk of displacement?",
+      "What remedy are you seeking now?"
+    ],
+    "evidence_upload_questions": [
+      "Upload the evidence file 'hacc_website/a38c7914-ea37-4c2f-a815-711d4a97c92b' and explain how it supports a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Focus on the most relevant language: Grievance: Any dispute a tenant may have with respect to HACC action or failure to Anchor sections: grievance_hearing, appeal_rights, adverse_action.",
+      "Upload the evidence file 'hacc_website/8ee6f7d1-0c36-48e4-9677-336b95fb9858' and explain how it supports a housing_discrimination complaint about 'retaliation grievance complaint appeal hearing due process tenant policy adverse action'. Focus on the most relevant language: Applicants or tenant families who wish to file a VAWA complaint against HACC may Anchor sections: grievance_hearing."
+    ],
+    "mediator_questions": [
+      "Which uploaded records directly prove dates, notice timing, hearing requests, or decision responses?",
+      "Which uploaded records identify the HACC staff or decision-makers involved in each event?",
+      "Which uploaded records should be converted into exhibits and linked to claim-support allegations?",
+      "Which uploaded records directly support each claim element, and which elements remain weak or unsupported?",
+      "What dates, decision-makers, or response events can be extracted from the uploaded evidence into the chronology?",
+      "Which uploaded records should become exhibits in the complaint, and what fact does each exhibit support?"
+    ],
+    "workflow_phase_priorities": [
+      "intake_questioning",
+      "evidence_upload",
+      "graph_analysis",
+      "document_generation"
+    ],
+    "blocker_objectives": [
+      "hearing_request_timing",
+      "exact_dates",
+      "response_dates",
+      "adverse_action_specificity",
+      "causation_sequence",
+      "staff_names_titles",
+      "documents"
+    ],
+    "extraction_targets": [
+      "hearing_process",
+      "timeline_anchors",
+      "response_timeline",
+      "adverse_action_definition",
+      "actor_role_mapping",
+      "claim_support_mapping",
+      "uploaded_document_inventory",
+      "exhibit_mapping"
+    ],
+    "uploaded_titles": [
+      "ADMISSIONS AND CONTINUED OCCUPANCY POLICY",
+      "ADMINISTRATIVE PLAN"
+    ],
+    "upload_count": 2
+  },
+  "search_summary": {
+    "requested_search_mode": "package",
+    "effective_search_mode": "lexical_only",
+    "fallback_note": "Requested package/shared hybrid search, but vector support is unavailable; using lexical results instead."
+  },
+  "actor_critic_optimizer": {
+    "optimization_method": "actor_critic",
+    "phase_focus_order": [
+      "graph_analysis",
+      "document_generation",
+      "intake_questioning"
+    ],
+    "priority": 70,
+    "router_backed_question_quality": false,
+    "metrics": {
+      "question_quality": 0.72,
+      "information_extraction": 0.8515384615384616,
+      "empathy": 0.84,
+      "efficiency": 0.86,
+      "coverage": 0.8840384615384616
+    }
+  },
+  "selection_rationale": {},
+  "source_artifacts": {
+    "results_json": "/home/barberb/complaint-generator/output/hacc_grounded_smoke/adversarial/adversarial_results.json",
+    "matrix_summary": null,
+    "selection_source": "results_json",
+    "grounded_run_dir": "/home/barberb/complaint-generator/output/hacc_grounded_smoke",
+    "grounding_bundle_json": "/home/barberb/complaint-generator/output/hacc_grounded_smoke/grounding_bundle.json",
+    "grounding_overview_json": "/home/barberb/complaint-generator/output/hacc_grounded_smoke/grounding_overview.json",
+    "evidence_upload_report_json": "/home/barberb/complaint-generator/output/hacc_grounded_smoke/evidence_upload_report.json",
+    "completed_intake_worksheet_json": null,
+    "search_summary": {
+      "requested_search_mode": "package",
+      "effective_search_mode": "lexical_only",
+      "fallback_note": "Requested package/shared hybrid search, but vector support is unavailable; using lexical results instead."
+    }
+  },
+  "requested_relief_annotations": [
+    {
+      "text": "Declaratory relief identifying the challenged conduct and policies."
+    },
+    {
+      "text": "Injunctive relief requiring fair review, corrected process, and non-retaliation safeguards."
+    },
+    {
+      "text": "Compensatory damages or other available monetary relief according to proof."
+    },
+    {
+      "text": "Costs, fees, and any other relief authorized by law."
+    }
+  ],
+  "claim_selection_summary": [
+    {
+      "title": "Failure to Provide Required Notice and Process",
+      "selection_tags": [
+        "notice",
+        "hearing",
+        "adverse_action"
+      ],
+      "selected_exhibits": [
+        {
+          "exhibit_id": "Exhibit A",
+          "label": "ADMINISTRATIVE PLAN"
+        }
+      ],
+      "selection_rationale": "selected for stronger notice and process language"
+    },
+    {
+      "title": "Retaliation for Protected Complaint Activity",
+      "selection_tags": [],
+      "selected_exhibits": [
+        {
+          "exhibit_id": "Exhibit B",
+          "label": "ADMISSIONS AND CONTINUED OCCUPANCY POLICY"
+        }
+      ],
+      "selection_rationale": "selected as the closest documentary match for this claim"
+    }
+  ],
+  "relief_selection_summary": [
+    {
+      "text": "Declaratory relief identifying the challenged conduct and policies.",
+      "strategic_families": [],
+      "strategic_role": "",
+      "strategic_note": "",
+      "related_claims": []
+    },
+    {
+      "text": "Injunctive relief requiring fair review, corrected process, and non-retaliation safeguards.",
+      "strategic_families": [],
+      "strategic_role": "",
+      "strategic_note": "",
+      "related_claims": []
+    },
+    {
+      "text": "Compensatory damages or other available monetary relief according to proof.",
+      "strategic_families": [],
+      "strategic_role": "",
+      "strategic_note": "",
+      "related_claims": []
+    },
+    {
+      "text": "Costs, fees, and any other relief authorized by law.",
+      "strategic_families": [],
+      "strategic_role": "",
+      "strategic_note": "",
+      "related_claims": []
+    }
+  ]
+}
