@@ -870,7 +870,7 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     if normalized_required_provenance_kinds:
         temporal_handoff["required_provenance_kinds"] = normalized_required_provenance_kinds
     if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
-        temporal_handoff[key]
+        temporal_handoff.get(key)
         for key in (
             "unresolved_temporal_issue_ids",
             "event_ids",

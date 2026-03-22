@@ -5377,6 +5377,31 @@ def _build_intake_follow_up_worksheet(package: Dict[str, Any]) -> Dict[str, Any]
         if str(item)
     ]
     follow_up_items: List[Dict[str, Any]] = []
+    grounded_next_action = dict(package.get("grounded_recommended_next_action") or {})
+    grounded_action = str(grounded_next_action.get("action") or "").strip()
+    grounded_description = str(grounded_next_action.get("description") or "").strip()
+    if grounded_action:
+        grounded_question = grounded_description
+        if not grounded_question:
+            if grounded_action == "fill_chronology_gaps":
+                grounded_question = "What exact dates, notice timing, and event order are still missing before drafting?"
+            elif grounded_action == "upload_local_repository_evidence":
+                grounded_question = "Which repository-backed file should be uploaded first, and what exact fact does it prove?"
+            elif grounded_action == "run_seeded_discovery":
+                grounded_question = "Which seeded discovery query should be run first to find the missing policy or notice?"
+            else:
+                grounded_question = f"What should happen next for grounded action '{grounded_action}'?"
+        follow_up_items.append(
+            {
+                "id": "grounded_priority_01",
+                "gap": str(grounded_next_action.get("phase_name") or "").strip(),
+                "objective": grounded_action,
+                "question": grounded_question,
+                "answer": "",
+                "status": "open",
+                "source": "grounded_recommended_next_action",
+            }
+        )
     for index, question in enumerate(questions, start=1):
         gap = gaps[index - 1] if index - 1 < len(gaps) else ""
         objective = _classify_intake_question_objective(question)
@@ -5519,6 +5544,16 @@ def main(argv: List[str] | None = None) -> int:
         if args.evidence_upload_report
         else (grounded_run_dir / "evidence_upload_report.json" if grounded_run_dir else auto_discovered.get("evidence_upload_report"))
     )
+    grounded_recommended_next_action_path = _existing_optional_path(
+        grounded_run_dir / "recommended_next_action.json"
+        if grounded_run_dir
+        else None
+    )
+    grounded_research_action_queue_path = _existing_optional_path(
+        grounded_run_dir / "research_action_queue.json"
+        if grounded_run_dir
+        else None
+    )
     grounding_bundle = _load_optional_json(grounding_bundle_path)
     grounding_overview = _derive_grounding_overview(
         grounding_bundle,
@@ -5526,6 +5561,8 @@ def main(argv: List[str] | None = None) -> int:
         _load_optional_json(grounding_overview_path),
     )
     evidence_upload_report = _load_optional_json(evidence_upload_report_path)
+    grounded_recommended_next_action = _load_optional_json(grounded_recommended_next_action_path)
+    grounded_research_action_queue = list(_load_optional_json(grounded_research_action_queue_path) or [])
     completed_intake_worksheet_path = Path(args.completed_intake_worksheet).resolve() if args.completed_intake_worksheet else None
     completed_intake_worksheet = _load_optional_json(completed_intake_worksheet_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
@@ -5583,6 +5620,8 @@ def main(argv: List[str] | None = None) -> int:
         "grounding_overview": grounding_overview,
         "grounding_prompt_summary": _grounding_prompt_summary(seed, grounding_bundle, evidence_upload_report),
         "search_summary": search_summary,
+        "grounded_recommended_next_action": grounded_recommended_next_action,
+        "grounded_research_action_queue": grounded_research_action_queue,
         "actor_critic_optimizer": {
             "optimization_method": "actor_critic",
             "phase_focus_order": list(phase_focus_order),
@@ -5599,6 +5638,8 @@ def main(argv: List[str] | None = None) -> int:
             "grounding_bundle_json": str(grounding_bundle_path) if grounding_bundle_path else None,
             "grounding_overview_json": str(grounding_overview_path) if grounding_overview_path else None,
             "evidence_upload_report_json": str(evidence_upload_report_path) if evidence_upload_report_path else None,
+            "grounded_recommended_next_action_json": str(grounded_recommended_next_action_path) if grounded_recommended_next_action_path else None,
+            "grounded_research_action_queue_json": str(grounded_research_action_queue_path) if grounded_research_action_queue_path else None,
             "completed_intake_worksheet_json": str(completed_intake_worksheet_path) if completed_intake_worksheet_path else None,
             "search_summary": search_summary,
         },

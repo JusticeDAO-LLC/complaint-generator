@@ -203,6 +203,150 @@ def _run_seeded_discovery_from_plan(engine: Any, seeded_discovery_plan: Dict[str
     return payload if isinstance(payload, dict) else {"status": "error", "queries": queries, "value": str(payload)}
 
 
+def _build_grounded_next_steps(
+    *,
+    query: str,
+    recommended_next_action: Dict[str, Any],
+    research_action_queue: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    action = str(recommended_next_action.get("action") or "").strip()
+    description = str(recommended_next_action.get("description") or "").strip()
+    steps: list[str] = []
+    if action == "upload_local_repository_evidence":
+        steps = [
+            "Upload the strongest repository-backed evidence files into the mediator first.",
+            "Confirm each uploaded file is mapped to the right claim element and dated event.",
+            "Re-run chronology and claim-support review before broad complaint drafting.",
+        ]
+    elif action == "fill_chronology_gaps":
+        steps = [
+            "Prioritize dates, notice timing, hearing/review requests, and response order.",
+            "Use upload prompts and seeded discovery to close exact-date and sequence gaps.",
+            "Only proceed to broad drafting once the chronology handoff is substantially complete.",
+        ]
+    elif action == "run_seeded_discovery":
+        steps = [
+            "Run the seeded discovery queries against shared CommonCrawl/IPFS search.",
+            "Review discovery hits for uploadable policies, notices, and procedures.",
+            "Promote the strongest new hits into the upload and mediator review path.",
+        ]
+    elif action == "review_legal_authorities":
+        steps = [
+            "Review the discovered authorities for theory framing and complaint structure.",
+            "Keep the factual draft grounded in uploaded evidence while using authorities for legal framing.",
+            "Link the best authorities into the next complaint synthesis pass.",
+        ]
+    else:
+        steps = [
+            "Review the research action queue and follow the highest-priority unresolved step.",
+            "Promote any new evidence into mediator review before final drafting.",
+        ]
+
+    return {
+        "query": query,
+        "recommended_next_action": dict(recommended_next_action or {}),
+        "queued_action_count": len(list(research_action_queue or [])),
+        "steps": steps,
+        "summary": description or f"Next grounded workflow step for '{query}'.",
+    }
+
+
+def _build_grounded_intake_follow_up_worksheet(
+    *,
+    query: str,
+    recommended_next_action: Dict[str, Any],
+) -> Dict[str, Any]:
+    action = str(recommended_next_action.get("action") or "").strip()
+    description = str(recommended_next_action.get("description") or "").strip()
+    follow_up_items: list[dict[str, Any]] = []
+    if action == "fill_chronology_gaps":
+        seeded_queries = [
+            str(item).strip()
+            for item in list(recommended_next_action.get("seeded_queries") or [])
+            if str(item).strip()
+        ]
+        blocker_objectives = [
+            str(item).strip()
+            for item in list(recommended_next_action.get("blocker_objectives") or [])
+            if str(item).strip()
+        ]
+        prompts = [
+            "What is the exact date of the earliest notice, complaint, hearing request, or review request?",
+            "What happened next, and on what exact date did HACC respond or fail to respond?",
+            "Which document, email, notice, or witness best proves each step in that sequence?",
+        ]
+        if seeded_queries:
+            prompts.append(f"Which discovery query is most likely to surface the missing dated record? {seeded_queries[0]}")
+        for index, prompt in enumerate(prompts, start=1):
+            follow_up_items.append(
+                {
+                    "id": f"grounded_follow_up_{index:02d}",
+                    "gap": "chronology",
+                    "objective": blocker_objectives[0] if blocker_objectives else "exact_dates",
+                    "question": prompt,
+                    "answer": "",
+                    "status": "open",
+                }
+            )
+    elif action == "upload_local_repository_evidence":
+        upload_paths = [
+            str(item).strip()
+            for item in list(recommended_next_action.get("recommended_upload_paths") or [])
+            if str(item).strip()
+        ]
+        prompts = [
+            "Which repository file should be uploaded first because it most directly proves the adverse action or policy issue?",
+            "For that file, what exact fact, date, and actor does it prove?",
+            "What remaining claim element still lacks a document, notice, or witness after that upload?",
+        ]
+        if upload_paths:
+            prompts.append(f"Confirm the first upload path and describe why it is strongest: {upload_paths[0]}")
+        for index, prompt in enumerate(prompts, start=1):
+            follow_up_items.append(
+                {
+                    "id": f"grounded_follow_up_{index:02d}",
+                    "gap": "evidence_upload",
+                    "objective": "documents",
+                    "question": prompt,
+                    "answer": "",
+                    "status": "open",
+                }
+            )
+    return {
+        "query": query,
+        "recommended_next_action": dict(recommended_next_action or {}),
+        "summary": description or f"Grounded follow-up worksheet for '{query}'.",
+        "follow_up_items": follow_up_items,
+    }
+
+
+def _render_grounded_intake_follow_up_markdown(worksheet: Dict[str, Any]) -> str:
+    lines = [
+        "# Grounded Intake Follow-Up Worksheet",
+        "",
+        f"- Query: {worksheet.get('query', '')}",
+        "",
+        str(worksheet.get("summary") or "").strip(),
+        "",
+        "## Follow-Up Items",
+        "",
+    ]
+    items = list(worksheet.get("follow_up_items") or [])
+    if not items:
+        lines.append("- No grounded follow-up items were generated.")
+    else:
+        for item in items:
+            lines.append(f"- {item.get('id', '')}: {item.get('question', '')}")
+            gap = str(item.get("gap") or "").strip()
+            if gap:
+                lines.append(f"  - Gap: {gap}")
+            objective = str(item.get("objective") or "").strip()
+            if objective:
+                lines.append(f"  - Objective: {objective}")
+            lines.append("  - Answer: ")
+    return "\n".join(lines) + "\n"
+
+
 def run_hacc_grounded_pipeline(
     *,
     output_dir: str | Path,
@@ -243,6 +387,15 @@ def run_hacc_grounded_pipeline(
     research_action_queue = list(research_package.get("research_action_queue") or [])
     recommended_next_action = dict(research_package.get("recommended_next_action") or {})
     seeded_discovery_payload = _run_seeded_discovery_from_plan(engine, seeded_discovery_plan)
+    grounded_next_steps = _build_grounded_next_steps(
+        query=resolved_query,
+        recommended_next_action=recommended_next_action,
+        research_action_queue=research_action_queue,
+    )
+    grounded_follow_up_worksheet = _build_grounded_intake_follow_up_worksheet(
+        query=resolved_query,
+        recommended_next_action=recommended_next_action,
+    )
     grounding_bundle = engine.build_grounding_bundle(
         resolved_query,
         top_k=top_k,
@@ -283,6 +436,12 @@ def run_hacc_grounded_pipeline(
     _write_json(output_root / "research_action_queue.json", research_action_queue)
     _write_json(output_root / "recommended_next_action.json", recommended_next_action)
     _write_json(output_root / "seeded_commoncrawl_discovery.json", seeded_discovery_payload)
+    _write_json(output_root / "grounded_next_steps.json", grounded_next_steps)
+    _write_json(output_root / "grounded_intake_follow_up_worksheet.json", grounded_follow_up_worksheet)
+    (output_root / "grounded_intake_follow_up_worksheet.md").write_text(
+        _render_grounded_intake_follow_up_markdown(grounded_follow_up_worksheet),
+        encoding="utf-8",
+    )
     _write_json(output_root / "anchor_passages.json", dict(grounding_bundle or {}).get("anchor_passages", []))
     _write_json(output_root / "upload_candidates.json", dict(grounding_bundle or {}).get("upload_candidates", []))
     _write_json(output_root / "mediator_evidence_packets.json", dict(grounding_bundle or {}).get("mediator_evidence_packets", []))
@@ -351,6 +510,8 @@ def run_hacc_grounded_pipeline(
         "research_action_queue": research_action_queue,
         "recommended_next_action": recommended_next_action,
         "seeded_commoncrawl_discovery": seeded_discovery_payload,
+        "grounded_next_steps": grounded_next_steps,
+        "grounded_intake_follow_up_worksheet": grounded_follow_up_worksheet,
         "grounding": grounding_bundle,
         "evidence_upload": upload_report,
         "adversarial": adversarial_summary,
@@ -365,6 +526,9 @@ def run_hacc_grounded_pipeline(
             "research_action_queue_json": str(output_root / "research_action_queue.json"),
             "recommended_next_action_json": str(output_root / "recommended_next_action.json"),
             "seeded_commoncrawl_discovery_json": str(output_root / "seeded_commoncrawl_discovery.json"),
+            "grounded_next_steps_json": str(output_root / "grounded_next_steps.json"),
+            "grounded_intake_follow_up_worksheet_json": str(output_root / "grounded_intake_follow_up_worksheet.json"),
+            "grounded_intake_follow_up_worksheet_md": str(output_root / "grounded_intake_follow_up_worksheet.md"),
             "anchor_passages_json": str(output_root / "anchor_passages.json"),
             "upload_candidates_json": str(output_root / "upload_candidates.json"),
             "mediator_evidence_packets_json": str(output_root / "mediator_evidence_packets.json"),

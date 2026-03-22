@@ -1847,6 +1847,110 @@ class TestAdversarialHarness:
             'Requested hybrid search, but vector support is unavailable; using lexical results instead.'
         )
 
+    def test_run_batch_enriches_later_seeds_with_optimizer_feedback(self, monkeypatch):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1,
+        )
+
+        seen_specs = []
+        seeds = [
+            {
+                'type': 'housing_discrimination',
+                'summary': 'HACC retaliation chronology remains incomplete.',
+                'key_facts': {},
+            },
+            {
+                'type': 'employment_discrimination',
+                'summary': 'Second seed should inherit optimizer feedback.',
+                'key_facts': {},
+            },
+        ]
+
+        def fake_run_single_session(spec):
+            seen_specs.append(json.loads(json.dumps(spec)))
+            final_state = {}
+            overall_score = 0.8
+            if len(seen_specs) == 1:
+                overall_score = 0.4
+                final_state = {
+                    'adversarial_intake_priority_summary': {
+                        'expected_objectives': ['timeline', 'documents'],
+                        'covered_objectives': ['timeline'],
+                        'uncovered_objectives': ['documents'],
+                    },
+                    'alignment_evidence_tasks': [
+                        {
+                            'action': 'fill_temporal_chronology_gap',
+                            'claim_type': 'retaliation',
+                            'claim_element_id': 'causation',
+                            'fallback_lanes': ['authority', 'testimony'],
+                        }
+                    ],
+                    'evidence_workflow_action_queue': [
+                        {
+                            'phase_name': 'graph_analysis',
+                            'claim_type': 'retaliation',
+                            'claim_element_id': 'causation',
+                            'focus_areas': ['timeline', 'chronology'],
+                            'action': 'Resolve chronology support for causation.',
+                        }
+                    ],
+                    'intake_legal_targeting_summary': {
+                        'claims': {
+                            'retaliation': {
+                                'missing_requirement_element_ids': ['protected_activity'],
+                            }
+                        }
+                    },
+                }
+            return SessionResult(
+                session_id=spec['session_id'],
+                timestamp='2024-01-01T00:00:00+00:00',
+                seed_complaint=spec['seed'],
+                initial_complaint_text='Complaint',
+                conversation_history=[],
+                num_questions=0,
+                num_turns=0,
+                final_state=final_state,
+                critic_score=CriticScore(
+                    overall_score=overall_score,
+                    question_quality=overall_score,
+                    information_extraction=overall_score,
+                    empathy=overall_score,
+                    efficiency=overall_score,
+                    coverage=overall_score,
+                    feedback='ok',
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                ),
+                success=True,
+            )
+
+        monkeypatch.setattr(harness, '_run_single_session', fake_run_single_session)
+
+        results = harness.run_batch(
+            num_sessions=2,
+            seed_complaints=seeds,
+            max_turns_per_session=1,
+        )
+
+        assert len(results) == 2
+        assert 'actor_critic_optimizer' not in seeds[1]
+        second_seed = seen_specs[1]['seed']
+        assert second_seed['actor_critic_optimizer']['num_sessions_analyzed'] == 1
+        assert second_seed['actor_critic_optimizer']['unresolved_intake_objectives'] == ['documents']
+        assert second_seed['actor_critic_optimizer']['graph_element_targeting_summary']['claim_element_counts'] == {
+            'causation': 2,
+            'protected_activity': 1,
+        }
+        assert 'housing_discrimination' in second_seed['actor_critic_optimizer']['weak_complaint_types']
+        assert second_seed['optimization_guidance']['latest_batch_priorities']
+        assert second_seed['key_facts']['workflow_phase_priorities'] == second_seed['optimization_guidance']['latest_batch_priorities']
+
     def test_preload_hacc_seed_evidence_submits_documents_to_mediator(self, tmp_path):
         source_path = tmp_path / 'policy.pdf'
 

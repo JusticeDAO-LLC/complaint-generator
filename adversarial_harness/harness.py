@@ -6,13 +6,14 @@ Orchestrates multiple adversarial sessions with parallel execution.
 
 import logging
 from typing import Dict, Any, List, Callable, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from collections import Counter
 import csv
 import json
 from datetime import UTC, datetime
 import os
 import inspect
+from copy import deepcopy
 
 from .session import AdversarialSession, SessionResult
 from .complainant import Complainant, ComplaintContext
@@ -85,6 +86,195 @@ class AdversarialHarness:
         self.session_state_dir = session_state_dir
         
         self.results = []
+
+    @staticmethod
+    def _attach_result_spec_metadata(result: SessionResult, spec: Dict[str, Any]) -> SessionResult:
+        try:
+            if isinstance(result.seed_complaint, dict):
+                search_summary = _seed_search_summary(
+                    result.seed_complaint,
+                    str(spec.get('hacc_search_mode') or 'package'),
+                )
+                result.seed_complaint = {
+                    **result.seed_complaint,
+                    '_meta': {
+                        'personality': spec.get('personality'),
+                        'max_turns': spec.get('max_turns'),
+                        'include_hacc_evidence': spec.get('include_hacc_evidence', False),
+                        'hacc_preset': spec.get('hacc_preset'),
+                        'use_hacc_vector_search': spec.get('use_hacc_vector_search', False),
+                        'hacc_search_mode': search_summary['requested_search_mode'],
+                        'hacc_effective_search_mode': search_summary['effective_search_mode'],
+                        'hacc_search_fallback_note': search_summary['fallback_note'],
+                        'search_summary': search_summary,
+                        'seed_source': result.seed_complaint.get('source'),
+                        'anchor_sections': list(
+                            (
+                                result.seed_complaint.get('key_facts', {}) or {}
+                            ).get('anchor_sections', [])
+                        ),
+                    }
+                }
+        except Exception:
+            pass
+        return result
+
+    @staticmethod
+    def _weak_performance_labels(performance: Dict[str, Any], average_score: float, *, limit: int = 3) -> List[str]:
+        weak_labels: List[str] = []
+        for name, payload in sorted(
+            dict(performance or {}).items(),
+            key=lambda item: (float((item[1] or {}).get('average_score') or 0.0), int((item[1] or {}).get('count') or 0)),
+        ):
+            normalized_name = str(name or '').strip()
+            if not normalized_name:
+                continue
+            if float((payload or {}).get('average_score') or 0.0) > float(average_score or 0.0):
+                continue
+            weak_labels.append(normalized_name)
+            if len(weak_labels) >= limit:
+                break
+        return weak_labels
+
+    def _build_seed_feedback_from_results(self, results: List[SessionResult]) -> Dict[str, Any]:
+        successful = [result for result in results if result.success and getattr(result, 'critic_score', None)]
+        if not successful:
+            return {}
+        try:
+            from .optimizer import Optimizer
+
+            report = Optimizer().analyze(successful)
+        except Exception:
+            logger.debug('Could not build optimizer seed feedback from completed results', exc_info=True)
+            return {}
+
+        unresolved_intake_objectives = [
+            str(value).strip()
+            for value in list(
+                ((report.coverage_remediation or {}).get('intake_priorities') or {}).get('uncovered_objectives') or []
+            )
+            if str(value).strip()
+        ]
+        latest_batch_priorities = [
+            str(value).strip()
+            for value in list(report.priority_improvements or [])
+            if str(value).strip()
+        ]
+        weak_complaint_types = self._weak_performance_labels(
+            dict(report.complaint_type_performance or {}),
+            float(report.average_score or 0.0),
+        )
+        weak_evidence_modalities = self._weak_performance_labels(
+            dict(report.evidence_modality_performance or {}),
+            float(report.average_score or 0.0),
+        )
+
+        actor_critic_optimizer = {
+            'num_sessions_analyzed': int(report.num_sessions_analyzed or 0),
+            'num_successful_sessions': int(report.num_sessions_analyzed or 0),
+            'question_quality_avg': float(report.question_quality_avg or 0.0),
+            'empathy_avg': float(report.empathy_avg or 0.0),
+            'efficiency_avg': float(report.efficiency_avg or 0.0),
+            'coverage_avg': float(report.coverage_avg or 0.0),
+            'weak_complaint_types': weak_complaint_types,
+            'weak_evidence_modalities': weak_evidence_modalities,
+            'unresolved_intake_objectives': unresolved_intake_objectives,
+            'latest_batch_priorities': latest_batch_priorities,
+            'graph_element_targeting_summary': dict(report.graph_element_targeting_summary or {}),
+            'phase_signal_context': {
+                'question_quality_avg': float(report.question_quality_avg or 0.0),
+                'empathy_avg': float(report.empathy_avg or 0.0),
+                'efficiency_avg': float(report.efficiency_avg or 0.0),
+                'coverage_avg': float(report.coverage_avg or 0.0),
+                'unresolved_intake_objectives': unresolved_intake_objectives,
+                'num_sessions_analyzed': int(report.num_sessions_analyzed or 0),
+                'num_successful_sessions': int(report.num_sessions_analyzed or 0),
+            },
+        }
+        if latest_batch_priorities:
+            actor_critic_optimizer['priority_improvements'] = latest_batch_priorities
+
+        return {
+            'actor_critic_optimizer': actor_critic_optimizer,
+            'optimization_guidance': {
+                'latest_batch_priorities': latest_batch_priorities,
+                'priority_improvements': latest_batch_priorities,
+            },
+        }
+
+    @staticmethod
+    def _merge_optimizer_feedback(seed: Dict[str, Any], feedback: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(seed, dict) or not isinstance(feedback, dict):
+            return deepcopy(seed) if isinstance(seed, dict) else {}
+
+        def _merge_unique_strings(existing: Any, new_values: Any) -> List[str]:
+            merged: List[str] = []
+            seen = set()
+            for collection in (existing, new_values):
+                for item in list(collection or []):
+                    text = str(item or '').strip()
+                    if not text:
+                        continue
+                    key = text.lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(text)
+            return merged
+
+        merged_seed = deepcopy(seed)
+        existing_actor = dict(merged_seed.get('actor_critic_optimizer') or {})
+        feedback_actor = dict(feedback.get('actor_critic_optimizer') or {})
+        merged_actor = {**existing_actor, **feedback_actor}
+        for key in (
+            'weak_complaint_types',
+            'weak_evidence_modalities',
+            'unresolved_intake_objectives',
+            'latest_batch_priorities',
+            'priority_improvements',
+        ):
+            merged_actor[key] = _merge_unique_strings(existing_actor.get(key), feedback_actor.get(key))
+        existing_phase_signal_context = dict(existing_actor.get('phase_signal_context') or {})
+        feedback_phase_signal_context = dict(feedback_actor.get('phase_signal_context') or {})
+        if existing_phase_signal_context or feedback_phase_signal_context:
+            merged_actor['phase_signal_context'] = {
+                **existing_phase_signal_context,
+                **feedback_phase_signal_context,
+                'unresolved_intake_objectives': _merge_unique_strings(
+                    existing_phase_signal_context.get('unresolved_intake_objectives'),
+                    feedback_phase_signal_context.get('unresolved_intake_objectives'),
+                ),
+            }
+        merged_seed['actor_critic_optimizer'] = merged_actor
+
+        existing_guidance = dict(merged_seed.get('optimization_guidance') or {})
+        feedback_guidance = dict(feedback.get('optimization_guidance') or {})
+        merged_seed['optimization_guidance'] = {
+            **existing_guidance,
+            **feedback_guidance,
+            'latest_batch_priorities': _merge_unique_strings(
+                existing_guidance.get('latest_batch_priorities'),
+                feedback_guidance.get('latest_batch_priorities'),
+            ),
+            'priority_improvements': _merge_unique_strings(
+                existing_guidance.get('priority_improvements'),
+                feedback_guidance.get('priority_improvements'),
+            ),
+        }
+
+        key_facts = dict(merged_seed.get('key_facts') or {})
+        if key_facts or merged_actor.get('unresolved_intake_objectives') or merged_seed['optimization_guidance'].get('latest_batch_priorities'):
+            key_facts['unresolved_intake_objectives'] = _merge_unique_strings(
+                key_facts.get('unresolved_intake_objectives'),
+                merged_actor.get('unresolved_intake_objectives'),
+            )
+            key_facts['workflow_phase_priorities'] = _merge_unique_strings(
+                key_facts.get('workflow_phase_priorities'),
+                merged_seed['optimization_guidance'].get('latest_batch_priorities'),
+            )
+            merged_seed['key_facts'] = key_facts
+
+        return merged_seed
 
     def _preload_hacc_seed_evidence(self, mediator: Any, seed: Dict[str, Any], *, session_id: str) -> List[Dict[str, Any]]:
         save_claim_support_document = getattr(mediator, "save_claim_support_document", None)
@@ -323,7 +513,7 @@ class AdversarialHarness:
         session_specs = []
         for i in range(num_sessions):
             session_id = f"session_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{i:03d}"
-            seed = seed_complaints[i % len(seed_complaints)]
+            seed = deepcopy(seed_complaints[i % len(seed_complaints)])
             personality = personalities[i % len(personalities)]
             
             session_specs.append({
@@ -337,64 +527,48 @@ class AdversarialHarness:
                 'hacc_search_mode': hacc_search_mode,
             })
         
-        # Run sessions in parallel
+        # Run sessions in parallel while allowing completed results to steer later seeds.
         results = []
+        pending_specs = list(session_specs)
         with ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
-            # Submit all tasks
-            future_to_spec = {
-                executor.submit(self._run_single_session, spec): spec
-                for spec in session_specs
-            }
-            
-            # Collect results as they complete
-            completed = 0
-            for future in as_completed(future_to_spec):
-                spec = future_to_spec[future]
-                try:
-                    result = future.result()
-                    # Attach spec metadata for downstream optimization.
-                    try:
-                        if isinstance(result.seed_complaint, dict):
-                            search_summary = _seed_search_summary(
-                                result.seed_complaint,
-                                str(spec.get('hacc_search_mode') or 'package'),
-                            )
-                            result.seed_complaint = {
-                                **result.seed_complaint,
-                                '_meta': {
-                                    'personality': spec.get('personality'),
-                                    'max_turns': spec.get('max_turns'),
-                                    'include_hacc_evidence': spec.get('include_hacc_evidence', False),
-                                    'hacc_preset': spec.get('hacc_preset'),
-                                    'use_hacc_vector_search': spec.get('use_hacc_vector_search', False),
-                                    'hacc_search_mode': search_summary['requested_search_mode'],
-                                    'hacc_effective_search_mode': search_summary['effective_search_mode'],
-                                    'hacc_search_fallback_note': search_summary['fallback_note'],
-                                    'search_summary': search_summary,
-                                    'seed_source': result.seed_complaint.get('source'),
-                                    'anchor_sections': list(
-                                        (
-                                            result.seed_complaint.get('key_facts', {}) or {}
-                                        ).get('anchor_sections', [])
-                                    ),
-                                }
-                            }
-                    except Exception:
-                        pass
+            future_to_spec = {}
 
-                    results.append(result)
-                    self._persist_session(result)
-                    completed += 1
-                    
-                    if result.success:
-                        logger.info(f"Session {spec['session_id']} completed ({completed}/{num_sessions}). "
-                                  f"Score: {result.critic_score.overall_score:.3f}")
-                    else:
-                        logger.warning(f"Session {spec['session_id']} failed ({completed}/{num_sessions}): "
-                                     f"{result.error}")
-                except Exception as e:
-                    logger.error(f"Error in session {spec['session_id']}: {e}")
-                    completed += 1
+            def submit_next_spec() -> None:
+                if not pending_specs:
+                    return
+                next_spec = pending_specs.pop(0)
+                feedback = self._build_seed_feedback_from_results(results)
+                if feedback:
+                    next_spec = {
+                        **next_spec,
+                        'seed': self._merge_optimizer_feedback(next_spec['seed'], feedback),
+                    }
+                future_to_spec[executor.submit(self._run_single_session, next_spec)] = next_spec
+
+            for _ in range(min(self.max_parallel, len(pending_specs))):
+                submit_next_spec()
+
+            completed = 0
+            while future_to_spec:
+                done, _pending = wait(tuple(future_to_spec.keys()), return_when=FIRST_COMPLETED)
+                for future in done:
+                    spec = future_to_spec.pop(future)
+                    try:
+                        result = self._attach_result_spec_metadata(future.result(), spec)
+                        results.append(result)
+                        self._persist_session(result)
+                        completed += 1
+
+                        if result.success:
+                            logger.info(f"Session {spec['session_id']} completed ({completed}/{num_sessions}). "
+                                      f"Score: {result.critic_score.overall_score:.3f}")
+                        else:
+                            logger.warning(f"Session {spec['session_id']} failed ({completed}/{num_sessions}): "
+                                         f"{result.error}")
+                    except Exception as e:
+                        logger.error(f"Error in session {spec['session_id']}: {e}")
+                        completed += 1
+                    submit_next_spec()
         
         self.results.extend(results)
         logger.info(f"Batch complete. {len([r for r in results if r.success])}/{num_sessions} successful")

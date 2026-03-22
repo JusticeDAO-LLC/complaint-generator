@@ -4940,17 +4940,17 @@ class FormalComplaintDocumentBuilder:
         return f"{marker} {', '.join(ranges)}"
 
     def _format_exhibit_reference_phrase(self, exhibits: Any) -> str:
+        exhibit_list = [exhibit for exhibit in _coerce_list(exhibits) if isinstance(exhibit, dict)]
+        include_titles_for_all = len(exhibit_list) <= 2
         exhibit_entries: List[str] = []
-        for exhibit in _coerce_list(exhibits):
-            if not isinstance(exhibit, dict):
-                continue
+        for exhibit in exhibit_list:
             label = str(exhibit.get("label") or "").strip()
             if not label:
                 continue
             title = str(exhibit.get("title") or "").strip()
             kind = str(exhibit.get("kind") or "").strip().lower()
             entry = label
-            if kind == "evidence" and title:
+            if title and (kind == "evidence" or include_titles_for_all):
                 entry = f"{label} ({title})"
             if entry not in exhibit_entries:
                 exhibit_entries.append(entry)

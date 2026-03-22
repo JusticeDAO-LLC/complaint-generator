@@ -160,6 +160,57 @@ class AdversarialSession:
                 return nested_type.strip().lower()
         return ''
 
+    def _refresh_final_intake_case_file_snapshot(self) -> Dict[str, Any] | None:
+        """Refresh the stored intake case file from the current knowledge graph when possible."""
+        phase_manager = getattr(self.mediator, 'phase_manager', None)
+        if phase_manager is None or not hasattr(phase_manager, 'get_phase_data'):
+            return None
+        try:
+            from complaint_phases import ComplaintPhase, build_intake_case_file, refresh_intake_case_file
+
+            knowledge_graph = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+            intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
+            if knowledge_graph is None or not isinstance(intake_case_file, dict):
+                return intake_case_file if isinstance(intake_case_file, dict) else None
+            refreshed_intake_case_file = refresh_intake_case_file(
+                intake_case_file,
+                knowledge_graph,
+                append_snapshot=False,
+            )
+            graph_has_structured_timeline = any(
+                bool(getattr(entity, 'attributes', {}).get('structured_timeline_group'))
+                for entity in getattr(knowledge_graph, 'entities', {}).values()
+            )
+            case_file_has_structured_timeline = any(
+                bool((fact or {}).get('structured_timeline_group'))
+                for fact in list(refreshed_intake_case_file.get('canonical_facts') or [])
+                if isinstance(fact, dict)
+            )
+            source_complaint_text = str(intake_case_file.get('source_complaint_text') or '').strip()
+            if graph_has_structured_timeline and not case_file_has_structured_timeline:
+                rebuilt_intake_case_file = build_intake_case_file(
+                    knowledge_graph,
+                    complaint_text=source_complaint_text,
+                )
+                confirmation_record = intake_case_file.get('complainant_summary_confirmation')
+                if isinstance(confirmation_record, dict) and confirmation_record:
+                    rebuilt_intake_case_file['complainant_summary_confirmation'] = dict(confirmation_record)
+                contradiction_queue = intake_case_file.get('contradiction_queue')
+                if isinstance(contradiction_queue, list) and contradiction_queue:
+                    rebuilt_intake_case_file['contradiction_queue'] = list(contradiction_queue)
+                if source_complaint_text and not rebuilt_intake_case_file.get('source_complaint_text'):
+                    rebuilt_intake_case_file['source_complaint_text'] = source_complaint_text
+                refreshed_intake_case_file = rebuilt_intake_case_file
+            if hasattr(phase_manager, 'update_phase_data'):
+                phase_manager.update_phase_data(
+                    ComplaintPhase.INTAKE,
+                    'intake_case_file',
+                    refreshed_intake_case_file,
+                )
+            return refreshed_intake_case_file
+        except Exception:
+            return None
+
     @staticmethod
     def _normalize_question(question_text: str) -> str:
         return " ".join(question_text.lower().strip().split())
@@ -4525,6 +4576,8 @@ class AdversarialSession:
                     logger.info(f"Session converged after {turns} turns")
                     break
             
+            refreshed_intake_case_file_snapshot = self._refresh_final_intake_case_file_snapshot()
+
             # Step 4: Get final state
             final_state = self.mediator.get_three_phase_status()
             if isinstance(final_state, dict):
@@ -4541,6 +4594,11 @@ class AdversarialSession:
                         'document_generation': self._compact_document_generation_result(document_generation_result),
                     }
                 final_state['grounding_summary'] = self._build_grounding_summary(seed_complaint, final_state)
+
+            refreshed_intake_case_file_snapshot = (
+                self._refresh_final_intake_case_file_snapshot()
+                or refreshed_intake_case_file_snapshot
+            )
             
             # Get graph summaries if available
             kg_summary = None
@@ -4554,7 +4612,10 @@ class AdversarialSession:
                 from complaint_phases import ComplaintPhase
                 kg = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
                 dg = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'dependency_graph')
-                intake_case_file_snapshot = self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+                intake_case_file_snapshot = (
+                    refreshed_intake_case_file_snapshot
+                    or self.mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
+                )
                 uploaded_evidence_summary = self.mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary')
                 claim_support_packet_summary = self.mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packet_summary')
                 if kg:

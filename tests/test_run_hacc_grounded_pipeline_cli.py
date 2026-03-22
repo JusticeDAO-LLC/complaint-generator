@@ -153,6 +153,9 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert Path(artifacts["research_action_queue_json"]).is_file()
     assert Path(artifacts["recommended_next_action_json"]).is_file()
     assert Path(artifacts["seeded_commoncrawl_discovery_json"]).is_file()
+    assert Path(artifacts["grounded_next_steps_json"]).is_file()
+    assert Path(artifacts["grounded_intake_follow_up_worksheet_json"]).is_file()
+    assert Path(artifacts["grounded_intake_follow_up_worksheet_md"]).is_file()
 
     production_steps = json.loads(Path(artifacts["production_evidence_intake_steps_json"]).read_text(encoding="utf-8"))
     mediator_checklist = json.loads(Path(artifacts["mediator_upload_checklist_json"]).read_text(encoding="utf-8"))
@@ -162,6 +165,9 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     research_action_queue = json.loads(Path(artifacts["research_action_queue_json"]).read_text(encoding="utf-8"))
     recommended_next_action = json.loads(Path(artifacts["recommended_next_action_json"]).read_text(encoding="utf-8"))
     seeded_discovery = json.loads(Path(artifacts["seeded_commoncrawl_discovery_json"]).read_text(encoding="utf-8"))
+    grounded_next_steps = json.loads(Path(artifacts["grounded_next_steps_json"]).read_text(encoding="utf-8"))
+    grounded_follow_up = json.loads(Path(artifacts["grounded_intake_follow_up_worksheet_json"]).read_text(encoding="utf-8"))
+    grounded_follow_up_md = Path(artifacts["grounded_intake_follow_up_worksheet_md"]).read_text(encoding="utf-8")
 
     assert production_steps == ["Select the strongest dated notice first."]
     assert mediator_checklist == ["Evaluate chronology anchors and named actors."]
@@ -172,6 +178,10 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert recommended_next_action["action"] == "upload_local_repository_evidence"
     assert seeded_discovery["status"] == "success"
     assert seeded_discovery["queries"][0].startswith("site:hacc.example")
+    assert grounded_next_steps["recommended_next_action"]["action"] == "upload_local_repository_evidence"
+    assert grounded_next_steps["steps"][0].startswith("Upload the strongest repository-backed evidence")
+    assert grounded_follow_up["follow_up_items"][0]["gap"] == "evidence_upload"
+    assert "Grounded Intake Follow-Up Worksheet" in grounded_follow_up_md
 
 
 def test_run_hacc_grounded_pipeline_degrades_when_seeded_discovery_raises(tmp_path, monkeypatch):

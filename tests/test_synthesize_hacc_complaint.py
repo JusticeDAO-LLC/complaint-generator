@@ -796,6 +796,34 @@ def test_build_intake_follow_up_worksheet_creates_fillable_items():
     assert worksheet["follow_up_items"][1]["gap"] == "who at HACC made, communicated, or carried out each decision"
 
 
+def test_build_intake_follow_up_worksheet_prioritizes_grounded_recommended_next_action():
+    package = {
+        "generated_at": "2026-03-17T00:00:00+00:00",
+        "preset": "notice_retaliation",
+        "session_id": "session-1",
+        "filing_forum": "hud",
+        "summary": "Summary text.",
+        "grounded_recommended_next_action": {
+            "phase_name": "graph_analysis",
+            "action": "fill_chronology_gaps",
+            "description": "Prioritize dated notices and response timing before broad drafting.",
+        },
+        "outstanding_intake_gaps": [
+            "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
+        ],
+        "outstanding_intake_follow_up_questions": [
+            "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+        ],
+    }
+
+    worksheet = MODULE._build_intake_follow_up_worksheet(package)
+
+    assert worksheet["follow_up_items"][0]["id"] == "grounded_priority_01"
+    assert worksheet["follow_up_items"][0]["objective"] == "fill_chronology_gaps"
+    assert worksheet["follow_up_items"][0]["source"] == "grounded_recommended_next_action"
+    assert worksheet["follow_up_items"][1]["id"] == "follow_up_01"
+
+
 def test_merge_completed_intake_worksheet_adds_answers_and_closes_matching_gaps():
     session = {
         "conversation_history": [],

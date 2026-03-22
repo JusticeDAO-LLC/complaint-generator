@@ -2239,16 +2239,23 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
     previous_temporal_issue_registry = _coerce_list(case_file.get("temporal_issue_registry"))
-    case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates([
-        _normalize_canonical_fact_record(record)
-        for record in _coerce_list(case_file.get("canonical_facts"))
-        if isinstance(record, dict)
-    ])
-    case_file["proof_leads"] = [
-        _normalize_proof_lead_record(record)
-        for record in _coerce_list(case_file.get("proof_leads"))
-        if isinstance(record, dict)
-    ]
+    if knowledge_graph is not None:
+        case_file["candidate_claims"] = build_candidate_claims(knowledge_graph)
+        case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates(
+            build_canonical_facts(knowledge_graph)
+        )
+        case_file["proof_leads"] = build_proof_leads(knowledge_graph)
+    else:
+        case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates([
+            _normalize_canonical_fact_record(record)
+            for record in _coerce_list(case_file.get("canonical_facts"))
+            if isinstance(record, dict)
+        ])
+        case_file["proof_leads"] = [
+            _normalize_proof_lead_record(record)
+            for record in _coerce_list(case_file.get("proof_leads"))
+            if isinstance(record, dict)
+        ]
     case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
     case_file["timeline_anchors"] = build_timeline_anchors(_coerce_list(case_file.get("canonical_facts")))
     case_file["timeline_relations"] = build_timeline_relations(_coerce_list(case_file.get("canonical_facts")))

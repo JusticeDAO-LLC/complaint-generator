@@ -8,6 +8,8 @@ if str(ROOT) not in sys.path:
 
 from adversarial_harness.session import AdversarialSession
 from adversarial_harness.optimizer import Optimizer
+from complaint_phases import ComplaintPhase, build_intake_case_file
+from complaint_phases.knowledge_graph import Entity, KnowledgeGraphBuilder
 
 
 class _DummyMediator:
@@ -232,6 +234,34 @@ class _OptimizerStatusMediator(_ConvergingMediator):
         }
 
 
+class _PhaseManagerStub:
+    def __init__(self, phase_data):
+        self._phase_data = dict(phase_data)
+
+    def get_phase_data(self, phase, key):
+        return self._phase_data.get((phase, key))
+
+    def update_phase_data(self, phase, key, value):
+        self._phase_data[(phase, key)] = value
+
+
+class _StaleFinalStateMediator:
+    def __init__(self, phase_manager):
+        self.phase_manager = phase_manager
+
+    def start_three_phase_process(self, complaint_text):
+        return {"initial_questions": []}
+
+    def process_denoising_answer(self, question, answer):
+        return {"next_questions": [], "converged": True}
+
+    def get_three_phase_status(self):
+        return {
+            "intake_readiness": {"ready_to_advance": False},
+            "intake_case_file": self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") or {},
+        }
+
+
 def _make_session() -> AdversarialSession:
     return AdversarialSession(
         session_id="test_session",
@@ -282,6 +312,16 @@ def _make_fallback_document_session(mediator: _FallbackDocumentMediator) -> Adve
     )
 
 
+def _make_stale_final_state_session(mediator: _StaleFinalStateMediator) -> AdversarialSession:
+    return AdversarialSession(
+        session_id="stale_final_state_session",
+        mediator=mediator,
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=0,
+    )
+
+
 def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
     seed = {
         "key_facts": {
@@ -314,6 +354,75 @@ def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
             "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?"
         ]
     ) == {"documents", "anchor_grievance_hearing", "anchor_appeal_rights", "hearing_request_timing"}
+
+
+def test_run_refreshes_final_intake_case_file_snapshot_from_live_knowledge_graph():
+    complaint_text = "HACC retaliated against me after I used the grievance process."
+    knowledge_graph = KnowledgeGraphBuilder().build_from_text(complaint_text)
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:protected_activity",
+            type="fact",
+            name="Protected activity",
+            attributes={
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "event_label": "Protected activity",
+                "event_id": "event_1",
+                "structured_timeline_group": "group_1",
+                "sequence_index": 1,
+                "event_date_or_range": "",
+                "source_artifact_ids": ["grievance_email.pdf"],
+                "event_support_refs": ["grievance_email.pdf"],
+                "description": "Me used the grievance process. Artifact: grievance_email.pdf",
+            },
+        )
+    )
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:adverse_action",
+            type="fact",
+            name="Adverse action",
+            attributes={
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "event_label": "Adverse action",
+                "event_id": "event_2",
+                "structured_timeline_group": "group_1",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+                "source_artifact_ids": ["termination_notice.pdf"],
+                "event_support_refs": ["termination_notice.pdf"],
+                "description": "HACC threatened termination. Artifact: termination_notice.pdf",
+            },
+        )
+    )
+
+    stale_intake_case_file = build_intake_case_file(KnowledgeGraphBuilder().build_from_text(complaint_text))
+    assert stale_intake_case_file.get("timeline_relations") == []
+
+    phase_manager = _PhaseManagerStub(
+        {
+            (ComplaintPhase.INTAKE, "knowledge_graph"): knowledge_graph,
+            (ComplaintPhase.INTAKE, "intake_case_file"): stale_intake_case_file,
+        }
+    )
+    mediator = _StaleFinalStateMediator(phase_manager)
+    session = _make_stale_final_state_session(mediator)
+
+    result = session.run({"summary": complaint_text, "key_facts": {}})
+
+    refreshed = result.final_state["intake_case_file"]
+    assert refreshed["timeline_relations"]
+    assert any(
+        relation.get("relation_type") == "before"
+        and relation.get("inference_mode") == "derived_from_structured_sequence"
+        for relation in refreshed["timeline_relations"]
+    )
+    assert any(
+        (fact.get("structured_timeline_group") or "") == "group_1"
+        for fact in refreshed["canonical_facts"]
+    )
 
 
 def test_extract_intake_prompt_candidates_supplements_seed_anchor_sections():
