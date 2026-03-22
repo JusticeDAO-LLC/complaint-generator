@@ -1170,10 +1170,14 @@ class Mediator:
 			preferred_question_objective = 'establish_chronology'
 			preferred_question_type = 'timeline'
 			suggested_prompt_family = 'chronology_sequence'
-			if recommended_resolution_lane in {'request_document', 'seek_external_record'} or required_provenance_kinds:
+			if recommended_resolution_lane in {'request_document', 'seek_external_record'}:
 				preferred_question_objective = 'identify_supporting_proof'
 				preferred_question_type = 'evidence'
 				suggested_prompt_family = 'exhibit_grounding'
+			elif issue_type.startswith('retaliation_') or 'causation' in target_element_ids:
+				preferred_question_objective = 'establish_causation'
+				preferred_question_type = 'timeline'
+				suggested_prompt_family = 'causation_sequence'
 			elif issue_type == 'missing_anchor':
 				preferred_question_objective = 'exact_dates'
 				preferred_question_type = 'timeline'
@@ -1182,10 +1186,6 @@ class Mediator:
 				preferred_question_objective = 'identify_responsible_actor'
 				preferred_question_type = 'responsible_party'
 				suggested_prompt_family = 'actor_identity'
-			elif issue_type.startswith('retaliation_') or 'causation' in target_element_ids:
-				preferred_question_objective = 'establish_causation'
-				preferred_question_type = 'timeline'
-				suggested_prompt_family = 'causation_sequence'
 			ledger.append(
 				{
 					'issue_id': issue_id,

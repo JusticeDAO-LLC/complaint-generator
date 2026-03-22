@@ -90,7 +90,9 @@ def _list_grounded_runs(grounded_root: Path) -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
     for child in _grounded_run_children(grounded_root):
         status_path = child / "grounded_workflow_status.json"
+        summary_path = child / "run_summary.json"
         status: dict[str, Any] = {}
+        summary: dict[str, Any] = {}
         if status_path.is_file():
             try:
                 loaded = json.loads(status_path.read_text(encoding="utf-8"))
@@ -98,6 +100,13 @@ def _list_grounded_runs(grounded_root: Path) -> list[dict[str, Any]]:
                 loaded = {}
             if isinstance(loaded, dict):
                 status = loaded
+        if summary_path.is_file():
+            try:
+                loaded = json.loads(summary_path.read_text(encoding="utf-8"))
+            except Exception:
+                loaded = {}
+            if isinstance(loaded, dict):
+                summary = loaded
         effective_next_action = dict(status.get("effective_next_action") or {})
         runs.append(
             {
@@ -110,6 +119,11 @@ def _list_grounded_runs(grounded_root: Path) -> list[dict[str, Any]]:
                 ),
                 "grounded_follow_up_answer_count": int(status.get("grounded_follow_up_answer_count", 0) or 0),
                 "next_action": str(effective_next_action.get("action") or ""),
+                "grounding_query": str(summary.get("grounding_query") or ""),
+                "claim_type": str(summary.get("claim_type") or ""),
+                "hacc_preset": str(summary.get("hacc_preset") or ""),
+                "use_hacc_vector_search": bool(summary.get("use_hacc_vector_search")),
+                "hacc_search_mode": str(summary.get("hacc_search_mode") or ""),
             }
         )
     return runs
@@ -171,11 +185,24 @@ def _best_resume_candidate(runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
         )
         resume_command_kind = "synthesize"
     else:
-        resume_command = (
-            f"python scripts/run_hacc_grounded_pipeline.py --output-dir {run_dir}"
-            if run_dir
-            else ""
-        )
+        rerun_parts = ["python", "scripts/run_hacc_grounded_pipeline.py"]
+        if run_dir:
+            rerun_parts.extend(["--output-dir", run_dir])
+        grounding_query = str(best_run.get("grounding_query") or "").strip()
+        claim_type = str(best_run.get("claim_type") or "").strip()
+        hacc_preset = str(best_run.get("hacc_preset") or "").strip()
+        hacc_search_mode = str(best_run.get("hacc_search_mode") or "").strip()
+        if grounding_query:
+            rerun_parts.extend(["--query", grounding_query])
+        if claim_type:
+            rerun_parts.extend(["--claim-type", claim_type])
+        if hacc_preset:
+            rerun_parts.extend(["--hacc-preset", hacc_preset])
+        if hacc_search_mode:
+            rerun_parts.extend(["--hacc-search-mode", hacc_search_mode])
+        if best_run.get("use_hacc_vector_search"):
+            rerun_parts.append("--use-hacc-vector-search")
+        resume_command = " ".join(rerun_parts) if run_dir else ""
         resume_command_kind = "rerun"
     return {
         "run_name": str(best_run.get("run_name") or ""),

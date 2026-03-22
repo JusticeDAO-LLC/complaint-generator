@@ -24,6 +24,18 @@ from .hacc_evidence import build_hacc_mediator_evidence_packet
 logger = logging.getLogger(__name__)
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, set):
+        return [_json_safe(item) for item in sorted(value, key=lambda item: str(item))]
+    return value
+
+
 def _seed_search_summary(seed: Dict[str, Any], requested_search_mode: str) -> Dict[str, Any]:
     key_facts = dict(seed.get('key_facts') or {})
     stored = dict(key_facts.get('search_summary') or {})
@@ -932,6 +944,7 @@ class AdversarialHarness:
             'statistics': self.get_statistics(),
             'results': [r.to_dict() for r in self.results]
         }
+        data = _json_safe(data)
         
         os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
         

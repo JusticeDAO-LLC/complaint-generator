@@ -87,6 +87,7 @@ class OptimizationReport:
     cross_phase_findings: List[str] | None = None
     workflow_action_queue: List[Dict[str, Any]] | None = None
     document_provenance_summary: Dict[str, Any] | None = None
+    intake_question_structure_summary: Dict[str, Any] | None = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -146,6 +147,7 @@ class OptimizationReport:
             'document_chronology_reasoning_summary': self.document_chronology_reasoning_summary or {},
             'cross_phase_findings': list(self.cross_phase_findings or []),
             'workflow_action_queue': list(self.workflow_action_queue or []),
+            'intake_question_structure_summary': self.intake_question_structure_summary or {},
         }
 
 

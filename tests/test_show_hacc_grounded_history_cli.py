@@ -137,6 +137,30 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
     newer = tmp_path / "20260322_120000"
     older.mkdir()
     newer.mkdir()
+    (older / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "grounding_query": "older query",
+                "claim_type": "housing_discrimination",
+                "hacc_preset": "core_hacc_policies",
+                "use_hacc_vector_search": False,
+                "hacc_search_mode": "package",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (newer / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "grounding_query": "newer query",
+                "claim_type": "housing_discrimination",
+                "hacc_preset": "core_hacc_policies",
+                "use_hacc_vector_search": True,
+                "hacc_search_mode": "hybrid",
+            }
+        ),
+        encoding="utf-8",
+    )
     (older / "grounded_workflow_status.json").write_text(
         json.dumps(
             {
@@ -168,6 +192,8 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
     assert runs[0]["workflow_stage"] == "post_grounded_follow_up"
     assert runs[0]["next_action"] == "continue_drafting"
     assert runs[0]["has_persisted_completed_grounded_worksheet"] is True
+    assert runs[0]["grounding_query"] == "newer query"
+    assert runs[0]["use_hacc_vector_search"] is True
     assert runs[1]["run_name"] == "20260322_100000"
 
 
@@ -316,6 +342,11 @@ def test_best_resume_candidate_falls_back_to_inspection_for_pre_follow_up_runs()
                 "has_refreshed_grounding_state": False,
                 "has_persisted_completed_grounded_worksheet": False,
                 "grounded_follow_up_answer_count": 0,
+                "grounding_query": "termination notice chronology",
+                "claim_type": "housing_discrimination",
+                "hacc_preset": "core_hacc_policies",
+                "use_hacc_vector_search": True,
+                "hacc_search_mode": "hybrid",
             }
         ]
     )
@@ -323,7 +354,15 @@ def test_best_resume_candidate_falls_back_to_inspection_for_pre_follow_up_runs()
     assert candidate["run_name"] == "20260322_120000"
     assert candidate["resume_command_kind"] == "rerun"
     assert candidate["inspect_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_120000"
-    assert candidate["resume_command"] == "python scripts/run_hacc_grounded_pipeline.py --output-dir /tmp/20260322_120000"
+    assert candidate["resume_command"] == (
+        "python scripts/run_hacc_grounded_pipeline.py "
+        "--output-dir /tmp/20260322_120000 "
+        "--query termination notice chronology "
+        "--claim-type housing_discrimination "
+        "--hacc-preset core_hacc_policies "
+        "--hacc-search-mode hybrid "
+        "--use-hacc-vector-search"
+    )
 
 
 def test_main_list_runs_prints_rerun_command_for_pre_follow_up_candidate(tmp_path, capsys):
