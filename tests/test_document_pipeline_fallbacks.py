@@ -762,6 +762,57 @@ def test_grouped_factual_allegation_headings_name_primary_evidence_exhibit():
     assert "ADVERSE ACTION AND RETALIATORY CONDUCT (Exhibit A)" in grouped_lines
 
 
+def test_document_provenance_summary_tracks_exhibit_backed_counts():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    summary = draft["document_provenance_summary"]
+
+    assert summary["summary_fact_exhibit_backed_count"] >= 1
+    assert summary["factual_allegation_exhibit_backed_count"] >= 1
+    assert summary["claim_supporting_fact_exhibit_backed_count"] >= 1
+
+
 def test_due_process_claim_support_entries_inherit_process_fact_ids():
     builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
 

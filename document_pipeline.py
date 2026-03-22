@@ -4691,6 +4691,7 @@ class FormalComplaintDocumentBuilder:
         claim_rows = []
         total_claim_support_rows = 0
         total_claim_support_fact_backed_rows = 0
+        total_claim_support_exhibit_backed_rows = 0
         focused_entry_count = 0
         focus_source_counts: Dict[str, int] = {}
         all_fact_ids: List[str] = []
@@ -4703,8 +4704,10 @@ class FormalComplaintDocumentBuilder:
             ]
             fact_backed_count = sum(1 for row in provenance_rows if _normalize_identifier_list(row.get("fact_ids") or []))
             artifact_backed_count = sum(1 for row in provenance_rows if _normalize_identifier_list(row.get("source_artifact_ids") or []))
+            exhibit_backed_count = sum(1 for row in provenance_rows if str(row.get("exhibit_label") or "").strip())
             total_claim_support_rows += len(provenance_rows)
             total_claim_support_fact_backed_rows += fact_backed_count
+            total_claim_support_exhibit_backed_rows += exhibit_backed_count
             for row in provenance_rows:
                 all_fact_ids.extend(_normalize_identifier_list(row.get("fact_ids") or []))
                 all_artifact_ids.extend(_normalize_identifier_list(row.get("source_artifact_ids") or []))
@@ -4719,6 +4722,7 @@ class FormalComplaintDocumentBuilder:
                     "supporting_fact_count": len(provenance_rows),
                     "fact_backed_supporting_fact_count": fact_backed_count,
                     "artifact_backed_supporting_fact_count": artifact_backed_count,
+                    "exhibit_backed_supporting_fact_count": exhibit_backed_count,
                     "fact_ids": _normalize_identifier_list(
                         [
                             fact_id
@@ -4739,6 +4743,9 @@ class FormalComplaintDocumentBuilder:
         factual_fact_backed_count = sum(
             1 for paragraph in factual_paragraphs if _normalize_identifier_list(paragraph.get("fact_ids") or [])
         )
+        factual_exhibit_backed_count = sum(
+            1 for paragraph in factual_paragraphs if str(paragraph.get("exhibit_label") or "").strip()
+        )
         for paragraph in factual_paragraphs:
             all_fact_ids.extend(_normalize_identifier_list(paragraph.get("fact_ids") or []))
             all_artifact_ids.extend(_normalize_identifier_list(paragraph.get("source_artifact_ids") or []))
@@ -4752,6 +4759,7 @@ class FormalComplaintDocumentBuilder:
             entry for entry in _coerce_list(draft.get("summary_of_fact_entries")) if isinstance(entry, dict)
         ]
         summary_fact_backed_count = sum(1 for entry in summary_entries if _normalize_identifier_list(entry.get("fact_ids") or []))
+        summary_exhibit_backed_count = sum(1 for entry in summary_entries if str(entry.get("exhibit_label") or "").strip())
         for entry in summary_entries:
             all_fact_ids.extend(_normalize_identifier_list(entry.get("fact_ids") or []))
             all_artifact_ids.extend(_normalize_identifier_list(entry.get("source_artifact_ids") or []))
@@ -4768,11 +4776,14 @@ class FormalComplaintDocumentBuilder:
         return {
             "summary_fact_count": len(summary_entries),
             "summary_fact_backed_count": summary_fact_backed_count,
+            "summary_fact_exhibit_backed_count": summary_exhibit_backed_count,
             "factual_allegation_paragraph_count": len(factual_paragraphs),
             "factual_allegation_fact_backed_count": factual_fact_backed_count,
+            "factual_allegation_exhibit_backed_count": factual_exhibit_backed_count,
             "claim_count": len(claims),
             "claim_supporting_fact_count": total_claim_support_rows,
             "claim_supporting_fact_backed_count": total_claim_support_fact_backed_rows,
+            "claim_supporting_fact_exhibit_backed_count": total_claim_support_exhibit_backed_rows,
             "fact_id_count": len(_normalize_identifier_list(all_fact_ids)),
             "source_artifact_id_count": len(_normalize_identifier_list(all_artifact_ids)),
             "fact_backed_ratio": round(fact_backed_ratio, 4),

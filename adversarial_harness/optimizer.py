@@ -1447,6 +1447,10 @@ class Optimizer:
                 "avg_summary_fact_backed_ratio": 0.0,
                 "avg_factual_allegation_fact_backed_ratio": 0.0,
                 "avg_claim_supporting_fact_backed_ratio": 0.0,
+                "avg_exhibit_backed_ratio": 0.0,
+                "avg_summary_exhibit_backed_ratio": 0.0,
+                "avg_factual_allegation_exhibit_backed_ratio": 0.0,
+                "avg_claim_supporting_fact_exhibit_backed_ratio": 0.0,
                 "low_grounding_session_count": 0,
                 "low_grounding_flag": False,
             }
@@ -1466,8 +1470,24 @@ class Optimizer:
             _ratio(summary, "claim_supporting_fact_backed_count", "claim_supporting_fact_count")
             for summary in summaries
         ]
+        summary_exhibit_ratios = [
+            _ratio(summary, "summary_fact_exhibit_backed_count", "summary_fact_count")
+            for summary in summaries
+        ]
+        allegation_exhibit_ratios = [
+            _ratio(summary, "factual_allegation_exhibit_backed_count", "factual_allegation_paragraph_count")
+            for summary in summaries
+        ]
+        claim_exhibit_ratios = [
+            _ratio(summary, "claim_supporting_fact_exhibit_backed_count", "claim_supporting_fact_count")
+            for summary in summaries
+        ]
         combined_ratios = [
             (summary_ratios[index] + allegation_ratios[index] + claim_ratios[index]) / 3.0
+            for index in range(len(summaries))
+        ]
+        combined_exhibit_ratios = [
+            (summary_exhibit_ratios[index] + allegation_exhibit_ratios[index] + claim_exhibit_ratios[index]) / 3.0
             for index in range(len(summaries))
         ]
         low_grounding_session_count = sum(1 for ratio in combined_ratios if ratio < 0.6)
@@ -1478,6 +1498,10 @@ class Optimizer:
             "avg_summary_fact_backed_ratio": round(sum(summary_ratios) / len(summary_ratios), 4),
             "avg_factual_allegation_fact_backed_ratio": round(sum(allegation_ratios) / len(allegation_ratios), 4),
             "avg_claim_supporting_fact_backed_ratio": round(sum(claim_ratios) / len(claim_ratios), 4),
+            "avg_exhibit_backed_ratio": round(sum(combined_exhibit_ratios) / len(combined_exhibit_ratios), 4),
+            "avg_summary_exhibit_backed_ratio": round(sum(summary_exhibit_ratios) / len(summary_exhibit_ratios), 4),
+            "avg_factual_allegation_exhibit_backed_ratio": round(sum(allegation_exhibit_ratios) / len(allegation_exhibit_ratios), 4),
+            "avg_claim_supporting_fact_exhibit_backed_ratio": round(sum(claim_exhibit_ratios) / len(claim_exhibit_ratios), 4),
             "low_grounding_session_count": low_grounding_session_count,
             "low_grounding_flag": bool(low_grounding_session_count),
         }
@@ -2045,6 +2069,7 @@ class Optimizer:
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
         ).strip()
         document_fact_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_fact_backed_ratio")) or 0.0
+        document_exhibit_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_exhibit_backed_ratio")) or 0.0
         execution_mismatch_flag = bool(
             targeted_claim_elements
             and first_executed_claim_element
@@ -2105,6 +2130,7 @@ class Optimizer:
                 "first_focus_section": str((document_workflow_execution_summary or {}).get("first_focus_section") or ""),
                 "first_top_support_kind": str((document_workflow_execution_summary or {}).get("first_top_support_kind") or ""),
                 "document_fact_backed_ratio": round(document_fact_backed_ratio, 4),
+                "document_exhibit_backed_ratio": round(document_exhibit_backed_ratio, 4),
                 "document_low_grounding_flag": bool((document_provenance_summary or {}).get("low_grounding_flag")),
                 "document_provenance_summary": dict(document_provenance_summary or {}),
                 "document_grounding_improvement_summary": dict(document_grounding_improvement_summary or {}),

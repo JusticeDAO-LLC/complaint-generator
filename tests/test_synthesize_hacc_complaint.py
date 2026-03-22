@@ -914,12 +914,14 @@ def test_grounded_follow_up_answer_summary_counts_chronology_and_evidence_answer
                 "content": "The denial notice was dated January 15, 2026 and the review request was submitted January 18, 2026.",
                 "question": "What exact dates, notice timing, and event order are still missing before drafting?",
                 "source": "completed_grounded_intake_follow_up_worksheet",
+                "objective": "exact_dates",
             },
             {
                 "role": "complainant",
                 "content": "Upload the termination notice first because it proves the adverse action date and stated reason.",
                 "question": "Which repository-backed file should be uploaded first, and what exact fact does it prove?",
                 "source": "completed_grounded_intake_follow_up_worksheet",
+                "objective": "documents",
             },
         ]
     }

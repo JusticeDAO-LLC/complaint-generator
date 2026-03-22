@@ -2298,6 +2298,57 @@ class TestOptimizer:
         assert report.coverage_remediation["intake_priorities"]["recommended_actions"][0]["objective"] == "anchor_appeal_rights"
         assert any(improvement.startswith("Close anchor-section coverage gaps:") for improvement in report.priority_improvements)
 
+    def test_optimizer_phase_scorecards_include_document_exhibit_backed_ratio(self):
+        optimizer = Optimizer()
+        result = SessionResult(
+            session_id="session_document_exhibits",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={
+                "workflow_phase_plan": {
+                    "phases": {
+                        "intake_questioning": {"status": "ready"},
+                        "graph_analysis": {"status": "ready"},
+                        "document_generation": {"status": "ready"},
+                    }
+                },
+                "document_provenance_summary": {
+                    "summary_fact_count": 2,
+                    "summary_fact_backed_count": 2,
+                    "summary_fact_exhibit_backed_count": 2,
+                    "factual_allegation_paragraph_count": 2,
+                    "factual_allegation_fact_backed_count": 2,
+                    "factual_allegation_exhibit_backed_count": 2,
+                    "claim_supporting_fact_count": 2,
+                    "claim_supporting_fact_backed_count": 2,
+                    "claim_supporting_fact_exhibit_backed_count": 2,
+                    "low_grounding_flag": False,
+                },
+            },
+            critic_score=CriticScore(
+                overall_score=0.8,
+                question_quality=0.8,
+                information_extraction=0.8,
+                empathy=0.8,
+                efficiency=0.8,
+                coverage=0.8,
+                feedback="Test",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+            ),
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert report.document_provenance_summary["avg_exhibit_backed_ratio"] == pytest.approx(1.0)
+        assert report.phase_scorecards["document_generation"]["document_exhibit_backed_ratio"] == pytest.approx(1.0)
+
     def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
         optimizer = Optimizer()
 

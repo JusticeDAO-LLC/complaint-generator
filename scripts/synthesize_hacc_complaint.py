@@ -3317,7 +3317,9 @@ def _grounded_follow_up_answer_summary(session: Dict[str, Any], limit: int = 6) 
         question = " ".join(str(entry.get("question") or "").split()).strip()
         if not answer:
             continue
-        objective = _normalize_intake_objective(_classify_intake_question_objective(question or answer))
+        objective = _normalize_intake_objective(
+            str(entry.get("objective") or "").strip() or _classify_intake_question_objective(question or answer)
+        )
         answered_items.append(
             {
                 "question": question,
@@ -3345,7 +3347,7 @@ def _grounded_follow_up_answer_summary(session: Dict[str, Any], limit: int = 6) 
             chronology_answer_count += 1
         if objective in {"documents", "staff_names_titles", "actors"} or any(
             token in combined_text
-            for token in ("upload", "file", "document", "notice", "email", "record", "evidence")
+            for token in ("upload", "file", "document", "record", "evidence")
         ):
             evidence_answer_count += 1
 
@@ -4832,6 +4834,7 @@ def _merge_completed_intake_worksheet(
                 "content": item["answer"],
                 "source": source_name,
                 "question": item["question"],
+                "objective": item.get("objective") or "",
             }
         )
         objective = _normalize_intake_objective(item.get("objective") or _classify_intake_question_objective(item["question"]))
