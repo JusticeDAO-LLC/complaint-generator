@@ -2043,6 +2043,60 @@ def test_document_package_adds_claim_temporal_gap_hints(tmp_path):
     )
 
 
+def test_filing_checklist_claim_entries_inherit_claim_chip_labels():
+    mediator = _build_seeded_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    drafting_readiness = {
+        'status': 'warning',
+        'sections': {
+            'claims_for_relief': {
+                'status': 'warning',
+                'title': 'Claims for Relief',
+                'warnings': [],
+            },
+        },
+        'claims': [
+            {
+                'claim_type': 'retaliation',
+                'status': 'warning',
+                'temporal_gap_hint_count': 2,
+                'proof_gap_count': 1,
+                'warnings': [
+                    {
+                        'code': 'chronology_gaps_present',
+                        'severity': 'warning',
+                        'message': 'Retaliation still has 2 chronology gap(s) that should be resolved before filing.',
+                    },
+                ],
+            },
+        ],
+    }
+
+    filing_checklist = builder._build_filing_checklist(drafting_readiness)
+    builder._annotate_filing_checklist_review_links(
+        filing_checklist=filing_checklist,
+        drafting_readiness=drafting_readiness,
+        user_id='Jane Doe',
+    )
+
+    claim_item = next(item for item in filing_checklist if item['scope'] == 'claim')
+    assert claim_item['review_url'] == '/claim-support-review?user_id=Jane+Doe&claim_type=retaliation'
+    assert claim_item['review_context'] == {
+        'user_id': 'Jane Doe',
+        'claim_type': 'retaliation',
+    }
+    assert claim_item['chip_labels'] == [
+        'claim status: Warning',
+        'chronology gaps: 2',
+        'proof gaps: 1',
+    ]
+
+    section_item = next(item for item in filing_checklist if item['scope'] == 'section')
+    assert section_item['review_url'] == '/claim-support-review?user_id=Jane+Doe&section=claims_for_relief'
+    assert section_item.get('chip_labels') is None
+
+
 def test_document_package_uses_claim_reasoning_proof_artifact_chronology_fallback(tmp_path):
     mediator = _build_seeded_mediator()
     intake_case_file = dict(mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {})

@@ -2008,8 +2008,8 @@ class AdversarialSession:
             or max(signal_values) <= 0.05
         )
         strict_stability_mode = no_successful_sessions or explicit_recovery_hint
-        stability_injection_budget = 2
-        empty_questions_min_budget = 3
+        stability_injection_budget = 4
+        empty_questions_min_budget = 4
         limit_to_missing_objectives_in_stability = True
         one_probe_per_objective_in_stability = True
         signal_strength = max(signal_values) if signal_values else 0.0
@@ -2377,6 +2377,8 @@ class AdversarialSession:
             'actors',
             'adverse_action_details',
             'documents',
+            'hearing_request_timing',
+            'response_dates',
             'anchor_adverse_action',
             'anchor_appeal_rights',
             'anchor_grievance_hearing',
@@ -2504,7 +2506,10 @@ class AdversarialSession:
                     break
 
         if stability_recovery_mode:
-            return merged + injected_questions
+            # Recovery budgets stay intentionally small; when we do inject a probe,
+            # put it ahead of generic existing questions so unresolved anchor and
+            # chronology objectives are actually surfaced first.
+            return injected_questions + merged
         return injected_questions + merged
 
     @classmethod

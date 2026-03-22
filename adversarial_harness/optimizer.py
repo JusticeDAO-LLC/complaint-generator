@@ -967,12 +967,8 @@ class Optimizer:
                         )
                 elif path.name == "intake_case_file.py":
                     target_map[key] = [
-                        "build_intake_case_file",
                         "build_timeline_consistency_summary",
-                        "build_open_items",
                     ]
-                    if {"chronology", "timeline", "actors"} & graph_focus_areas:
-                        target_map[key].append("build_intake_sections")
             elif str(phase_name) == "document_generation":
                 if path.name == "document_pipeline.py":
                     target_map[key] = [

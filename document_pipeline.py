@@ -102,6 +102,54 @@ def _dedupe_text_values(values: Iterable[Any]) -> List[str]:
     return normalized_values
 
 
+def _merge_chip_labels(existing: Any, additions: Any) -> List[str]:
+    merged: List[str] = []
+    seen = set()
+    for source in (existing, additions):
+        if not isinstance(source, list):
+            continue
+        for item in source:
+            label = str(item or "").strip()
+            if not label or label in seen:
+                continue
+            seen.add(label)
+            merged.append(label)
+    return merged
+
+
+def _humanize_checklist_label(value: Any) -> str:
+    text = str(value or "").strip().replace("_", " ")
+    return text.title() if text else ""
+
+
+def _build_claim_checklist_chip_labels(claim: Dict[str, Any]) -> List[str]:
+    if not isinstance(claim, dict):
+        return []
+
+    chip_labels: List[str] = []
+    claim_status = _humanize_checklist_label(claim.get("status"))
+    if claim_status:
+        chip_labels.append(f"claim status: {claim_status}")
+
+    temporal_gap_hint_count = int(claim.get("temporal_gap_hint_count") or 0)
+    if temporal_gap_hint_count > 0:
+        chip_labels.append(f"chronology gaps: {temporal_gap_hint_count}")
+
+    proof_gap_count = int(claim.get("proof_gap_count") or 0)
+    if proof_gap_count > 0:
+        chip_labels.append(f"proof gaps: {proof_gap_count}")
+
+    unresolved_element_count = int(claim.get("unresolved_element_count") or 0)
+    if unresolved_element_count > 0:
+        chip_labels.append(f"unresolved elements: {unresolved_element_count}")
+
+    contradiction_candidate_count = int(claim.get("contradiction_candidate_count") or 0)
+    if contradiction_candidate_count > 0:
+        chip_labels.append(f"contradiction candidates: {contradiction_candidate_count}")
+
+    return chip_labels
+
+
 def _collect_temporal_registry_identifiers(records: Any, *keys: str) -> List[str]:
     identifiers: List[str] = []
     for record in records if isinstance(records, list) else []:
@@ -8882,6 +8930,7 @@ class FormalComplaintDocumentBuilder:
             status = str(claim.get("status") or "ready")
             claim_type = str(claim.get("claim_type") or "claim").strip()
             warnings = claim.get("warnings") if isinstance(claim.get("warnings"), list) else []
+            chip_labels = _build_claim_checklist_chip_labels(claim)
             metrics = {
                 "covered_elements": claim.get("covered_elements"),
                 "total_elements": claim.get("total_elements"),
@@ -8897,6 +8946,7 @@ class FormalComplaintDocumentBuilder:
                         "status": "ready",
                         "summary": f"{claim_type.title()} is ready for filing review.",
                         "detail": self._summarize_metrics(metrics),
+                        "chip_labels": chip_labels,
                     }
                 )
                 continue
@@ -8909,6 +8959,7 @@ class FormalComplaintDocumentBuilder:
                     "status": status,
                     "summary": str(primary_warning.get("message") or f"Review {claim_type.title()} before filing."),
                     "detail": self._summarize_metrics(metrics),
+                    "chip_labels": chip_labels,
                 }
             )
 
@@ -8938,6 +8989,7 @@ class FormalComplaintDocumentBuilder:
                     "user_id": user_id,
                     "claim_type": claim_type,
                 },
+                "chip_labels": list(claim.get("chip_labels") or _build_claim_checklist_chip_labels(claim)),
             }
 
         section_map: Dict[str, Dict[str, Any]] = {}
@@ -8970,6 +9022,11 @@ class FormalComplaintDocumentBuilder:
             if target:
                 item["review_url"] = target["review_url"]
                 item["review_context"] = target["review_context"]
+                merged_chip_labels = _merge_chip_labels(item.get("chip_labels"), target.get("chip_labels"))
+                if merged_chip_labels:
+                    item["chip_labels"] = merged_chip_labels
+                else:
+                    item.pop("chip_labels", None)
             else:
                 item["review_url"] = dashboard_url
                 item["review_context"] = {"user_id": user_id}

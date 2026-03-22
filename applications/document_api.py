@@ -383,13 +383,11 @@ def _build_document_review_workflow_priority(
         if isinstance(intake_case_summary.get("document_grounding_improvement_next_action"), dict)
         else {}
     )
-    grounding_action = str(document_grounding_improvement_next_action.get("action") or "").strip().lower()
-    if grounding_action in {"refine_document_grounding_strategy", "retarget_document_grounding"}:
+    if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
         focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "factual_allegations").strip() or "factual_allegations"
         claim_type = str(document_grounding_improvement_next_action.get("claim_type") or default_claim_type or "").strip()
         preferred_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
         suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
-        suggested_claim_element_id = str(document_grounding_improvement_next_action.get("suggested_claim_element_id") or "").strip()
         attempted_support_kind = str(document_grounding_lane_outcome_summary.get("attempted_support_kind") or "").strip()
         learned_support_kind = str(document_grounding_lane_outcome_summary.get("recommended_future_support_kind") or "").strip()
         action_url = _append_review_query_params(
@@ -433,8 +431,6 @@ def _build_document_review_workflow_priority(
         claim_element_id = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
         if claim_element_id:
             chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
-        if suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
-            chip_labels.append(f"next target element: {humanize_workflow_priority_label(suggested_claim_element_id)}")
         if preferred_support_kind:
             chip_labels.append(f"current support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
         if attempted_support_kind and attempted_support_kind != preferred_support_kind:
@@ -455,24 +451,11 @@ def _build_document_review_workflow_priority(
                 f"{description} Learned lane preference now favors "
                 f"{humanize_workflow_priority_label(learned_support_kind)}."
             )
-        if grounding_action == "retarget_document_grounding" and suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
-            description = (
-                f"{description} Retarget the next grounding pass toward "
-                f"{humanize_workflow_priority_label(suggested_claim_element_id)}."
-            )
         return {
             "status": "warning",
-            "title": (
-                "Retarget document grounding"
-                if grounding_action == "retarget_document_grounding"
-                else "Refine document grounding strategy"
-            ),
+            "title": "Refine document grounding strategy",
             "description": description,
-            "action_label": (
-                "Review grounding retargeting"
-                if grounding_action == "retarget_document_grounding"
-                else "Review grounding strategy"
-            ),
+            "action_label": "Review grounding strategy",
             "action_url": action_url,
             "action_kind": "link",
             "dashboard_url": dashboard_url,
@@ -947,6 +930,21 @@ def _merge_warning_entries(existing: Any, additions: List[Dict[str, Any]]) -> Li
     return merged
 
 
+def _merge_chip_labels(existing: Any, additions: Any) -> List[str]:
+    merged: List[str] = []
+    seen = set()
+    for source in (existing, additions):
+        if not isinstance(source, list):
+            continue
+        for item in source:
+            label = str(item or "").strip()
+            if not label or label in seen:
+                continue
+            seen.add(label)
+            merged.append(label)
+    return merged
+
+
 def _annotate_artifacts_with_download_urls(payload: Dict[str, Any]) -> Dict[str, Any]:
     artifacts = payload.get("artifacts") if isinstance(payload, dict) else None
     if not isinstance(artifacts, dict):
@@ -1033,6 +1031,11 @@ def _annotate_checklist_review_links(
                 item["review_url"] = target.get("review_url")
                 item["review_context"] = target.get("review_context")
                 item["review_intent"] = target.get("review_intent")
+                merged_chip_labels = _merge_chip_labels(item.get("chip_labels"), target.get("chip_labels"))
+                if merged_chip_labels:
+                    item["chip_labels"] = merged_chip_labels
+                else:
+                    item.pop("chip_labels", None)
             else:
                 item["review_url"] = dashboard_url
                 item["review_context"] = {"user_id": default_review_intent.get("user_id")}
@@ -1093,6 +1096,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             "review_url": claim_review_url,
             "review_context": claim["review_context"],
             "review_intent": claim_review_intent,
+            "chip_labels": list(claim.get("chip_labels") or []),
         }
         claim_links.append(
             {

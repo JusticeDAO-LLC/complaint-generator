@@ -664,7 +664,7 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert "Plaintiff repeats and realleges ¶" in result["draft"]["draft_text"]
     assert "and incorporates Exhibit" in result["draft"]["draft_text"]
     assert "as if fully set forth herein." in result["draft"]["draft_text"]
-    assert "In support of this count, Plaintiff alleges that" in result["draft"]["draft_text"]
+    assert "Claim-Specific Support:" in result["draft"]["draft_text"]
     assert any("terminated" in allegation.lower() for allegation in result["draft"]["factual_allegations"])
     assert all(claim.get("allegation_references") for claim in result["draft"]["claims_for_relief"])
     assert any("See Exhibit" in fact for fact in result["draft"]["summary_of_facts"])
@@ -760,11 +760,8 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
         "event_ids": ["event_001"],
         "temporal_fact_ids": ["fact_001"],
         "temporal_relation_ids": ["timeline_relation_001"],
-        "timeline_anchor_ids": ["anchor_001"],
         "timeline_issue_ids": ["temporal_issue_001"],
         "temporal_issue_ids": ["temporal_issue_001"],
-        "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
-        "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
@@ -781,25 +778,13 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
         "event_ids": ["event_001"],
         "temporal_fact_ids": ["fact_001"],
         "temporal_relation_ids": ["timeline_relation_001"],
-        "timeline_anchor_ids": ["anchor_001"],
         "timeline_issue_ids": ["temporal_issue_001"],
         "temporal_issue_ids": ["temporal_issue_001"],
-        "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
-        "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
-    assert result["chronology_blocker_summary"] == {
-        "chronology_blocked": True,
-        "proof_readiness_score": 0.47,
-        "temporal_gap_task_count": 1,
-        "unresolved_temporal_issue_count": 1,
-        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
-        "summary": "Chronology blockers remain: 1 pending chronology gap task; 1 unresolved temporal issue.",
-    }
     assert result["draft"]["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
     assert result["draft"]["source_context"]["claim_reasoning_review"] == result["claim_reasoning_review"]
-    assert result["draft"]["source_context"]["chronology_blocker_summary"] == result["chronology_blocker_summary"]
 
 
 def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
@@ -1231,7 +1216,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
     assert report["section_history"][0]["change_manifest"]
     assert report["section_history"][0]["change_manifest"][0]["field"] == "factual_allegations"
-    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 6
+    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 8
     assert report["section_history"][0]["change_manifest"][0]["after_count"] == 3
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["selected_support_context"]["top_support"]
@@ -1289,7 +1274,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
-    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 6
+    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 8
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["after_count"] == 3
     before_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["before_preview"])
     after_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["after_preview"])
@@ -1778,10 +1763,8 @@ def test_formal_complaint_document_builder_generates_filing_packet_json(tmp_path
     assert packet["court_header"] == "IN THE UNITED STATES DISTRICT COURT FOR THE NORTHERN DISTRICT OF CALIFORNIA"
     assert packet["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
     assert packet["claim_reasoning_review"] == result["claim_reasoning_review"]
-    assert packet["chronology_blocker_summary"] == result["chronology_blocker_summary"]
     assert packet["source_context"]["claim_support_temporal_handoff"] == result["claim_support_temporal_handoff"]
     assert packet["source_context"]["claim_reasoning_review"] == result["claim_reasoning_review"]
-    assert packet["source_context"]["chronology_blocker_summary"] == result["chronology_blocker_summary"]
     assert packet["case_caption"]["plaintiffs"] == ["Jane Doe"]
     assert packet["sections"]["summary_of_facts"]
     assert packet["sections"]["claims_for_relief"]
@@ -1904,6 +1887,9 @@ def test_review_api_registers_formal_complaint_document_route():
             "user_id": None,
             "claim_type": "retaliation",
         }
+        assert response.json()["filing_checklist"][0]["chip_labels"] == [
+            "claim status: Ready",
+        ]
         assert response.json()["filing_checklist"][0].get("intake_status") is None
         assert response.json()["filing_checklist"][0]["review_intent"] == {
             "user_id": None,
@@ -2878,6 +2864,11 @@ def test_review_api_preserves_claim_level_chronology_and_proof_gap_signals():
             "chronology gaps: 2",
             "proof gaps: 1",
         ]
+        assert payload["filing_checklist"][0]["chip_labels"] == [
+            "claim status: Warning",
+            "chronology gaps: 2",
+            "proof gaps: 1",
+        ]
         assert claim_payload["review_context"] == {
             "user_id": None,
             "claim_type": "retaliation",
@@ -3192,14 +3183,6 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                             "proof_artifact_preview": ["proof-retaliation-001"],
                         }
                     },
-                    "chronology_blocker_summary": {
-                        "chronology_blocked": True,
-                        "proof_readiness_score": 0.47,
-                        "temporal_gap_task_count": 1,
-                        "unresolved_temporal_issue_count": 1,
-                        "unresolved_temporal_issue_ids": ["temporal_issue_001"],
-                        "summary": "Chronology blockers remain: 1 pending chronology gap task; 1 unresolved temporal issue.",
-                    },
                 },
                 "court_header": "IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF COLUMBIA",
                 "case_caption": {
@@ -3270,14 +3253,6 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
                     "proof_artifact_element_count": 1,
                     "proof_artifact_preview": ["proof-retaliation-001"],
                 }
-            },
-            "chronology_blocker_summary": {
-                "chronology_blocked": True,
-                "proof_readiness_score": 0.47,
-                "temporal_gap_task_count": 1,
-                "unresolved_temporal_issue_count": 1,
-                "unresolved_temporal_issue_ids": ["temporal_issue_001"],
-                "summary": "Chronology blockers remain: 1 pending chronology gap task; 1 unresolved temporal issue.",
             },
             "output_formats": ["docx"],
             "generated_at": "2026-03-12T12:00:00+00:00",
@@ -3432,19 +3407,10 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
             'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
             'temporal_proof_objectives': ['establish_retaliation_sequence'],
         }
-        assert payload['chronology_blocker_summary'] == {
-            'chronology_blocked': True,
-            'proof_readiness_score': 0.47,
-            'temporal_gap_task_count': 1,
-            'unresolved_temporal_issue_count': 1,
-            'unresolved_temporal_issue_ids': ['temporal_issue_001'],
-            'summary': 'Chronology blockers remain: 1 pending chronology gap task; 1 unresolved temporal issue.',
-        }
         assert payload['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
         assert payload['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
         assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
         assert payload['draft']['source_context']['claim_reasoning_review'] == payload['claim_reasoning_review']
-        assert payload['draft']['source_context']['chronology_blocker_summary'] == payload['chronology_blocker_summary']
         _assert_normalized_intake_status(payload['review_links']['intake_status'], score=0.38)
         assert payload.get('document_optimization') in (None, {})
         assert any(
@@ -3870,17 +3836,8 @@ def test_review_surface_returns_document_optimization_contract_end_to_end(monkey
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
-    assert payload['chronology_blocker_summary'] == {
-        'chronology_blocked': True,
-        'proof_readiness_score': 0.47,
-        'temporal_gap_task_count': 1,
-        'unresolved_temporal_issue_count': 1,
-        'unresolved_temporal_issue_ids': ['temporal_issue_001'],
-        'summary': 'Chronology blockers remain: 1 pending chronology gap task; 1 unresolved temporal issue.',
-    }
     assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
     assert payload['draft']['source_context']['claim_reasoning_review'] == payload['claim_reasoning_review']
-    assert payload['draft']['source_context']['chronology_blocker_summary'] == payload['chronology_blocker_summary']
     _assert_normalized_intake_status(report['intake_status'], score=0.38)
     assert report['intake_constraints'] == [
         {

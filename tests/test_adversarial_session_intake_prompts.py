@@ -740,6 +740,38 @@ def test_inject_intake_prompt_questions_frontloads_adverse_action_anchor_in_reco
     assert "what notice, message, or decision record shows that action" in merged[0]["question"].lower()
 
 
+def test_inject_intake_prompt_questions_keeps_hearing_request_timing_in_strict_recovery_mode():
+    seed = {
+        "actor_critic_optimizer": {
+            "question_quality": 0.0,
+            "empathy": 0.0,
+            "efficiency": 0.0,
+        },
+        "document_optimization": {
+            "intake_priorities": {
+                "unresolved_intake_objectives": ["hearing_request_timing"],
+            },
+        },
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": []
+            },
+            "actor_critic_session_stability": {
+                "mode": "recovery",
+            },
+        },
+    }
+
+    merged = AdversarialSession._inject_intake_prompt_questions(seed, [])
+
+    assert any(
+        item.get("question_objective") == "hearing_request_timing"
+        and "when was the hearing or review requested" in item.get("question", "").lower()
+        for item in merged
+        if isinstance(item, dict)
+    )
+
+
 def test_run_temporarily_prioritizes_mediator_selector_for_intake_objectives():
     mediator = _SelectorMediator()
     session = _make_selector_session(mediator)
