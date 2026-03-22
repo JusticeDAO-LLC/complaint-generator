@@ -337,6 +337,33 @@ def _build_grounded_intake_follow_up_worksheet(
     }
 
 
+def _build_grounded_workflow_status(
+    *,
+    query: str,
+    recommended_next_action: Dict[str, Any],
+    research_action_queue: Sequence[Dict[str, Any]],
+    synthesis_roundtrip_artifacts: Dict[str, Any],
+) -> Dict[str, Any]:
+    refreshed_grounding_state = dict(synthesis_roundtrip_artifacts.get("refreshed_grounding_state") or {})
+    grounded_follow_up_answer_summary = dict(synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary") or {})
+    workflow_stage = "post_grounded_follow_up" if refreshed_grounding_state else "pre_grounded_follow_up"
+    effective_next_action = dict(
+        refreshed_grounding_state.get("recommended_next_action")
+        or recommended_next_action
+        or {}
+    )
+    return {
+        "query": query,
+        "workflow_stage": workflow_stage,
+        "effective_next_action": effective_next_action,
+        "pre_synthesis_recommended_next_action": dict(recommended_next_action or {}),
+        "research_action_queue_count": len(list(research_action_queue or [])),
+        "has_refreshed_grounding_state": bool(refreshed_grounding_state),
+        "grounded_follow_up_answer_count": int(grounded_follow_up_answer_summary.get("answered_item_count", 0) or 0),
+        "refreshed_grounding_status": str(refreshed_grounding_state.get("status") or ""),
+    }
+
+
 def _render_grounded_intake_follow_up_markdown(worksheet: Dict[str, Any]) -> str:
     lines = [
         "# Grounded Intake Follow-Up Worksheet",
@@ -520,6 +547,13 @@ def run_hacc_grounded_pipeline(
                 output_root / "grounded_follow_up_answer_summary.json",
                 synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary", {}),
             )
+    grounded_workflow_status = _build_grounded_workflow_status(
+        query=resolved_query,
+        recommended_next_action=recommended_next_action,
+        research_action_queue=research_action_queue,
+        synthesis_roundtrip_artifacts=synthesis_roundtrip_artifacts,
+    )
+    _write_json(output_root / "grounded_workflow_status.json", grounded_workflow_status)
 
     summary = {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -548,6 +582,7 @@ def run_hacc_grounded_pipeline(
         "adversarial": adversarial_summary,
         "complaint_synthesis": synthesis_summary,
         "synthesis_roundtrip_artifacts": synthesis_roundtrip_artifacts,
+        "grounded_workflow_status": grounded_workflow_status,
         "artifacts": {
             "output_dir": str(output_root),
             "grounding_bundle_json": str(output_root / "grounding_bundle.json"),
@@ -583,6 +618,7 @@ def run_hacc_grounded_pipeline(
             "intake_follow_up_worksheet_md": synthesis_summary.get("intake_follow_up_worksheet_md", ""),
             "refreshed_grounding_state_json": str(output_root / "refreshed_grounding_state.json") if synthesis_roundtrip_artifacts.get("refreshed_grounding_state") else "",
             "grounded_follow_up_answer_summary_json": str(output_root / "grounded_follow_up_answer_summary.json") if synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary") else "",
+            "grounded_workflow_status_json": str(output_root / "grounded_workflow_status.json"),
         },
     }
     _write_json(output_root / "run_summary.json", summary)

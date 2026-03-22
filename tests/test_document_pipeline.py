@@ -764,13 +764,24 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
         "event_ids": ["event_001"],
         "temporal_fact_ids": ["fact_001"],
         "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_anchor_ids": ["anchor_001"],
         "timeline_issue_ids": ["temporal_issue_001"],
         "temporal_issue_ids": ["temporal_issue_001"],
+        "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+        "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
     assert result["claim_reasoning_review"]["retaliation"]["proof_artifact_element_count"] == 1
     assert result["claim_reasoning_review"]["retaliation"]["proof_artifact_preview"] == ["proof-retaliation-001"]
+    assert result["claim_reasoning_review"]["retaliation"]["claim_missing_temporal_predicates"] == [
+        "Before(fact_001,fact_termination)"
+    ]
+    assert result["claim_reasoning_review"]["retaliation"]["claim_required_provenance_kinds"] == [
+        "testimony_record",
+        "document_artifact",
+        "legal_authority",
+    ]
     assert result["claim_reasoning_review"]["retaliation"]["flagged_elements"][0]["proof_artifact_theorem_export_metadata"] == {
         "contract_version": "claim_support_temporal_handoff_v1",
         "claim_type": "retaliation",
@@ -782,8 +793,11 @@ def test_collect_exhibits_uses_evidence_facts_when_preview_missing():
         "event_ids": ["event_001"],
         "temporal_fact_ids": ["fact_001"],
         "temporal_relation_ids": ["timeline_relation_001"],
+        "timeline_anchor_ids": ["anchor_001"],
         "timeline_issue_ids": ["temporal_issue_001"],
         "temporal_issue_ids": ["temporal_issue_001"],
+        "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+        "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
         "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
         "temporal_proof_objectives": ["establish_retaliation_sequence"],
     }
@@ -3019,8 +3033,11 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                         'event_ids': ['event_001'],
                         'temporal_fact_ids': ['fact_001'],
                         'temporal_relation_ids': ['timeline_relation_001'],
+                        'timeline_anchor_ids': ['anchor_001'],
                         'timeline_issue_ids': ['temporal_issue_001'],
                         'temporal_issue_ids': ['temporal_issue_001'],
+                        'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+                        'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
                         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
                         'temporal_proof_objectives': ['establish_retaliation_sequence'],
                     },
@@ -3031,6 +3048,8 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                             'proof_artifact_explanation_element_count': 1,
                             'proof_artifact_status_counts': {'available': 1},
                             'proof_artifact_preview': ['proof-retaliation-001'],
+                            'claim_missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+                            'claim_required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
                             'flagged_elements': [
                                 {
                                     'element_text': 'Causal connection',
@@ -3050,8 +3069,11 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
                                         'event_ids': ['event_001'],
                                         'temporal_fact_ids': ['fact_001'],
                                         'temporal_relation_ids': ['timeline_relation_001'],
+                                        'timeline_anchor_ids': ['anchor_001'],
                                         'timeline_issue_ids': ['temporal_issue_001'],
                                         'temporal_issue_ids': ['temporal_issue_001'],
+                                        'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+                                        'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
                                         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
                                         'temporal_proof_objectives': ['establish_retaliation_sequence'],
                                     },
@@ -3126,13 +3148,24 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
         'event_ids': ['event_001'],
         'temporal_fact_ids': ['fact_001'],
         'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_anchor_ids': ['anchor_001'],
         'timeline_issue_ids': ['temporal_issue_001'],
         'temporal_issue_ids': ['temporal_issue_001'],
+        'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+        'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
     assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
     assert payload['trace']['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
+    assert payload['trace']['claim_reasoning_review']['retaliation']['claim_missing_temporal_predicates'] == [
+        'Before(fact_001,fact_termination)'
+    ]
+    assert payload['trace']['claim_reasoning_review']['retaliation']['claim_required_provenance_kinds'] == [
+        'testimony_record',
+        'document_artifact',
+        'legal_authority',
+    ]
     assert payload['trace']['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_proof_id'] == 'proof-retaliation-001'
     assert payload['trace']['claim_reasoning_review']['retaliation']['flagged_elements'][0]['proof_artifact_theorem_export_metadata'] == {
         'contract_version': 'claim_support_temporal_handoff_v1',
@@ -3145,8 +3178,11 @@ def test_review_api_retrieves_persisted_optimization_trace(monkeypatch: pytest.M
         'event_ids': ['event_001'],
         'temporal_fact_ids': ['fact_001'],
         'temporal_relation_ids': ['timeline_relation_001'],
+        'timeline_anchor_ids': ['anchor_001'],
         'timeline_issue_ids': ['temporal_issue_001'],
         'temporal_issue_ids': ['temporal_issue_001'],
+        'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+        'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
         'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
         'temporal_proof_objectives': ['establish_retaliation_sequence'],
     }
@@ -3438,13 +3474,24 @@ def test_review_surface_document_builder_flow_serves_page_and_supports_api_round
             'event_ids': ['event_001'],
             'temporal_fact_ids': ['fact_001'],
             'temporal_relation_ids': ['timeline_relation_001'],
+            'timeline_anchor_ids': ['anchor_001'],
             'timeline_issue_ids': ['temporal_issue_001'],
             'temporal_issue_ids': ['temporal_issue_001'],
+            'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+            'required_provenance_kinds': ['testimony_record', 'document_artifact', 'legal_authority'],
             'temporal_proof_bundle_ids': ['retaliation:causation:bundle_001'],
             'temporal_proof_objectives': ['establish_retaliation_sequence'],
         }
         assert payload['claim_reasoning_review']['retaliation']['proof_artifact_element_count'] == 1
         assert payload['claim_reasoning_review']['retaliation']['proof_artifact_preview'] == ['proof-retaliation-001']
+        assert payload['claim_reasoning_review']['retaliation']['claim_missing_temporal_predicates'] == [
+            'Before(fact_001,fact_termination)'
+        ]
+        assert payload['claim_reasoning_review']['retaliation']['claim_required_provenance_kinds'] == [
+            'testimony_record',
+            'document_artifact',
+            'legal_authority',
+        ]
         assert payload['draft']['source_context']['claim_support_temporal_handoff'] == payload['claim_support_temporal_handoff']
         assert payload['draft']['source_context']['claim_reasoning_review'] == payload['claim_reasoning_review']
         _assert_normalized_intake_status(payload['review_links']['intake_status'], score=0.38)
