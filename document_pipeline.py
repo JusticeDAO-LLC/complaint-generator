@@ -4563,23 +4563,54 @@ class FormalComplaintDocumentBuilder:
         for paragraph in allegation_paragraphs:
             if not isinstance(paragraph, dict):
                 continue
-            text = str(paragraph.get("text") or "").strip()
-            lowered = text.lower()
-            if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
-                title = "Protected Activity and Complaints"
-            elif re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", lowered):
-                title = "Adverse Action and Retaliatory Conduct"
-            elif re.search(r"\b(lost|damages|harm|injur|suffered|experienced|benefits|wages|salary|income)\b", lowered):
-                title = "Damages and Resulting Harm"
-            else:
-                title = "Additional Factual Support"
+            title = self._classify_factual_allegation_group(paragraph)
             groups[title].append(paragraph)
 
         return [
-            {"title": title, "paragraphs": groups[title]}
+            {"title": title, "paragraphs": self._order_factual_group_paragraphs(groups[title])}
             for title in ordered_titles
             if groups[title]
         ]
+
+    def _classify_factual_allegation_group(self, paragraph: Dict[str, Any]) -> str:
+        text = str(paragraph.get("text") or "").strip()
+        lowered = text.lower()
+        if re.search(
+            r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied|denial notice|loss of assistance|review decision|adverse action)\b",
+            lowered,
+        ):
+            return "Adverse Action and Retaliatory Conduct"
+        if re.search(r"\b(lost|damages|harm|injur|suffered|experienced|benefits|wages|salary|income)\b", lowered):
+            return "Damages and Resulting Harm"
+        if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+            return "Protected Activity and Complaints"
+        return "Additional Factual Support"
+
+    def _order_factual_group_paragraphs(self, paragraphs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        def _score(paragraph: Dict[str, Any]) -> tuple[int, int, int, int, str]:
+            text = str(paragraph.get("text") or "").strip()
+            lowered = text.lower()
+            fact_backed = 0 if _normalize_identifier_list(paragraph.get("fact_ids") or []) else 1
+            dated = 0 if _contains_date_anchor(text) else 1
+            adverse_specific = 1
+            if any(
+                marker in lowered
+                for marker in (
+                    "denial notice",
+                    "review decision",
+                    "loss of assistance",
+                    "adverse action",
+                    "denied plaintiff housing assistance",
+                )
+            ):
+                adverse_specific = 0
+            number = int(paragraph.get("number", 0) or 0)
+            return (fact_backed, dated, adverse_specific, number, lowered)
+
+        return sorted(
+            [dict(paragraph) for paragraph in paragraphs if isinstance(paragraph, dict)],
+            key=_score,
+        )
 
     def _build_claim_supporting_fact_provenance(
         self,
