@@ -213,7 +213,8 @@ def test_main_list_runs_prints_available_runs(tmp_path, capsys):
     assert "Available runs: 1" in captured.out
     assert "Alias targets:" in captured.out
     assert "Best candidate to resume:" in captured.out
-    assert "Resume command:" in captured.out
+    assert "Inspect command:" in captured.out
+    assert "Synthesis command:" in captured.out
     assert "20260322_120000" in captured.out
     assert "continue_drafting" in captured.out
 
@@ -263,6 +264,10 @@ def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
     assert payload["recommended_aliases"]["last-successful"] == "20260322_100000"
     assert payload["best_resume_candidate"]["run_name"] == "20260322_100000"
     assert "completed grounded worksheet" in payload["best_resume_candidate"]["reason"]
+    assert payload["best_resume_candidate"]["resume_command_kind"] == "synthesize"
+    assert payload["best_resume_candidate"]["inspect_command"].endswith(
+        str((tmp_path / "20260322_100000").resolve())
+    )
     assert payload["best_resume_candidate"]["resume_command"].endswith(
         str((tmp_path / "20260322_100000").resolve())
     )
@@ -294,4 +299,28 @@ def test_best_resume_candidate_prefers_completed_and_refreshed_runs():
 
     assert candidate["run_name"] == "20260322_100000"
     assert "refreshed grounding state" in candidate["reason"]
-    assert candidate["resume_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_100000"
+    assert candidate["resume_command_kind"] == "synthesize"
+    assert candidate["inspect_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_100000"
+    assert candidate["resume_command"] == "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/20260322_100000"
+
+
+def test_best_resume_candidate_falls_back_to_inspection_for_pre_follow_up_runs():
+    cli = _load_cli_module()
+
+    candidate = cli._best_resume_candidate(
+        [
+            {
+                "run_name": "20260322_120000",
+                "run_dir": "/tmp/20260322_120000",
+                "workflow_stage": "pre_grounded_follow_up",
+                "has_refreshed_grounding_state": False,
+                "has_persisted_completed_grounded_worksheet": False,
+                "grounded_follow_up_answer_count": 0,
+            }
+        ]
+    )
+
+    assert candidate["run_name"] == "20260322_120000"
+    assert candidate["resume_command_kind"] == "inspect"
+    assert candidate["inspect_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_120000"
+    assert candidate["resume_command"] == candidate["inspect_command"]

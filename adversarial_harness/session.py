@@ -567,6 +567,82 @@ class AdversarialSession:
         return any(term in text for term in document_terms)
 
     @staticmethod
+    def _is_exhibit_ready_question(question: Any) -> bool:
+        text = AdversarialSession._extract_question_text(question).lower()
+        return bool(
+            ('exhibit' in text or 'treated as exhibits' in text or 'exhibit-ready' in text)
+            and any(
+                token in text
+                for token in (
+                    'date',
+                    'sender or source',
+                    'label or subject line',
+                    'fact the document proves',
+                    'fact it proves',
+                )
+            )
+        )
+
+    @staticmethod
+    def _build_intake_question_structure_summary(
+        conversation_history: Sequence[Dict[str, Any]],
+        final_state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        mediator_questions = [
+            item for item in list(conversation_history or [])
+            if isinstance(item, dict) and str(item.get('role') or '').strip().lower() == 'mediator'
+        ]
+        documentary_questions = [
+            item for item in mediator_questions
+            if AdversarialSession._is_documentary_evidence_question(item)
+        ]
+        temporal_document_questions = [
+            item for item in mediator_questions
+            if (
+                AdversarialSession._is_exhibit_ready_question(item)
+                and (
+                    AdversarialSession._is_hearing_request_timing_question(item)
+                    or AdversarialSession._is_response_dates_question(item)
+                    or AdversarialSession._is_exact_dates_question(item)
+                )
+            )
+        ]
+        exhibit_ready_questions = [
+            item for item in mediator_questions
+            if AdversarialSession._is_exhibit_ready_question(item)
+        ]
+        workflow_guidance = (
+            final_state.get('workflow_optimization_guidance')
+            if isinstance(final_state, dict) and isinstance(final_state.get('workflow_optimization_guidance'), dict)
+            else {}
+        )
+        chronology_hints = (
+            workflow_guidance.get('document_chronology_priority_hints')
+            if isinstance(workflow_guidance.get('document_chronology_priority_hints'), dict)
+            else {}
+        )
+        needs_exhibit_grounding = bool(
+            chronology_hints.get('needs_exhibit_grounding')
+            or (final_state.get('document_provenance_summary') if isinstance(final_state, dict) else {}).get('low_grounding_flag')
+        )
+        documentary_count = len(documentary_questions)
+        exhibit_ready_count = len(exhibit_ready_questions)
+        return {
+            'question_count': len(mediator_questions),
+            'documentary_question_count': documentary_count,
+            'exhibit_ready_question_count': exhibit_ready_count,
+            'temporal_exhibit_ready_question_count': len(temporal_document_questions),
+            'documentary_exhibit_ready_question_count': len(
+                [item for item in documentary_questions if AdversarialSession._is_exhibit_ready_question(item)]
+            ),
+            'needs_exhibit_grounding': needs_exhibit_grounding,
+            'documentary_exhibit_ready_ratio': round(
+                float(exhibit_ready_count) / float(documentary_count),
+                4,
+            ) if documentary_count > 0 else 0.0,
+        }
+
+    @staticmethod
     def _is_witness_question(question: Any) -> bool:
         text = AdversarialSession._extract_question_text(question).lower()
         witness_terms = (
@@ -4688,6 +4764,10 @@ class AdversarialSession:
                         'document_generation': self._compact_document_generation_result(document_generation_result),
                     }
                 final_state['grounding_summary'] = self._build_grounding_summary(seed_complaint, final_state)
+                final_state['intake_question_structure_summary'] = self._build_intake_question_structure_summary(
+                    self.conversation_history,
+                    final_state,
+                )
             self._emit_progress(
                 'final_state_built',
                 metadata={

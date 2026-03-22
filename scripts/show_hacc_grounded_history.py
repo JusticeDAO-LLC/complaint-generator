@@ -156,15 +156,30 @@ def _best_resume_candidate(runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
     if str(best_run.get("workflow_stage") or "") == "post_grounded_follow_up":
         reason_parts.append("already reached post-grounded follow-up")
     run_dir = str(best_run.get("run_dir") or "")
+    workflow_stage = str(best_run.get("workflow_stage") or "")
+    has_completed_grounded_worksheet = bool(best_run.get("has_persisted_completed_grounded_worksheet"))
+    inspect_command = (
+        f"python scripts/show_hacc_grounded_history.py --output-dir {run_dir}"
+        if run_dir
+        else ""
+    )
+    if has_completed_grounded_worksheet or workflow_stage == "post_grounded_follow_up":
+        resume_command = (
+            f"python scripts/synthesize_hacc_complaint.py --grounded-run-dir {run_dir}"
+            if run_dir
+            else ""
+        )
+        resume_command_kind = "synthesize"
+    else:
+        resume_command = inspect_command
+        resume_command_kind = "inspect"
     return {
         "run_name": str(best_run.get("run_name") or ""),
         "run_dir": run_dir,
         "reason": ", ".join(reason_parts) or "most recent grounded run",
-        "resume_command": (
-            f"python scripts/show_hacc_grounded_history.py --output-dir {run_dir}"
-            if run_dir
-            else ""
-        ),
+        "inspect_command": inspect_command,
+        "resume_command": resume_command,
+        "resume_command_kind": resume_command_kind,
     }
 
 
@@ -192,9 +207,18 @@ def _render_grounded_run_list(
             f"Best candidate to resume: {candidate.get('run_name', '') or '-'}"
             f" ({candidate.get('reason', '') or 'recommended resume target'})"
         )
+        inspect_command = str(candidate.get("inspect_command") or "").strip()
+        if inspect_command:
+            lines.append(f"Inspect command: {inspect_command}")
         resume_command = str(candidate.get("resume_command") or "").strip()
+        resume_command_kind = str(candidate.get("resume_command_kind") or "").strip()
         if resume_command:
-            lines.append(f"Resume command: {resume_command}")
+            label = "Resume command"
+            if resume_command_kind == "inspect":
+                label = "Next command"
+            elif resume_command_kind == "synthesize":
+                label = "Synthesis command"
+            lines.append(f"{label}: {resume_command}")
     if not runs:
         lines.append("No grounded runs found.")
         return "\n".join(lines)

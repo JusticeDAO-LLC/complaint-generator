@@ -1131,6 +1131,162 @@ class Mediator:
 			'workflow_action_focus_areas': matched_focus_areas,
 		}
 
+	def _build_chronology_objective_ledger(
+		self,
+		intake_case_file: Any,
+	) -> List[Dict[str, Any]]:
+		case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+		issue_registry = case_file.get('temporal_issue_registry') if isinstance(case_file.get('temporal_issue_registry'), list) else []
+		ledger: List[Dict[str, Any]] = []
+		for issue in issue_registry:
+			if not isinstance(issue, dict):
+				continue
+			status_value = str(issue.get('current_resolution_status') or issue.get('status') or 'open').strip().lower()
+			if status_value == 'resolved':
+				continue
+			issue_id = str(issue.get('issue_id') or '').strip()
+			issue_type = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+			claim_types = [
+				str(claim_type).strip().lower()
+				for claim_type in (issue.get('claim_types') if isinstance(issue.get('claim_types'), list) else [])
+				if str(claim_type).strip()
+			]
+			target_element_ids = [
+				str(tag).strip().lower()
+				for tag in (issue.get('element_tags') if isinstance(issue.get('element_tags'), list) else [])
+				if str(tag).strip()
+			]
+			recommended_resolution_lane = str(issue.get('recommended_resolution_lane') or 'clarify_with_complainant').strip().lower()
+			missing_temporal_predicates = [
+				str(predicate).strip()
+				for predicate in (issue.get('missing_temporal_predicates') if isinstance(issue.get('missing_temporal_predicates'), list) else [])
+				if str(predicate).strip()
+			]
+			required_provenance_kinds = [
+				str(kind).strip()
+				for kind in (issue.get('required_provenance_kinds') if isinstance(issue.get('required_provenance_kinds'), list) else [])
+				if str(kind).strip()
+			]
+			preferred_question_objective = 'establish_chronology'
+			preferred_question_type = 'timeline'
+			suggested_prompt_family = 'chronology_sequence'
+			if recommended_resolution_lane in {'request_document', 'seek_external_record'} or required_provenance_kinds:
+				preferred_question_objective = 'identify_supporting_proof'
+				preferred_question_type = 'evidence'
+				suggested_prompt_family = 'exhibit_grounding'
+			elif issue_type == 'missing_anchor':
+				preferred_question_objective = 'exact_dates'
+				preferred_question_type = 'timeline'
+				suggested_prompt_family = 'timeline_anchor'
+			elif issue_type in {'missing_actor_identity', 'missing_decision_actor'}:
+				preferred_question_objective = 'identify_responsible_actor'
+				preferred_question_type = 'responsible_party'
+				suggested_prompt_family = 'actor_identity'
+			elif issue_type.startswith('retaliation_') or 'causation' in target_element_ids:
+				preferred_question_objective = 'establish_causation'
+				preferred_question_type = 'timeline'
+				suggested_prompt_family = 'causation_sequence'
+			ledger.append(
+				{
+					'issue_id': issue_id,
+					'issue_type': issue_type,
+					'claim_types': claim_types,
+					'target_element_ids': target_element_ids,
+					'recommended_resolution_lane': recommended_resolution_lane,
+					'missing_temporal_predicates': missing_temporal_predicates,
+					'required_provenance_kinds': required_provenance_kinds,
+					'preferred_question_objective': preferred_question_objective,
+					'preferred_question_type': preferred_question_type,
+					'suggested_prompt_family': suggested_prompt_family,
+					'blocking': bool(issue.get('blocking')) or str(issue.get('severity') or '').strip().lower() == 'blocking',
+				}
+			)
+		return ledger
+
+	def _match_chronology_objective_ledger(
+		self,
+		candidate: Dict[str, Any],
+		gap_context: Dict[str, Any],
+		*,
+		question_text: str,
+		question_objective: str,
+		question_type: str,
+		target_claim_type: str,
+		target_element_id: str,
+	) -> Dict[str, Any]:
+		context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
+		ranking_explanation = candidate.get('ranking_explanation') if isinstance(candidate.get('ranking_explanation'), dict) else {}
+		candidate_issue_id = str(
+			context.get('temporal_issue_id')
+			or context.get('gap_id')
+			or ranking_explanation.get('temporal_issue_id')
+			or ''
+		).strip()
+		candidate_lane = str(
+			context.get('recommended_resolution_lane')
+			or candidate.get('recommended_resolution_lane')
+			or ranking_explanation.get('recommended_resolution_lane')
+			or ''
+		).strip().lower()
+		match_issue_ids: List[str] = []
+		match_prompt_families: List[str] = []
+		match_objectives: List[str] = []
+		direct_issue_match = False
+		for entry in (gap_context.get('chronology_objective_ledger') if isinstance(gap_context.get('chronology_objective_ledger'), list) else []):
+			if not isinstance(entry, dict):
+				continue
+			entry_issue_id = str(entry.get('issue_id') or '').strip()
+			entry_claim_types = {
+				str(value).strip().lower()
+				for value in (entry.get('claim_types') or [])
+				if str(value).strip()
+			}
+			entry_element_ids = {
+				str(value).strip().lower()
+				for value in (entry.get('target_element_ids') or [])
+				if str(value).strip()
+			}
+			entry_objective = str(entry.get('preferred_question_objective') or '').strip().lower()
+			entry_type = str(entry.get('preferred_question_type') or '').strip().lower()
+			prompt_family = str(entry.get('suggested_prompt_family') or '').strip().lower()
+			entry_lane = str(entry.get('recommended_resolution_lane') or '').strip().lower()
+			claim_match = not entry_claim_types or target_claim_type in entry_claim_types
+			element_match = not entry_element_ids or target_element_id in entry_element_ids
+			objective_match = bool(entry_objective and entry_objective in {question_objective, question_type}) or bool(entry_type and entry_type == question_type)
+			prompt_family_match = False
+			if prompt_family == 'causation_sequence':
+				prompt_family_match = self._is_causation_sequence_match(question_text, question_objective, question_type)
+			elif prompt_family == 'timeline_anchor':
+				prompt_family_match = self._is_exact_dates_closure_match(question_text, question_objective, question_type)
+			elif prompt_family == 'actor_identity':
+				prompt_family_match = self._is_staff_names_titles_closure_match(question_text)
+			elif prompt_family == 'exhibit_grounding':
+				prompt_family_match = self._is_document_question_candidate(candidate)
+			elif prompt_family == 'chronology_sequence':
+				prompt_family_match = question_type == 'timeline' or 'chronolog' in question_text or 'timeline' in question_text
+			lane_match = bool(entry_lane and entry_lane == candidate_lane)
+			is_match = False
+			if entry_issue_id and candidate_issue_id and entry_issue_id == candidate_issue_id:
+				direct_issue_match = True
+				is_match = True
+			elif claim_match and element_match and (objective_match or prompt_family_match or lane_match):
+				is_match = True
+			if not is_match:
+				continue
+			if entry_issue_id and entry_issue_id not in match_issue_ids:
+				match_issue_ids.append(entry_issue_id)
+			if prompt_family and prompt_family not in match_prompt_families:
+				match_prompt_families.append(prompt_family)
+			if entry_objective and entry_objective not in match_objectives:
+				match_objectives.append(entry_objective)
+		return {
+			'chronology_objective_match_count': len(match_issue_ids),
+			'chronology_objective_issue_ids': match_issue_ids,
+			'chronology_objective_prompt_families': match_prompt_families,
+			'chronology_objective_preferred_objectives': match_objectives,
+			'chronology_objective_direct_issue_match': direct_issue_match,
+		}
+
 	def _annotate_intake_question_candidate(
 		self,
 		candidate: Dict[str, Any],
@@ -1244,6 +1400,16 @@ class Mediator:
 			for value in (gap_context.get('intake_uncovered_objectives') or [])
 			if str(value).strip()
 		]
+		chronology_objective_matches = self._match_chronology_objective_ledger(
+			annotated,
+			gap_context,
+			question_text=question_text,
+			question_objective=question_objective,
+			question_type=question_type,
+			target_claim_type=target_claim_type,
+			target_element_id=target_element_id,
+		)
+		chronology_objective_match_count = int(chronology_objective_matches.get('chronology_objective_match_count', 0) or 0)
 		if not expected_objectives:
 			expected_objectives = list(uncovered_objectives)
 		ordered_priority_objectives: List[str] = []
@@ -1379,6 +1545,10 @@ class Mediator:
 			score += 20.0
 			if intake_priority_rank is not None:
 				score += max(0.0, 8.0 - float(intake_priority_rank) * 2.0)
+		if chronology_objective_match_count:
+			score += chronology_objective_match_count * 12.0
+		if bool(chronology_objective_matches.get('chronology_objective_direct_issue_match', False)):
+			score += 18.0
 		if generic_catch_all_prompt:
 			score -= 12.0
 		if priority_anchor_uncovered and generic_catch_all_prompt and not anchor_selection_criteria_match:
@@ -1439,6 +1609,11 @@ class Mediator:
 			'intake_priority_match': intake_priority_match,
 			'intake_priority_rank': intake_priority_rank,
 			'intake_priority_match_count': intake_priority_match_count,
+			'chronology_objective_match_count': chronology_objective_match_count,
+			'chronology_objective_issue_ids': list(chronology_objective_matches.get('chronology_objective_issue_ids') or []),
+			'chronology_objective_prompt_families': list(chronology_objective_matches.get('chronology_objective_prompt_families') or []),
+			'chronology_objective_preferred_objectives': list(chronology_objective_matches.get('chronology_objective_preferred_objectives') or []),
+			'chronology_objective_direct_issue_match': bool(chronology_objective_matches.get('chronology_objective_direct_issue_match', False)),
 			'workflow_action_match_count': workflow_action_match_count,
 			'workflow_action_rank': workflow_action_rank,
 			'workflow_action_phase': workflow_action_matches.get('workflow_action_phase', ''),
@@ -1684,6 +1859,7 @@ class Mediator:
 		priority_term_lookup = set()
 		intake_case_file = self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
 		claim_support_packets = self.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets') or {}
+		chronology_objective_ledger = self._build_chronology_objective_ledger(intake_case_file)
 		adversarial_summary = (
 			self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary') or {}
 		)
@@ -1910,6 +2086,8 @@ class Mediator:
 		return {
 			'priority_terms': priority_terms,
 			'gap_count': len(priority_terms),
+			'chronology_objective_ledger': chronology_objective_ledger,
+			'chronology_objective_count': len(chronology_objective_ledger),
 			'needs_chronology_closure': bool(chronology_priority_hints.get('needs_chronology_closure')),
 			'needs_decision_document_precision': bool(chronology_priority_hints.get('needs_decision_document_precision')),
 			'needs_exhibit_grounding': bool(chronology_priority_hints.get('needs_exhibit_grounding')),

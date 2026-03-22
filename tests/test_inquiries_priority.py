@@ -206,7 +206,33 @@ def test_mediator_build_inquiry_gap_context_surfaces_chronology_and_proof_hints(
 
     mediator = Mediator.__new__(Mediator)
     mediator.phase_manager = FakePhaseManager({
-        (ComplaintPhase.INTAKE, 'intake_case_file'): {'candidate_claims': []},
+        (ComplaintPhase.INTAKE, 'intake_case_file'): {
+            'candidate_claims': [],
+            'temporal_issue_registry': [
+                {
+                    'issue_id': 'temporal_issue_001',
+                    'issue_type': 'relative_only_ordering',
+                    'claim_types': ['retaliation'],
+                    'element_tags': ['causation'],
+                    'recommended_resolution_lane': 'clarify_with_complainant',
+                    'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+                    'required_provenance_kinds': ['testimony_record'],
+                    'blocking': True,
+                    'status': 'open',
+                },
+                {
+                    'issue_id': 'temporal_issue_002',
+                    'issue_type': 'missing_anchor',
+                    'claim_types': ['retaliation'],
+                    'element_tags': ['causation'],
+                    'recommended_resolution_lane': 'seek_external_record',
+                    'missing_temporal_predicates': ['Anchored(fact_termination)'],
+                    'required_provenance_kinds': ['external_institutional_record'],
+                    'blocking': True,
+                    'status': 'open',
+                },
+            ],
+        },
         (ComplaintPhase.EVIDENCE, 'claim_support_packets'): {},
         (ComplaintPhase.INTAKE, 'adversarial_intake_priority_summary'): {},
         (ComplaintPhase.INTAKE, 'workflow_optimization_guidance'): {
@@ -239,6 +265,102 @@ def test_mediator_build_inquiry_gap_context_surfaces_chronology_and_proof_hints(
     assert 'response_dates' in context['intake_uncovered_objectives']
     assert 'documents' in context['intake_uncovered_objectives']
     assert 'decision notice' in [term.lower() for term in context['priority_terms']]
+    assert context['chronology_objective_count'] == 2
+    assert context['chronology_objective_ledger'][0]['issue_id'] == 'temporal_issue_001'
+    assert context['chronology_objective_ledger'][0]['preferred_question_objective'] == 'establish_causation'
+    assert context['chronology_objective_ledger'][0]['preferred_question_type'] == 'timeline'
+    assert context['chronology_objective_ledger'][0]['suggested_prompt_family'] == 'causation_sequence'
+    assert context['chronology_objective_ledger'][1]['preferred_question_objective'] == 'identify_supporting_proof'
+    assert context['chronology_objective_ledger'][1]['preferred_question_type'] == 'evidence'
+    assert context['chronology_objective_ledger'][1]['suggested_prompt_family'] == 'exhibit_grounding'
+
+
+def test_select_intake_question_candidates_prefers_direct_chronology_objective_match():
+    class MockBackend:
+        id = 'mock_backend'
+
+        def __call__(self, prompt):
+            return 'Mock response'
+
+    mediator = Mediator([MockBackend()])
+    mediator.phase_manager.update_phase_data(
+        ComplaintPhase.INTAKE,
+        'intake_case_file',
+        {
+            'candidate_claims': [
+                {
+                    'claim_type': 'retaliation',
+                    'label': 'Retaliation',
+                    'required_elements': [],
+                }
+            ],
+            'temporal_issue_registry': [
+                {
+                    'issue_id': 'temporal_issue_001',
+                    'issue_type': 'relative_only_ordering',
+                    'claim_types': ['retaliation'],
+                    'element_tags': ['causation'],
+                    'recommended_resolution_lane': 'clarify_with_complainant',
+                    'missing_temporal_predicates': ['Before(fact_001,fact_termination)'],
+                    'required_provenance_kinds': ['testimony_record'],
+                    'blocking': True,
+                    'status': 'open',
+                }
+            ],
+        },
+    )
+    chronology_candidate = mediator.denoiser._question_candidate(
+        source='intake_claim_temporal_gap',
+        question_type='timeline',
+        question_text=(
+            'For your retaliation claim, what protected activity happened first, what adverse action followed, '
+            'and on what exact dates did those events occur?'
+        ),
+        context={
+            'claim_type': 'retaliation',
+            'claim_name': 'Retaliation',
+            'gap_id': 'temporal_issue_001',
+            'target_element_id': 'causation',
+            'temporal_issue_id': 'temporal_issue_001',
+            'recommended_resolution_lane': 'clarify_with_complainant',
+            'workflow_phase': 'graph_analysis',
+        },
+        priority='high',
+    )
+    chronology_candidate['question_objective'] = 'establish_causation'
+    chronology_candidate['question_goal'] = 'establish_element'
+    chronology_candidate['ranking_explanation']['question_objective'] = 'establish_causation'
+    chronology_candidate['ranking_explanation']['question_goal'] = 'establish_element'
+
+    generic_candidate = mediator.denoiser._question_candidate(
+        source='knowledge_graph_gap',
+        question_type='timeline',
+        question_text='Can you walk me through the timeline generally?',
+        context={
+            'claim_type': 'retaliation',
+            'claim_name': 'Retaliation',
+            'target_element_id': 'causation',
+            'workflow_phase': 'graph_analysis',
+        },
+        priority='high',
+    )
+    generic_candidate['question_objective'] = 'establish_chronology'
+    generic_candidate['question_goal'] = 'establish_element'
+    generic_candidate['ranking_explanation']['question_objective'] = 'establish_chronology'
+    generic_candidate['ranking_explanation']['question_goal'] = 'establish_element'
+
+    selected = mediator.select_intake_question_candidates(
+        [generic_candidate, chronology_candidate],
+        max_questions=2,
+    )
+
+    assert selected[0]['candidate_source'] == 'intake_claim_temporal_gap'
+    assert selected[0]['selector_signals']['chronology_objective_direct_issue_match'] is True
+    assert selected[0]['selector_signals']['chronology_objective_match_count'] == 1
+    assert selected[0]['selector_signals']['chronology_objective_issue_ids'] == ['temporal_issue_001']
+    assert selected[0]['selector_signals']['chronology_objective_preferred_objectives'] == ['establish_causation']
+    assert 'causation_sequence' in selected[0]['selector_signals']['chronology_objective_prompt_families']
+    assert selected[0]['selector_score'] > selected[1]['selector_score']
 
 
 def test_inquiries_get_next_prioritizes_chronology_closure_before_documents():
