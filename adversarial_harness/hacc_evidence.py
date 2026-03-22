@@ -2070,6 +2070,7 @@ def resolve_hacc_question_evidence(
 ) -> Dict[str, Any]:
     normalized_question = str(question or "").strip()
     facts = dict(key_facts or {})
+    search_summary = dict(facts.get("search_summary") or {})
     if not normalized_question:
         return {
             "question": normalized_question,
@@ -2101,12 +2102,23 @@ def resolve_hacc_question_evidence(
     if anchor_terms:
         query_parts.append(" ".join(anchor_terms[:4]))
     search_query = " ".join(part for part in query_parts if part).strip()
+    effective_search_mode = str(
+        search_summary.get("effective_search_mode")
+        or search_summary.get("requested_search_mode")
+        or search_mode
+        or "package"
+    ).strip() or "package"
+    effective_use_vector = bool(use_vector)
+    if effective_search_mode in {"lexical", "lexical_only", "lexical_fallback"}:
+        effective_use_vector = False
+    elif "requested_use_vector" in search_summary:
+        effective_use_vector = bool(search_summary.get("requested_use_vector"))
 
     payload = engine.search(
         search_query,
         top_k=top_k,
-        use_vector=use_vector,
-        search_mode=search_mode,
+        use_vector=effective_use_vector,
+        search_mode=effective_search_mode,
     )
     raw_hits = [_summarize_hit(hit) for hit in list(payload.get("results", []) or [])]
     hits = _filter_hits(
