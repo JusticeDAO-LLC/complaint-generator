@@ -499,6 +499,51 @@ def test_refresh_intake_case_file_skips_policy_and_checklist_timeline_noise_in_t
     assert [issue["fact_ids"] for issue in refreshed["temporal_issue_registry"]] == [["fact_event"]]
 
 
+def test_refresh_intake_case_file_downgrades_sequenced_structured_steps_without_dates():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_anchor",
+                "text": "I complained in early 2025.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_1",
+                "sequence_index": 1,
+                "event_date_or_range": "early 2025",
+            },
+            {
+                "fact_id": "fact_follow_up",
+                "text": "I requested a grievance hearing after that action.",
+                "fact_type": "timeline",
+                "predicate_family": "hearing_process",
+                "structured_timeline_group": "group_1",
+                "sequence_index": 2,
+                "event_date_or_range": None,
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    issue = next(item for item in refreshed["temporal_issue_registry"] if item["fact_ids"] == ["fact_follow_up"])
+    assert issue["issue_type"] == "missing_anchor"
+    assert issue["severity"] == "warning"
+    assert issue["blocking"] is False
+    assert issue["recommended_resolution_lane"] == "capture_testimony"
+    assert issue["required_provenance_kinds"] == ["testimony_record", "document_artifact"]
+
+
 def test_knowledge_graph_builder_extracts_quantified_relative_event_dates():
     builder = KnowledgeGraphBuilder()
     graph = builder.build_from_text("Two weeks after I complained to HR, my employer terminated me.")

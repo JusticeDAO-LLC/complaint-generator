@@ -1089,6 +1089,12 @@ def build_temporal_issue_registry(
     registry: List[Dict[str, Any]] = []
     seen_issue_ids = set()
     issue_index_by_signature: Dict[tuple[str, str, tuple[str, ...]], int] = {}
+    structured_group_facts: Dict[str, List[Dict[str, Any]]] = {}
+
+    for fact in _timeline_capable_facts(canonical_facts):
+        structured_group = _normalize_text(fact.get("structured_timeline_group") or "")
+        if structured_group:
+            structured_group_facts.setdefault(structured_group, []).append(fact)
 
     for fact in _timeline_capable_facts(canonical_facts):
         fact_id = _normalize_text(fact.get("fact_id") or "")
@@ -1099,6 +1105,25 @@ def build_temporal_issue_registry(
         relative_markers = _unique_normalized_strings(temporal_context.get("relative_markers") or [])
         issue_type = "relative_only_ordering" if relative_markers else "missing_anchor"
         left_node_name = _normalize_text(fact.get("text") or "") or None
+        structured_group = _normalize_text(fact.get("structured_timeline_group") or "")
+        grouped_facts = structured_group_facts.get(structured_group, []) if structured_group else []
+        has_structured_sequence_support = (
+            bool(structured_group)
+            and len(grouped_facts) > 1
+            and isinstance(fact.get("sequence_index"), int)
+        )
+        group_has_any_anchor = any(
+            bool(_coerce_dict(item.get("temporal_context")).get("start_date"))
+            for item in grouped_facts
+            if isinstance(item, dict)
+        )
+        issue_severity = "blocking"
+        issue_blocking = True
+        recommended_resolution_lane = "clarify_with_complainant"
+        if has_structured_sequence_support and not relative_markers and group_has_any_anchor:
+            issue_severity = "warning"
+            issue_blocking = False
+            recommended_resolution_lane = "capture_testimony"
         signature = (issue_type, (left_node_name or "").lower(), tuple(relative_markers))
         if signature in issue_index_by_signature:
             existing_issue = registry[issue_index_by_signature[signature]]
@@ -1141,9 +1166,9 @@ def build_temporal_issue_registry(
                 "issue_type": issue_type,
                 "category": issue_type,
                 "summary": summary,
-                "severity": "blocking",
-                "blocking": True,
-                "recommended_resolution_lane": "clarify_with_complainant",
+                "severity": issue_severity,
+                "blocking": issue_blocking,
+                "recommended_resolution_lane": recommended_resolution_lane,
                 "fact_ids": [fact_id] if fact_id else [],
                 "claim_types": _unique_normalized_strings(fact.get("claim_types") or []),
                 "element_tags": _unique_normalized_strings(fact.get("element_tags") or []),
@@ -1159,7 +1184,7 @@ def build_temporal_issue_registry(
                 ),
                 "required_provenance_kinds": _derive_temporal_issue_required_provenance_kinds(
                     issue_type,
-                    "clarify_with_complainant",
+                    recommended_resolution_lane,
                 ),
                 "source_kind": "temporal_fact_registry",
                 "source_ref": fact_id or None,

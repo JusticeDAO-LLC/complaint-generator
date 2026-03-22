@@ -137,6 +137,7 @@ def _run_complaint_synthesis(
     filing_forum: str,
     preset: str,
     completed_intake_worksheet: Optional[str] = None,
+    completed_grounded_intake_worksheet: Optional[str] = None,
 ) -> Dict[str, Any]:
     synthesis_module = _load_complaint_synthesis_module()
     output_dir = grounded_run_dir / "synthesized_complaint"
@@ -154,6 +155,8 @@ def _run_complaint_synthesis(
     ]
     if completed_intake_worksheet:
         argv.extend(["--completed-intake-worksheet", completed_intake_worksheet])
+    if completed_grounded_intake_worksheet:
+        argv.extend(["--completed-grounded-intake-worksheet", completed_grounded_intake_worksheet])
     synthesis_module.main(argv)
     return {
         "output_dir": str(output_dir),
@@ -161,6 +164,20 @@ def _run_complaint_synthesis(
         "draft_complaint_package_md": str(output_dir / "draft_complaint_package.md"),
         "intake_follow_up_worksheet_json": str(output_dir / "intake_follow_up_worksheet.json"),
         "intake_follow_up_worksheet_md": str(output_dir / "intake_follow_up_worksheet.md"),
+    }
+
+
+def _load_synthesis_roundtrip_artifacts(synthesis_summary: Dict[str, Any]) -> Dict[str, Any]:
+    draft_package_path = Path(str(synthesis_summary.get("draft_complaint_package_json") or "")).resolve()
+    if not draft_package_path.exists() or not draft_package_path.is_file():
+        return {}
+    try:
+        draft_package = json.loads(draft_package_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return {
+        "refreshed_grounding_state": dict(draft_package.get("refreshed_grounding_state") or {}),
+        "grounded_follow_up_answer_summary": dict(draft_package.get("grounded_follow_up_answer_summary") or {}),
     }
 
 
@@ -364,6 +381,7 @@ def run_hacc_grounded_pipeline(
     synthesize_complaint: bool = False,
     filing_forum: str = "court",
     completed_intake_worksheet: Optional[str] = None,
+    completed_grounded_intake_worksheet: Optional[str] = None,
 ) -> Dict[str, Any]:
     output_root = Path(output_dir).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -482,13 +500,26 @@ def run_hacc_grounded_pipeline(
     _write_json(output_root / "adversarial_summary.json", adversarial_summary)
 
     synthesis_summary: Dict[str, Any] = {}
+    synthesis_roundtrip_artifacts: Dict[str, Any] = {}
     if synthesize_complaint:
         synthesis_summary = _run_complaint_synthesis(
             grounded_run_dir=output_root,
             filing_forum=filing_forum,
             preset=hacc_preset,
             completed_intake_worksheet=completed_intake_worksheet,
+            completed_grounded_intake_worksheet=completed_grounded_intake_worksheet,
         )
+        synthesis_roundtrip_artifacts = _load_synthesis_roundtrip_artifacts(synthesis_summary)
+        if synthesis_roundtrip_artifacts.get("refreshed_grounding_state"):
+            _write_json(
+                output_root / "refreshed_grounding_state.json",
+                synthesis_roundtrip_artifacts.get("refreshed_grounding_state", {}),
+            )
+        if synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary"):
+            _write_json(
+                output_root / "grounded_follow_up_answer_summary.json",
+                synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary", {}),
+            )
 
     summary = {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -516,6 +547,7 @@ def run_hacc_grounded_pipeline(
         "evidence_upload": upload_report,
         "adversarial": adversarial_summary,
         "complaint_synthesis": synthesis_summary,
+        "synthesis_roundtrip_artifacts": synthesis_roundtrip_artifacts,
         "artifacts": {
             "output_dir": str(output_root),
             "grounding_bundle_json": str(output_root / "grounding_bundle.json"),
@@ -549,6 +581,8 @@ def run_hacc_grounded_pipeline(
             "draft_complaint_package_md": synthesis_summary.get("draft_complaint_package_md", ""),
             "intake_follow_up_worksheet_json": synthesis_summary.get("intake_follow_up_worksheet_json", ""),
             "intake_follow_up_worksheet_md": synthesis_summary.get("intake_follow_up_worksheet_md", ""),
+            "refreshed_grounding_state_json": str(output_root / "refreshed_grounding_state.json") if synthesis_roundtrip_artifacts.get("refreshed_grounding_state") else "",
+            "grounded_follow_up_answer_summary_json": str(output_root / "grounded_follow_up_answer_summary.json") if synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary") else "",
         },
     }
     _write_json(output_root / "run_summary.json", summary)
@@ -578,6 +612,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--synthesize-complaint", action="store_true")
     parser.add_argument("--filing-forum", default="court", choices=("court", "hud", "state_agency"))
     parser.add_argument("--completed-intake-worksheet", default=None)
+    parser.add_argument("--completed-grounded-intake-worksheet", default=None)
     parser.add_argument("--json", action="store_true")
     return parser
 
@@ -600,6 +635,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         synthesize_complaint=args.synthesize_complaint,
         filing_forum=args.filing_forum,
         completed_intake_worksheet=args.completed_intake_worksheet,
+        completed_grounded_intake_worksheet=args.completed_grounded_intake_worksheet,
     )
     if args.json:
         print(json.dumps(summary, ensure_ascii=False, indent=2))

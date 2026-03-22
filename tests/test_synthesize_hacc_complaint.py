@@ -22,6 +22,29 @@ def test_existing_optional_path_returns_path_for_existing_file(tmp_path):
     assert MODULE._existing_optional_path(artifact) == artifact
 
 
+def test_graph_readiness_counts_only_blocking_open_temporal_issues():
+    session = {
+        "final_state": {
+            "intake_case_file": {
+                "canonical_facts": [{"fact_id": "fact:1", "text": "Notice sent"}],
+                "timeline_anchors": [{"fact_id": "fact:1", "start_date": "2025-01-05"}],
+                "timeline_relations": [{"source_fact_id": "fact:1", "target_fact_id": "fact:2", "relation_type": "before"}],
+                "temporal_issue_registry": [
+                    {"issue_id": "temp:blocking", "status": "open", "blocking": True, "severity": "blocking"},
+                    {"issue_id": "temp:warning", "status": "open", "blocking": False, "severity": "warning"},
+                ],
+                "blocker_follow_up_summary": {"blocking_item_count": 0, "blocking_items": [], "extraction_targets": []},
+            }
+        }
+    }
+
+    graph_summary = MODULE._graph_readiness_summary(session)
+
+    assert graph_summary["timeline_relation_count"] == 1
+    assert graph_summary["open_temporal_issue_count"] == 1
+    assert graph_summary["tracked_temporal_issue_count"] == 2
+
+
 def test_clean_policy_text_removes_generic_prefixes():
     text = "The strongest supporting material is 'ADMINISTRATIVE PLAN'. HACC Policy Written notice is required."
 
@@ -933,6 +956,53 @@ def test_grounded_follow_up_answer_summary_counts_chronology_and_evidence_answer
     assert summary["evidence_answer_count"] == 1
     assert summary["objective_counts"]["exact_dates"] == 1
     assert summary["objective_counts"]["documents"] == 1
+
+
+def test_refreshed_grounding_state_summarizes_grounded_answers_and_readiness():
+    seed = {
+        "key_facts": {
+            "drafting_readiness": {
+                "coverage": 0.91,
+                "phase_status": "warning",
+                "blockers": ["document_generation_not_ready"],
+            },
+            "document_generation_handoff": {
+                "unresolved_objectives": ["exact_dates"],
+                "support_trace_rows": [{"title": "Notice"}],
+                "artifact_support_rows": [{"title": "Notice"}],
+            },
+        }
+    }
+    session = {
+        "conversation_history": [
+            {
+                "role": "complainant",
+                "content": "The denial notice was dated January 15, 2026 and the review request was submitted January 18, 2026.",
+                "question": "What exact dates, notice timing, and event order are still missing before drafting?",
+                "source": "completed_grounded_intake_follow_up_worksheet",
+                "objective": "exact_dates",
+            }
+        ],
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "covered_objectives": ["exact_dates"],
+                "uncovered_objectives": ["documents"],
+                "objective_question_counts": {"exact_dates": 1},
+            }
+        },
+    }
+
+    refreshed = MODULE._refreshed_grounding_state(
+        seed,
+        session,
+        {"action": "fill_chronology_gaps", "phase_name": "graph_analysis"},
+    )
+
+    assert refreshed["recommended_next_action"]["action"] == "fill_chronology_gaps"
+    assert refreshed["grounded_follow_up_answer_summary"]["answered_item_count"] == 1
+    assert refreshed["drafting_readiness"]["phase_status"] == "warning"
+    assert refreshed["document_generation_handoff"]["support_trace_count"] == 1
+    assert "timeline_anchor_count" in refreshed["chronology_hints"]
 
 
 def test_render_intake_follow_up_worksheet_markdown_includes_fillable_items():

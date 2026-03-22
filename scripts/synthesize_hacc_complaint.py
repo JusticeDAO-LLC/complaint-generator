@@ -3360,6 +3360,43 @@ def _grounded_follow_up_answer_summary(session: Dict[str, Any], limit: int = 6) 
     }
 
 
+def _refreshed_grounding_state(
+    seed: Dict[str, Any],
+    session: Dict[str, Any],
+    grounded_recommended_next_action: Dict[str, Any],
+) -> Dict[str, Any]:
+    key_facts = dict(seed.get("key_facts") or {})
+    readiness = _drafting_readiness_for_formalization(seed, session)
+    handoff = dict(key_facts.get("document_generation_handoff") or {})
+    grounded_answer_summary = _grounded_follow_up_answer_summary(session)
+    chronology_hints = {
+        "canonical_fact_count": len([dict(item) for item in list(_session_intake_case_file(session).get("canonical_facts") or []) if isinstance(item, dict)]),
+        "timeline_anchor_count": len([dict(item) for item in list(_session_intake_case_file(session).get("timeline_anchors") or []) if isinstance(item, dict)]),
+    }
+    blocker_codes = [str(item) for item in list(readiness.get("blockers") or []) if str(item)]
+    refreshed_status = "improved" if grounded_answer_summary.get("answered_item_count", 0) else "unchanged"
+    if grounded_answer_summary.get("chronology_answer_count", 0) and "graph_analysis_not_ready" not in blocker_codes:
+        refreshed_status = "chronology_supported"
+    if grounded_answer_summary.get("evidence_answer_count", 0) and "document_generation_not_ready" not in blocker_codes:
+        refreshed_status = "evidence_supported"
+    return {
+        "status": refreshed_status,
+        "recommended_next_action": dict(grounded_recommended_next_action or {}),
+        "grounded_follow_up_answer_summary": grounded_answer_summary,
+        "drafting_readiness": {
+            "coverage": _safe_float(readiness.get("coverage"), 0.0),
+            "phase_status": str(readiness.get("phase_status") or ""),
+            "blockers": blocker_codes,
+        },
+        "document_generation_handoff": {
+            "unresolved_objective_count": len([str(item) for item in list(handoff.get("unresolved_objectives") or []) if str(item)]),
+            "support_trace_count": len([dict(item) for item in list(handoff.get("support_trace_rows") or []) if isinstance(item, dict)]),
+            "artifact_support_count": len([dict(item) for item in list(handoff.get("artifact_support_rows") or []) if isinstance(item, dict)]),
+        },
+        "chronology_hints": chronology_hints,
+    }
+
+
 def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
     key_facts = dict(seed.get("key_facts") or {})
     stored = dict(key_facts.get("drafting_readiness") or {})
@@ -4180,6 +4217,11 @@ def _graph_readiness_summary(session: Dict[str, Any]) -> Dict[str, Any]:
         item for item in temporal_issue_registry
         if str(item.get("status") or item.get("current_resolution_status") or "").strip().lower() not in {"resolved", "closed"}
     ]
+    blocking_open_temporal_issues = [
+        item for item in open_temporal_issues
+        if bool(item.get("blocking", True))
+        or str(item.get("severity") or "").strip().lower() == "blocking"
+    ]
     blocker_summary = _synthesized_blocker_summary(session)
     chronology_complete = bool(canonical_facts) and bool(timeline_relations or timeline_anchors)
     return {
@@ -4187,7 +4229,8 @@ def _graph_readiness_summary(session: Dict[str, Any]) -> Dict[str, Any]:
         "canonical_fact_count": len(canonical_facts),
         "timeline_relation_count": len(timeline_relations),
         "timeline_anchor_count": len(timeline_anchors),
-        "open_temporal_issue_count": len(open_temporal_issues),
+        "open_temporal_issue_count": len(blocking_open_temporal_issues),
+        "tracked_temporal_issue_count": len(open_temporal_issues),
         "blocking_item_count": int(blocker_summary.get("blocking_item_count") or 0),
         "extraction_targets": [str(item) for item in list(blocker_summary.get("extraction_targets") or []) if str(item)],
     }
@@ -5735,6 +5778,11 @@ def main(argv: List[str] | None = None) -> int:
             "search_summary": search_summary,
         },
     }
+    package["refreshed_grounding_state"] = _refreshed_grounding_state(
+        seed,
+        best_session,
+        grounded_recommended_next_action,
+    )
     _inject_exhibit_references(package)
     package["causes_of_action"] = _annotate_causes_with_selection_rationale(
         list(package.get("causes_of_action") or []),

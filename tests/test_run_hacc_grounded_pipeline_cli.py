@@ -29,6 +29,8 @@ def test_create_parser_supports_grounded_pipeline_options():
             "2",
             "--use-hacc-vector-search",
             "--synthesize-complaint",
+            "--completed-grounded-intake-worksheet",
+            "grounded_answers.json",
             "--json",
         ]
     )
@@ -37,6 +39,7 @@ def test_create_parser_supports_grounded_pipeline_options():
     assert args.top_k == 2
     assert args.use_hacc_vector_search is True
     assert args.synthesize_complaint is True
+    assert args.completed_grounded_intake_worksheet == "grounded_answers.json"
     assert args.json is True
 
 
@@ -243,3 +246,82 @@ def test_run_hacc_grounded_pipeline_degrades_when_seeded_discovery_raises(tmp_pa
     assert seeded_discovery["status"] == "degraded"
     assert seeded_discovery["reason"] == "seeded_discovery_failed"
     assert "temporary commoncrawl failure" in seeded_discovery["error"]
+
+
+def test_run_hacc_grounded_pipeline_persists_synthesis_roundtrip_artifacts(tmp_path, monkeypatch):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {},
+                "seeded_discovery_plan": {},
+                "research_action_queue": [],
+                "recommended_next_action": {},
+            }
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "synthetic_prompts": {},
+                "anchor_passages": [],
+                "upload_candidates": [],
+                "mediator_evidence_packets": [],
+                "claim_support_temporal_handoff": {},
+                "document_generation_handoff": {},
+                "drafting_readiness": {},
+                "graph_completeness_signals": {},
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 0}
+
+    def fake_run_complaint_synthesis(**kwargs):
+        output_dir = tmp_path / "synthesized_complaint"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        draft_path = output_dir / "draft_complaint_package.json"
+        draft_path.write_text(
+            json.dumps(
+                {
+                    "refreshed_grounding_state": {"status": "chronology_supported"},
+                    "grounded_follow_up_answer_summary": {"answered_item_count": 2},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "output_dir": str(output_dir),
+            "draft_complaint_package_json": str(draft_path),
+            "draft_complaint_package_md": str(output_dir / "draft_complaint_package.md"),
+            "intake_follow_up_worksheet_json": str(output_dir / "intake_follow_up_worksheet.json"),
+            "intake_follow_up_worksheet_md": str(output_dir / "intake_follow_up_worksheet.md"),
+        }
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", fake_run_complaint_synthesis)
+
+    summary = cli.run_hacc_grounded_pipeline(
+        output_dir=tmp_path,
+        query="termination notice chronology",
+        claim_type="housing_discrimination",
+        top_k=1,
+        synthesize_complaint=True,
+        completed_grounded_intake_worksheet="grounded_answers.json",
+    )
+
+    refreshed_path = Path(summary["artifacts"]["refreshed_grounding_state_json"])
+    grounded_answer_path = Path(summary["artifacts"]["grounded_follow_up_answer_summary_json"])
+    assert refreshed_path.is_file()
+    assert grounded_answer_path.is_file()
+    assert json.loads(refreshed_path.read_text(encoding="utf-8"))["status"] == "chronology_supported"
+    assert json.loads(grounded_answer_path.read_text(encoding="utf-8"))["answered_item_count"] == 2
