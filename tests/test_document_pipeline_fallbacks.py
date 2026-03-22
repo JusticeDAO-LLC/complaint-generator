@@ -652,6 +652,8 @@ def test_chronology_allegation_inherits_full_dated_fact_chain():
     assert "fact-303-1" in chronology_paragraph["fact_ids"]
     assert "fact-303-2" in chronology_paragraph["fact_ids"]
     assert "fact-303-3" in chronology_paragraph["fact_ids"]
+    assert chronology_paragraph["exhibit_label"] == "Exhibit A"
+    assert chronology_paragraph["text"].endswith("(See Exhibit A).")
 
 
 def test_factual_allegation_groups_prioritize_dated_adverse_action_chronology():
@@ -1174,3 +1176,55 @@ def test_rendered_claim_support_prefers_fact_backed_uploaded_evidence_lines():
     assert "On March 3, 2026, HACC sent Plaintiff a written denial notice signed by HACC hearing officer Maria Lopez (See Exhibit A)." in rendered_lines[0]
     assert "On March 4, 2026, Plaintiff submitted a grievance request challenging the denial notice (See Exhibit A)." in rendered_lines[1]
     assert "On March 8, 2026, HACC hearing officer Maria Lopez issued the review decision (See Exhibit A)." in rendered_lines[2]
+
+
+def test_count_incorporation_clause_names_primary_evidence_exhibit():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    due_process_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "due_process_failure"
+    )
+    rendered_lines = builder._build_claim_render_lines(due_process_claim)
+
+    assert "Plaintiff incorporates Exhibit A (HACC denial notice and review chronology) and Exhibit B as if fully set forth herein." in rendered_lines[0]

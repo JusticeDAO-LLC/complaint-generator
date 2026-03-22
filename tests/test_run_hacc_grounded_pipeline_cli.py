@@ -63,6 +63,27 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
         def __init__(self, repo_root):
             self.repo_root = repo_root
 
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {
+                    "upload_ready_candidate_count": 1,
+                    "recommended_upload_paths": ["evidence/notice.pdf"],
+                },
+                "seeded_discovery_plan": {
+                    "queries": ['site:hacc.example "termination notice chronology" policy notice hearing'],
+                    "priority": "chronology_first",
+                },
+            }
+
+        def discover_seeded_commoncrawl(self, queries, **kwargs):
+            return {
+                "status": "success",
+                "queries": list(queries),
+                "candidates": {"sites": {"example.org": {"top": [{"url": "https://example.org/notice"}]}}},
+            }
+
         def build_grounding_bundle(self, query, **kwargs):
             return {
                 "status": "success",
@@ -114,13 +135,22 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert Path(artifacts["document_generation_handoff_json"]).is_file()
     assert Path(artifacts["drafting_readiness_json"]).is_file()
     assert Path(artifacts["graph_completeness_signals_json"]).is_file()
+    assert Path(artifacts["research_package_json"]).is_file()
+    assert Path(artifacts["research_grounding_summary_json"]).is_file()
+    assert Path(artifacts["seeded_discovery_plan_json"]).is_file()
+    assert Path(artifacts["seeded_commoncrawl_discovery_json"]).is_file()
 
     production_steps = json.loads(Path(artifacts["production_evidence_intake_steps_json"]).read_text(encoding="utf-8"))
     mediator_checklist = json.loads(Path(artifacts["mediator_upload_checklist_json"]).read_text(encoding="utf-8"))
     temporal_handoff = json.loads(Path(artifacts["claim_support_temporal_handoff_json"]).read_text(encoding="utf-8"))
     form_seed = json.loads(Path(artifacts["evidence_upload_form_seed_json"]).read_text(encoding="utf-8"))
+    research_grounding_summary = json.loads(Path(artifacts["research_grounding_summary_json"]).read_text(encoding="utf-8"))
+    seeded_discovery = json.loads(Path(artifacts["seeded_commoncrawl_discovery_json"]).read_text(encoding="utf-8"))
 
     assert production_steps == ["Select the strongest dated notice first."]
     assert mediator_checklist == ["Evaluate chronology anchors and named actors."]
     assert temporal_handoff["timeline_anchor_count"] == 1
     assert form_seed["claim_type"] == "housing_discrimination"
+    assert research_grounding_summary["upload_ready_candidate_count"] == 1
+    assert seeded_discovery["status"] == "success"
+    assert seeded_discovery["queries"][0].startswith("site:hacc.example")

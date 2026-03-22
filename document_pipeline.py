@@ -4524,6 +4524,7 @@ class FormalComplaintDocumentBuilder:
                 "claim_types": allegation_entries[index - 1].get("claim_types", []),
                 "claim_element_ids": allegation_entries[index - 1].get("claim_element_ids", []),
                 "support_trace_ids": allegation_entries[index - 1].get("support_trace_ids", []),
+                "source_kind": allegation_entries[index - 1].get("source_kind"),
                 "document_focus": (
                     dict(allegation_entries[index - 1].get("document_focus") or {})
                     if isinstance(allegation_entries[index - 1].get("document_focus"), dict)
@@ -4533,6 +4534,19 @@ class FormalComplaintDocumentBuilder:
             }
             for index, text in enumerate(allegation_lines, start=1)
         ]
+        paragraph_entries = self._annotate_entries_with_exhibits(
+            paragraph_entries,
+            draft.get("exhibits") if isinstance(draft.get("exhibits"), list) else [],
+        )
+        allegation_entries = [
+            {
+                **dict(allegation_entries[index]),
+                "text": paragraph_entries[index].get("text"),
+                "exhibit_label": paragraph_entries[index].get("exhibit_label"),
+            }
+            for index in range(min(len(allegation_entries), len(paragraph_entries)))
+        ]
+        allegation_lines = [str(entry.get("text") or "").strip() for entry in paragraph_entries if str(entry.get("text") or "").strip()]
         draft["factual_allegations"] = allegation_lines
         draft["factual_allegation_entries"] = allegation_entries
         draft["factual_allegation_paragraphs"] = paragraph_entries
@@ -4885,20 +4899,27 @@ class FormalComplaintDocumentBuilder:
         return f"{marker} {', '.join(ranges)}"
 
     def _format_exhibit_reference_phrase(self, exhibits: Any) -> str:
-        labels = []
+        exhibit_entries: List[str] = []
         for exhibit in _coerce_list(exhibits):
             if not isinstance(exhibit, dict):
                 continue
             label = str(exhibit.get("label") or "").strip()
-            if label and label not in labels:
-                labels.append(label)
-        if not labels:
+            if not label:
+                continue
+            title = str(exhibit.get("title") or "").strip()
+            kind = str(exhibit.get("kind") or "").strip().lower()
+            entry = label
+            if kind == "evidence" and title:
+                entry = f"{label} ({title})"
+            if entry not in exhibit_entries:
+                exhibit_entries.append(entry)
+        if not exhibit_entries:
             return ""
-        if len(labels) == 1:
-            return labels[0]
-        if len(labels) == 2:
-            return f"{labels[0]} and {labels[1]}"
-        return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+        if len(exhibit_entries) == 1:
+            return exhibit_entries[0]
+        if len(exhibit_entries) == 2:
+            return f"{exhibit_entries[0]} and {exhibit_entries[1]}"
+        return f"{', '.join(exhibit_entries[:-1])}, and {exhibit_entries[-1]}"
 
     def _format_paragraph_range(self, start: int, end: int) -> str:
         return str(start) if start == end else f"{start}-{end}"
@@ -9313,7 +9334,7 @@ class FormalComplaintDocumentBuilder:
         if not isinstance(entry, dict):
             return None
         source_kind = str(entry.get("source_kind") or "").strip().lower()
-        if source_kind in {"uploaded_evidence_fact", "claim_support_fact", "claim_chronology_support"}:
+        if source_kind in {"uploaded_evidence_fact", "claim_support_fact", "claim_chronology_support", "factual_allegation"}:
             preferred = self._select_exhibit_by_kind(exhibits, "evidence")
             if preferred is not None:
                 return preferred

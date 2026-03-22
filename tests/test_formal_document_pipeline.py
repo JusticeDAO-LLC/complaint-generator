@@ -561,6 +561,9 @@ def test_document_api_annotation_promotes_confirmed_intake_handoff():
         'element_tag_counts': {},
         'resolved_count': 0,
         'unresolved_count': 0,
+        'issue_ids': [],
+        'missing_temporal_predicates': [],
+        'required_provenance_kinds': [],
     }
     assert payload['review_links']['workflow_priority'] == {
         'status': 'warning',

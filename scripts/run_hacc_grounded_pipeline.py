@@ -164,6 +164,37 @@ def _run_complaint_synthesis(
     }
 
 
+def _run_seeded_discovery_from_plan(engine: Any, seeded_discovery_plan: Dict[str, Any]) -> Dict[str, Any]:
+    queries = [
+        str(item).strip()
+        for item in list(seeded_discovery_plan.get("queries") or [])
+        if str(item).strip()
+    ]
+    if not queries:
+        return {
+            "status": "skipped",
+            "reason": "no_seeded_queries",
+            "queries": [],
+        }
+    discover_seeded_commoncrawl = getattr(engine, "discover_seeded_commoncrawl", None)
+    if not callable(discover_seeded_commoncrawl):
+        return {
+            "status": "unavailable",
+            "reason": "engine_missing_discover_seeded_commoncrawl",
+            "queries": queries,
+        }
+    payload = discover_seeded_commoncrawl(
+        queries,
+        cc_limit=100,
+        top_per_site=10,
+        fetch_top=0,
+        sleep_seconds=0.0,
+    )
+    if isinstance(payload, dict):
+        payload.setdefault("queries", queries)
+    return payload if isinstance(payload, dict) else {"status": "error", "queries": queries, "value": str(payload)}
+
+
 def run_hacc_grounded_pipeline(
     *,
     output_dir: str | Path,
@@ -191,6 +222,17 @@ def run_hacc_grounded_pipeline(
 
     engine_cls = _load_hacc_engine()
     engine = engine_cls(repo_root=HACC_REPO_ROOT)
+    research_package = engine.research(
+        resolved_query,
+        local_top_k=max(top_k, 3),
+        web_max_results=max(top_k, 3),
+        use_vector=use_hacc_vector_search,
+        search_mode=hacc_search_mode,
+        include_legal=True,
+    )
+    research_grounding_summary = dict(research_package.get("research_grounding_summary") or {})
+    seeded_discovery_plan = dict(research_package.get("seeded_discovery_plan") or {})
+    seeded_discovery_payload = _run_seeded_discovery_from_plan(engine, seeded_discovery_plan)
     grounding_bundle = engine.build_grounding_bundle(
         resolved_query,
         top_k=top_k,
@@ -225,6 +267,10 @@ def run_hacc_grounded_pipeline(
 
     _write_json(output_root / "grounding_bundle.json", grounding_bundle)
     _write_json(output_root / "grounding_overview.json", grounding_overview)
+    _write_json(output_root / "research_package.json", research_package)
+    _write_json(output_root / "research_grounding_summary.json", research_grounding_summary)
+    _write_json(output_root / "seeded_discovery_plan.json", seeded_discovery_plan)
+    _write_json(output_root / "seeded_commoncrawl_discovery.json", seeded_discovery_payload)
     _write_json(output_root / "anchor_passages.json", dict(grounding_bundle or {}).get("anchor_passages", []))
     _write_json(output_root / "upload_candidates.json", dict(grounding_bundle or {}).get("upload_candidates", []))
     _write_json(output_root / "mediator_evidence_packets.json", dict(grounding_bundle or {}).get("mediator_evidence_packets", []))
@@ -281,11 +327,16 @@ def run_hacc_grounded_pipeline(
         "use_hacc_vector_search": bool(use_hacc_vector_search),
         "hacc_search_mode": hacc_search_mode,
         "search_summary": {
+            "research": dict(research_package or {}).get("local_search_summary", {}),
             "grounding": dict(grounding_bundle or {}).get("search_summary", {}),
             "evidence_upload": dict(upload_report or {}).get("search_summary", {}),
             "adversarial": dict(adversarial_summary or {}).get("search_summary", {}),
         },
         "grounding_overview": grounding_overview,
+        "research_package": research_package,
+        "research_grounding_summary": research_grounding_summary,
+        "seeded_discovery_plan": seeded_discovery_plan,
+        "seeded_commoncrawl_discovery": seeded_discovery_payload,
         "grounding": grounding_bundle,
         "evidence_upload": upload_report,
         "adversarial": adversarial_summary,
@@ -294,6 +345,10 @@ def run_hacc_grounded_pipeline(
             "output_dir": str(output_root),
             "grounding_bundle_json": str(output_root / "grounding_bundle.json"),
             "grounding_overview_json": str(output_root / "grounding_overview.json"),
+            "research_package_json": str(output_root / "research_package.json"),
+            "research_grounding_summary_json": str(output_root / "research_grounding_summary.json"),
+            "seeded_discovery_plan_json": str(output_root / "seeded_discovery_plan.json"),
+            "seeded_commoncrawl_discovery_json": str(output_root / "seeded_commoncrawl_discovery.json"),
             "anchor_passages_json": str(output_root / "anchor_passages.json"),
             "upload_candidates_json": str(output_root / "upload_candidates.json"),
             "mediator_evidence_packets_json": str(output_root / "mediator_evidence_packets.json"),

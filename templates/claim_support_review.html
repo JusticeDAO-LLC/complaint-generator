@@ -1555,6 +1555,14 @@
             return normalized;
         }
 
+        function normalizeList(value) {
+            return Array.isArray(value)
+                ? value
+                    .map((item) => String(item || '').trim())
+                    .filter(Boolean)
+                : [];
+        }
+
         function isTemporalAlignmentTask(task) {
             if (!task || typeof task !== 'object') {
                 return false;
