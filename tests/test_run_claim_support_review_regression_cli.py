@@ -26,8 +26,8 @@ def test_resolve_test_targets_auto_includes_browser_when_available():
 
     targets = cli.resolve_test_targets('auto', browser_available=True)
 
-    assert cli.BROWSER_SMOKE_TEST in targets
-    assert targets[:-1] == cli.BASE_TESTS
+    assert targets[:len(cli.BASE_TESTS)] == cli.BASE_TESTS
+    assert targets[len(cli.BASE_TESTS):] == cli.BROWSER_TESTS
 
 
 def test_resolve_test_targets_auto_omits_browser_when_unavailable():
@@ -57,3 +57,12 @@ def test_build_pytest_command_places_passthrough_args_before_targets():
         'claim_support',
     ]
     assert command[6:] == cli.BASE_TESTS
+
+
+def test_resolve_test_targets_on_includes_all_browser_suites():
+    cli = _load_cli_module()
+
+    targets = cli.resolve_test_targets('on', browser_available=False)
+
+    assert targets[:len(cli.BASE_TESTS)] == cli.BASE_TESTS
+    assert targets[len(cli.BASE_TESTS):] == cli.BROWSER_TESTS

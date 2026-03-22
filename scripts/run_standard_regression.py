@@ -40,6 +40,7 @@ REGRESSION_SLICES = {
         "tests/test_document_pipeline_fallbacks.py",
         "tests/test_formal_document_pipeline.py",
         "tests/test_claim_support_review_playwright_smoke.py",
+        "tests/test_complaint_generator_site_playwright.py",
         "tests/test_phase_manager_temporal_registry.py",
     ],
 }

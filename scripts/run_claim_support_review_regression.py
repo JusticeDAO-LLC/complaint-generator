@@ -18,7 +18,10 @@ BASE_TESTS = [
     "tests/test_backfill_claim_testimony_links_cli.py",
 ]
 
-BROWSER_SMOKE_TEST = "tests/test_claim_support_review_playwright_smoke.py"
+BROWSER_TESTS = [
+    "tests/test_claim_support_review_playwright_smoke.py",
+    "tests/test_complaint_generator_site_playwright.py",
+]
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -76,7 +79,7 @@ def resolve_test_targets(
         normalized_mode == "auto" and resolved_browser_available
     )
     if include_browser:
-        targets.append(BROWSER_SMOKE_TEST)
+        targets.extend(BROWSER_TESTS)
     return targets
 
 

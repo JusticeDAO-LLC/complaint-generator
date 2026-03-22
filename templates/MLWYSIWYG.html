@@ -1,1 +1,253 @@
- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complaint Editor Workshop</title>
+    <style>
+        :root {
+            --bg: #f3ede2;
+            --panel: rgba(255, 252, 246, 0.94);
+            --ink: #1f2933;
+            --muted: #52606d;
+            --line: rgba(31, 41, 51, 0.12);
+            --accent: #8f2d1e;
+            --accent-soft: #fde6d8;
+            --shadow: 0 18px 44px rgba(31, 41, 51, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(143, 45, 30, 0.12), transparent 28%),
+                linear-gradient(180deg, #f7f1e8 0%, var(--bg) 100%);
+        }
+
+        .shell {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 28px 20px 48px;
+        }
+
+        .hero,
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .hero {
+            padding: 24px;
+            margin-bottom: 22px;
+        }
+
+        .hero h1 {
+            margin: 0 0 10px;
+            font-size: clamp(2rem, 4vw, 3.2rem);
+        }
+
+        .hero p {
+            margin: 0;
+            color: var(--muted);
+            max-width: 60ch;
+            line-height: 1.6;
+        }
+
+        .surface-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .surface-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: var(--accent);
+            background: rgba(255, 255, 255, 0.88);
+            border: 1px solid var(--line);
+            font-weight: 700;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .panel {
+            padding: 22px;
+        }
+
+        .panel h2 {
+            margin: 0 0 10px;
+            font-size: 1.2rem;
+        }
+
+        .muted {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        label {
+            display: block;
+            margin: 14px 0 6px;
+            font-size: 0.84rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 14px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.92);
+            color: var(--ink);
+        }
+
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        button {
+            border: none;
+            border-radius: 999px;
+            padding: 11px 16px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .primary {
+            background: linear-gradient(135deg, #8f2d1e, #b54f38);
+            color: white;
+        }
+
+        .secondary {
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        .draft-preview {
+            white-space: pre-wrap;
+            line-height: 1.7;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.84);
+            padding: 18px;
+            min-height: 420px;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+
+        .preview-meta {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        @media (max-width: 960px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <section class="hero">
+            <h1>Complaint Editor Workshop</h1>
+            <p>Review and reshape a complaint draft in a lighter-weight editing workspace before jumping back into the full builder, evidence review dashboard, or optimization trace.</p>
+            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                <a class="surface-link" href="/">Landing</a>
+                <a class="surface-link" href="/home">Account</a>
+                <a class="surface-link" href="/chat">Chat</a>
+                <a class="surface-link" href="/profile">Profile</a>
+                <a class="surface-link" href="/results">Results</a>
+                <a class="surface-link" href="/claim-support-review">Review</a>
+                <a class="surface-link" href="/document">Builder</a>
+                <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                <a class="surface-link" href="/dashboards">Dashboards</a>
+            </div>
+        </section>
+
+        <section class="workspace">
+            <aside class="panel">
+                <h2>Draft Controls</h2>
+                <p class="muted">This workshop is intentionally lightweight: draft a title, shape the pleading text, and move back into the main builder when you want generation, packet review, or support validation.</p>
+                <label for="editor-title">Draft Title</label>
+                <input id="editor-title" type="text" value="Retaliation Complaint Draft">
+
+                <label for="editor-body">Working Draft</label>
+                <textarea id="editor-body">Plaintiff Jane Doe alleges that Acme Corporation retaliated against her after she reported discrimination to human resources.</textarea>
+
+                <div class="button-row">
+                    <button id="refresh-preview" class="primary" type="button">Refresh Preview</button>
+                    <button id="reset-editor" class="secondary" type="button">Reset Draft</button>
+                </div>
+            </aside>
+
+            <main class="panel">
+                <div class="preview-header">
+                    <div>
+                        <h2>Live Preview</h2>
+                        <div class="preview-meta">A quick editing surface linked into the same complaint website.</div>
+                    </div>
+                </div>
+                <div id="draft-preview" class="draft-preview"></div>
+            </main>
+        </section>
+    </div>
+
+    <script>
+        const defaultTitle = 'Retaliation Complaint Draft';
+        const defaultBody = 'Plaintiff Jane Doe alleges that Acme Corporation retaliated against her after she reported discrimination to human resources.';
+
+        function renderPreview() {
+            const title = document.getElementById('editor-title').value.trim() || defaultTitle;
+            const body = document.getElementById('editor-body').value.trim() || defaultBody;
+            document.getElementById('draft-preview').textContent = `${title}\n\n${body}`;
+        }
+
+        document.getElementById('refresh-preview').addEventListener('click', renderPreview);
+        document.getElementById('reset-editor').addEventListener('click', () => {
+            document.getElementById('editor-title').value = defaultTitle;
+            document.getElementById('editor-body').value = defaultBody;
+            renderPreview();
+        });
+
+        renderPreview();
+    </script>
+</body>
+</html>

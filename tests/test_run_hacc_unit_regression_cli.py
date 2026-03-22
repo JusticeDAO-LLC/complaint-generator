@@ -51,3 +51,16 @@ def test_build_pytest_command_places_passthrough_args_before_targets():
         "hacc",
     ]
     assert command[6:] == cli.HACC_UNIT_TESTS
+
+
+def test_main_list_prints_full_hacc_unit_slice(capsys):
+    cli = _load_cli_module()
+
+    result = cli.main(["--list", "--python", ".venv/bin/python"])
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert captured.out.startswith(".venv/bin/python -m pytest -q ")
+    assert "tests/test_hacc_grounded_history_docs.py" in captured.out
+    assert "tests/test_show_hacc_grounded_history_cli.py" in captured.out
+    assert "tests/test_run_hacc_unit_regression_cli.py" in captured.out

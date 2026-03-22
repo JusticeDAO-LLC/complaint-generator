@@ -129,14 +129,8 @@
             hashed_password = JSON.parse(cookies)["hashed_password"];
             // alert(hashed_username);
             profile = load_profile(hashed_username, hashed_password);
-            // console.log(JSON.stringify(profile));
-            // alert(JSON.stringify(profile));
             testdata = profile["data"];
             testdata = JSON.parse(testdata);
-            chat_history = testdata["chat_history"];
-            alert(JSON.stringify(testdata));
-            console.log(JSON.stringify(testdata));
-            console.log(JSON.stringify(testdata["data"]["chat_history"]));
             $("#profile_data").html(JSON.stringify(testdata));
 
         });
@@ -146,9 +140,18 @@
 <body>
     <div class="results-shell">
         <h1>Profile Data</h1>
-        <div class="surface-links">
-            <a class="surface-link" href="/document">Open Formal Complaint Builder</a>
-            <a class="surface-link" href="/claim-support-review">Open Claim Support Review</a>
+        <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+            <a class="surface-link" href="/">Landing</a>
+            <a class="surface-link" href="/home">Account</a>
+            <a class="surface-link" href="/chat">Chat</a>
+            <a class="surface-link" href="/profile">Profile</a>
+            <a class="surface-link" href="/results">Results</a>
+            <a class="surface-link" href="/claim-support-review">Review</a>
+            <a class="surface-link" href="/document">Builder</a>
+            <a class="surface-link" href="/document/optimization-trace">Trace</a>
+            <a class="surface-link" href="/mlwysiwyg">Editor</a>
+            <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+            <a class="surface-link" href="/dashboards">Dashboards</a>
         </div>
         <div class="Err">
             <div id="Err">

@@ -75,9 +75,14 @@ The claim-support dashboard now includes an optional real-browser smoke test for
 
 # Run the dashboard smoke test
 .venv/bin/pytest -q tests/test_claim_support_review_playwright_smoke.py
+
+# Run the unified site-flow browser suite
+.venv/bin/pytest -q tests/test_complaint_generator_site_playwright.py
 ```
 
 The smoke test starts a local FastAPI review surface, seeds one saved testimony row plus one proactively repaired legacy row in a temporary DuckDB, opens the real `/claim-support-review` page in Chromium, clicks `Load Review`, and verifies the rendered testimony summary and cards show both rows linked to `Protected activity`.
+
+The site-flow suite mounts the unified review surface plus the legacy landing, home, chat, profile, and results pages, then verifies cross-page navigation, document generation handoff into claim review, and optimization-trace handoff back into review.
 
 If Playwright is not installed, the test is collected and skipped cleanly.
 
@@ -87,7 +92,7 @@ For the full focused claim-support regression slice, use the repo-local runner:
 .venv/bin/python scripts/run_claim_support_review_regression.py
 ```
 
-That command auto-includes the Playwright smoke when both the Playwright package and Chromium runtime are installed. Use `--browser off` to force the non-browser slice or `--browser on` to require the browser smoke explicitly.
+That command auto-includes the browser-backed Playwright coverage when both the Playwright package and Chromium runtime are installed. In browser mode it runs both the dashboard smoke and the cohesive site-flow suite. Use `--browser off` to force the non-browser slice or `--browser on` to require the browser lane explicitly.
 
 VS Code also exposes this runner through the workspace tasks `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)`.
 
@@ -103,7 +108,7 @@ The default repo-level regression entrypoint is now:
 .venv/bin/python scripts/run_standard_regression.py
 ```
 
-That helper defaults to the browser-inclusive `full` slice and covers the review API, dashboard flow, hooks, template rendering, document pipeline, formal document pipeline, and Playwright smoke.
+That helper defaults to the browser-inclusive `full` slice and covers the review API, dashboard flow, hooks, template rendering, document pipeline, formal document pipeline, the claim-support dashboard Playwright smoke, and the cohesive site-flow Playwright suite.
 
 Equivalent entry points:
 
@@ -121,7 +126,7 @@ Maintenance rule:
 - Use `scripts/run_standard_regression.py` as the default gate for review-surface, workflow-guidance, and document-pipeline changes.
 - Use `scripts/run_claim_support_review_regression.py` when you need the narrower claim-support-focused slice.
 - Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
-- Treat the browser smoke as optional for local setup and required in the browser CI lane.
+- Treat the browser-backed suites as optional for local setup and required in the browser CI lane.
 
 ### Canary Ops Smoke Checks
 

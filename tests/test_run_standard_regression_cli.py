@@ -44,6 +44,7 @@ def test_resolve_test_targets_returns_full_slice():
     assert "tests/test_document_pipeline.py" in targets
     assert "tests/test_formal_document_pipeline.py" in targets
     assert "tests/test_claim_support_review_playwright_smoke.py" in targets
+    assert "tests/test_complaint_generator_site_playwright.py" in targets
     assert "tests/test_phase_manager_temporal_registry.py" in targets
 
 

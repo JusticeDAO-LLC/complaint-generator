@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from applications.dashboard_ui import _IPFS_DASHBOARD_ENTRIES
 from applications.review_ui import create_review_dashboard_app, create_review_surface_app
 
 
@@ -674,10 +675,10 @@ def test_chat_and_results_templates_link_to_document_workflow():
     results_content = Path("templates/results.html").read_text()
 
     assert "/document" in chat_content
-    assert "Open Formal Complaint Builder" in chat_content
+    assert "href=\"/document\"" in chat_content
     assert "/claim-support-review" in chat_content
     assert "/document" in results_content
-    assert "Open Formal Complaint Builder" in results_content
+    assert "href=\"/document\"" in results_content
     assert "/claim-support-review" in results_content
 
 
@@ -701,61 +702,44 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         pytest.skip("python-multipart is not installed")
     app = create_review_surface_app(mediator=object())
 
-    assert any(
-        route.path == "/claim-support-review" and "GET" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/claim-support/review" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/claim-support/execute-follow-up" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/documents/optimization-trace" and "GET" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/document/optimization-trace" and "GET" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/claim-support/save-testimony" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/claim-support/save-document" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/claim-support/upload-document" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/document" and "GET" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/api/documents/formal-complaint" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
-    assert any(
-        route.path == "/health" and "GET" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
-    )
+    registered_paths = {getattr(route, "path", None) for route in app.routes}
+
+    for path in [
+        "/",
+        "/home",
+        "/chat",
+        "/profile",
+        "/results",
+        "/cookies",
+        "/claim-support-review",
+        "/document",
+        "/document/optimization-trace",
+        "/mlwysiwyg",
+        "/wysiwyg",
+        "/MLWYSIWYG",
+        "/ipfs-datasets/sdk-playground",
+        "/dashboards",
+        "/dashboards/ipfs-datasets/{slug}",
+        "/dashboards/raw/ipfs-datasets/{slug}",
+        "/ipfs-datasets-static",
+        "/health",
+    ]:
+        assert path in registered_paths
+
+    for path, method in [
+        ("/api/claim-support/review", "POST"),
+        ("/api/claim-support/execute-follow-up", "POST"),
+        ("/api/documents/optimization-trace", "GET"),
+        ("/api/claim-support/save-testimony", "POST"),
+        ("/api/claim-support/save-document", "POST"),
+        ("/api/claim-support/upload-document", "POST"),
+        ("/api/documents/formal-complaint", "POST"),
+    ]:
+        assert any(
+            route.path == path and method in route.methods
+            for route in app.routes
+            if hasattr(route, "methods") and route.methods is not None
+        )
 
 
 def test_review_surface_document_route_serves_builder_template():
@@ -769,6 +753,69 @@ def test_review_surface_document_route_serves_builder_template():
     assert response.status_code == 200
     assert "Formal Complaint Builder" in response.text
     assert "/api/documents/formal-complaint" in response.text
+
+
+def test_review_surface_serves_legacy_pages_with_operator_links():
+    if not HAS_MULTIPART:
+        pytest.skip("python-multipart is not installed")
+    app = create_review_surface_app(mediator=object())
+    client = TestClient(app)
+
+    root_response = client.get("/")
+    home_response = client.get("/home")
+    chat_response = client.get("/chat")
+    profile_response = client.get("/profile")
+    results_response = client.get("/results")
+    cookies_response = client.get("/cookies")
+    wysiwyg_response = client.get("/mlwysiwyg")
+    dashboard_hub_response = client.get("/dashboards")
+    sdk_response = client.get("/ipfs-datasets/sdk-playground")
+
+    assert root_response.status_code == 200
+    assert home_response.status_code == 200
+    assert chat_response.status_code == 200
+    assert profile_response.status_code == 200
+    assert results_response.status_code == 200
+    assert cookies_response.status_code == 200
+    assert wysiwyg_response.status_code == 200
+    assert dashboard_hub_response.status_code == 200
+    assert sdk_response.status_code == 200
+    assert "/claim-support-review" in root_response.text
+    assert "/document" in root_response.text
+    assert "/dashboards" in root_response.text
+    assert "/claim-support-review" in home_response.text
+    assert "/document" in home_response.text
+    assert "/dashboards" in home_response.text
+    assert "/claim-support-review" in chat_response.text
+    assert "/document" in chat_response.text
+    assert "/dashboards" in chat_response.text
+    assert "/claim-support-review" in profile_response.text
+    assert "/document/optimization-trace" in profile_response.text
+    assert "/dashboards" in profile_response.text
+    assert "/claim-support-review" in results_response.text
+    assert "/document" in results_response.text
+    assert "/dashboards" in results_response.text
+    assert "Complaint Editor Workshop" in wysiwyg_response.text
+    assert "Unified Dashboard Hub" in dashboard_hub_response.text
+    assert "SDK Playground" in sdk_response.text
+    assert cookies_response.text == "{}"
+
+
+def test_review_surface_serves_every_registered_ipfs_dashboard_shell_and_raw_route():
+    if not HAS_MULTIPART:
+        pytest.skip("python-multipart is not installed")
+    app = create_review_surface_app(mediator=object())
+    client = TestClient(app)
+
+    for entry in _IPFS_DASHBOARD_ENTRIES:
+        shell_response = client.get(f"/dashboards/ipfs-datasets/{entry.slug}")
+        raw_response = client.get(f"/dashboards/raw/ipfs-datasets/{entry.slug}")
+
+        assert shell_response.status_code == 200
+        assert raw_response.status_code == 200
+        assert entry.title in shell_response.text
+        assert "Complaint Generator Dashboard Shell" in shell_response.text
+        assert "<html" in raw_response.text.lower()
 
 
 def test_review_surface_optimization_trace_route_serves_trace_template():

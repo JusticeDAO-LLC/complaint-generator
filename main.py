@@ -46,6 +46,50 @@ async def read_chat(request: Request):
     return template
 
 
+@app.get("/profile", response_class=HTMLResponse)
+async def read_profile(request: Request):
+    template = ""
+    filename = os.getcwd() + "/templates/profile.html"
+
+    if os.path.isfile(filename):
+        with open(filename, "r") as f:
+            template = f.read()
+    return template
+
+
+@app.get("/results", response_class=HTMLResponse)
+async def read_results(request: Request):
+    template = ""
+    filename = os.getcwd() + "/templates/results.html"
+
+    if os.path.isfile(filename):
+        with open(filename, "r") as f:
+            template = f.read()
+    return template
+
+
+@app.get("/mlwysiwyg", response_class=HTMLResponse)
+async def read_mlwysiwyg(request: Request):
+    template = ""
+    filename = os.getcwd() + "/templates/MLWYSIWYG.html"
+
+    if os.path.isfile(filename):
+        with open(filename, "r") as f:
+            template = f.read()
+    return template
+
+
+@app.get("/ipfs-datasets/sdk-playground", response_class=HTMLResponse)
+async def read_sdk_playground(request: Request):
+    template = ""
+    filename = os.getcwd() + "/ipfs_datasets_py/ipfs_accelerate_py/SDK_PLAYGROUND_PREVIEW.html"
+
+    if os.path.isfile(filename):
+        with open(filename, "r") as f:
+            template = f.read()
+    return template
+
+
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
     template = ""

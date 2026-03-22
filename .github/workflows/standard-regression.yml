@@ -12,6 +12,7 @@ on:
       - applications/document_api.py
       - applications/review_api.py
       - applications/review_ui.py
+      - applications/site_ui.py
       - claim_support_review.py
       - complaint_analysis/**
       - complaint_phases/**
@@ -23,8 +24,14 @@ on:
       - mediator/formal_document.py
       - mediator/mediator.py
       - scripts/backfill_claim_testimony_links.py
+      - templates/index.html
+      - templates/home.html
+      - templates/chat.html
+      - templates/profile.html
+      - templates/results.html
       - templates/claim_support_review.html
       - templates/document.html
+      - templates/optimization_trace.html
       - workflow_phase_guidance.py
       - scripts/run_standard_regression.py
       - tests/test_cli_commands.py
@@ -43,6 +50,7 @@ on:
       - tests/test_document_pipeline_fallbacks.py
       - tests/test_formal_document_pipeline.py
       - tests/test_claim_support_review_playwright_smoke.py
+      - tests/test_complaint_generator_site_playwright.py
       - pytest.ini
       - requirements.txt
   push:
@@ -57,6 +65,7 @@ on:
       - applications/document_api.py
       - applications/review_api.py
       - applications/review_ui.py
+      - applications/site_ui.py
       - claim_support_review.py
       - complaint_analysis/**
       - complaint_phases/**
@@ -68,8 +77,14 @@ on:
       - mediator/formal_document.py
       - mediator/mediator.py
       - scripts/backfill_claim_testimony_links.py
+      - templates/index.html
+      - templates/home.html
+      - templates/chat.html
+      - templates/profile.html
+      - templates/results.html
       - templates/claim_support_review.html
       - templates/document.html
+      - templates/optimization_trace.html
       - workflow_phase_guidance.py
       - scripts/run_standard_regression.py
       - tests/test_cli_commands.py
@@ -88,6 +103,7 @@ on:
       - tests/test_document_pipeline_fallbacks.py
       - tests/test_formal_document_pipeline.py
       - tests/test_claim_support_review_playwright_smoke.py
+      - tests/test_complaint_generator_site_playwright.py
       - pytest.ini
       - requirements.txt
 

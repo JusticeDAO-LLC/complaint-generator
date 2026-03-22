@@ -4,8 +4,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
+from .dashboard_ui import attach_dashboard_ui_routes
 from .document_ui import attach_document_ui_routes
+from .site_ui import attach_core_site_ui_routes
 
 
 _CLAIM_SUPPORT_REVIEW_TEMPLATE = (
@@ -51,8 +54,21 @@ def attach_review_health_routes(app: FastAPI, surface_name: str) -> FastAPI:
     return app
 
 
+def attach_static_asset_routes(app: FastAPI) -> FastAPI:
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    if not static_dir.is_dir():
+        return app
+
+    if any(getattr(route, "path", None) == "/static" for route in app.routes):
+        return app
+
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    return app
+
+
 def create_review_dashboard_app() -> FastAPI:
     app = FastAPI(title="Complaint Generator Review Dashboard")
+    attach_static_asset_routes(app)
     attach_claim_support_review_ui_routes(app)
     attach_review_health_routes(app, "review-dashboard")
     return app
@@ -60,6 +76,9 @@ def create_review_dashboard_app() -> FastAPI:
 
 def create_review_surface_app(mediator: Any) -> FastAPI:
     app = FastAPI(title="Complaint Generator Review Surface")
+    attach_static_asset_routes(app)
+    attach_core_site_ui_routes(app)
+    attach_dashboard_ui_routes(app)
     attach_claim_support_review_ui_routes(app)
     attach_document_ui_routes(app)
     attach_review_health_routes(app, "review-surface")

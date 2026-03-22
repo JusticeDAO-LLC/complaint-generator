@@ -154,7 +154,7 @@ When you need a narrower follow-up slice for the review surface, testimony-linki
 .venv/bin/python scripts/run_claim_support_review_regression.py
 ```
 
-Use `--browser off` to force the non-browser slice or `--browser on` to require the Playwright smoke. The same regression is also available in VS Code through the `Claim Support Regression` task and launch configurations, and in GitHub Actions through `.github/workflows/claim-support-regression.yml`.
+Use `--browser off` to force the non-browser slice or `--browser on` to require the browser-backed Playwright coverage. The browser lane now runs both the dashboard smoke and the cohesive site-flow suite. The same regression is also available in VS Code through the `Claim Support Regression` task and launch configurations, and in GitHub Actions through `.github/workflows/claim-support-regression.yml`.
 
 ### Run Specific Test Files
 

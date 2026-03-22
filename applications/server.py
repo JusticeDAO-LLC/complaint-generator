@@ -78,6 +78,24 @@ class SERVER:
                     template = f.read()
             return template
 
+        @app.get("/mlwysiwyg", response_class=HTMLResponse)
+        async def read_items(request: Request ):
+            template = ""
+            filename = os.getcwd() + "/templates/MLWYSIWYG.html"
+            if os.path.isfile(filename):
+                with open(filename, "r") as f:
+                    template = f.read()
+            return template
+
+        @app.get("/ipfs-datasets/sdk-playground", response_class=HTMLResponse)
+        async def read_items(request: Request ):
+            template = ""
+            filename = os.getcwd() + "/ipfs_datasets_py/ipfs_accelerate_py/SDK_PLAYGROUND_PREVIEW.html"
+            if os.path.isfile(filename):
+                with open(filename, "r") as f:
+                    template = f.read()
+            return template
+
         @app.get("/chat", response_class=HTMLResponse)
         async def read_items(request: Request ):
             template = ""
@@ -418,4 +436,3 @@ class SERVER:
     # 								  #
     ###################################
 #lambda expression
-

@@ -180,6 +180,8 @@ Also available via:
 
 The helper now defaults to the browser-inclusive `full` slice so the review, template, document, and Playwright workflow contracts stay gated together.
 
+The browser coverage in that full slice now includes both the claim-support dashboard smoke and the cohesive site-flow suite that exercises landing, account, chat, profile, results, builder, review, and optimization-trace navigation under one FastAPI surface.
+
 **Claim Support Regression:**
 
 ```bash
@@ -190,6 +192,8 @@ Also available via:
 
 - VS Code task `Claim Support Regression` with `No Browser` and `Require Browser` variants
 - GitHub Actions workflow `claim-support-regression.yml` for the focused claim-support slice
+
+When browser coverage is enabled, the focused slice runs both `tests/test_claim_support_review_playwright_smoke.py` and `tests/test_complaint_generator_site_playwright.py`.
 
 If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
 
