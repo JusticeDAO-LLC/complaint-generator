@@ -16,6 +16,7 @@ from starlette.responses import RedirectResponse
 
 from .review_api import attach_claim_support_review_routes
 from .review_ui import attach_claim_support_review_ui_routes
+from .complaint_workspace_api import attach_complaint_workspace_routes
 from .document_api import attach_document_routes
 from .document_ui import load_document_html
 
@@ -27,6 +28,7 @@ class SERVER:
 
  
         app = FastAPI()
+        attach_complaint_workspace_routes(app)
         attach_claim_support_review_routes(app, mediator)
         attach_claim_support_review_ui_routes(app)
         attach_document_routes(app, mediator)
@@ -73,6 +75,15 @@ class SERVER:
         async def read_items(request: Request ):
             template = ""
             filename = os.getcwd() + "/templates/results.html"
+            if os.path.isfile(filename):
+                with open(filename, "r") as f:
+                    template = f.read()
+            return template
+
+        @app.get("/workspace", response_class=HTMLResponse)
+        async def read_items(request: Request ):
+            template = ""
+            filename = os.getcwd() + "/templates/workspace.html"
             if os.path.isfile(filename):
                 with open(filename, "r") as f:
                     template = f.read()

@@ -44,6 +44,10 @@ def create_core_site_ui_router() -> APIRouter:
     async def results_page() -> str:
         return _load_template("results.html")
 
+    @router.get("/workspace", response_class=HTMLResponse)
+    async def workspace_page() -> str:
+        return _load_template("workspace.html")
+
     @router.get("/wysiwyg", response_class=HTMLResponse)
     async def wysiwyg_page() -> str:
         return _load_template("MLWYSIWYG.html")

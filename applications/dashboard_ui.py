@@ -38,6 +38,7 @@ _COMPLAINT_DASHBOARD_LINKS = [
     ("Chat", "/chat"),
     ("Profile", "/profile"),
     ("Results", "/results"),
+    ("Workspace", "/workspace"),
     ("Review", "/claim-support-review"),
     ("Builder", "/document"),
     ("WYSIWYG", "/wysiwyg"),

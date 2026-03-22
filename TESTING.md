@@ -84,6 +84,10 @@ The smoke test starts a local FastAPI review surface, seeds one saved testimony 
 
 The site-flow suite mounts the unified review surface plus the legacy landing, home, chat, profile, and results pages, then verifies cross-page navigation, document generation handoff into claim review, and optimization-trace handoff back into review.
 
+These Python Playwright suites are the source-of-truth browser regression because they drive the actual FastAPI review surface assembled by the application factory.
+
+The repo also contains a Node Playwright compatibility suite exposed as `npm test:e2e`. That suite runs against `playwright/server.js`, a stubbed browser fixture server. Keep using the Python regression runners as the required gate for real route wiring and app-surface integration.
+
 If Playwright is not installed, the test is collected and skipped cleanly.
 
 For the full focused claim-support regression slice, use the repo-local runner:
@@ -127,6 +131,7 @@ Maintenance rule:
 - Use `scripts/run_claim_support_review_regression.py` when you need the narrower claim-support-focused slice.
 - Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
 - Treat the browser-backed suites as optional for local setup and required in the browser CI lane.
+- Treat `npm test:e2e` as supplemental compatibility coverage, not as a replacement for the Python browser gate.
 
 ### Canary Ops Smoke Checks
 

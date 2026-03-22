@@ -812,3 +812,28 @@ def test_review_surface_ipfs_dashboard_shells_render_all_registered_dashboards(t
                     assert len(iframe.locator("body").inner_text().strip()) > 0
             finally:
                 browser.close()
+
+
+def test_review_surface_ipfs_dashboard_raw_routes_render_all_registered_dashboards(tmp_path: Path):
+    _require_browser_stack()
+
+    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            try:
+                for slug, title in _IPFS_DASHBOARD_ROUTES:
+                    response = page.goto(
+                        f"{base_url}/dashboards/raw/ipfs-datasets/{slug}",
+                        wait_until="domcontentloaded",
+                    )
+                    assert response is not None
+                    assert response.ok
+                    assert len(page.content()) > 500
+                    body_text = page.locator("body").inner_text().strip()
+                    assert body_text
+                    assert page.title().strip()
+            finally:
+                browser.close()

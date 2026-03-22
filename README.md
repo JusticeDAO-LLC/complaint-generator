@@ -182,6 +182,8 @@ The helper now defaults to the browser-inclusive `full` slice so the review, tem
 
 The browser coverage in that full slice now includes both the claim-support dashboard smoke and the cohesive site-flow suite that exercises landing, account, chat, profile, results, builder, review, and optimization-trace navigation under one FastAPI surface.
 
+The repo also includes a separate Node Playwright compatibility suite available through `npm test:e2e`, but that path runs against a stubbed server for browser-level compatibility checks. The Python regression runners remain the authoritative browser gate for the real FastAPI site surface.
+
 **Claim Support Regression:**
 
 ```bash

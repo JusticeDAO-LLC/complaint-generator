@@ -40,6 +40,7 @@ test.describe('website surface navigation', () => {
       ['/chat', /Lex Publicus Chat App/i],
       ['/profile', /Profile Data/i],
       ['/results', /Profile Data/i],
+      ['/workspace', /Unified Complaint Workspace/i],
       ['/wysiwyg', /Complaint Editor Workshop/i],
       ['/mlwysiwyg', /Complaint Editor Workshop/i],
       ['/MLWYSIWYG', /Complaint Editor Workshop/i],
@@ -70,11 +71,13 @@ test.describe('website surface navigation', () => {
 
     await page.goto('/document');
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/mlwysiwyg"]').first()).toBeVisible();
     await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
 
     await page.goto('/claim-support-review');
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/mlwysiwyg"]').first()).toBeVisible();
     await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
     await expect(page.locator('a[href="/dashboards"]').first()).toBeVisible();
@@ -95,6 +98,10 @@ test.describe('website surface navigation', () => {
     await page.goto('/mlwysiwyg');
     await expect(page.locator('[data-surface-nav="primary"]')).toBeVisible();
     await expect(page.locator('#draft-preview')).toContainText(/Retaliation Complaint Draft/i);
+    await page.locator('a[href="/workspace"]').first().click();
+
+    await expect(page).toHaveURL(/\/workspace/);
+    await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i);
     await page.locator('a[href="/ipfs-datasets/sdk-playground"]').first().click();
 
     await expect(page).toHaveURL(/\/ipfs-datasets\/sdk-playground/);
@@ -115,6 +122,20 @@ test.describe('website surface navigation', () => {
       await expect(page).toHaveURL(new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
       await expect(page.locator('body')).toContainText(heading);
       await expect(page.locator('iframe')).toBeVisible();
+    }
+  });
+
+  test('every mounted raw dashboard route is reachable in the JS stub surface', async ({ page }) => {
+    for (const [route, heading] of dashboardRoutes) {
+      const rawRoute = route.replace('/dashboards/ipfs-datasets/', '/dashboards/raw/ipfs-datasets/');
+      const response = await page.goto(rawRoute);
+
+      expect(response).not.toBeNull();
+      expect(response.ok()).toBeTruthy();
+      expect((await page.content()).length).toBeGreaterThan(200);
+      await expect(page.locator('body')).not.toBeEmpty();
+      await expect(page).toHaveTitle(/Dashboard|Admin|Investigation|News|Software|Analytics|GraphRAG|Patent|Discord|Finance|Medicine|Caselaw|RAG/i);
+      await expect(page.locator('body')).toContainText(/Dashboard|Admin|Investigation|News|Software|Analytics|GraphRAG|Patent|Discord|Finance|Medicine|Caselaw|RAG/i);
     }
   });
 });

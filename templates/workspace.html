@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Complaint Workspace</title>
+    <style>
+        :root {
+            --bg: #efe6d7;
+            --ink: #1c252b;
+            --muted: #5c6b73;
+            --panel: rgba(255, 251, 245, 0.94);
+            --line: rgba(28, 37, 43, 0.12);
+            --accent: #9a3412;
+            --accent-strong: #7c2d12;
+            --accent-soft: #fff0e2;
+            --good: #166534;
+            --warn: #b45309;
+            --shadow: 0 20px 50px rgba(28, 37, 43, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(154, 52, 18, 0.12), transparent 28%),
+                radial-gradient(circle at top right, rgba(255, 237, 213, 0.8), transparent 24%),
+                linear-gradient(180deg, #f6efe5 0%, var(--bg) 100%);
+            font-family: "Public Sans", "Segoe UI", sans-serif;
+        }
+
+        .shell {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 28px 20px 56px;
+        }
+
+        .hero,
+        .panel,
+        .summary-card,
+        .tool-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+        }
+
+        .hero {
+            padding: 28px;
+            margin-bottom: 22px;
+        }
+
+        .hero h1 {
+            margin: 0 0 10px;
+            font-size: clamp(2.4rem, 5vw, 4.6rem);
+            line-height: 0.95;
+            letter-spacing: -0.04em;
+        }
+
+        .hero p {
+            margin: 0;
+            color: var(--muted);
+            max-width: 64ch;
+            line-height: 1.65;
+        }
+
+        .surface-links,
+        .tab-row,
+        .chip-row,
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .surface-links {
+            margin-top: 18px;
+        }
+
+        .surface-link,
+        .tab-button,
+        button {
+            appearance: none;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 11px 16px;
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--accent);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .surface-link:hover,
+        .tab-button:hover,
+        button:hover {
+            border-color: rgba(154, 52, 18, 0.36);
+            transform: translateY(-1px);
+        }
+
+        .tab-button.is-active,
+        button.primary {
+            background: linear-gradient(135deg, #9a3412, #c2410c);
+            border-color: transparent;
+            color: white;
+        }
+
+        button.secondary {
+            background: var(--accent-soft);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 300px minmax(0, 1fr);
+            gap: 22px;
+            align-items: start;
+        }
+
+        .panel {
+            padding: 22px;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 20px;
+        }
+
+        .summary-stack {
+            display: grid;
+            gap: 14px;
+            margin-top: 18px;
+        }
+
+        .summary-card {
+            padding: 16px;
+        }
+
+        .summary-label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .summary-value {
+            display: block;
+            margin-top: 8px;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.is-active {
+            display: block;
+        }
+
+        .field-grid,
+        .tool-grid,
+        .support-grid,
+        .integration-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .field-row,
+        .support-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--accent-strong);
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        input,
+        textarea,
+        select {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.94);
+            color: var(--ink);
+            font: inherit;
+            padding: 13px 14px;
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .tool-card {
+            padding: 16px;
+        }
+
+        .tool-card h3 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+
+        .muted {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .list {
+            display: grid;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .item {
+            padding: 14px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid var(--line);
+        }
+
+        .item strong {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 11px;
+            border-radius: 999px;
+            background: rgba(255, 244, 232, 0.92);
+            border: 1px solid rgba(154, 52, 18, 0.18);
+            color: var(--accent);
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .chip.good {
+            color: var(--good);
+            border-color: rgba(22, 101, 52, 0.18);
+            background: rgba(240, 253, 244, 0.92);
+        }
+
+        .chip.warn {
+            color: var(--warn);
+        }
+
+        .status {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid var(--line);
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            line-height: 1.7;
+            font-family: "Iosevka", "SFMono-Regular", monospace;
+        }
+
+        @media (max-width: 1040px) {
+            .layout,
+            .field-row,
+            .support-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <section class="hero">
+            <h1>Unified Complaint Workspace</h1>
+            <p>One place to move from intake through evidence, support review, MCP tooling, and final complaint editing. This page uses the same complaint service contract exposed through the Python CLI, MCP tools, and browser SDK.</p>
+            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                <a class="surface-link" href="/">Landing</a>
+                <a class="surface-link" href="/home">Account</a>
+                <a class="surface-link" href="/chat">Chat</a>
+                <a class="surface-link" href="/profile">Profile</a>
+                <a class="surface-link" href="/results">Results</a>
+                <a class="surface-link" href="/workspace">Workspace</a>
+                <a class="surface-link" href="/claim-support-review">Review</a>
+                <a class="surface-link" href="/document">Builder</a>
+                <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                <a class="surface-link" href="/dashboards">Dashboards</a>
+            </div>
+        </section>
+
+        <section class="layout">
+            <aside class="panel sidebar">
+                <h2>Case Pulse</h2>
+                <p class="muted">This sidebar stays anchored while you move through intake, evidence collection, support validation, and draft editing.</p>
+                <div class="summary-stack">
+                    <div class="summary-card">
+                        <span class="summary-label">Next intake question</span>
+                        <span class="summary-value" id="next-question-count">0</span>
+                        <div class="muted" id="next-question-label">Loading session...</div>
+                    </div>
+                    <div class="summary-card">
+                        <span class="summary-label">Supported claim elements</span>
+                        <span class="summary-value" id="supported-count">0</span>
+                        <div class="muted" id="missing-count-label">0 need more support</div>
+                    </div>
+                    <div class="summary-card">
+                        <span class="summary-label">Evidence collected</span>
+                        <span class="summary-value" id="evidence-count">0</span>
+                        <div class="muted" id="draft-status">No draft generated yet.</div>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="panel">
+                <div class="tab-row" role="tablist" aria-label="Workspace stages">
+                    <button class="tab-button is-active" data-tab-target="intake" type="button">Intake</button>
+                    <button class="tab-button" data-tab-target="evidence" type="button">Evidence</button>
+                    <button class="tab-button" data-tab-target="review" type="button">Review</button>
+                    <button class="tab-button" data-tab-target="draft" type="button">Draft</button>
+                    <button class="tab-button" data-tab-target="integrations" type="button">CLI + MCP</button>
+                </div>
+
+                <section class="tab-panel is-active" data-tab-panel="intake">
+                    <h2>Intake Questions</h2>
+                    <p class="muted">Capture the facts once, then reuse them everywhere else in the workflow.</p>
+                    <div class="field-grid" id="intake-question-grid"></div>
+                    <div class="button-row">
+                        <button class="primary" id="save-intake-button" type="button">Save Intake Answers</button>
+                        <button class="secondary" id="refresh-session-button" type="button">Refresh Session</button>
+                    </div>
+                </section>
+
+                <section class="tab-panel" data-tab-panel="evidence">
+                    <h2>Evidence Intake</h2>
+                    <p class="muted">Collect both testimony and documents, and attach each item to a claim element so support gaps are obvious.</p>
+                    <div class="field-grid">
+                        <div class="field-row">
+                            <div>
+                                <label for="evidence-kind">Evidence Kind</label>
+                                <select id="evidence-kind">
+                                    <option value="testimony">Testimony</option>
+                                    <option value="document">Document</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="evidence-claim-element">Claim Element</label>
+                                <select id="evidence-claim-element">
+                                    <option value="protected_activity">Protected activity</option>
+                                    <option value="employer_knowledge">Employer knowledge</option>
+                                    <option value="adverse_action">Adverse action</option>
+                                    <option value="causation">Causal link</option>
+                                    <option value="harm">Damages</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field-row">
+                            <div>
+                                <label for="evidence-title">Title</label>
+                                <input id="evidence-title" type="text" placeholder="HR complaint email">
+                            </div>
+                            <div>
+                                <label for="evidence-source">Source</label>
+                                <input id="evidence-source" type="text" placeholder="Inbox export or witness interview">
+                            </div>
+                        </div>
+                        <div>
+                            <label for="evidence-content">Evidence Details</label>
+                            <textarea id="evidence-content" placeholder="Summarize what the evidence says and why it matters."></textarea>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button class="primary" id="save-evidence-button" type="button">Add Evidence</button>
+                    </div>
+                    <div class="list" id="evidence-list"></div>
+                </section>
+
+                <section class="tab-panel" data-tab-panel="review">
+                    <h2>Support Review</h2>
+                    <p class="muted">See which claim elements are already supported and which ones still need more evidence before the complaint is finalized.</p>
+                    <div class="support-grid" id="support-grid"></div>
+                    <div class="chip-row" id="recommended-actions"></div>
+                </section>
+
+                <section class="tab-panel" data-tab-panel="draft">
+                    <h2>Draft and Edit</h2>
+                    <p class="muted">Generate the complaint from the workspace state, then make final edits without leaving the same flow.</p>
+                    <div class="field-grid">
+                        <div class="field-row">
+                            <div>
+                                <label for="draft-title">Draft Title</label>
+                                <input id="draft-title" type="text" placeholder="Complaint title">
+                            </div>
+                            <div>
+                                <label for="requested-relief">Requested Relief</label>
+                                <textarea id="requested-relief" placeholder="Back pay&#10;Compensatory damages&#10;Injunctive relief"></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="draft-body">Final Complaint Draft</label>
+                            <textarea id="draft-body" placeholder="Generated complaint draft appears here."></textarea>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button class="primary" id="generate-draft-button" type="button">Generate Complaint</button>
+                        <button class="secondary" id="save-draft-button" type="button">Save Draft Edits</button>
+                        <button class="secondary" id="reset-session-button" type="button">Reset Workspace</button>
+                    </div>
+                    <div class="status"><pre id="draft-preview">No complaint generated yet.</pre></div>
+                </section>
+
+                <section class="tab-panel" data-tab-panel="integrations">
+                    <h2>CLI and MCP Tools</h2>
+                    <p class="muted">The website is using the JavaScript MCP SDK below. The same service is also available through a Python CLI and a lightweight stdio MCP tool server.</p>
+                    <div class="integration-grid">
+                        <div class="tool-card">
+                            <h3>Python CLI</h3>
+                            <pre>python -m applications.complaint_cli session
+python -m applications.complaint_cli answer --question-id protected_activity --answer-text "Reported discrimination to HR"
+python -m applications.complaint_cli generate --requested-relief "Back pay|Injunctive relief"</pre>
+                        </div>
+                        <div class="tool-card">
+                            <h3>MCP stdio server</h3>
+                            <pre>python -m applications.complaint_mcp_server</pre>
+                        </div>
+                        <div class="tool-card">
+                            <h3>Available MCP Tools</h3>
+                            <div class="list" id="tool-list"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="status" id="workspace-status">Workspace booting…</div>
+            </main>
+        </section>
+    </div>
+
+    <script src="/static/complaint_mcp_sdk.js"></script>
+    <script>
+        const { ComplaintMcpClient } = window.ComplaintMcpSdk;
+        const client = new ComplaintMcpClient();
+        const workspaceUserId = 'demo-user';
+        let workspaceSession = null;
+
+        function setStatus(message) {
+            document.getElementById('workspace-status').textContent = message;
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function activateTab(tabName) {
+            document.querySelectorAll('.tab-button').forEach((node) => {
+                node.classList.toggle('is-active', node.dataset.tabTarget === tabName);
+            });
+            document.querySelectorAll('.tab-panel').forEach((node) => {
+                node.classList.toggle('is-active', node.dataset.tabPanel === tabName);
+            });
+        }
+
+        function renderIntake(sessionPayload) {
+            const grid = document.getElementById('intake-question-grid');
+            grid.innerHTML = (sessionPayload.questions || []).map((question) => `
+                <div class="tool-card">
+                    <label for="intake-${escapeHtml(question.id)}">${escapeHtml(question.label)}</label>
+                    <div class="muted">${escapeHtml(question.prompt)}</div>
+                    <textarea id="intake-${escapeHtml(question.id)}" data-question-id="${escapeHtml(question.id)}" placeholder="${escapeHtml(question.placeholder || '')}">${escapeHtml(question.answer || '')}</textarea>
+                </div>
+            `).join('');
+        }
+
+        function renderEvidence(reviewPayload) {
+            const container = document.getElementById('evidence-list');
+            const testimony = (reviewPayload.review && reviewPayload.review.testimony) || [];
+            const documents = (reviewPayload.review && reviewPayload.review.documents) || [];
+            const items = testimony.concat(documents);
+            if (!items.length) {
+                container.innerHTML = '<div class="item">No evidence saved yet.</div>';
+                return;
+            }
+            container.innerHTML = items.map((item) => `
+                <div class="item">
+                    <strong>${escapeHtml(item.title)}</strong>
+                    <div class="chip-row">
+                        <span class="chip">${escapeHtml(item.kind)}</span>
+                        <span class="chip">${escapeHtml(item.claim_element_id)}</span>
+                    </div>
+                    <p>${escapeHtml(item.content)}</p>
+                </div>
+            `).join('');
+        }
+
+        function renderReview(reviewPayload) {
+            const review = reviewPayload.review || {};
+            const supportGrid = document.getElementById('support-grid');
+            const recommended = document.getElementById('recommended-actions');
+            supportGrid.innerHTML = (review.support_matrix || []).map((item) => `
+                <div class="tool-card">
+                    <h3>${escapeHtml(item.label)}</h3>
+                    <div class="chip-row">
+                        <span class="chip ${item.supported ? 'good' : 'warn'}">${item.supported ? 'Supported' : 'Needs support'}</span>
+                        <span class="chip">Intake ${item.intake_supported ? 'yes' : 'no'}</span>
+                        <span class="chip">${item.testimony_count} testimony</span>
+                        <span class="chip">${item.document_count} documents</span>
+                    </div>
+                </div>
+            `).join('');
+            recommended.innerHTML = (review.recommended_actions || []).map((item) => `
+                <span class="chip">${escapeHtml(item.title)}: ${escapeHtml(item.detail)}</span>
+            `).join('');
+        }
+
+        function renderDraft(sessionPayload) {
+            const draft = (sessionPayload.session || {}).draft || {};
+            document.getElementById('draft-title').value = draft.title || '';
+            document.getElementById('requested-relief').value = (draft.requested_relief || []).join('\n');
+            document.getElementById('draft-body').value = draft.body || '';
+            document.getElementById('draft-preview').textContent = draft.body || 'No complaint generated yet.';
+        }
+
+        function renderSidebar(sessionPayload) {
+            const nextQuestion = sessionPayload.next_question || null;
+            const review = sessionPayload.review || {};
+            const overview = review.overview || {};
+            const draft = (sessionPayload.session || {}).draft || null;
+            document.getElementById('next-question-count').textContent = nextQuestion ? '1' : '0';
+            document.getElementById('next-question-label').textContent = nextQuestion ? nextQuestion.prompt : 'Intake complete.';
+            document.getElementById('supported-count').textContent = String(overview.supported_elements || 0);
+            document.getElementById('missing-count-label').textContent = `${overview.missing_elements || 0} need more support`;
+            document.getElementById('evidence-count').textContent = String((overview.testimony_items || 0) + (overview.document_items || 0));
+            document.getElementById('draft-status').textContent = draft ? `Draft updated ${draft.updated_at || draft.generated_at || ''}` : 'No draft generated yet.';
+        }
+
+        function renderTools(toolPayload) {
+            const toolList = document.getElementById('tool-list');
+            toolList.innerHTML = (toolPayload.tools || []).map((tool) => `
+                <div class="item">
+                    <strong>${escapeHtml(tool.name)}</strong>
+                    <div class="muted">${escapeHtml(tool.description)}</div>
+                </div>
+            `).join('');
+        }
+
+        async function refreshWorkspace() {
+            const sessionPayload = await client.getSession(workspaceUserId);
+            workspaceSession = sessionPayload;
+            renderIntake(sessionPayload);
+            renderEvidence(sessionPayload);
+            renderReview(sessionPayload);
+            renderDraft(sessionPayload);
+            renderSidebar(sessionPayload);
+            setStatus('Workspace synchronized from the complaint service.');
+        }
+
+        async function saveIntake() {
+            const answers = {};
+            document.querySelectorAll('[data-question-id]').forEach((node) => {
+                answers[node.dataset.questionId] = node.value.trim();
+            });
+            workspaceSession = await client.submitIntake(workspaceUserId, answers);
+            renderIntake(workspaceSession);
+            renderReview(workspaceSession);
+            renderSidebar(workspaceSession);
+            setStatus('Intake answers saved.');
+        }
+
+        async function addEvidence() {
+            workspaceSession = await client.saveEvidence(workspaceUserId, {
+                kind: document.getElementById('evidence-kind').value,
+                claim_element_id: document.getElementById('evidence-claim-element').value,
+                title: document.getElementById('evidence-title').value.trim(),
+                source: document.getElementById('evidence-source').value.trim(),
+                content: document.getElementById('evidence-content').value.trim(),
+            });
+            renderEvidence(workspaceSession);
+            renderReview(workspaceSession);
+            renderSidebar(workspaceSession);
+            setStatus('Evidence saved and support review refreshed.');
+        }
+
+        async function generateDraft() {
+            workspaceSession = await client.generateComplaint(workspaceUserId, {
+                requested_relief: document.getElementById('requested-relief').value.split('\n').map((item) => item.trim()).filter(Boolean),
+                title_override: document.getElementById('draft-title').value.trim() || null,
+            });
+            renderDraft(workspaceSession);
+            renderSidebar(workspaceSession);
+            activateTab('draft');
+            setStatus('Complaint draft generated from intake and evidence.');
+        }
+
+        async function saveDraft() {
+            workspaceSession = await client.updateDraft(workspaceUserId, {
+                title: document.getElementById('draft-title').value.trim(),
+                body: document.getElementById('draft-body').value.trim(),
+                requested_relief: document.getElementById('requested-relief').value.split('\n').map((item) => item.trim()).filter(Boolean),
+            });
+            renderDraft(workspaceSession);
+            renderSidebar(workspaceSession);
+            setStatus('Draft edits saved.');
+        }
+
+        async function resetSession() {
+            workspaceSession = await client.resetSession(workspaceUserId);
+            await refreshWorkspace();
+            activateTab('intake');
+            setStatus('Workspace reset to a clean state.');
+        }
+
+        document.querySelectorAll('.tab-button').forEach((node) => {
+            node.addEventListener('click', () => activateTab(node.dataset.tabTarget));
+        });
+        document.getElementById('save-intake-button').addEventListener('click', saveIntake);
+        document.getElementById('refresh-session-button').addEventListener('click', refreshWorkspace);
+        document.getElementById('save-evidence-button').addEventListener('click', addEvidence);
+        document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
+        document.getElementById('save-draft-button').addEventListener('click', saveDraft);
+        document.getElementById('reset-session-button').addEventListener('click', resetSession);
+
+        Promise.all([refreshWorkspace(), client.listTools().then(renderTools)]).catch((error) => {
+            setStatus(`Workspace failed to load: ${error.message}`);
+        });
+    </script>
+</body>
+</html>

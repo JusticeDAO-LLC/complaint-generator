@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .dashboard_ui import attach_dashboard_ui_routes
+from .complaint_workspace_api import attach_complaint_workspace_routes
 from .document_ui import attach_document_ui_routes
 from .site_ui import attach_core_site_ui_routes
 
@@ -85,6 +86,7 @@ def create_review_surface_app(mediator: Any) -> FastAPI:
     from .review_api import attach_claim_support_review_routes
     from .document_api import attach_document_routes
 
+    attach_complaint_workspace_routes(app)
     attach_claim_support_review_routes(app, mediator)
     attach_document_routes(app, mediator)
     return app

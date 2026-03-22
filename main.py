@@ -67,6 +67,16 @@ async def read_results(request: Request):
             template = f.read()
     return template
 
+@app.get("/workspace", response_class=HTMLResponse)
+async def read_workspace(request: Request):
+    template = ""
+    filename = os.getcwd() + "/templates/workspace.html"
+
+    if os.path.isfile(filename):
+        with open(filename, "r") as f:
+            template = f.read()
+    return template
+
 
 @app.get("/mlwysiwyg", response_class=HTMLResponse)
 async def read_mlwysiwyg(request: Request):

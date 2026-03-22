@@ -263,4 +263,43 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#previewRoot a[href*="/claim-support-review"]').first().click();
     await expect(page).toHaveURL(/\/claim-support-review/);
   });
+
+  test('workspace unifies intake, evidence, support review, draft editing, and MCP tool visibility', async ({ page }) => {
+    await page.goto('/workspace');
+
+    await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
+
+    await page.locator('#intake-party_name').fill('Jane Doe');
+    await page.locator('#intake-opposing_party').fill('Acme Corporation');
+    await page.locator('#intake-protected_activity').fill('Reported discrimination to HR');
+    await page.locator('#intake-adverse_action').fill('Was terminated two days later');
+    await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
+    await page.locator('#intake-harm').fill('Lost wages and benefits');
+    await page.getByRole('button', { name: 'Save Intake Answers' }).click();
+
+    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+    await page.getByRole('button', { name: 'Evidence' }).click();
+
+    await page.locator('#evidence-kind').selectOption('testimony');
+    await page.locator('#evidence-claim-element').selectOption('causation');
+    await page.locator('#evidence-title').fill('Witness statement');
+    await page.locator('#evidence-source').fill('Coworker interview');
+    await page.locator('#evidence-content').fill('A coworker confirmed the termination happened immediately after the HR complaint.');
+    await page.getByRole('button', { name: 'Add Evidence' }).click();
+
+    await expect(page.locator('#evidence-list')).toContainText(/Witness statement/i);
+    await page.getByRole('button', { name: 'Review' }).click();
+    await expect(page.locator('#support-grid')).toContainText(/Protected activity/i);
+    await expect(page.locator('#recommended-actions')).toContainText(/Check timing/i);
+
+    await page.getByRole('button', { name: 'Draft' }).click();
+    await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
+    await page.getByRole('button', { name: 'Generate Complaint' }).click();
+    await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint/i);
+
+    await page.locator('#draft-body').fill('Edited final complaint body.');
+    await page.getByRole('button', { name: 'Save Draft Edits' }).click();
+    await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
+  });
 });
