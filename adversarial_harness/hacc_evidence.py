@@ -1883,6 +1883,16 @@ def build_hacc_evidence_seed(
         allow_reasonable_accommodation_facts=supports_reasonable_accommodation,
     )
     search_summary = dict((grounding_bundle or {}).get("search_summary") or search_payload.get("search_summary") or {})
+    chronology_analysis = dict((grounding_bundle or {}).get("chronology_analysis") or {})
+    claim_support_temporal_handoff = dict((grounding_bundle or {}).get("claim_support_temporal_handoff") or {})
+    drafting_readiness = dict((grounding_bundle or {}).get("drafting_readiness") or {})
+    document_generation_handoff = dict((grounding_bundle or {}).get("document_generation_handoff") or {})
+    graph_completeness_signals = dict((grounding_bundle or {}).get("graph_completeness_signals") or {})
+    timeline_anchors = [
+        dict(item)
+        for item in list((grounding_bundle or {}).get("timeline_anchors") or chronology_analysis.get("timeline_anchors") or [])
+        if isinstance(item, dict)
+    ]
 
     return {
         "template_id": f"hacc::{complaint_type}::{query[:40]}",
@@ -1909,6 +1919,12 @@ def build_hacc_evidence_seed(
             "mediator_evidence_packets": mediator_evidence_packets,
             "complainant_story_facts": complainant_story_facts,
             "search_summary": search_summary,
+            "chronology_analysis": chronology_analysis,
+            "timeline_anchors": timeline_anchors,
+            "claim_support_temporal_handoff": claim_support_temporal_handoff,
+            "drafting_readiness": drafting_readiness,
+            "document_generation_handoff": document_generation_handoff,
+            "graph_completeness_signals": graph_completeness_signals,
             "grounding_note": "Use the evidence as factual grounding and identify missing case-specific facts during questioning.",
         },
         "keywords": [],

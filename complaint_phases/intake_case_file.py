@@ -1153,18 +1153,36 @@ def build_timeline_consistency_summary(
     relations = _coerce_list(timeline_relations)
 
     relation_type_counts: Dict[str, int] = {}
+    temporal_conflict_relation_count = 0
     for relation in relations:
         relation_dict = _coerce_dict(relation)
         if not relation_dict:
             continue
         relation_type = _normalize_text(relation_dict.get("relation_type") or "").lower()
-        if relation_type:
-            relation_type_counts[relation_type] = relation_type_counts.get(relation_type, 0) + 1
+        if not relation_type:
+            continue
+        relation_type_counts[relation_type] = relation_type_counts.get(relation_type, 0) + 1
+        if relation_type in {"temporal_conflict", "contradiction", "overlap_conflict"}:
+            temporal_conflict_relation_count += 1
+
+    timeline_fact_ids = {
+        _normalize_text(_coerce_dict(fact).get("fact_id") or "") or f"timeline_fact_{index}"
+        for index, fact in enumerate(timeline_facts, start=1)
+        if isinstance(fact, dict)
+    }
+    anchored_fact_ids = {
+        _normalize_text(_coerce_dict(anchor).get("source_fact_id") or _coerce_dict(anchor).get("fact_id") or "")
+        for anchor in anchors
+        if isinstance(anchor, dict)
+    }
+    anchored_fact_ids.discard("")
 
     missing_temporal_fact_ids: List[str] = []
     relative_only_fact_ids: List[str] = []
     approximate_fact_ids: List[str] = []
     range_fact_ids: List[str] = []
+    non_day_precision_fact_ids: List[str] = []
+    day_precision_fact_ids: List[str] = []
     ordered_fact_count = 0
 
     for index, fact in enumerate(timeline_facts, start=1):
@@ -1175,24 +1193,43 @@ def build_timeline_consistency_summary(
         temporal_context = _coerce_dict(fact_dict.get("temporal_context"))
         start_date = _normalize_text(temporal_context.get("start_date") or "")
         end_date = _normalize_text(temporal_context.get("end_date") or "")
+        granularity = _normalize_text(temporal_context.get("granularity") or "").lower()
         relative_markers = _unique_normalized_strings(temporal_context.get("relative_markers") or [])
         has_anchor = bool(start_date)
+
         if has_anchor:
             ordered_fact_count += 1
+            if granularity == "day" and len(start_date) == 10:
+                day_precision_fact_ids.append(fact_id)
+            else:
+                non_day_precision_fact_ids.append(fact_id)
         else:
             missing_temporal_fact_ids.append(fact_id)
             if relative_markers:
                 relative_only_fact_ids.append(fact_id)
+
         if bool(temporal_context.get("is_approximate", False)):
             approximate_fact_ids.append(fact_id)
         if bool(temporal_context.get("is_range", False)) or (start_date and end_date and start_date != end_date):
             range_fact_ids.append(fact_id)
+
+    orphan_anchor_count = sum(
+        1
+        for anchor in anchors
+        if _normalize_text(_coerce_dict(anchor).get("source_fact_id") or _coerce_dict(anchor).get("fact_id") or "")
+        and _normalize_text(_coerce_dict(anchor).get("source_fact_id") or _coerce_dict(anchor).get("fact_id") or "")
+        not in timeline_fact_ids
+    )
 
     warnings: List[str] = []
     if missing_temporal_fact_ids:
         warnings.append("Some timeline facts still lack normalized dates or ranges.")
     if relative_only_fact_ids:
         warnings.append("Some timeline facts only express relative ordering and still need anchoring.")
+    if temporal_conflict_relation_count:
+        warnings.append("Timeline relations include unresolved temporal conflicts.")
+    if non_day_precision_fact_ids:
+        warnings.append("Some anchored facts are only month/year precision and may still need day-level dates.")
 
     return {
         "event_count": len(timeline_facts),
@@ -1206,7 +1243,11 @@ def build_timeline_consistency_summary(
         "missing_temporal_fact_ids": missing_temporal_fact_ids,
         "relative_only_fact_ids": relative_only_fact_ids,
         "warnings": warnings,
-        "partial_order_ready": bool(timeline_facts) and not missing_temporal_fact_ids,
+        "partial_order_ready": bool(timeline_facts) and not missing_temporal_fact_ids and not temporal_conflict_relation_count,
+        "day_precision_fact_count": len(day_precision_fact_ids),
+        "non_day_precision_fact_ids": non_day_precision_fact_ids,
+        "temporal_conflict_relation_count": temporal_conflict_relation_count,
+        "orphan_anchor_count": orphan_anchor_count,
     }
 
 
@@ -1424,36 +1465,99 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
     source_text = _normalize_text(case_file.get("source_complaint_text") or "").lower()
     contradiction_queue = _coerce_list(case_file.get("contradiction_queue"))
     blocker_follow_up_summary = _coerce_dict(case_file.get("blocker_follow_up_summary"))
-    open_items: List[Dict[str, Any]] = []
+    open_item_by_id: Dict[str, Dict[str, Any]] = {}
 
-    section_strategy_map = {
-        "chronology": "fill_chronology_with_exact_dates",
-        "actors": "fill_actors_and_titles",
-        "conduct": "fill_conduct_and_causation_sequence",
-        "claim_elements": "satisfy_claim_element",
-        "proof_leads": "fill_evidence_paths",
+    blocking_rank = {"blocking": 0, "important": 1}
+    support_rank = {"intake_clarification": 0, "testimony": 1, "evidence": 2, "manual_review": 3}
+    strategy_rank = {
+        "capture_hearing_timeline": 0,
+        "capture_appeal_rights_timeline": 1,
+        "capture_response_timeline": 2,
+        "capture_staff_identity": 3,
+        "capture_causation_sequence": 4,
+        "capture_exact_date_for_timeline_fact": 5,
+        "anchor_relative_timeline_fact": 6,
+        "capture_policy_document_evidence": 7,
+        "capture_file_evidence": 8,
+        "targeted_blocker_follow_up": 9,
+        "satisfy_claim_element": 10,
+    }
+    kind_rank = {
+        "blocker_follow_up": 0,
+        "timeline_anchor_gap": 1,
+        "anchor_gap": 2,
+        "temporal_issue_gap": 3,
+        "claim_element_gap": 4,
+        "contradiction": 5,
+        "evidence_modality_gap": 6,
+        "section_gap": 7,
     }
 
-    for section_name, section in sections.items():
-        section_dict = _coerce_dict(section)
-        status = _normalize_text(section_dict.get("status")).lower() or "missing"
-        if status == "complete":
-            continue
-        open_items.append(
-            {
-                "open_item_id": f"section:{section_name}",
-                "kind": "section_gap",
-                "status": "open",
-                "blocking_level": "blocking" if section_name in {"chronology", "actors", "conduct", "claim_elements"} else "important",
-                "section": section_name,
-                "reason": "; ".join(_coerce_list(section_dict.get("missing_items"))) or f"{section_name} is incomplete",
-                "target_claim_type": "",
-                "target_element_id": "",
-                "next_question_strategy": section_strategy_map.get(section_name, f"fill_{section_name}"),
-                "recommended_support_kind": "evidence" if section_name == "proof_leads" else "intake_clarification",
-                "proof_path_status": "missing",
-            }
+    def _sort_key(item: Dict[str, Any]) -> tuple[int, int, int, int, str]:
+        return (
+            blocking_rank.get(_normalize_text(item.get("blocking_level") or "").lower(), 2),
+            kind_rank.get(_normalize_text(item.get("kind") or "").lower(), 50),
+            strategy_rank.get(_normalize_text(item.get("next_question_strategy") or "").lower(), 50),
+            support_rank.get(_normalize_text(item.get("recommended_support_kind") or "").lower(), 10),
+            _normalize_text(item.get("open_item_id") or ""),
         )
+
+    def _add_item(item: Dict[str, Any]) -> None:
+        normalized_id = _normalize_text(item.get("open_item_id") or "")
+        if not normalized_id:
+            return
+        normalized_item = {
+            **item,
+            "open_item_id": normalized_id,
+            "kind": _normalize_text(item.get("kind") or "gap").lower() or "gap",
+            "status": "open",
+            "blocking_level": _normalize_text(item.get("blocking_level") or "important").lower() or "important",
+            "section": _normalize_text(item.get("section") or "general").lower() or "general",
+            "reason": _normalize_text(item.get("reason") or "Follow-up required."),
+            "target_claim_type": _normalize_text(item.get("target_claim_type") or ""),
+            "target_element_id": _normalize_text(item.get("target_element_id") or ""),
+            "next_question_strategy": _normalize_text(item.get("next_question_strategy") or "targeted_blocker_follow_up").lower() or "targeted_blocker_follow_up",
+            "recommended_support_kind": _normalize_text(item.get("recommended_support_kind") or "intake_clarification").lower() or "intake_clarification",
+            "proof_path_status": _normalize_text(item.get("proof_path_status") or "missing").lower() or "missing",
+        }
+        existing = open_item_by_id.get(normalized_id)
+        if existing is None or _sort_key(normalized_item) < _sort_key(existing):
+            open_item_by_id[normalized_id] = normalized_item
+
+    normalized_facts = [
+        _normalize_canonical_fact_record(fact)
+        for fact in canonical_facts
+        if isinstance(fact, dict)
+    ]
+    fact_texts: List[str] = []
+    hearing_fact_ids = set()
+    hearing_dated_fact_ids = set()
+    response_dated_fact_ids = set()
+    staff_name_pattern = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+    staff_title_pattern = re.compile(r"\b(manager|supervisor|director|officer|specialist|coordinator|landlord|owner|hr)\b", flags=re.IGNORECASE)
+    has_named_staff = bool(staff_name_pattern.search(case_file.get("source_complaint_text") or ""))
+    has_staff_title = bool(staff_title_pattern.search(case_file.get("source_complaint_text") or ""))
+    has_causation_sequence = _has_retaliation_causation_link(candidate_claims, normalized_facts, source_text)
+
+    for index, fact in enumerate(normalized_facts, start=1):
+        fact_dict = _coerce_dict(fact)
+        fact_id = _normalize_text(fact_dict.get("fact_id") or "") or f"timeline_fact_{index}"
+        text_value = _normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "").lower()
+        predicate_family = _normalize_text(fact_dict.get("predicate_family") or "").lower()
+        temporal_context = _coerce_dict(fact_dict.get("temporal_context"))
+        start_date = _normalize_text(temporal_context.get("start_date") or "")
+        fact_texts.append(text_value)
+        if any(token in text_value for token in ("grievance", "hearing", "appeal")) or predicate_family == "hearing_process":
+            hearing_fact_ids.add(fact_id)
+            if start_date:
+                hearing_dated_fact_ids.add(fact_id)
+        if predicate_family == "response_timeline" or any(token in text_value for token in ("respond", "denied", "approved", "ignored", "no response", "decision")):
+            if start_date:
+                response_dated_fact_ids.add(fact_id)
+        if staff_name_pattern.search(_normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "")):
+            has_named_staff = True
+        if staff_title_pattern.search(_normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "")):
+            has_staff_title = True
 
     for claim in candidate_claims:
         claim_dict = _coerce_dict(claim)
@@ -1465,27 +1569,26 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
                 continue
             element_id = _normalize_text(element_dict.get("element_id"))
             element_label = _normalize_text(element_dict.get("label") or element_id)
-            open_items.append(
+            evidence_classes = list(element_dict.get("evidence_classes", []) or [])
+            next_strategy = "satisfy_claim_element"
+            if element_id in {"grievance_hearing", "hearing_request_timing"}:
+                next_strategy = "capture_hearing_timeline"
+            elif element_id in {"appeal_rights", "appeal_timing"}:
+                next_strategy = "capture_appeal_rights_timeline"
+            elif element_id in {"causation", "retaliation_causation_sequence"}:
+                next_strategy = "capture_causation_sequence"
+            _add_item(
                 {
                     "open_item_id": f"element:{claim_type}:{element_id}",
                     "kind": "claim_element_gap",
-                    "status": "open",
                     "blocking_level": "blocking" if bool(element_dict.get("blocking", False)) else "important",
                     "section": "claim_elements",
                     "reason": f"{claim_label} is still missing {element_label}.",
                     "target_claim_type": claim_type,
                     "target_element_id": element_id,
-                    "next_question_strategy": (
-                        "capture_hearing_timeline"
-                        if element_id in {"grievance_hearing", "hearing_request_timing"}
-                        else (
-                            "capture_appeal_rights_timeline"
-                            if element_id in {"appeal_rights", "appeal_timing"}
-                            else "satisfy_claim_element"
-                        )
-                    ),
-                    "evidence_classes": list(element_dict.get("evidence_classes", []) or []),
-                    "recommended_support_kind": "testimony" if any("testimony" in str(item).lower() for item in (element_dict.get("evidence_classes", []) or [])) else "evidence",
+                    "next_question_strategy": next_strategy,
+                    "evidence_classes": evidence_classes,
+                    "recommended_support_kind": "testimony" if any("testimony" in str(item).lower() for item in evidence_classes) else "evidence",
                     "proof_path_status": "missing",
                 }
             )
@@ -1495,23 +1598,17 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
         if _normalize_text(contradiction_dict.get("status") or "open").lower() == "resolved":
             continue
         contradiction_id = _normalize_text(contradiction_dict.get("contradiction_id") or "contradiction")
-        topic = _normalize_text(contradiction_dict.get("topic") or "intake contradiction")
         resolution_lane = _normalize_text(
             contradiction_dict.get("recommended_resolution_lane") or "clarify_with_complainant"
         ).lower() or "clarify_with_complainant"
-        external_corroboration_required = bool(
-            contradiction_dict.get("external_corroboration_required", False)
-        )
-        open_items.append(
+        external_corroboration_required = bool(contradiction_dict.get("external_corroboration_required", False))
+        _add_item(
             {
                 "open_item_id": f"contradiction:{contradiction_id}",
                 "kind": "contradiction",
-                "status": "open",
                 "blocking_level": _normalize_text(contradiction_dict.get("severity") or "important").lower() or "important",
                 "section": "contradictions",
-                "reason": f"Resolve contradiction about {topic}.",
-                "target_claim_type": "",
-                "target_element_id": "",
+                "reason": f"Resolve contradiction about {_normalize_text(contradiction_dict.get('topic') or 'intake contradiction')}.",
                 "next_question_strategy": resolution_lane,
                 "recommended_support_kind": _contradiction_support_kind(resolution_lane),
                 "recommended_resolution_lane": resolution_lane,
@@ -1523,29 +1620,25 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
     for blocker in _coerce_list(blocker_follow_up_summary.get("blocking_items")):
         blocker_dict = _coerce_dict(blocker)
         blocker_id = _normalize_text(blocker_dict.get("blocker_id") or "")
-        reason = _normalize_text(blocker_dict.get("reason") or "Critical intake blocker requires follow-up.")
         section = _normalize_text(blocker_dict.get("section") or "chronology").lower() or "chronology"
-        question_strategy = _normalize_text(
-            blocker_dict.get("next_question_strategy")
-            or blocker_dict.get("question_strategy")
-            or "targeted_blocker_follow_up"
-        ).lower() or "targeted_blocker_follow_up"
-        support_kind = _normalize_text(
-            blocker_dict.get("recommended_support_kind")
-            or ("evidence" if section in {"proof_leads", "chronology"} else "intake_clarification")
-        ).lower() or "intake_clarification"
-        open_items.append(
+        _add_item(
             {
-                "open_item_id": f"blocker:{blocker_id or len(open_items) + 1}",
+                "open_item_id": f"blocker:{blocker_id or len(open_item_by_id) + 1}",
                 "kind": "blocker_follow_up",
-                "status": "open",
                 "blocking_level": "blocking",
                 "section": section,
-                "reason": reason,
+                "reason": _normalize_text(blocker_dict.get("reason") or "Critical intake blocker requires follow-up."),
                 "target_claim_type": _normalize_text(blocker_dict.get("target_claim_type") or ""),
                 "target_element_id": _normalize_text(blocker_dict.get("target_element_id") or ""),
-                "next_question_strategy": question_strategy,
-                "recommended_support_kind": support_kind,
+                "next_question_strategy": _normalize_text(
+                    blocker_dict.get("next_question_strategy")
+                    or blocker_dict.get("question_strategy")
+                    or "targeted_blocker_follow_up"
+                ).lower() or "targeted_blocker_follow_up",
+                "recommended_support_kind": _normalize_text(
+                    blocker_dict.get("recommended_support_kind")
+                    or ("evidence" if section in {"proof_leads", "chronology"} else "intake_clarification")
+                ).lower() or "intake_clarification",
                 "proof_path_status": _normalize_text(blocker_dict.get("proof_path_status") or "missing").lower() or "missing",
                 "blocker_tags": _unique_normalized_strings(blocker_dict.get("blocker_tags") or []),
                 "primary_objective": _normalize_text(blocker_dict.get("primary_objective") or ""),
@@ -1566,23 +1659,22 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
         issue_id = _normalize_text(issue_dict.get("issue_id") or "")
         if not issue_id:
             continue
+        issue_type = _normalize_text(issue_dict.get("issue_type") or "").lower()
         resolution_lane = _normalize_text(
-            issue_dict.get("recommended_resolution_lane") or "clarify_with_complainant"
+            issue_dict.get("recommended_resolution_lane")
+            or ("anchor_relative_timeline_fact" if issue_type == "relative_only_ordering" else "capture_exact_date_for_timeline_fact")
         ).lower() or "clarify_with_complainant"
-        open_items.append(
+        _add_item(
             {
                 "open_item_id": f"temporal_issue:{issue_id}",
                 "kind": "temporal_issue_gap",
-                "status": "open",
                 "blocking_level": _normalize_text(issue_dict.get("severity") or "blocking").lower() or "blocking",
                 "section": "chronology",
                 "reason": _normalize_text(issue_dict.get("summary") or "Timeline sequencing still needs anchoring."),
-                "target_claim_type": "",
-                "target_element_id": "",
                 "next_question_strategy": resolution_lane,
                 "recommended_support_kind": _contradiction_support_kind(resolution_lane),
-                "proof_path_status": "missing" if _normalize_text(issue_dict.get("issue_type") or "") != "relative_only_ordering" else "relative_only",
-                "issue_type": _normalize_text(issue_dict.get("issue_type") or ""),
+                "proof_path_status": "relative_only" if issue_type == "relative_only_ordering" else "missing",
+                "issue_type": issue_type,
                 "fact_ids": _unique_normalized_strings(issue_dict.get("fact_ids") or []),
                 "relative_markers": _unique_normalized_strings(issue_dict.get("relative_markers") or []),
             }
@@ -1595,25 +1687,22 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
         _unique_normalized_strings(timeline_consistency_summary.get("relative_only_fact_ids") or [])
     )
     for fact_id in missing_temporal_fact_ids:
-        open_items.append(
+        is_relative_only = fact_id in relative_only_fact_ids
+        _add_item(
             {
                 "open_item_id": f"timeline_fact:{fact_id}",
                 "kind": "timeline_anchor_gap",
-                "status": "open",
                 "blocking_level": "blocking",
                 "section": "chronology",
                 "reason": (
-                    f"Timeline fact {fact_id} needs an exact date anchor."
-                    if fact_id not in relative_only_fact_ids
-                    else f"Timeline fact {fact_id} only has relative ordering and needs anchoring."
+                    f"Timeline fact {fact_id} only has relative ordering and needs anchoring."
+                    if is_relative_only
+                    else f"Timeline fact {fact_id} needs an exact date anchor."
                 ),
-                "target_claim_type": "",
-                "target_element_id": "",
-                "next_question_strategy": (
-                    "anchor_relative_timeline_fact" if fact_id in relative_only_fact_ids else "capture_exact_date_for_timeline_fact"
-                ),
+                "next_question_strategy": "anchor_relative_timeline_fact" if is_relative_only else "capture_exact_date_for_timeline_fact",
                 "recommended_support_kind": "intake_clarification",
-                "proof_path_status": "missing",
+                "proof_path_status": "relative_only" if is_relative_only else "missing",
+                "target_fact_id": fact_id,
             }
         )
 
@@ -1624,139 +1713,138 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
         if isinstance(claim, dict)
     }.intersection(weak_claim_types)
     if active_weak_claim_types:
-        lead_types = {
-            _normalize_text(_coerce_dict(lead).get("lead_type") or "").lower()
+        lead_texts = [
+            f"{_normalize_text(_coerce_dict(lead).get('lead_type') or '').lower()} {_normalize_text(_coerce_dict(lead).get('description') or '').lower()}"
             for lead in proof_leads
             if isinstance(lead, dict)
-        }
-        has_policy_document = any(token in lead_type for lead_type in lead_types for token in ("policy_document", "policy"))
-        has_file_evidence = any(token in lead_type for lead_type in lead_types for token in ("file_evidence", "file", "attachment", "record"))
+        ]
+        has_policy_document = any(any(token in lead_text for token in ("policy_document", "policy", "handbook", "procedure")) for lead_text in lead_texts)
+        has_file_evidence = any(any(token in lead_text for token in ("file_evidence", "file", "attachment", "record", "document")) for lead_text in lead_texts)
+        primary_claim_type = sorted(active_weak_claim_types)[0]
         if not has_policy_document:
-            open_items.append(
+            _add_item(
                 {
                     "open_item_id": "evidence_modality:policy_document",
                     "kind": "evidence_modality_gap",
-                    "status": "open",
                     "blocking_level": "important",
                     "section": "proof_leads",
                     "reason": "Add a policy_document source with policy language, issue date, and issuing authority.",
-                    "target_claim_type": sorted(active_weak_claim_types)[0],
-                    "target_element_id": "",
+                    "target_claim_type": primary_claim_type,
                     "next_question_strategy": "capture_policy_document_evidence",
                     "recommended_support_kind": "evidence",
                     "proof_path_status": "missing",
                 }
             )
         if not has_file_evidence:
-            open_items.append(
+            _add_item(
                 {
                     "open_item_id": "evidence_modality:file_evidence",
                     "kind": "evidence_modality_gap",
-                    "status": "open",
                     "blocking_level": "important",
                     "section": "proof_leads",
-                    "reason": "Add file_evidence records with document title, date, and source/custodian details.",
-                    "target_claim_type": sorted(active_weak_claim_types)[0],
-                    "target_element_id": "",
+                    "reason": "Add file_evidence records with document title, date, source, and custodian details.",
+                    "target_claim_type": primary_claim_type,
                     "next_question_strategy": "capture_file_evidence",
                     "recommended_support_kind": "evidence",
                     "proof_path_status": "missing",
                 }
             )
 
-    fact_texts = [
-        _normalize_text(_coerce_dict(fact).get("text") or _coerce_dict(fact).get("event_label") or "").lower()
-        for fact in canonical_facts
-        if isinstance(fact, dict)
-    ]
     hearing_referenced = (
         any(token in source_text for token in ("grievance hearing", "hearing request", "hearing", "appeal"))
         or any(any(token in text for token in ("grievance", "hearing", "appeal")) for text in fact_texts)
     )
-    if hearing_referenced:
-        hearing_dates_present = any(
-            bool(_coerce_dict(_coerce_dict(fact).get("temporal_context")).get("start_date"))
-            for fact in canonical_facts
-            if isinstance(fact, dict) and any(
-                token in _normalize_text(
-                    _coerce_dict(fact).get("text") or _coerce_dict(fact).get("event_label") or ""
-                ).lower()
-                for token in ("grievance", "hearing", "appeal")
-            )
+    if hearing_referenced and not hearing_dated_fact_ids:
+        _add_item(
+            {
+                "open_item_id": "anchor:grievance_hearing",
+                "kind": "anchor_gap",
+                "blocking_level": "blocking",
+                "section": "chronology",
+                "reason": "Confirm grievance_hearing request date, request method, decision-maker name/title, and source record.",
+                "target_element_id": "grievance_hearing",
+                "next_question_strategy": "capture_hearing_timeline",
+                "recommended_support_kind": "intake_clarification",
+                "proof_path_status": "missing",
+            }
         )
-        response_dates_present = any(
-            bool(_coerce_dict(_coerce_dict(fact).get("temporal_context")).get("start_date"))
-            for fact in canonical_facts
-            if isinstance(fact, dict) and (
-                _normalize_text(_coerce_dict(fact).get("predicate_family") or "").lower() == "response_timeline"
-                or any(
-                    token in _normalize_text(
-                        _coerce_dict(fact).get("text") or _coerce_dict(fact).get("event_label") or ""
-                    ).lower()
-                    for token in ("respond", "denied", "approved", "ignored", "no response")
-                )
-            )
+    if hearing_referenced and not response_dated_fact_ids:
+        _add_item(
+            {
+                "open_item_id": "anchor:appeal_rights",
+                "kind": "anchor_gap",
+                "blocking_level": "blocking",
+                "section": "chronology",
+                "reason": "Confirm appeal_rights notice date, filing deadline, agency response date, and supporting record.",
+                "target_element_id": "appeal_rights",
+                "next_question_strategy": "capture_appeal_rights_timeline",
+                "recommended_support_kind": "intake_clarification",
+                "proof_path_status": "missing",
+            }
         )
-        if not hearing_dates_present:
-            open_items.append(
-                {
-                    "open_item_id": "anchor:grievance_hearing",
-                    "kind": "anchor_gap",
-                    "status": "open",
-                    "blocking_level": "blocking",
-                    "section": "chronology",
-                    "reason": "Confirm grievance_hearing request date, method, decision-maker, and source record.",
-                    "target_claim_type": "",
-                    "target_element_id": "grievance_hearing",
-                    "next_question_strategy": "capture_hearing_timeline",
-                    "recommended_support_kind": "intake_clarification",
-                    "proof_path_status": "missing",
-                }
-            )
-        if not response_dates_present:
-            open_items.append(
-                {
-                    "open_item_id": "anchor:appeal_rights",
-                    "kind": "anchor_gap",
-                    "status": "open",
-                    "blocking_level": "blocking",
-                    "section": "chronology",
-                    "reason": "Confirm appeal_rights notice date, deadline, response date, and supporting record.",
-                    "target_claim_type": "",
-                    "target_element_id": "appeal_rights",
-                    "next_question_strategy": "capture_appeal_rights_timeline",
-                    "recommended_support_kind": "intake_clarification",
-                    "proof_path_status": "missing",
-                }
-            )
 
-    seen_ids = set()
-    deduped_items: List[Dict[str, Any]] = []
-    for item in open_items:
-        item_id = _normalize_text(item.get("open_item_id"))
-        if not item_id or item_id in seen_ids:
-            continue
-        seen_ids.add(item_id)
-        deduped_items.append(item)
+    if has_named_staff and not has_staff_title:
+        _add_item(
+            {
+                "open_item_id": "actors:staff_name_title_mapping",
+                "kind": "anchor_gap",
+                "blocking_level": "blocking",
+                "section": "actors",
+                "reason": "Map each named staff person to role/title and decision authority.",
+                "next_question_strategy": "capture_staff_identity",
+                "recommended_support_kind": "intake_clarification",
+                "proof_path_status": "missing",
+            }
+        )
 
-    blocking_rank = {"blocking": 0, "important": 1}
-    support_rank = {"intake_clarification": 0, "testimony": 1, "evidence": 2, "manual_review": 3}
-    strategy_rank = {
-        "capture_hearing_timeline": 0,
-        "capture_appeal_rights_timeline": 1,
-        "capture_response_timeline": 2,
-        "capture_exact_date_for_timeline_fact": 3,
-        "anchor_relative_timeline_fact": 4,
+    if not has_causation_sequence:
+        _add_item(
+            {
+                "open_item_id": "conduct:causation_sequence",
+                "kind": "anchor_gap",
+                "blocking_level": "blocking",
+                "section": "conduct",
+                "reason": "Capture sequence linking protected activity, actor knowledge, adverse action, and timing.",
+                "next_question_strategy": "capture_causation_sequence",
+                "recommended_support_kind": "intake_clarification",
+                "proof_path_status": "missing",
+            }
+        )
+
+    section_strategy_map = {
+        "chronology": "fill_chronology_with_exact_dates",
+        "actors": "fill_actors_and_titles",
+        "conduct": "fill_conduct_and_causation_sequence",
+        "claim_elements": "satisfy_claim_element",
+        "proof_leads": "fill_evidence_paths",
     }
-
-    deduped_items.sort(
-        key=lambda item: (
-            blocking_rank.get(_normalize_text(item.get("blocking_level") or "").lower(), 2),
-            strategy_rank.get(_normalize_text(item.get("next_question_strategy") or "").lower(), 50),
-            support_rank.get(_normalize_text(item.get("recommended_support_kind") or "").lower(), 10),
-            _normalize_text(item.get("open_item_id") or ""),
+    concrete_sections = {
+        _normalize_text(item.get("section") or "").lower()
+        for item in open_item_by_id.values()
+        if _normalize_text(item.get("kind") or "").lower() != "section_gap"
+    }
+    for section_name, section in sections.items():
+        normalized_section_name = _normalize_text(section_name).lower()
+        section_dict = _coerce_dict(section)
+        status = _normalize_text(section_dict.get("status")).lower() or "missing"
+        if status == "complete" or normalized_section_name in concrete_sections:
+            continue
+        missing_items = _coerce_list(section_dict.get("missing_items"))
+        _add_item(
+            {
+                "open_item_id": f"section:{normalized_section_name}",
+                "kind": "section_gap",
+                "blocking_level": "blocking" if normalized_section_name in {"chronology", "actors", "conduct", "claim_elements"} else "important",
+                "section": normalized_section_name,
+                "reason": "; ".join(missing_items) or f"{normalized_section_name} is incomplete",
+                "next_question_strategy": section_strategy_map.get(normalized_section_name, f"fill_{normalized_section_name}"),
+                "recommended_support_kind": "evidence" if normalized_section_name == "proof_leads" else "intake_clarification",
+                "proof_path_status": "missing",
+            }
         )
-    )
+
+    deduped_items = list(open_item_by_id.values())
+    deduped_items.sort(key=_sort_key)
     return deduped_items
 
 
@@ -2313,11 +2401,24 @@ def build_intake_sections(
 
 def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[str, Any]:
     """Build the initial structured intake case file from current graph state."""
-    candidate_claims = build_candidate_claims(knowledge_graph)
+    candidate_claims = [
+        _coerce_dict(claim)
+        for claim in build_candidate_claims(knowledge_graph)
+        if isinstance(claim, dict)
+    ]
     canonical_facts = _enrich_canonical_facts_with_relative_anchor_dates(
-        build_canonical_facts(knowledge_graph)
+        [
+            _normalize_canonical_fact_record(fact)
+            for fact in build_canonical_facts(knowledge_graph)
+            if isinstance(fact, dict)
+        ]
     )
-    proof_leads = build_proof_leads(knowledge_graph)
+    proof_leads = [
+        _normalize_proof_lead_record(lead)
+        for lead in build_proof_leads(knowledge_graph)
+        if isinstance(lead, dict)
+    ]
+
     timeline_anchors = build_timeline_anchors(canonical_facts)
     timeline_relations = build_timeline_relations(canonical_facts)
     temporal_fact_registry = build_temporal_fact_registry(canonical_facts, timeline_anchors)
@@ -2345,7 +2446,7 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
     )
 
     normalized_complaint_text = _normalize_text(complaint_text)
-    intake_case_file = {
+    intake_case_file: Dict[str, Any] = {
         "candidate_claims": candidate_claims,
         "intake_sections": intake_sections,
         "canonical_facts": canonical_facts,
@@ -2366,7 +2467,9 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "complainant_summary_confirmation": {},
         "source_complaint_text": normalized_complaint_text,
     }
-    intake_case_file["open_items"] = build_open_items(intake_case_file)
+
+    open_items = build_open_items(intake_case_file)
+    intake_case_file["open_items"] = open_items
     intake_case_file["summary_snapshots"] = [build_summary_snapshot(intake_case_file)]
     return refresh_summary_confirmation(intake_case_file)
 

@@ -976,12 +976,8 @@ class Optimizer:
             elif str(phase_name) == "document_generation":
                 if path.name == "document_pipeline.py":
                     target_map[key] = [
-                        "build_package",
                         "_build_runtime_workflow_phase_plan",
-                        "_build_drafting_readiness",
                     ]
-                    if targeted_focus_sections:
-                        target_map[key].append("_build_runtime_workflow_optimization_guidance")
                 elif path.name == "document_optimization.py":
                     target_map[key] = [
                         "_build_workflow_phase_targeting",

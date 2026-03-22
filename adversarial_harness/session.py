@@ -2008,6 +2008,10 @@ class AdversarialSession:
             or max(signal_values) <= 0.05
         )
         strict_stability_mode = no_successful_sessions or explicit_recovery_hint
+        stability_injection_budget = 2
+        empty_questions_min_budget = 3
+        limit_to_missing_objectives_in_stability = True
+        one_probe_per_objective_in_stability = True
         signal_strength = max(signal_values) if signal_values else 0.0
         seed_boosted_probes: List[tuple[str, str]] = []
         supports_selection_criteria = cls._seed_supports_selection_criteria(seed_complaint)
@@ -2284,12 +2288,14 @@ class AdversarialSession:
                 return merged
             # Recovery mode should prioritize continuity over aggressive backfilling.
             # Only inject a minimal, high-value probe when intake coverage is clearly weak.
-            if strict_stability_mode:
-                injection_budget = 1
-            else:
-                injection_budget = min(3, len(uncovered_critical_objectives) or 2)
-                if not existing_questions:
-                    injection_budget = max(injection_budget, 2)
+            injection_budget = min(
+                stability_injection_budget,
+                max(1, len(uncovered_critical_objectives) or 1),
+            )
+            if not existing_questions:
+                injection_budget = max(injection_budget, empty_questions_min_budget)
+            if missing_objectives:
+                injection_budget = min(injection_budget, len(missing_objectives))
         else:
             if signal_strength >= 0.75:
                 injection_budget = 10
@@ -2359,7 +2365,11 @@ class AdversarialSession:
         injected_questions: List[Any] = []
         injected_objective_counts: Dict[str, int] = {}
         max_per_objective: Dict[str, int] = {}
-        if should_frontload_anchor_selection and 'anchor_selection_criteria' in missing_objectives:
+        if (
+            not stability_recovery_mode
+            and should_frontload_anchor_selection
+            and 'anchor_selection_criteria' in missing_objectives
+        ):
             # Allow one dedicated fallback on top of the primary selection-criteria probe.
             max_per_objective['anchor_selection_criteria'] = 2
         strict_recovery_objectives = {
@@ -2381,9 +2391,18 @@ class AdversarialSession:
                 break
             current_count = injected_objective_counts.get(probe_type, 0)
             per_objective_limit = max_per_objective.get(probe_type, 1)
+            if stability_recovery_mode and one_probe_per_objective_in_stability:
+                per_objective_limit = 1
             if current_count >= per_objective_limit:
                 continue
-            if missing_objectives and probe_type not in missing_objectives:
+            if (
+                stability_recovery_mode
+                and limit_to_missing_objectives_in_stability
+                and missing_objectives
+                and probe_type not in missing_objectives
+            ):
+                continue
+            if not stability_recovery_mode and missing_objectives and probe_type not in missing_objectives:
                 continue
             if stability_recovery_mode and probe_type not in critical_objectives and missing_objectives:
                 continue
@@ -2484,6 +2503,8 @@ class AdversarialSession:
                     injected += 1
                     break
 
+        if stability_recovery_mode:
+            return merged + injected_questions
         return injected_questions + merged
 
     @classmethod
