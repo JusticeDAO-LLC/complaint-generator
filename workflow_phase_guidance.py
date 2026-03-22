@@ -113,6 +113,36 @@ def _collect_reasoning_review_summary(payload: Any) -> Dict[str, int]:
     return summary
 
 
+def _build_chronology_failure_reasons(readiness: Any) -> List[str]:
+    if not isinstance(readiness, dict):
+        return []
+    reasons: List[str] = []
+    unanchored_event_count = _coerce_int(readiness.get("unanchored_event_count"), 0)
+    blocking_issue_count = _coerce_int(readiness.get("blocking_issue_count"), 0)
+    open_issue_count = _coerce_int(readiness.get("open_issue_count"), 0)
+    missing_temporal_predicates = [
+        str(value).strip()
+        for value in (readiness.get("missing_temporal_predicates") or [])
+        if str(value).strip()
+    ]
+    required_provenance_kinds = [
+        str(value).strip()
+        for value in (readiness.get("required_provenance_kinds") or [])
+        if str(value).strip()
+    ]
+    if unanchored_event_count > 0:
+        reasons.append(f"{unanchored_event_count} chronology event(s) still lack anchors")
+    if blocking_issue_count > 0:
+        reasons.append(f"{blocking_issue_count} blocking chronology issue(s) remain open")
+    elif open_issue_count > 0:
+        reasons.append(f"{open_issue_count} chronology issue(s) remain unresolved")
+    if missing_temporal_predicates:
+        reasons.append(f"missing temporal predicates: {', '.join(missing_temporal_predicates[:3])}")
+    if required_provenance_kinds:
+        reasons.append(f"required chronology provenance: {', '.join(required_provenance_kinds[:3])}")
+    return reasons
+
+
 def build_workflow_phase_plan(
     phases: Dict[str, Dict[str, Any]],
     *,
@@ -328,13 +358,27 @@ def build_review_document_generation_phase_guidance(
     temporal_gap_task_count = _coerce_int(packet_summary.get("temporal_gap_task_count"), 0)
     unresolved_review_path_count = _coerce_int(packet_summary.get("claim_support_unresolved_without_review_path_count"), 0)
     proof_readiness_score = float(packet_summary.get("proof_readiness_score", 0.0) or 0.0)
+    intake_chronology_readiness = (
+        intake_case_summary.get("intake_chronology_readiness")
+        if isinstance(intake_case_summary.get("intake_chronology_readiness"), dict)
+        else {}
+    )
     reasoning_review_summary = _collect_reasoning_review_summary(intake_case_summary)
     unresolved_temporal_issue_count = max(
         unresolved_temporal_issue_count,
         int(reasoning_review_summary.get("unresolved_temporal_issue_count") or 0),
     )
     missing_proof_artifact_count = int(reasoning_review_summary.get("missing_proof_artifact_count") or 0)
-    chronology_blocked = unresolved_temporal_issue_count > 0 or temporal_gap_task_count > 0
+    chronology_failure_reasons = _build_chronology_failure_reasons(intake_chronology_readiness)
+    chronology_blocked = (
+        unresolved_temporal_issue_count > 0
+        or temporal_gap_task_count > 0
+        or bool(chronology_failure_reasons)
+        or (
+            bool(intake_chronology_readiness)
+            and not bool(intake_chronology_readiness.get("ready_for_temporal_formalization", False))
+        )
+    )
 
     if (
         next_action_name in {"generate_formal_complaint", "complete_evidence"}
@@ -366,6 +410,11 @@ def build_review_document_generation_phase_guidance(
             actions.append(
                 "Resolve outstanding chronology gap tasks and temporal issue blockers before generating a formal complaint."
             )
+        if chronology_failure_reasons:
+            summary = f"{summary} Chronology coverage remains incomplete."
+            actions.append(
+                f"Address chronology coverage blockers: {'; '.join(chronology_failure_reasons[:2])}."
+            )
         if missing_proof_artifact_count > 0:
             summary = (
                 f"{summary} Proof review still shows {missing_proof_artifact_count} missing decision or notice artifact(s)."
@@ -374,19 +423,32 @@ def build_review_document_generation_phase_guidance(
                 "Collect or verify the denial notice, written decision, appeal notice, or related emails before formal drafting."
             )
 
+    signals = {
+        "recommended_next_action": next_action_name,
+        "proof_readiness_score": proof_readiness_score,
+        "chronology_blocked": chronology_blocked,
+        "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+        "temporal_gap_task_count": temporal_gap_task_count,
+        "unresolved_without_review_path_count": unresolved_review_path_count,
+        "missing_proof_artifact_count": missing_proof_artifact_count,
+    }
+    if intake_chronology_readiness:
+        signals.update(
+            {
+                "chronology_anchor_coverage_ratio": float(intake_chronology_readiness.get("anchor_coverage_ratio", 1.0) or 1.0),
+                "chronology_predicate_coverage_ratio": float(intake_chronology_readiness.get("predicate_coverage_ratio", 1.0) or 1.0),
+                "chronology_provenance_coverage_ratio": float(intake_chronology_readiness.get("provenance_coverage_ratio", 1.0) or 1.0),
+                "chronology_ready_for_formalization": bool(intake_chronology_readiness.get("ready_for_temporal_formalization", False)),
+            }
+        )
+    if chronology_failure_reasons:
+        signals["chronology_failure_reasons"] = chronology_failure_reasons
+
     return {
         "priority": 1,
         "status": status,
         "summary": summary,
-        "signals": {
-            "recommended_next_action": next_action_name,
-            "proof_readiness_score": proof_readiness_score,
-            "chronology_blocked": chronology_blocked,
-            "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
-            "temporal_gap_task_count": temporal_gap_task_count,
-            "unresolved_without_review_path_count": unresolved_review_path_count,
-            "missing_proof_artifact_count": missing_proof_artifact_count,
-        },
+        "signals": signals,
         "recommended_actions": actions,
     }
 

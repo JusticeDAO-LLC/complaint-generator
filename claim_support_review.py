@@ -656,6 +656,18 @@ def _build_review_workflow_phase_priority(
             chip_labels.append("chronology blocked: Yes")
         if temporal_gap_task_count > 0:
             chip_labels.append(f"chronology gap tasks: {temporal_gap_task_count}")
+        if "chronology_anchor_coverage_ratio" in prioritized_signals:
+            chip_labels.append(
+                f"anchor coverage: {float(prioritized_signals.get('chronology_anchor_coverage_ratio') or 0.0):.2f}"
+            )
+        if "chronology_predicate_coverage_ratio" in prioritized_signals:
+            chip_labels.append(
+                f"predicate coverage: {float(prioritized_signals.get('chronology_predicate_coverage_ratio') or 0.0):.2f}"
+            )
+        if "chronology_provenance_coverage_ratio" in prioritized_signals:
+            chip_labels.append(
+                f"provenance coverage: {float(prioritized_signals.get('chronology_provenance_coverage_ratio') or 0.0):.2f}"
+            )
         if recommended_next_action:
             chip_labels.append(f"recommended action: {recommended_next_action}")
         return {
@@ -720,6 +732,13 @@ def _build_review_workflow_priority_from_phase(
             )
         if chronology_note_parts:
             notes.append(f"Chronology blockers: {'; '.join(chronology_note_parts)}.")
+    chronology_failure_reasons = [
+        str(reason).strip()
+        for reason in (signals.get("chronology_failure_reasons") or [])
+        if str(reason).strip()
+    ]
+    if chronology_failure_reasons:
+        notes.append(f"Chronology coverage blockers: {'; '.join(chronology_failure_reasons)}.")
     recommended_actions = [
         str(item).strip()
         for item in (workflow_phase_priority.get("recommended_actions") or [])

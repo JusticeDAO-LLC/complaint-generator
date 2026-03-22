@@ -161,6 +161,74 @@ def test_main_show_history_prints_existing_workflow_summary(tmp_path, capsys):
     assert "continue_drafting" in captured.out
 
 
+def test_main_prints_recommended_commands_for_fresh_grounded_run(tmp_path, monkeypatch, capsys):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {},
+                "seeded_discovery_plan": {},
+                "research_action_queue": [],
+                "recommended_next_action": {
+                    "phase_name": "evidence_upload",
+                    "action": "upload_local_repository_evidence",
+                },
+            }
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "search_summary": {"status": "success"},
+                "synthetic_prompts": {},
+                "anchor_passages": [],
+                "upload_candidates": [],
+                "mediator_evidence_packets": [],
+                "claim_support_temporal_handoff": {},
+                "document_generation_handoff": {},
+                "drafting_readiness": {},
+                "graph_completeness_signals": {},
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 1, "search_summary": {"status": "success"}}
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", lambda **kwargs: {})
+
+    result = cli.main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--query",
+            "termination notice chronology",
+            "--claim-type",
+            "housing_discrimination",
+            "--hacc-preset",
+            "core_hacc_policies",
+            "--hacc-search-mode",
+            "package",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert "Output directory:" in captured.out
+    assert "Inspect command:" in captured.out
+    assert "Recommended rerun:" in captured.out
+    assert "python scripts/run_hacc_grounded_pipeline.py --output-dir" in captured.out
+
+
 def test_default_grounding_request_uses_first_query_spec(monkeypatch):
     cli = _load_cli_module()
     monkeypatch.setattr(
@@ -312,6 +380,11 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert grounded_workflow_status["workflow_stage"] == "pre_grounded_follow_up"
     assert grounded_workflow_status["effective_next_action"]["action"] == "upload_local_repository_evidence"
     assert grounded_workflow_status["has_persisted_completed_grounded_worksheet"] is False
+    assert grounded_workflow_status["recommended_commands"]["recommended_command_kind"] == "rerun"
+    assert grounded_workflow_status["recommended_commands"]["inspect_command"].endswith(str(tmp_path))
+    assert grounded_workflow_status["recommended_commands"]["recommended_command"].startswith(
+        "python scripts/run_hacc_grounded_pipeline.py --output-dir"
+    )
     assert grounded_workflow_status["workflow_history_count"] == 1
     assert grounded_workflow_status["last_recorded_transition"]["workflow_stage"] == "pre_grounded_follow_up"
     assert len(grounded_workflow_history) == 1
@@ -319,6 +392,8 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert grounded_workflow_history[0]["effective_next_action"]["action"] == "upload_local_repository_evidence"
     assert "Grounded Workflow Status" in grounded_workflow_status_md
     assert "Workflow stage: pre_grounded_follow_up" in grounded_workflow_status_md
+    assert "Recommended Commands" in grounded_workflow_status_md
+    assert "Recommended rerun:" in grounded_workflow_status_md
     assert "Recent Workflow Transitions" in grounded_workflow_status_md
     assert "Recorded transitions: 1" in grounded_workflow_status_md
 
@@ -481,12 +556,18 @@ def test_run_hacc_grounded_pipeline_persists_synthesis_roundtrip_artifacts(tmp_p
     assert workflow_status["grounded_follow_up_answer_count"] == 2
     assert workflow_status["has_persisted_completed_grounded_worksheet"] is True
     assert workflow_status["persisted_completed_grounded_worksheet_path"] == str(completed_copy_path)
+    assert workflow_status["recommended_commands"]["recommended_command_kind"] == "synthesize"
+    assert workflow_status["recommended_commands"]["recommended_command"].startswith(
+        "python scripts/synthesize_hacc_complaint.py --grounded-run-dir"
+    )
+    assert "--synthesize-complaint" in workflow_status["recommended_commands"]["pipeline_resume_command"]
     assert workflow_status["workflow_history_count"] == 1
     assert workflow_status["last_recorded_transition"]["workflow_stage"] == "post_grounded_follow_up"
     assert len(workflow_history) == 1
     assert workflow_history[0]["workflow_stage"] == "post_grounded_follow_up"
     assert workflow_history[0]["grounded_follow_up_answer_count"] == 2
     assert "Workflow stage: post_grounded_follow_up" in workflow_status_md_path.read_text(encoding="utf-8")
+    assert "Recommended synthesis:" in workflow_status_md_path.read_text(encoding="utf-8")
     assert json.loads(completed_copy_path.read_text(encoding="utf-8"))["follow_up_items"][0]["answer"] == "Answered"
 
 

@@ -985,11 +985,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"Uploaded evidence count: {summary['evidence_upload']['upload_count']}")
         grounded_status = dict(summary.get("grounded_workflow_status") or {})
         effective_next_action = dict(grounded_status.get("effective_next_action") or {})
+        recommended_commands = dict(grounded_status.get("recommended_commands") or {})
         print(f"Workflow stage: {grounded_status.get('workflow_stage', '')}")
         if grounded_status.get("workflow_history_count"):
             print(f"Workflow transitions recorded: {grounded_status.get('workflow_history_count', 0)}")
         if effective_next_action.get("action"):
             print(f"Next action: {effective_next_action.get('action')} ({effective_next_action.get('phase_name', '')})")
+        inspect_command = str(recommended_commands.get("inspect_command") or "").strip()
+        recommended_command = str(recommended_commands.get("recommended_command") or "").strip()
+        recommended_command_kind = str(recommended_commands.get("recommended_command_kind") or "").strip()
+        pipeline_resume_command = str(recommended_commands.get("pipeline_resume_command") or "").strip()
+        if inspect_command:
+            print(f"Inspect command: {inspect_command}")
+        if recommended_command:
+            label = "Recommended command"
+            if recommended_command_kind == "rerun":
+                label = "Recommended rerun"
+            elif recommended_command_kind == "synthesize":
+                label = "Recommended synthesis"
+            print(f"{label}: {recommended_command}")
+        if pipeline_resume_command and pipeline_resume_command != recommended_command:
+            print(f"Pipeline resume command: {pipeline_resume_command}")
         print(f"Adversarial output directory: {summary['artifacts']['adversarial_output_dir']}")
         print(f"Synthetic prompts: {summary['artifacts']['synthetic_prompts_json']}")
         print(f"Grounded workflow status: {summary['artifacts']['grounded_workflow_status_md']}")

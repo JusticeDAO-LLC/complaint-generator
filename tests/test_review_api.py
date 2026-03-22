@@ -2658,6 +2658,91 @@ def test_claim_support_review_payload_includes_confirmed_handoff_metadata():
     assert payload["intake_case_summary"]["intake_summary_handoff"] == payload["intake_summary_handoff"]
 
 
+def test_claim_support_review_payload_surfaces_chronology_coverage_ratios_when_readiness_contract_is_present():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "iteration_count": 2,
+        "intake_readiness": {
+            "score": 0.82,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "criteria": {"complainant_summary_confirmed": True},
+            "blockers": [],
+            "contradictions": [],
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        },
+        "candidate_claims": [{"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 2, "facts": []},
+        "proof_lead_summary": {"count": 1, "proof_leads": []},
+        "timeline_anchor_summary": {"count": 1, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {"status": "confirmed", "confirmed": True, "current_summary_snapshot": {}},
+        "question_candidate_summary": {},
+        "workflow_targeting_summary": {"count": 0, "phase_counts": {}, "prioritized_phases": []},
+        "claim_support_packet_summary": {
+            "claim_count": 1,
+            "element_count": 1,
+            "status_counts": {"supported": 0, "partially_supported": 1, "unsupported": 0, "contradicted": 0},
+            "support_quality_counts": {"draft_ready": 0, "credible": 0, "suggestive": 1, "unsupported": 0, "contradicted": 0},
+            "recommended_actions": [],
+            "credible_support_ratio": 0.0,
+            "draft_ready_element_ratio": 0.0,
+            "proof_readiness_score": 0.45,
+            "temporal_gap_task_count": 1,
+            "claim_support_unresolved_without_review_path_count": 0,
+        },
+        "alignment_task_summary": {"count": 1, "status_counts": {}, "resolution_status_counts": {}, "temporal_gap_task_count": 1, "temporal_gap_targeted_task_count": 1, "temporal_rule_status_counts": {"partial": 1}, "temporal_rule_blocking_reason_counts": {}, "temporal_resolution_status_counts": {}},
+        "intake_chronology_readiness": {
+            "contract_version": "intake_chronology_readiness.v1",
+            "event_count": 2,
+            "anchored_event_count": 1,
+            "unanchored_event_count": 1,
+            "issue_count": 1,
+            "blocking_issue_count": 1,
+            "open_issue_count": 1,
+            "resolved_issue_count": 0,
+            "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+            "required_provenance_kinds": ["document_artifact"],
+            "anchor_coverage_ratio": 0.5,
+            "predicate_coverage_ratio": 0.0,
+            "provenance_coverage_ratio": 0.0,
+            "ready_for_temporal_formalization": False,
+        },
+    }
+    mediator.get_claim_coverage_matrix.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_overview.return_value = {"claims": {"retaliation": {}}}
+    mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
+    mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
+    mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
+    mediator.get_claim_follow_up_plan.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "tasks": []}}}
+    mediator.get_user_evidence.return_value = []
+    mediator.summarize_claim_support.return_value = {"claims": {"retaliation": {}}}
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    chip_labels = payload["workflow_phase_priority"]["chip_labels"]
+    assert "anchor coverage: 0.50" in chip_labels
+    assert "predicate coverage: 0.00" in chip_labels
+    assert "provenance coverage: 0.00" in chip_labels
+    assert payload["workflow_phase_priority"]["signals"]["chronology_failure_reasons"]
+    assert any(
+        note.startswith("Chronology coverage blockers:")
+        for note in payload["workflow_priority"]["notes"]
+    )
+
+
 def test_claim_support_review_payload_promotes_document_drafting_next_action_into_workflow_priority():
     mediator = Mock()
     mediator.state = SimpleNamespace(username="state-user", hashed_username=None)

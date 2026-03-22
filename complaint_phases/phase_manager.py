@@ -289,6 +289,90 @@ class PhaseManager:
             'complainant_summary_confirmation': summary_confirmation,
         }
 
+    def _build_intake_chronology_readiness(self, intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
+        event_ledger = intake_case_file.get('event_ledger') if isinstance(intake_case_file.get('event_ledger'), list) else []
+        temporal_fact_registry = intake_case_file.get('temporal_fact_registry') if isinstance(intake_case_file.get('temporal_fact_registry'), list) else []
+        temporal_issue_registry = intake_case_file.get('temporal_issue_registry') if isinstance(intake_case_file.get('temporal_issue_registry'), list) else []
+        timeline_consistency_summary = intake_case_file.get('timeline_consistency_summary') if isinstance(intake_case_file.get('timeline_consistency_summary'), dict) else {}
+
+        event_records = temporal_fact_registry if temporal_fact_registry else event_ledger
+        event_count = len(event_records)
+        anchored_event_count = 0
+        for event in event_records:
+            if not isinstance(event, dict):
+                continue
+            temporal_context = event.get('temporal_context') if isinstance(event.get('temporal_context'), dict) else {}
+            anchor_ids = event.get('timeline_anchor_ids') if isinstance(event.get('timeline_anchor_ids'), list) else []
+            if anchor_ids or str(temporal_context.get('start_date') or '').strip() or str(event.get('start_date') or '').strip():
+                anchored_event_count += 1
+        if event_count <= 0 and timeline_consistency_summary:
+            event_count = int(timeline_consistency_summary.get('event_count', 0) or 0)
+            missing_fact_ids = timeline_consistency_summary.get('missing_temporal_fact_ids') if isinstance(timeline_consistency_summary.get('missing_temporal_fact_ids'), list) else []
+            relative_only_fact_ids = timeline_consistency_summary.get('relative_only_fact_ids') if isinstance(timeline_consistency_summary.get('relative_only_fact_ids'), list) else []
+            anchored_event_count = max(0, event_count - len(missing_fact_ids) - len(relative_only_fact_ids))
+        unanchored_event_count = max(0, event_count - anchored_event_count)
+
+        issue_count = len(temporal_issue_registry)
+        open_issue_count = 0
+        blocking_issue_count = 0
+        missing_temporal_predicates: List[str] = []
+        required_provenance_kinds: List[str] = []
+        for issue in temporal_issue_registry:
+            if not isinstance(issue, dict):
+                continue
+            status_value = str(issue.get('current_resolution_status') or issue.get('status') or 'open').strip().lower()
+            if status_value != 'resolved':
+                open_issue_count += 1
+            if bool(issue.get('blocking')) or str(issue.get('severity') or '').strip().lower() == 'blocking':
+                blocking_issue_count += 1
+            for predicate in issue.get('missing_temporal_predicates') or []:
+                normalized_predicate = str(predicate or '').strip()
+                if normalized_predicate and normalized_predicate not in missing_temporal_predicates:
+                    missing_temporal_predicates.append(normalized_predicate)
+            for provenance_kind in issue.get('required_provenance_kinds') or []:
+                normalized_provenance_kind = str(provenance_kind or '').strip()
+                if normalized_provenance_kind and normalized_provenance_kind not in required_provenance_kinds:
+                    required_provenance_kinds.append(normalized_provenance_kind)
+
+        has_chronology_source = bool(event_count or issue_count or timeline_consistency_summary)
+        anchor_coverage_ratio = round((anchored_event_count / event_count), 3) if event_count > 0 else 1.0
+        predicate_coverage_ratio = round(max(0.0, 1.0 - (len(missing_temporal_predicates) / max(issue_count, 1))), 3) if issue_count > 0 else 1.0
+        provenance_coverage_ratio = round(max(0.0, 1.0 - (len(required_provenance_kinds) / max(issue_count, 1))), 3) if issue_count > 0 else 1.0
+        ready_for_temporal_formalization = bool(
+            has_chronology_source
+            and blocking_issue_count == 0
+            and open_issue_count == 0
+            and unanchored_event_count == 0
+            and not missing_temporal_predicates
+            and not required_provenance_kinds
+        )
+
+        failure_reasons: List[str] = []
+        if unanchored_event_count > 0:
+            failure_reasons.append(f'{unanchored_event_count} chronology event(s) still lack anchors')
+        if blocking_issue_count > 0:
+            failure_reasons.append(f'{blocking_issue_count} blocking chronology issue(s) remain open')
+        elif open_issue_count > 0:
+            failure_reasons.append(f'{open_issue_count} chronology issue(s) remain unresolved')
+        if missing_temporal_predicates:
+            failure_reasons.append(f'missing temporal predicates: {", ".join(missing_temporal_predicates[:3])}')
+        if required_provenance_kinds:
+            failure_reasons.append(f'required chronology provenance: {", ".join(required_provenance_kinds[:3])}')
+
+        return {
+            'has_chronology_source': has_chronology_source,
+            'anchor_coverage_ratio': anchor_coverage_ratio,
+            'predicate_coverage_ratio': predicate_coverage_ratio,
+            'provenance_coverage_ratio': provenance_coverage_ratio,
+            'ready_for_temporal_formalization': ready_for_temporal_formalization,
+            'unanchored_event_count': unanchored_event_count,
+            'open_issue_count': open_issue_count,
+            'blocking_issue_count': blocking_issue_count,
+            'missing_temporal_predicates': missing_temporal_predicates,
+            'required_provenance_kinds': required_provenance_kinds,
+            'failure_reasons': failure_reasons,
+        }
+
     def _build_intake_readiness(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Derive intake readiness metrics and blockers from intake state."""
         has_knowledge_graph = 'knowledge_graph' in data
@@ -299,6 +383,7 @@ class PhaseManager:
         contradiction_candidates = self._extract_intake_contradictions(data)
         intake_case_file = self._extract_intake_case_file(data)
         structured_readiness = self._collect_intake_section_blockers(intake_case_file) if intake_case_file else None
+        chronology_readiness = self._build_intake_chronology_readiness(intake_case_file) if intake_case_file else {}
         if not contradiction_candidates and structured_readiness:
             contradiction_candidates = list(structured_readiness.get('active_contradictions', []))
         contradiction_count = len(contradiction_candidates)
@@ -319,6 +404,11 @@ class PhaseManager:
             criteria['contradictions_resolved'] = not has_contradictions
         if structured_readiness:
             criteria.update(structured_readiness['criteria'])
+        if chronology_readiness.get('has_chronology_source'):
+            criteria['chronology_anchor_coverage_complete'] = chronology_readiness.get('unanchored_event_count', 0) == 0
+            criteria['chronology_predicate_coverage_complete'] = not bool(chronology_readiness.get('missing_temporal_predicates'))
+            criteria['chronology_provenance_coverage_complete'] = not bool(chronology_readiness.get('required_provenance_kinds'))
+            criteria['chronology_ready_for_formalization'] = bool(chronology_readiness.get('ready_for_temporal_formalization', False))
 
         blockers: List[str] = []
         if not has_knowledge_graph:
@@ -349,6 +439,15 @@ class PhaseManager:
                 blockers.append('missing_minimum_proof_path')
             if not structured_readiness['criteria'].get('claim_disambiguation_resolved', True):
                 blockers.append('claim_disambiguation_required')
+        if chronology_readiness.get('has_chronology_source'):
+            if chronology_readiness.get('unanchored_event_count', 0) > 0:
+                blockers.append('chronology_anchor_coverage_incomplete')
+            if chronology_readiness.get('missing_temporal_predicates'):
+                blockers.append('chronology_predicate_coverage_incomplete')
+            if chronology_readiness.get('required_provenance_kinds'):
+                blockers.append('chronology_provenance_coverage_incomplete')
+            if chronology_readiness.get('open_issue_count', 0) > 0:
+                blockers.append('chronology_open_issues')
 
         for blocker in data.get('intake_blockers', []) or []:
             normalized = str(blocker or '').strip()
@@ -375,6 +474,8 @@ class PhaseManager:
             'blocking_contradictions': structured_readiness['blocking_contradictions'] if structured_readiness else [],
             'escalated_blocking_contradictions': structured_readiness['escalated_blocking_contradictions'] if structured_readiness else [],
             'complainant_summary_confirmation': structured_readiness['complainant_summary_confirmation'] if structured_readiness else {},
+            'intake_chronology_readiness': chronology_readiness if chronology_readiness.get('has_chronology_source') else {},
+            'intake_chronology_failure_reasons': list(chronology_readiness.get('failure_reasons') or []),
         }
 
     def _refresh_phase_derived_state(self, phase: ComplaintPhase):
@@ -422,6 +523,11 @@ class PhaseManager:
         temporal_missing_anchor_task_count = 0
         temporal_missing_predicate_count = 0
         temporal_required_provenance_kind_count = 0
+        chronology_anchor_coverage_ratio = 1.0
+        chronology_predicate_coverage_ratio = 1.0
+        chronology_provenance_coverage_ratio = 1.0
+        chronology_ready_for_formalization = True
+        chronology_snapshot_present = False
         for task in alignment_tasks if isinstance(alignment_tasks, list) else []:
             if not isinstance(task, dict):
                 continue
@@ -460,6 +566,25 @@ class PhaseManager:
             if resolution_status:
                 temporal_resolution_status_counts[resolution_status] = (
                     temporal_resolution_status_counts.get(resolution_status, 0) + 1
+                )
+            intake_chronology_readiness = task.get('intake_chronology_readiness') if isinstance(task.get('intake_chronology_readiness'), dict) else {}
+            if intake_chronology_readiness:
+                chronology_snapshot_present = True
+                chronology_anchor_coverage_ratio = min(
+                    chronology_anchor_coverage_ratio,
+                    float(intake_chronology_readiness.get('anchor_coverage_ratio', 1.0) or 1.0),
+                )
+                chronology_predicate_coverage_ratio = min(
+                    chronology_predicate_coverage_ratio,
+                    float(intake_chronology_readiness.get('predicate_coverage_ratio', 1.0) or 1.0),
+                )
+                chronology_provenance_coverage_ratio = min(
+                    chronology_provenance_coverage_ratio,
+                    float(intake_chronology_readiness.get('provenance_coverage_ratio', 1.0) or 1.0),
+                )
+                chronology_ready_for_formalization = bool(
+                    chronology_ready_for_formalization
+                    and intake_chronology_readiness.get('ready_for_temporal_formalization', False)
                 )
             support_status = str(task.get('support_status') or '').strip().lower()
             if (
@@ -551,6 +676,14 @@ class PhaseManager:
             + (temporal_missing_predicate_count * 0.015)
             + (temporal_required_provenance_kind_count * 0.005),
         )
+        chronology_coverage_penalty = 0.0
+        if chronology_snapshot_present:
+            chronology_coverage_penalty = min(
+                0.2,
+                ((1.0 - chronology_anchor_coverage_ratio) * 0.06)
+                + ((1.0 - chronology_predicate_coverage_ratio) * 0.05)
+                + ((1.0 - chronology_provenance_coverage_ratio) * 0.04),
+            )
         proof_readiness_score = round(
             max(
                 0.0,
@@ -561,8 +694,28 @@ class PhaseManager:
                     + (high_quality_parse_ratio * 0.15)
                     - contradiction_penalty
                     - chronology_penalty,
+                    - chronology_coverage_penalty,
                 ),
             ),
+            3,
+        )
+        chronology_failure_reasons: List[str] = []
+        if unresolved_temporal_issue_count > 0:
+            chronology_failure_reasons.append(f'{unresolved_temporal_issue_count} unresolved chronology issue id(s) remain')
+        if temporal_missing_anchor_task_count > 0:
+            chronology_failure_reasons.append(f'{temporal_missing_anchor_task_count} chronology task(s) still need anchors')
+        if temporal_missing_predicate_count > 0:
+            chronology_failure_reasons.append(f'{temporal_missing_predicate_count} required temporal predicate(s) remain missing')
+        if temporal_required_provenance_kind_count > 0:
+            chronology_failure_reasons.append(f'{temporal_required_provenance_kind_count} chronology provenance requirement(s) remain open')
+        if chronology_snapshot_present and chronology_anchor_coverage_ratio < 1.0:
+            chronology_failure_reasons.append(f'anchor coverage ratio remains {chronology_anchor_coverage_ratio:.2f}')
+        if chronology_snapshot_present and chronology_predicate_coverage_ratio < 1.0:
+            chronology_failure_reasons.append(f'predicate coverage ratio remains {chronology_predicate_coverage_ratio:.2f}')
+        if chronology_snapshot_present and chronology_provenance_coverage_ratio < 1.0:
+            chronology_failure_reasons.append(f'provenance coverage ratio remains {chronology_provenance_coverage_ratio:.2f}')
+        chronology_readiness_score = round(
+            max(0.0, min(1.0, (chronology_anchor_coverage_ratio + chronology_predicate_coverage_ratio + chronology_provenance_coverage_ratio) / 3.0)),
             3,
         )
         evidence_completion_ready = (
@@ -574,6 +727,7 @@ class PhaseManager:
             and temporal_missing_anchor_task_count == 0
             and temporal_missing_predicate_count == 0
             and temporal_required_provenance_kind_count == 0
+            and chronology_ready_for_formalization
         )
 
         return {
@@ -600,6 +754,12 @@ class PhaseManager:
             'temporal_rule_status_counts': temporal_rule_status_counts,
             'temporal_rule_blocking_reason_counts': temporal_rule_blocking_reason_counts,
             'temporal_resolution_status_counts': temporal_resolution_status_counts,
+            'chronology_anchor_coverage_ratio': round(chronology_anchor_coverage_ratio, 3),
+            'chronology_predicate_coverage_ratio': round(chronology_predicate_coverage_ratio, 3),
+            'chronology_provenance_coverage_ratio': round(chronology_provenance_coverage_ratio, 3),
+            'chronology_readiness_score': chronology_readiness_score,
+            'chronology_ready_for_formalization': chronology_ready_for_formalization and not chronology_failure_reasons,
+            'chronology_failure_reasons': chronology_failure_reasons,
             'proof_readiness_score': proof_readiness_score,
             'evidence_completion_ready': evidence_completion_ready,
         }

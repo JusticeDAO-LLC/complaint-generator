@@ -435,11 +435,17 @@ class Optimizer:
         coverage_remediation: Dict[str, Any],
         document_evidence_targeting_summary: Optional[Dict[str, Any]] = None,
         document_provenance_summary: Optional[Dict[str, Any]] = None,
+        intake_question_structure_summary: Optional[Dict[str, Any]] = None,
+        document_grounding_improvement_summary: Optional[Dict[str, Any]] = None,
+        document_grounding_lane_outcome_summary: Optional[Dict[str, Any]] = None,
         document_workflow_execution_summary: Optional[Dict[str, Any]] = None,
         document_chronology_reasoning_summary: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         document_evidence_targeting_summary = dict(document_evidence_targeting_summary or {})
         document_provenance_summary = dict(document_provenance_summary or {})
+        intake_question_structure_summary = dict(intake_question_structure_summary or {})
+        document_grounding_improvement_summary = dict(document_grounding_improvement_summary or {})
+        document_grounding_lane_outcome_summary = dict(document_grounding_lane_outcome_summary or {})
         document_workflow_execution_summary = dict(document_workflow_execution_summary or {})
         document_chronology_reasoning_summary = dict(document_chronology_reasoning_summary or {})
         intake_actions = list((coverage_remediation.get("intake_priorities") or {}).get("recommended_actions") or [])

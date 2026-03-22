@@ -616,6 +616,11 @@ class AdversarialSession:
             if isinstance(final_state, dict) and isinstance(final_state.get('workflow_optimization_guidance'), dict)
             else {}
         )
+        document_provenance_summary = (
+            final_state.get('document_provenance_summary')
+            if isinstance(final_state, dict) and isinstance(final_state.get('document_provenance_summary'), dict)
+            else {}
+        )
         chronology_hints = (
             workflow_guidance.get('document_chronology_priority_hints')
             if isinstance(workflow_guidance.get('document_chronology_priority_hints'), dict)
@@ -623,7 +628,7 @@ class AdversarialSession:
         )
         needs_exhibit_grounding = bool(
             chronology_hints.get('needs_exhibit_grounding')
-            or (final_state.get('document_provenance_summary') if isinstance(final_state, dict) else {}).get('low_grounding_flag')
+            or bool(document_provenance_summary.get('low_grounding_flag'))
         )
         documentary_count = len(documentary_questions)
         exhibit_ready_count = len(exhibit_ready_questions)
