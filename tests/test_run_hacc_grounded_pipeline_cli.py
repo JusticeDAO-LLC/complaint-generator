@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -53,3 +54,73 @@ def test_default_grounding_request_uses_first_query_spec(monkeypatch):
         "query": "grievance hearing appeal",
         "claim_type": "housing_discrimination",
     }
+
+
+def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_path, monkeypatch):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "search_summary": {"status": "success"},
+                "synthetic_prompts": {
+                    "production_evidence_intake_steps": ["Select the strongest dated notice first."],
+                    "mediator_upload_checklist": ["Evaluate chronology anchors and named actors."],
+                    "document_generation_checklist": ["Ground each claim element in uploaded artifacts."],
+                    "evidence_upload_form_seed": {
+                        "claim_type": kwargs.get("claim_type"),
+                        "recommended_files": ["Notice of Termination"],
+                    },
+                },
+                "anchor_passages": [{"text": "Notice dated March 4, 2024"}],
+                "upload_candidates": [{"relative_path": "evidence/notice.pdf"}],
+                "mediator_evidence_packets": [{"relative_path": "evidence/notice.pdf"}],
+                "claim_support_temporal_handoff": {"timeline_anchor_count": 1},
+                "document_generation_handoff": {"focus_sections": ["claims_for_relief"]},
+                "drafting_readiness": {"phase_status": "warning"},
+                "graph_completeness_signals": {"graph_complete": False},
+                "evidence_summary": "Notice of Termination",
+                "anchor_sections": ["adverse_action"],
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 1, "search_summary": {"status": "success"}}
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", lambda **kwargs: {})
+
+    summary = cli.run_hacc_grounded_pipeline(
+        output_dir=tmp_path,
+        query="termination notice chronology",
+        claim_type="housing_discrimination",
+        top_k=1,
+    )
+
+    artifacts = summary["artifacts"]
+    assert Path(artifacts["production_evidence_intake_steps_json"]).is_file()
+    assert Path(artifacts["mediator_upload_checklist_json"]).is_file()
+    assert Path(artifacts["document_generation_checklist_json"]).is_file()
+    assert Path(artifacts["evidence_upload_form_seed_json"]).is_file()
+    assert Path(artifacts["claim_support_temporal_handoff_json"]).is_file()
+    assert Path(artifacts["document_generation_handoff_json"]).is_file()
+    assert Path(artifacts["drafting_readiness_json"]).is_file()
+    assert Path(artifacts["graph_completeness_signals_json"]).is_file()
+
+    production_steps = json.loads(Path(artifacts["production_evidence_intake_steps_json"]).read_text(encoding="utf-8"))
+    mediator_checklist = json.loads(Path(artifacts["mediator_upload_checklist_json"]).read_text(encoding="utf-8"))
+    temporal_handoff = json.loads(Path(artifacts["claim_support_temporal_handoff_json"]).read_text(encoding="utf-8"))
+    form_seed = json.loads(Path(artifacts["evidence_upload_form_seed_json"]).read_text(encoding="utf-8"))
+
+    assert production_steps == ["Select the strongest dated notice first."]
+    assert mediator_checklist == ["Evaluate chronology anchors and named actors."]
+    assert temporal_handoff["timeline_anchor_count"] == 1
+    assert form_seed["claim_type"] == "housing_discrimination"

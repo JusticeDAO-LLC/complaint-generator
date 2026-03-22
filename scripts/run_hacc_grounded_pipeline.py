@@ -229,6 +229,38 @@ def run_hacc_grounded_pipeline(
     _write_json(output_root / "upload_candidates.json", dict(grounding_bundle or {}).get("upload_candidates", []))
     _write_json(output_root / "mediator_evidence_packets.json", dict(grounding_bundle or {}).get("mediator_evidence_packets", []))
     _write_json(output_root / "synthetic_prompts.json", dict(grounding_bundle or {}).get("synthetic_prompts", {}))
+    _write_json(
+        output_root / "production_evidence_intake_steps.json",
+        dict(dict(grounding_bundle or {}).get("synthetic_prompts", {}) or {}).get("production_evidence_intake_steps", []),
+    )
+    _write_json(
+        output_root / "mediator_upload_checklist.json",
+        dict(dict(grounding_bundle or {}).get("synthetic_prompts", {}) or {}).get("mediator_upload_checklist", []),
+    )
+    _write_json(
+        output_root / "document_generation_checklist.json",
+        dict(dict(grounding_bundle or {}).get("synthetic_prompts", {}) or {}).get("document_generation_checklist", []),
+    )
+    _write_json(
+        output_root / "evidence_upload_form_seed.json",
+        dict(dict(grounding_bundle or {}).get("synthetic_prompts", {}) or {}).get("evidence_upload_form_seed", {}),
+    )
+    _write_json(
+        output_root / "claim_support_temporal_handoff.json",
+        dict(grounding_bundle or {}).get("claim_support_temporal_handoff", {}),
+    )
+    _write_json(
+        output_root / "document_generation_handoff.json",
+        dict(grounding_bundle or {}).get("document_generation_handoff", {}),
+    )
+    _write_json(
+        output_root / "drafting_readiness.json",
+        dict(grounding_bundle or {}).get("drafting_readiness", {}),
+    )
+    _write_json(
+        output_root / "graph_completeness_signals.json",
+        dict(grounding_bundle or {}).get("graph_completeness_signals", {}),
+    )
     _write_json(output_root / "evidence_upload_report.json", upload_report)
     _write_json(output_root / "adversarial_summary.json", adversarial_summary)
 
@@ -266,6 +298,14 @@ def run_hacc_grounded_pipeline(
             "upload_candidates_json": str(output_root / "upload_candidates.json"),
             "mediator_evidence_packets_json": str(output_root / "mediator_evidence_packets.json"),
             "synthetic_prompts_json": str(output_root / "synthetic_prompts.json"),
+            "production_evidence_intake_steps_json": str(output_root / "production_evidence_intake_steps.json"),
+            "mediator_upload_checklist_json": str(output_root / "mediator_upload_checklist.json"),
+            "document_generation_checklist_json": str(output_root / "document_generation_checklist.json"),
+            "evidence_upload_form_seed_json": str(output_root / "evidence_upload_form_seed.json"),
+            "claim_support_temporal_handoff_json": str(output_root / "claim_support_temporal_handoff.json"),
+            "document_generation_handoff_json": str(output_root / "document_generation_handoff.json"),
+            "drafting_readiness_json": str(output_root / "drafting_readiness.json"),
+            "graph_completeness_signals_json": str(output_root / "graph_completeness_signals.json"),
             "evidence_upload_report_json": str(output_root / "evidence_upload_report.json"),
             "adversarial_summary_json": str(output_root / "adversarial_summary.json"),
             "adversarial_output_dir": str(output_root / "adversarial"),
