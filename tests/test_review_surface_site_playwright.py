@@ -837,3 +837,69 @@ def test_review_surface_ipfs_dashboard_raw_routes_render_all_registered_dashboar
                     assert page.title().strip()
             finally:
                 browser.close()
+
+
+def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    _require_browser_stack()
+
+    from applications import complaint_workspace as complaint_workspace_module
+    from applications import complaint_workspace_api as complaint_workspace_api_module
+
+    workspace_root = tmp_path / ".complaint_workspace"
+    monkeypatch.setattr(
+        complaint_workspace_api_module,
+        "ComplaintWorkspaceService",
+        lambda: complaint_workspace_module.ComplaintWorkspaceService(root_dir=workspace_root),
+    )
+
+    app = create_review_surface_app(mediator=object())
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            try:
+                page.goto(f"{base_url}/workspace", wait_until="domcontentloaded")
+                _wait_for_text(page, "#workspace-status", "Workspace synchronized from the complaint service.")
+                _wait_for_text(page, "#sdk-server-info", "complaint-workspace-mcp")
+                _wait_for_text(page, "#tool-list", "complaint.generate_complaint")
+
+                page.locator("#intake-party_name").fill("Jane Doe")
+                page.locator("#intake-opposing_party").fill("Acme Corporation")
+                page.locator("#intake-protected_activity").fill("Reported discrimination to HR")
+                page.locator("#intake-adverse_action").fill("Termination two days later")
+                page.locator("#intake-timeline").fill("Complaint on March 8, termination on March 10")
+                page.locator("#intake-harm").fill("Lost wages and benefits")
+                page.locator("#save-intake-button").click()
+                _wait_for_text(page, "#workspace-status", "Intake answers saved.")
+                _wait_for_text(page, "#next-question-label", "Intake complete.")
+
+                page.get_by_role("button", name="Evidence").click()
+                page.locator("#evidence-kind").select_option("document")
+                page.locator("#evidence-claim-element").select_option("causation")
+                page.locator("#evidence-title").fill("Termination email")
+                page.locator("#evidence-source").fill("Inbox export")
+                page.locator("#evidence-content").fill("The termination followed the HR complaint within two days.")
+                page.locator("#save-evidence-button").click()
+                _wait_for_text(page, "#workspace-status", "Evidence saved and support review refreshed.")
+                _wait_for_text(page, "#evidence-list", "Termination email")
+
+                page.get_by_role("button", name="Draft").click()
+                page.locator("#draft-title").fill("Jane Doe v. Acme Corporation Complaint")
+                page.locator("#requested-relief").fill("Back pay\nInjunctive relief")
+                page.locator("#generate-draft-button").click()
+                _wait_for_text(page, "#workspace-status", "Complaint draft generated from intake and evidence.")
+                _wait_for_text(page, "#draft-preview", "Jane Doe brings this retaliation complaint against Acme Corporation.")
+                assert page.locator("#draft-body").input_value().startswith(
+                    "Jane Doe brings this retaliation complaint against Acme Corporation."
+                )
+
+                page.get_by_role("button", name="CLI + MCP").click()
+                _wait_for_text(page, "#tool-list", "complaint.review_case")
+                assert "complaint-workspace session" in page.locator("body").inner_text()
+                assert "complaint-mcp-server" in page.locator("body").inner_text()
+            finally:
+                browser.close()

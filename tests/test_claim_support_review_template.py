@@ -710,6 +710,7 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         "/chat",
         "/profile",
         "/results",
+        "/static",
         "/workspace",
         "/cookies",
         "/mcp",
@@ -732,6 +733,16 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         ("/api/claim-support/review", "POST"),
         ("/api/claim-support/execute-follow-up", "POST"),
         ("/api/mcp/analytics/history", "GET"),
+        ("/api/complaint-workspace/session", "GET"),
+        ("/api/complaint-workspace/intake", "POST"),
+        ("/api/complaint-workspace/evidence", "POST"),
+        ("/api/complaint-workspace/review", "POST"),
+        ("/api/complaint-workspace/generate", "POST"),
+        ("/api/complaint-workspace/update-draft", "POST"),
+        ("/api/complaint-workspace/reset", "POST"),
+        ("/api/complaint-workspace/mcp/tools", "GET"),
+        ("/api/complaint-workspace/mcp/call", "POST"),
+        ("/api/complaint-workspace/mcp/rpc", "POST"),
         ("/api/documents/optimization-trace", "GET"),
         ("/api/claim-support/save-testimony", "POST"),
         ("/api/claim-support/save-document", "POST"),
@@ -775,6 +786,16 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     dashboard_hub_response = client.get("/dashboards")
     mcp_response = client.get("/mcp")
     analytics_history_response = client.get("/api/mcp/analytics/history")
+    workspace_tools_response = client.get("/api/complaint-workspace/mcp/tools")
+    workspace_call_response = client.post(
+        "/api/complaint-workspace/mcp/call",
+        json={"tool_name": "complaint.start_session", "arguments": {"user_id": "template-user"}},
+    )
+    workspace_rpc_response = client.post(
+        "/api/complaint-workspace/mcp/rpc",
+        json={"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": {}},
+    )
+    workspace_sdk_response = client.get("/static/complaint_mcp_sdk.js")
     sdk_response = client.get("/ipfs-datasets/sdk-playground")
 
     assert root_response.status_code == 200
@@ -788,6 +809,10 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert dashboard_hub_response.status_code == 200
     assert mcp_response.status_code == 200
     assert analytics_history_response.status_code == 200
+    assert workspace_tools_response.status_code == 200
+    assert workspace_call_response.status_code == 200
+    assert workspace_rpc_response.status_code == 200
+    assert workspace_sdk_response.status_code == 200
     assert sdk_response.status_code == 200
     assert "/claim-support-review" in root_response.text
     assert "/document" in root_response.text
@@ -806,10 +831,16 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert "/dashboards" in results_response.text
     assert "Unified Complaint Workspace" in workspace_response.text
     assert "/static/complaint_mcp_sdk.js" in workspace_response.text
+    assert "complaint-workspace session" in workspace_response.text
+    assert "complaint-mcp-server" in workspace_response.text
     assert "Complaint Editor Workshop" in wysiwyg_response.text
     assert "Unified Dashboard Hub" in dashboard_hub_response.text
     assert "IPFS Datasets MCP Dashboard" in mcp_response.text
     assert analytics_history_response.json()["history"]
+    assert workspace_tools_response.json()["tools"]
+    assert workspace_call_response.json()["session"]["user_id"] == "template-user"
+    assert workspace_rpc_response.json()["result"]["serverInfo"]["name"] == "complaint-workspace-mcp"
+    assert "ComplaintMcpClient" in workspace_sdk_response.text
     assert "SDK Playground" in sdk_response.text
     assert cookies_response.text == "{}"
 

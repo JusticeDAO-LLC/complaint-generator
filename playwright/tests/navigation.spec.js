@@ -139,4 +139,47 @@ test.describe('website surface navigation', () => {
       await expect(page.locator('body')).toContainText(/Dashboard|Admin|Investigation|News|Software|Analytics|GraphRAG|Patent|Discord|Finance|Medicine|Caselaw|RAG/i);
     }
   });
+
+  test('workspace page uses the browser MCP SDK to drive intake, evidence, draft, and tool discovery', async ({ page }) => {
+    await page.goto('/workspace');
+
+    await expect(page.locator('#workspace-status')).toContainText(/Workspace synchronized/i);
+    await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
+
+    await page.locator('#intake-party_name').fill('Jane Doe');
+    await page.locator('#intake-opposing_party').fill('Acme Corporation');
+    await page.locator('#intake-protected_activity').fill('Reported discrimination to HR');
+    await page.locator('#intake-adverse_action').fill('Termination two days later');
+    await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
+    await page.locator('#intake-harm').fill('Lost wages and benefits');
+    await page.locator('#save-intake-button').click();
+
+    await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);
+    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+
+    await page.getByRole('button', { name: 'Evidence' }).click();
+    await page.locator('#evidence-kind').selectOption('document');
+    await page.locator('#evidence-claim-element').selectOption('causation');
+    await page.locator('#evidence-title').fill('Termination email');
+    await page.locator('#evidence-source').fill('Inbox export');
+    await page.locator('#evidence-content').fill('The termination followed the HR complaint within two days.');
+    await page.locator('#save-evidence-button').click();
+
+    await expect(page.locator('#workspace-status')).toContainText(/Evidence saved and support review refreshed/i);
+    await expect(page.locator('#evidence-list')).toContainText(/Termination email/i);
+
+    await page.getByRole('button', { name: 'Draft' }).click();
+    await page.locator('#draft-title').fill('Jane Doe v. Acme Corporation Complaint');
+    await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
+    await page.locator('#generate-draft-button').click();
+
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint draft generated from intake and evidence/i);
+    await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint against Acme Corporation/i);
+
+    await page.getByRole('button', { name: 'CLI + MCP' }).click();
+    await expect(page.locator('body')).toContainText(/complaint-workspace session/i);
+    await expect(page.locator('body')).toContainText(/complaint-mcp-server/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.review_case/i);
+  });
 });
