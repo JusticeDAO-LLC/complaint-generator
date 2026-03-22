@@ -298,6 +298,8 @@ def test_refresh_intake_case_file_builds_temporal_issue_registry_for_relative_an
             "status": "open",
             "current_resolution_status": "open",
             "relative_markers": ["after"],
+            "missing_temporal_predicates": ["Anchored(fact_3)"],
+            "required_provenance_kinds": ["testimony_record"],
             "source_kind": "temporal_fact_registry",
             "source_ref": "fact_3",
             "inference_mode": "derived_from_temporal_context",
@@ -318,6 +320,8 @@ def test_refresh_intake_case_file_builds_temporal_issue_registry_for_relative_an
             "right_node_name": "Employee complained to HR.",
             "status": "open",
             "current_resolution_status": "open",
+            "missing_temporal_predicates": [],
+            "required_provenance_kinds": ["document_artifact"],
             "source_kind": "contradiction_queue",
             "source_ref": "temporal_reverse_before_001",
             "inference_mode": "imported_temporal_contradiction",
@@ -518,6 +522,10 @@ def test_build_intake_case_file_merges_duplicate_relative_only_temporal_issues_f
     assert issues[0]["issue_type"] == "relative_only_ordering"
     assert issues[0]["relative_markers"] == ["two weeks after", "after"]
     assert len(issues[0]["fact_ids"]) >= 2
+    assert issues[0]["missing_temporal_predicates"] == [
+        f"Before({issues[0]['fact_ids'][0]},{issues[0]['fact_ids'][-1]})"
+    ]
+    assert issues[0]["required_provenance_kinds"] == ["testimony_record"]
 
 
 def test_build_intake_case_file_derives_anchor_dates_from_quantified_relative_retaliation_sequence():

@@ -6144,9 +6144,20 @@ class FormalComplaintDocumentBuilder:
             ),
             None,
         )
+        adverse_action_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "denial notice" in str(entry.get("text") or "").lower()
+                or "denied or maintained the denial of housing assistance" in str(entry.get("text") or "").lower()
+                or "loss of assistance" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
         if not (notice_entry and review_entry):
             return ordered_entries
 
+        merged_source_entries = [item for item in (adverse_action_entry, notice_entry, review_entry) if isinstance(item, dict)]
         merged_entry = {
             "text": (
                 "HACC wrongfully denied or maintained the denial of housing assistance without the written notice "
@@ -6154,19 +6165,39 @@ class FormalComplaintDocumentBuilder:
                 f"required before enforcement of that adverse action ({self._merge_support_exhibit_labels(notice_entry, review_entry)})."
             ),
             "fact_ids": _normalize_identifier_list(
-                list(notice_entry.get("fact_ids") or []) + list(review_entry.get("fact_ids") or [])
+                [
+                    fact_id
+                    for source_entry in merged_source_entries
+                    for fact_id in list(source_entry.get("fact_ids") or [])
+                ]
             ),
             "source_artifact_ids": _normalize_identifier_list(
-                list(notice_entry.get("source_artifact_ids") or []) + list(review_entry.get("source_artifact_ids") or [])
+                [
+                    artifact_id
+                    for source_entry in merged_source_entries
+                    for artifact_id in list(source_entry.get("source_artifact_ids") or [])
+                ]
             ),
             "claim_types": _normalize_identifier_list(
-                list(notice_entry.get("claim_types") or []) + list(review_entry.get("claim_types") or [])
+                [
+                    claim_type
+                    for source_entry in merged_source_entries
+                    for claim_type in list(source_entry.get("claim_types") or [])
+                ]
             ),
             "claim_element_ids": _normalize_identifier_list(
-                list(notice_entry.get("claim_element_ids") or []) + list(review_entry.get("claim_element_ids") or [])
+                [
+                    element_id
+                    for source_entry in merged_source_entries
+                    for element_id in list(source_entry.get("claim_element_ids") or [])
+                ]
             ),
             "support_trace_ids": _normalize_identifier_list(
-                list(notice_entry.get("support_trace_ids") or []) + list(review_entry.get("support_trace_ids") or [])
+                [
+                    trace_id
+                    for source_entry in merged_source_entries
+                    for trace_id in list(source_entry.get("support_trace_ids") or [])
+                ]
             ),
             "source_kind": "claim_support_merged",
             "exhibit_label": self._merge_support_exhibit_labels(notice_entry, review_entry),

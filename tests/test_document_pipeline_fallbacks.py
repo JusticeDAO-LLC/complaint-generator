@@ -946,6 +946,64 @@ def test_housing_claim_support_entries_prune_preview_style_duplicates():
     assert not any("Scheduling an Informal Review requires a written request for review" in text for text in texts)
 
 
+def test_housing_claim_support_entry_inherits_uploaded_adverse_action_fact_ids():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    housing_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "housing_discrimination"
+    )
+    merged_entry = next(
+        entry
+        for entry in housing_claim["supporting_fact_entries"]
+        if "HACC wrongfully denied or maintained the denial of housing assistance without the written notice and informal review" in entry["text"]
+    )
+
+    assert "fact-303-1" in merged_entry["fact_ids"]
+    assert "fact-303-4" in merged_entry["fact_ids"]
+    assert "fact-303-5" in merged_entry["fact_ids"]
+
+
 def test_rendered_draft_uses_compact_count_paragraphs():
     builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
 

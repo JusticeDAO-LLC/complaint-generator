@@ -657,6 +657,13 @@ class TestMediatorThreePhaseIntegration:
         assert authored_issue['current_resolution_status'] == 'open'
         assert authored_issue['recommended_resolution_lane'] == 'clarify_with_complainant'
         assert relative_timeline_fact['fact_id'] in authored_issue['fact_ids']
+        expected_missing_temporal_predicates = (
+            [f"Before({authored_issue['fact_ids'][0]},{authored_issue['fact_ids'][-1]})"]
+            if len(authored_issue['fact_ids']) >= 2
+            else [f"Anchored({relative_timeline_fact['fact_id']})"]
+        )
+        assert authored_issue['missing_temporal_predicates'] == expected_missing_temporal_predicates
+        assert authored_issue['required_provenance_kinds'] == ['testimony_record']
 
     def test_process_denoising_answer_marks_temporal_issue_resolved_for_temporal_gap_candidate(self):
         """Answering a native temporal-gap question should resolve the matching temporal issue in the intake case file."""

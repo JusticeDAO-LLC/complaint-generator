@@ -7772,6 +7772,14 @@ class Mediator:
 			for issue in (temporal_issue_records if isinstance(temporal_issue_records, list) else [])
 			if isinstance(issue, dict)
 		]
+		explicit_issue_predicates = [
+			str(predicate).strip()
+			for issue in issue_records
+			for predicate in (issue.get('missing_temporal_predicates') if isinstance(issue.get('missing_temporal_predicates'), list) else [])
+			if str(predicate).strip()
+		]
+		if explicit_issue_predicates:
+			return list(dict.fromkeys(explicit_issue_predicates))[:6]
 		issue_predicates: List[str] = []
 		for issue in issue_records:
 			issue_type = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
@@ -7863,6 +7871,10 @@ class Mediator:
 		for issue in (temporal_issue_records if isinstance(temporal_issue_records, list) else []):
 			if not isinstance(issue, dict):
 				continue
+			for required_kind in (issue.get('required_provenance_kinds') if isinstance(issue.get('required_provenance_kinds'), list) else []):
+				normalized_required_kind = str(required_kind or '').strip()
+				if normalized_required_kind and normalized_required_kind not in required_kinds:
+					required_kinds.append(normalized_required_kind)
 			issue_lane = str(issue.get('recommended_resolution_lane') or '').strip().lower()
 			mapped_issue_lane = lane_map.get(issue_lane)
 			if mapped_issue_lane and mapped_issue_lane not in required_kinds:

@@ -61,6 +61,51 @@ def _unique_normalized_strings(values: Any) -> List[str]:
     return normalized_values
 
 
+def _derive_temporal_issue_missing_predicates(
+    issue_type: Any,
+    fact_ids: Any,
+    relative_markers: Any = None,
+) -> List[str]:
+    normalized_issue_type = _normalize_text(issue_type).lower()
+    normalized_fact_ids = _unique_normalized_strings(fact_ids or [])
+    normalized_relative_markers = _unique_normalized_strings(relative_markers or [])
+
+    if normalized_issue_type == "missing_anchor":
+        return [f"Anchored({normalized_fact_ids[0]})"] if normalized_fact_ids else []
+    if normalized_issue_type == "relative_only_ordering" and len(normalized_fact_ids) >= 2:
+        return [f"Before({normalized_fact_ids[0]},{normalized_fact_ids[-1]})"]
+    if normalized_issue_type == "relative_only_ordering" and normalized_relative_markers and normalized_fact_ids:
+        return [f"Anchored({normalized_fact_ids[0]})"]
+    if normalized_issue_type.startswith("temporal") and len(normalized_fact_ids) >= 2:
+        return [f"Before({normalized_fact_ids[0]},{normalized_fact_ids[-1]})"]
+    return []
+
+
+def _derive_temporal_issue_required_provenance_kinds(
+    issue_type: Any,
+    recommended_resolution_lane: Any,
+) -> List[str]:
+    normalized_issue_type = _normalize_text(issue_type).lower()
+    normalized_lane = _normalize_text(recommended_resolution_lane).lower()
+
+    lane_map = {
+        "clarify_with_complainant": "testimony_record",
+        "capture_testimony": "testimony_record",
+        "request_document": "document_artifact",
+        "seek_external_record": "external_institutional_record",
+        "manual_review": "manual_review",
+    }
+    required_kinds: List[str] = []
+    mapped_lane = lane_map.get(normalized_lane)
+    if mapped_lane:
+        required_kinds.append(mapped_lane)
+    if normalized_issue_type == "missing_anchor" and "document_artifact" not in required_kinds:
+        required_kinds.append("document_artifact")
+    if normalized_issue_type == "relative_only_ordering" and "testimony_record" not in required_kinds:
+        required_kinds.append("testimony_record")
+    return required_kinds
+
+
 def _coerce_confirmation_record(value: Any) -> Dict[str, Any]:
     record = _coerce_dict(value)
     return {
@@ -1062,6 +1107,15 @@ def build_temporal_issue_registry(
             existing_issue["element_tags"] = _unique_normalized_strings(
                 list(existing_issue.get("element_tags") or []) + list(fact.get("element_tags") or [])
             )
+            existing_issue["missing_temporal_predicates"] = _derive_temporal_issue_missing_predicates(
+                existing_issue.get("issue_type"),
+                existing_issue.get("fact_ids") or [],
+                existing_issue.get("relative_markers") or [],
+            )
+            existing_issue["required_provenance_kinds"] = _derive_temporal_issue_required_provenance_kinds(
+                existing_issue.get("issue_type"),
+                existing_issue.get("recommended_resolution_lane"),
+            )
             continue
         issue_id = f"temporal_issue:{issue_type}:{fact_id or len(registry) + 1}"
         if issue_id in seen_issue_ids:
@@ -1094,6 +1148,15 @@ def build_temporal_issue_registry(
                 "status": "open",
                 "current_resolution_status": "open",
                 "relative_markers": relative_markers,
+                "missing_temporal_predicates": _derive_temporal_issue_missing_predicates(
+                    issue_type,
+                    [fact_id] if fact_id else [],
+                    relative_markers,
+                ),
+                "required_provenance_kinds": _derive_temporal_issue_required_provenance_kinds(
+                    issue_type,
+                    "clarify_with_complainant",
+                ),
                 "source_kind": "temporal_fact_registry",
                 "source_ref": fact_id or None,
                 "inference_mode": "derived_from_temporal_context",
@@ -1134,6 +1197,13 @@ def build_temporal_issue_registry(
                 "right_node_name": _normalize_text(candidate.get("right_node_name") or "") or None,
                 "status": _normalize_text(candidate.get("current_resolution_status") or candidate.get("status") or "open").lower() or "open",
                 "current_resolution_status": _normalize_text(candidate.get("current_resolution_status") or candidate.get("status") or "open").lower() or "open",
+                "missing_temporal_predicates": _unique_normalized_strings(candidate.get("missing_temporal_predicates") or [])
+                or _derive_temporal_issue_missing_predicates(category, candidate.get("fact_ids") or []),
+                "required_provenance_kinds": _unique_normalized_strings(candidate.get("required_provenance_kinds") or [])
+                or _derive_temporal_issue_required_provenance_kinds(
+                    category,
+                    candidate.get("recommended_resolution_lane") or "clarify_with_complainant",
+                ),
                 "source_kind": "contradiction_queue",
                 "source_ref": _normalize_text(candidate.get("contradiction_id") or candidate.get("dependency_id") or "") or None,
                 "inference_mode": "imported_temporal_contradiction",
