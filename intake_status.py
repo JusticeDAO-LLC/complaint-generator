@@ -784,6 +784,144 @@ def summarize_temporal_issue_registry(temporal_issue_registry_summary: Any) -> D
     }
 
 
+def _build_intake_chronology_readiness(raw_status: Any) -> Dict[str, Any]:
+    status = raw_status if isinstance(raw_status, dict) else {}
+    existing = status.get("intake_chronology_readiness")
+    if isinstance(existing, dict) and existing:
+        return dict(existing)
+
+    has_chronology_source = any(
+        bool(status.get(key))
+        for key in (
+            "event_ledger",
+            "temporal_fact_registry",
+            "temporal_fact_registry_summary",
+            "temporal_relation_registry",
+            "temporal_relation_registry_summary",
+            "timeline_relations",
+            "timeline_relation_summary",
+            "temporal_issue_registry",
+            "temporal_issue_registry_summary",
+            "timeline_consistency_summary",
+        )
+    )
+    if not has_chronology_source:
+        return {}
+
+    event_ledger = status.get("event_ledger") if isinstance(status.get("event_ledger"), list) else []
+    temporal_fact_registry = status.get("temporal_fact_registry") if isinstance(status.get("temporal_fact_registry"), list) else []
+    temporal_fact_registry_summary = status.get("temporal_fact_registry_summary") if isinstance(status.get("temporal_fact_registry_summary"), dict) else {}
+    temporal_relation_registry = status.get("temporal_relation_registry") if isinstance(status.get("temporal_relation_registry"), list) else []
+    temporal_relation_registry_summary = status.get("temporal_relation_registry_summary") if isinstance(status.get("temporal_relation_registry_summary"), dict) else {}
+    timeline_relations = status.get("timeline_relations") if isinstance(status.get("timeline_relations"), list) else []
+    timeline_relation_summary = status.get("timeline_relation_summary") if isinstance(status.get("timeline_relation_summary"), dict) else {}
+    temporal_issue_registry = status.get("temporal_issue_registry") if isinstance(status.get("temporal_issue_registry"), list) else []
+    temporal_issue_registry_summary = summarize_temporal_issue_registry(status.get("temporal_issue_registry_summary"))
+    timeline_consistency_summary = status.get("timeline_consistency_summary") if isinstance(status.get("timeline_consistency_summary"), dict) else {}
+
+    event_records = temporal_fact_registry if temporal_fact_registry else event_ledger
+    event_count = len(event_records)
+    anchored_event_count = 0
+    for event in event_records:
+        if not isinstance(event, dict):
+            continue
+        temporal_context = event.get("temporal_context") if isinstance(event.get("temporal_context"), dict) else {}
+        anchor_ids = event.get("timeline_anchor_ids") if isinstance(event.get("timeline_anchor_ids"), list) else []
+        if anchor_ids or str(temporal_context.get("start_date") or "").strip() or str(event.get("start_date") or "").strip():
+            anchored_event_count += 1
+    if event_count <= 0 and temporal_fact_registry_summary:
+        facts = temporal_fact_registry_summary.get("facts") if isinstance(temporal_fact_registry_summary.get("facts"), list) else []
+        event_count = int(temporal_fact_registry_summary.get("count", len(facts)) or 0)
+        anchored_event_count = sum(
+            1
+            for fact in facts
+            if isinstance(fact, dict) and str(fact.get("temporal_status") or "").strip().lower() == "anchored"
+        )
+    if event_count <= 0 and timeline_consistency_summary:
+        event_count = int(timeline_consistency_summary.get("event_count", 0) or 0)
+        missing_fact_ids = timeline_consistency_summary.get("missing_temporal_fact_ids") if isinstance(timeline_consistency_summary.get("missing_temporal_fact_ids"), list) else []
+        relative_only_fact_ids = timeline_consistency_summary.get("relative_only_fact_ids") if isinstance(timeline_consistency_summary.get("relative_only_fact_ids"), list) else []
+        anchored_event_count = max(0, event_count - len(missing_fact_ids) - len(relative_only_fact_ids))
+    anchored_event_count = min(anchored_event_count, event_count)
+    unanchored_event_count = max(0, event_count - anchored_event_count)
+
+    relation_count = 0
+    if temporal_relation_registry:
+        relation_count = len(temporal_relation_registry)
+    elif temporal_relation_registry_summary:
+        relation_count = int(temporal_relation_registry_summary.get("count", 0) or 0)
+    elif timeline_relations:
+        relation_count = len(timeline_relations)
+    elif timeline_relation_summary:
+        relation_count = int(timeline_relation_summary.get("count", 0) or 0)
+
+    issue_ids = [str(item).strip() for item in temporal_issue_registry_summary.get("issue_ids") or [] if str(item).strip()]
+    issue_count = int(temporal_issue_registry_summary.get("count", len(issue_ids)) or 0)
+    resolved_issue_count = int(temporal_issue_registry_summary.get("resolved_count", 0) or 0)
+    open_issue_count = int(temporal_issue_registry_summary.get("unresolved_count", max(0, issue_count - resolved_issue_count)) or 0)
+    issue_type_counts = dict(temporal_issue_registry_summary.get("issue_type_counts") or {})
+    resolution_lane_counts = dict(temporal_issue_registry_summary.get("lane_counts") or {})
+    issue_status_counts = dict(temporal_issue_registry_summary.get("status_counts") or {})
+    missing_temporal_predicates = [
+        str(item).strip()
+        for item in temporal_issue_registry_summary.get("missing_temporal_predicates") or []
+        if str(item).strip()
+    ]
+    required_provenance_kinds = [
+        str(item).strip()
+        for item in temporal_issue_registry_summary.get("required_provenance_kinds") or []
+        if str(item).strip()
+    ]
+    blocking_issue_ids: List[str] = []
+    blocking_issue_count = 0
+    issue_items = temporal_issue_registry if temporal_issue_registry else temporal_issue_registry_summary.get("issues")
+    for issue in issue_items if isinstance(issue_items, list) else []:
+        if not isinstance(issue, dict):
+            continue
+        is_blocking = bool(issue.get("blocking")) or str(issue.get("severity") or "").strip().lower() == "blocking"
+        if not is_blocking:
+            continue
+        blocking_issue_count += 1
+        issue_id = str(issue.get("issue_id") or "").strip()
+        if issue_id and issue_id not in blocking_issue_ids:
+            blocking_issue_ids.append(issue_id)
+
+    anchor_coverage_ratio = round((anchored_event_count / event_count), 3) if event_count > 0 else 1.0
+    predicate_coverage_ratio = round(max(0.0, 1.0 - (len(missing_temporal_predicates) / max(issue_count, 1))), 3) if issue_count > 0 else 1.0
+    provenance_coverage_ratio = round(max(0.0, 1.0 - (len(required_provenance_kinds) / max(issue_count, 1))), 3) if issue_count > 0 else 1.0
+
+    return {
+        "contract_version": "intake_chronology_readiness.v1",
+        "event_count": event_count,
+        "anchored_event_count": anchored_event_count,
+        "unanchored_event_count": unanchored_event_count,
+        "relation_count": relation_count,
+        "issue_count": issue_count,
+        "blocking_issue_count": blocking_issue_count,
+        "open_issue_count": open_issue_count,
+        "resolved_issue_count": resolved_issue_count,
+        "issue_ids": issue_ids,
+        "blocking_issue_ids": blocking_issue_ids,
+        "missing_temporal_predicates": missing_temporal_predicates,
+        "missing_temporal_predicate_count": len(missing_temporal_predicates),
+        "required_provenance_kinds": required_provenance_kinds,
+        "required_provenance_kind_count": len(required_provenance_kinds),
+        "resolution_lane_counts": resolution_lane_counts,
+        "issue_type_counts": issue_type_counts,
+        "issue_status_counts": issue_status_counts,
+        "anchor_coverage_ratio": anchor_coverage_ratio,
+        "predicate_coverage_ratio": predicate_coverage_ratio,
+        "provenance_coverage_ratio": provenance_coverage_ratio,
+        "ready_for_temporal_formalization": bool(
+            blocking_issue_count == 0
+            and open_issue_count == 0
+            and unanchored_event_count == 0
+            and not missing_temporal_predicates
+            and not required_provenance_kinds
+        ),
+    }
+
+
 def build_intake_status_summary(
     mediator: Any,
     *,
@@ -911,6 +1049,9 @@ def build_intake_status_summary(
             summary["iteration_count"] = int(raw_status.get("iteration_count"))
         except (TypeError, ValueError):
             summary["iteration_count"] = 0
+    chronology_readiness = _build_intake_chronology_readiness(raw_status)
+    if chronology_readiness:
+        summary["intake_chronology_readiness"] = chronology_readiness
     handoff_metadata = _build_confirmed_intake_summary_handoff(raw_status)
     if handoff_metadata:
         summary["intake_summary_handoff"] = handoff_metadata
@@ -1090,6 +1231,7 @@ def build_intake_case_review_summary(mediator: Any) -> Dict[str, Any]:
         "temporal_issue_registry_summary": summarize_temporal_issue_registry(
             temporal_issue_registry_summary
         ),
+        "intake_chronology_readiness": _build_intake_chronology_readiness(raw_status),
         "timeline_consistency_summary": (
             timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
         ),

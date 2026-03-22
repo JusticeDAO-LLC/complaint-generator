@@ -231,6 +231,18 @@ To inspect an existing grounded HACC run without rerunning research, upload, or 
 
 That read-only view summarizes the current grounded workflow status, recent transitions, completed grounded worksheet state, refreshed grounding state, and grounded follow-up answer summary for the selected run directory.
 
+Example output:
+
+```text
+Output directory: output/hacc_grounded/20260322_120000
+Workflow stage: post_grounded_follow_up
+Recorded transitions: 2
+Next action: continue_drafting (document_generation)
+Completed grounded worksheet items: 3
+Refreshed grounding status: chronology_supported
+Grounded follow-up answers: 3
+```
+
 Also available via:
 
 - VS Code tasks `HACC Unit Regression` and `HACC Grounding Regression`

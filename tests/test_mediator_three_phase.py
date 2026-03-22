@@ -414,6 +414,12 @@ class TestMediatorThreePhaseIntegration:
         assert temporal_issue_summary['element_tag_counts']['causation'] >= 1
         assert temporal_issue_summary['resolved_count'] == 0
         assert temporal_issue_summary['unresolved_count'] >= 1
+        chronology_readiness = status['intake_chronology_readiness']
+        assert chronology_readiness['contract_version'] == 'intake_chronology_readiness.v1'
+        assert chronology_readiness['issue_count'] >= 1
+        assert chronology_readiness['open_issue_count'] >= 1
+        assert chronology_readiness['issue_type_counts']['relative_only_ordering'] >= 1
+        assert chronology_readiness['ready_for_temporal_formalization'] is False
 
     def test_initialize_intake_case_file_extracts_claims_facts_and_proof_leads(self):
         """The intake case file helper should normalize graph state into structured sections."""

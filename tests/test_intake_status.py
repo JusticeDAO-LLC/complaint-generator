@@ -902,14 +902,41 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
     assert summary["temporal_issue_registry_summary"] == {
         "count": 1,
         "issues": [{"issue_id": "temporal_issue:relative_only_ordering:fact_3", "issue_type": "relative_only_ordering"}],
+        "issue_ids": ["temporal_issue:relative_only_ordering:fact_3"],
         "status_counts": {},
         "severity_counts": {},
         "lane_counts": {},
         "issue_type_counts": {"relative_only_ordering": 1},
         "claim_type_counts": {},
         "element_tag_counts": {},
+        "missing_temporal_predicates": [],
+        "required_provenance_kinds": [],
         "resolved_count": 0,
         "unresolved_count": 1,
+    }
+    assert summary["intake_chronology_readiness"] == {
+        "contract_version": "intake_chronology_readiness.v1",
+        "event_count": 1,
+        "anchored_event_count": 1,
+        "unanchored_event_count": 0,
+        "relation_count": 1,
+        "issue_count": 1,
+        "blocking_issue_count": 0,
+        "open_issue_count": 1,
+        "resolved_issue_count": 0,
+        "issue_ids": ["temporal_issue:relative_only_ordering:fact_3"],
+        "blocking_issue_ids": [],
+        "missing_temporal_predicates": [],
+        "missing_temporal_predicate_count": 0,
+        "required_provenance_kinds": [],
+        "required_provenance_kind_count": 0,
+        "resolution_lane_counts": {},
+        "issue_type_counts": {"relative_only_ordering": 1},
+        "issue_status_counts": {},
+        "anchor_coverage_ratio": 1.0,
+        "predicate_coverage_ratio": 1.0,
+        "provenance_coverage_ratio": 1.0,
+        "ready_for_temporal_formalization": False,
     }
     assert summary["timeline_consistency_summary"] == {
         "event_count": 2,
@@ -1144,6 +1171,52 @@ def test_build_intake_case_review_summary_includes_confirmed_handoff_metadata():
             },
         },
     }
+
+
+def test_build_intake_status_summary_preserves_authored_chronology_readiness():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "score": 0.5,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": [],
+            "criteria": {},
+            "candidate_claim_count": 1,
+            "canonical_fact_count": 2,
+            "proof_lead_count": 1,
+        },
+        "intake_chronology_readiness": {
+            "contract_version": "intake_chronology_readiness.v1",
+            "event_count": 2,
+            "anchored_event_count": 1,
+            "unanchored_event_count": 1,
+            "relation_count": 1,
+            "issue_count": 1,
+            "blocking_issue_count": 1,
+            "open_issue_count": 1,
+            "resolved_issue_count": 0,
+            "issue_ids": ["temporal_issue:missing_anchor:fact_2"],
+            "blocking_issue_ids": ["temporal_issue:missing_anchor:fact_2"],
+            "missing_temporal_predicates": ["Anchored(fact_2)"],
+            "missing_temporal_predicate_count": 1,
+            "required_provenance_kinds": ["testimony_record"],
+            "required_provenance_kind_count": 1,
+            "resolution_lane_counts": {"clarify_with_complainant": 1},
+            "issue_type_counts": {"missing_anchor": 1},
+            "issue_status_counts": {"open": 1},
+            "anchor_coverage_ratio": 0.5,
+            "predicate_coverage_ratio": 0.0,
+            "provenance_coverage_ratio": 0.0,
+            "ready_for_temporal_formalization": False,
+        },
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["intake_chronology_readiness"] == mediator.get_three_phase_status.return_value["intake_chronology_readiness"]
 
 
     def test_build_intake_case_review_summary_preserves_precomputed_alignment_task_summary():

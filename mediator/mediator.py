@@ -7393,6 +7393,114 @@ class Mediator:
 		]
 		return summary
 
+	def _build_intake_chronology_readiness(self, intake_case_file: Any) -> Dict[str, Any]:
+		case_file = intake_case_file if isinstance(intake_case_file, dict) else {}
+		event_ledger = case_file.get('event_ledger') if isinstance(case_file.get('event_ledger'), list) else []
+		temporal_fact_registry = case_file.get('temporal_fact_registry') if isinstance(case_file.get('temporal_fact_registry'), list) else []
+		temporal_relation_registry = case_file.get('temporal_relation_registry') if isinstance(case_file.get('temporal_relation_registry'), list) else []
+		timeline_relations = case_file.get('timeline_relations') if isinstance(case_file.get('timeline_relations'), list) else []
+		temporal_issue_registry = case_file.get('temporal_issue_registry') if isinstance(case_file.get('temporal_issue_registry'), list) else []
+		timeline_consistency_summary = case_file.get('timeline_consistency_summary') if isinstance(case_file.get('timeline_consistency_summary'), dict) else {}
+
+		event_records = temporal_fact_registry if temporal_fact_registry else event_ledger
+		event_count = len(event_records)
+		anchored_event_count = 0
+		for event in event_records:
+			if not isinstance(event, dict):
+				continue
+			temporal_context = event.get('temporal_context') if isinstance(event.get('temporal_context'), dict) else {}
+			anchor_ids = event.get('timeline_anchor_ids') if isinstance(event.get('timeline_anchor_ids'), list) else []
+			if anchor_ids or str(temporal_context.get('start_date') or '').strip() or str(event.get('start_date') or '').strip():
+				anchored_event_count += 1
+		if event_count <= 0 and timeline_consistency_summary:
+			event_count = int(timeline_consistency_summary.get('event_count', 0) or 0)
+			missing_fact_ids = timeline_consistency_summary.get('missing_temporal_fact_ids') if isinstance(timeline_consistency_summary.get('missing_temporal_fact_ids'), list) else []
+			relative_only_fact_ids = timeline_consistency_summary.get('relative_only_fact_ids') if isinstance(timeline_consistency_summary.get('relative_only_fact_ids'), list) else []
+			anchored_event_count = max(0, event_count - len(missing_fact_ids) - len(relative_only_fact_ids))
+		unanchored_event_count = max(0, event_count - anchored_event_count)
+
+		relation_records = temporal_relation_registry if temporal_relation_registry else timeline_relations
+		relation_count = len(relation_records)
+		issue_count = len(temporal_issue_registry)
+		resolved_issue_count = 0
+		open_issue_count = 0
+		blocking_issue_count = 0
+		issue_ids: List[str] = []
+		blocking_issue_ids: List[str] = []
+		missing_temporal_predicates: List[str] = []
+		required_provenance_kinds: List[str] = []
+		resolution_lane_counts: Dict[str, int] = {}
+		issue_type_counts: Dict[str, int] = {}
+		issue_status_counts: Dict[str, int] = {}
+
+		for issue in temporal_issue_registry:
+			if not isinstance(issue, dict):
+				continue
+			issue_id = str(issue.get('issue_id') or '').strip()
+			if issue_id and issue_id not in issue_ids:
+				issue_ids.append(issue_id)
+			status_value = str(issue.get('current_resolution_status') or issue.get('status') or 'open').strip().lower() or 'open'
+			issue_status_counts[status_value] = issue_status_counts.get(status_value, 0) + 1
+			if status_value == 'resolved':
+				resolved_issue_count += 1
+			else:
+				open_issue_count += 1
+			lane_value = str(issue.get('recommended_resolution_lane') or '').strip().lower()
+			if lane_value:
+				resolution_lane_counts[lane_value] = resolution_lane_counts.get(lane_value, 0) + 1
+			issue_type_value = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+			if issue_type_value:
+				issue_type_counts[issue_type_value] = issue_type_counts.get(issue_type_value, 0) + 1
+			is_blocking = bool(issue.get('blocking')) or str(issue.get('severity') or '').strip().lower() == 'blocking'
+			if is_blocking:
+				blocking_issue_count += 1
+				if issue_id and issue_id not in blocking_issue_ids:
+					blocking_issue_ids.append(issue_id)
+			for predicate in issue.get('missing_temporal_predicates') or []:
+				normalized_predicate = str(predicate or '').strip()
+				if normalized_predicate and normalized_predicate not in missing_temporal_predicates:
+					missing_temporal_predicates.append(normalized_predicate)
+			for provenance_kind in issue.get('required_provenance_kinds') or []:
+				normalized_provenance_kind = str(provenance_kind or '').strip()
+				if normalized_provenance_kind and normalized_provenance_kind not in required_provenance_kinds:
+					required_provenance_kinds.append(normalized_provenance_kind)
+
+		anchor_coverage_ratio = round((anchored_event_count / event_count), 3) if event_count > 0 else 1.0
+		predicate_coverage_ratio = round(max(0.0, 1.0 - (len(missing_temporal_predicates) / max(issue_count, 1))), 3) if issue_count > 0 else 1.0
+		provenance_coverage_ratio = round(max(0.0, 1.0 - (len(required_provenance_kinds) / max(issue_count, 1))), 3) if issue_count > 0 else 1.0
+		ready_for_temporal_formalization = bool(
+			blocking_issue_count == 0
+			and open_issue_count == 0
+			and unanchored_event_count == 0
+			and not missing_temporal_predicates
+			and not required_provenance_kinds
+		)
+
+		return {
+			'contract_version': 'intake_chronology_readiness.v1',
+			'event_count': event_count,
+			'anchored_event_count': anchored_event_count,
+			'unanchored_event_count': unanchored_event_count,
+			'relation_count': relation_count,
+			'issue_count': issue_count,
+			'blocking_issue_count': blocking_issue_count,
+			'open_issue_count': open_issue_count,
+			'resolved_issue_count': resolved_issue_count,
+			'issue_ids': issue_ids,
+			'blocking_issue_ids': blocking_issue_ids,
+			'missing_temporal_predicates': missing_temporal_predicates,
+			'missing_temporal_predicate_count': len(missing_temporal_predicates),
+			'required_provenance_kinds': required_provenance_kinds,
+			'required_provenance_kind_count': len(required_provenance_kinds),
+			'resolution_lane_counts': resolution_lane_counts,
+			'issue_type_counts': issue_type_counts,
+			'issue_status_counts': issue_status_counts,
+			'anchor_coverage_ratio': anchor_coverage_ratio,
+			'predicate_coverage_ratio': predicate_coverage_ratio,
+			'provenance_coverage_ratio': provenance_coverage_ratio,
+			'ready_for_temporal_formalization': ready_for_temporal_formalization,
+		}
+
 	def _summarize_intake_matching_pressure(self, pressure_map: Any) -> Dict[str, Any]:
 		summary = {
 			'claim_count': 0,
@@ -10030,6 +10138,7 @@ class Mediator:
 			alignment_task_updates,
 			alignment_task_update_history,
 		)
+		intake_chronology_readiness = self._build_intake_chronology_readiness(intake_case_file)
 		recent_validation_outcome = self._summarize_recent_validation_outcome(
 			alignment_task_updates,
 			alignment_task_update_history,
@@ -10094,6 +10203,7 @@ class Mediator:
 				'resolved_count': resolved_temporal_issue_count,
 				'unresolved_count': unresolved_temporal_issue_count,
 			},
+			'intake_chronology_readiness': intake_chronology_readiness,
 			'timeline_consistency_summary': (
 				timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
 			),

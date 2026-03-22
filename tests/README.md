@@ -261,6 +261,18 @@ That read-only inspection summarizes:
 
 Use it when you want to confirm whether a grounded worksheet has already been completed, whether refreshed grounding exists yet, and what the last few workflow transitions were.
 
+Example output:
+
+```text
+Output directory: output/hacc_grounded/20260322_120000
+Workflow stage: post_grounded_follow_up
+Recorded transitions: 2
+Next action: continue_drafting (document_generation)
+Completed grounded worksheet items: 3
+Refreshed grounding status: chronology_supported
+Grounded follow-up answers: 3
+```
+
 That helper now covers both:
 
 - the HACC seed-generation regression
