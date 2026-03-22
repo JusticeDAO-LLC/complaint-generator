@@ -1301,11 +1301,14 @@ def test_build_package_adds_claim_support_provenance_and_document_provenance_sum
     assert draft["document_provenance_summary"] == {
         "summary_fact_count": 1,
         "summary_fact_backed_count": 1,
+        "summary_fact_exhibit_backed_count": 0,
         "factual_allegation_paragraph_count": 1,
         "factual_allegation_fact_backed_count": 1,
+        "factual_allegation_exhibit_backed_count": 0,
         "claim_count": 1,
         "claim_supporting_fact_count": 1,
         "claim_supporting_fact_backed_count": 1,
+        "claim_supporting_fact_exhibit_backed_count": 0,
         "fact_id_count": 1,
         "source_artifact_id_count": 1,
         "fact_backed_ratio": 1.0,
@@ -1318,6 +1321,7 @@ def test_build_package_adds_claim_support_provenance_and_document_provenance_sum
                 "supporting_fact_count": 1,
                 "fact_backed_supporting_fact_count": 1,
                 "artifact_backed_supporting_fact_count": 1,
+                "exhibit_backed_supporting_fact_count": 0,
                 "fact_ids": ["fact:summary:1"],
                 "source_artifact_ids": ["artifact:hr-complaint"],
             }

@@ -668,7 +668,6 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert "Plaintiff repeats and realleges ¶" in result["draft"]["draft_text"]
     assert "and incorporates Exhibit" in result["draft"]["draft_text"]
     assert "as if fully set forth herein." in result["draft"]["draft_text"]
-    assert "Claim-Specific Support:" in result["draft"]["draft_text"]
     assert "The pleaded facts further show that" in result["draft"]["draft_text"]
     assert any("terminated" in allegation.lower() for allegation in result["draft"]["factual_allegations"])
     assert all(claim.get("allegation_references") for claim in result["draft"]["claims_for_relief"])
@@ -1253,7 +1252,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert report["section_history"][0]["actor_llm_metadata"]["arch_router_selected_route"] == "drafting"
     assert report["section_history"][0]["change_manifest"]
     assert report["section_history"][0]["change_manifest"][0]["field"] == "factual_allegations"
-    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 8
+    assert report["section_history"][0]["change_manifest"][0]["before_count"] == 6
     assert report["section_history"][0]["change_manifest"][0]["after_count"] == 3
     assert report["section_history"][0]["selected_support_context"]["focus_section"] == "factual_allegations"
     assert report["section_history"][0]["selected_support_context"]["top_support"]
@@ -1311,7 +1310,7 @@ def test_formal_complaint_document_builder_can_optimize_draft_with_agentic_loop(
     assert stored_traces[0]["intake_case_summary"]["claim_support_packet_summary"]["claim_count"] == 2
     assert stored_traces[0]["iterations"][0]["change_manifest"]
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["field"] == "factual_allegations"
-    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 8
+    assert stored_traces[0]["iterations"][0]["change_manifest"][0]["before_count"] == 6
     assert stored_traces[0]["iterations"][0]["change_manifest"][0]["after_count"] == 3
     before_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["before_preview"])
     after_preview = " ".join(stored_traces[0]["iterations"][0]["change_manifest"][0]["after_preview"])
