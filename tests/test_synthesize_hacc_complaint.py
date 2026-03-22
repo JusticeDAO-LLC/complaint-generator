@@ -427,6 +427,187 @@ def test_graph_and_claim_support_summaries_use_session_case_file_when_packet_is_
     assert claim_support["evidence_completion_ready"] is False
 
 
+def test_synthesized_blocker_summary_drops_stale_retaliation_causation_blocker_when_case_file_supports_it():
+    session = {
+        "final_state": {
+            "blocker_follow_up_summary": {
+                "blocking_item_count": 1,
+                "blocking_objectives": ["causation_sequence"],
+                "extraction_targets": ["retaliation_sequence"],
+                "workflow_phases": ["graph_analysis", "document_generation"],
+                "blocking_items": [
+                    {
+                        "blocker_id": "missing_retaliation_causation_sequence",
+                        "reason": "Retaliation theory still lacks protected-activity to adverse-action sequencing and causation links.",
+                        "primary_objective": "causation_sequence",
+                    }
+                ],
+            },
+            "intake_case_file": {
+                "candidate_claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "required_elements": [
+                            {"element_id": "protected_activity", "status": "present"},
+                            {"element_id": "adverse_action", "status": "present"},
+                            {"element_id": "causation", "status": "present"},
+                        ],
+                    }
+                ],
+                "canonical_facts": [
+                    {
+                        "fact_id": "fact:1",
+                        "fact_type": "timeline",
+                        "predicate_family": "hearing_process",
+                        "structured_timeline_group": "group_a",
+                    },
+                    {
+                        "fact_id": "fact:2",
+                        "fact_type": "timeline",
+                        "predicate_family": "adverse_action",
+                        "structured_timeline_group": "group_a",
+                    },
+                ],
+                "timeline_anchors": [{"fact_id": "fact:1", "start_date": "2025-01-05"}],
+                "timeline_relations": [{"source_fact_id": "fact:1", "target_fact_id": "fact:2", "relation_type": "before"}],
+                "temporal_issue_registry": [],
+            },
+        }
+    }
+
+    summary = MODULE._synthesized_blocker_summary(session)
+    graph_summary = MODULE._graph_readiness_summary(session)
+    claim_support = MODULE._claim_support_summary(session)
+
+    assert summary["blocking_item_count"] == 0
+    assert summary["blocking_items"] == []
+    assert summary["blocking_objectives"] == []
+    assert graph_summary["blocking_item_count"] == 0
+    assert claim_support["blocking_item_count"] == 0
+
+
+def test_claim_support_summary_falls_back_when_stored_status_counts_are_all_zero():
+    session = {
+        "final_state": {
+            "claim_support_packet_summary": {
+                "claim_count": 0,
+                "element_count": 0,
+                "status_counts": {
+                    "supported": 0,
+                    "partially_supported": 0,
+                    "unsupported": 0,
+                    "contradicted": 0,
+                },
+                "proof_readiness_score": 0.0,
+            },
+            "intake_case_file": {
+                "candidate_claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "required_elements": [
+                            {"element_id": "protected_activity", "status": "present"},
+                            {"element_id": "adverse_action", "status": "present"},
+                            {"element_id": "causation", "status": "present"},
+                        ],
+                    }
+                ],
+                "canonical_facts": [{"fact_id": "fact:1", "text": "Notice sent"}],
+                "timeline_anchors": [{"fact_id": "fact:1", "start_date": "2025-01-05"}],
+                "timeline_relations": [{"source_fact_id": "fact:1", "target_fact_id": "fact:2", "relation_type": "before"}],
+                "temporal_issue_registry": [],
+            },
+        }
+    }
+
+    summary = MODULE._claim_support_summary(session)
+
+    assert summary["claim_count"] == 1
+    assert summary["element_count"] == 3
+    assert summary["status_counts"]["supported"] == 3
+    assert summary["status_counts"]["unsupported"] == 0
+    assert summary["proof_readiness_score"] == 1.0
+    assert summary["evidence_completion_ready"] is True
+
+
+def test_outstanding_intake_gaps_ignores_stale_causation_objective_when_live_case_file_satisfies_it():
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "uncovered_objectives": ["causation_sequence"],
+            },
+            "intake_case_file": {
+                "candidate_claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "required_elements": [
+                            {"element_id": "protected_activity", "status": "present"},
+                            {"element_id": "adverse_action", "status": "present"},
+                            {"element_id": "causation", "status": "present"},
+                        ],
+                    }
+                ],
+                "canonical_facts": [
+                    {
+                        "fact_id": "fact:1",
+                        "fact_type": "timeline",
+                        "predicate_family": "hearing_process",
+                        "structured_timeline_group": "group_a",
+                    },
+                    {
+                        "fact_id": "fact:2",
+                        "fact_type": "timeline",
+                        "predicate_family": "adverse_action",
+                        "structured_timeline_group": "group_a",
+                    },
+                ],
+            },
+        }
+    }
+
+    gaps = MODULE._outstanding_intake_gaps(session)
+
+    assert gaps == []
+
+
+def test_drafting_readiness_drops_stale_anchor_mapping_gap_when_supported_sections_exist():
+    seed = {
+        "key_facts": {
+            "drafting_readiness": {
+                "coverage": 0.94,
+                "phase_status": "ready",
+                "blockers": ["uncovered_intake_objectives"],
+                "unresolved_factual_gaps": [
+                    "Uncovered intake objectives remain open; blocker-closing answers must be incorporated into allegations, claim support, and exhibit descriptions before formalization."
+                ],
+                "unresolved_legal_gaps": [
+                    "Map uploaded evidence into supported policy anchors: grievance_hearing, appeal_rights, adverse_action."
+                ],
+                "document_generation_signals": {
+                    "supported_anchor_sections": ["grievance_hearing", "appeal_rights", "adverse_action"]
+                },
+            }
+        }
+    }
+    session = {
+        "final_state": {
+            "adversarial_intake_priority_summary": {"uncovered_objectives": []},
+            "intake_case_file": {
+                "canonical_facts": [{"fact_id": "fact:1", "text": "Notice sent"}],
+                "timeline_anchors": [{"fact_id": "fact:1", "start_date": "2025-01-05"}],
+                "timeline_relations": [{"source_fact_id": "fact:1", "target_fact_id": "fact:2", "relation_type": "before"}],
+                "temporal_issue_registry": [],
+            },
+        }
+    }
+
+    readiness = MODULE._drafting_readiness_for_formalization(seed, session)
+
+    assert readiness["phase_status"] == "ready"
+    assert readiness["blockers"] == []
+    assert readiness["unresolved_factual_gaps"] == []
+    assert readiness["unresolved_legal_gaps"] == []
+
+
 def test_outstanding_intake_gaps_reflect_uncovered_intake_priority_summary():
     session = {
         "final_state": {

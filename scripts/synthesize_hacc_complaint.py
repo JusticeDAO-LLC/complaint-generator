@@ -2261,7 +2261,7 @@ def _merge_drafting_readiness_signals(seed: Dict[str, Any], grounding_bundle: Di
                 unresolved_factual_gaps.append(text)
         for item in list(candidate.get("unresolved_legal_gaps") or []) + list(candidate.get("legal_gaps") or []):
             text = " ".join(str(item or "").split()).strip()
-            if text and text not in unresolved_legal_gaps:
+            if text and not _anchor_mapping_gap_is_satisfied(seed, text) and text not in unresolved_legal_gaps:
                 unresolved_legal_gaps.append(text)
 
     modality_signals = _readiness_modality_signals(seed)
@@ -3095,7 +3095,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
             factual_gaps.append(text)
     for item in list(document_signals.get("unresolved_legal_gaps") or []) + list(document_signals.get("legal_gaps") or []):
         text = " ".join(str(item).split()).strip()
-        if text and text not in legal_gaps:
+        if text and not _anchor_mapping_gap_is_satisfied(seed, text) and text not in legal_gaps:
             legal_gaps.append(text)
     for objective in list(document_signals.get("unresolved_intake_objectives") or []) + list(document_signals.get("uncovered_intake_objectives") or []):
         _append_unique_objective(unresolved_objectives, unresolved_seen, objective)
@@ -3405,6 +3405,13 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
     blockers = [str(item) for item in list(stored.get("blockers") or []) if str(item)]
     factual_gaps = [str(item) for item in list(stored.get("unresolved_factual_gaps") or []) if str(item)]
     legal_gaps = [str(item) for item in list(stored.get("unresolved_legal_gaps") or []) if str(item)]
+    factual_gaps = [
+        item
+        for item in factual_gaps
+        if "uncovered intake objectives remain open" not in " ".join(str(item).split()).strip().lower()
+    ]
+    legal_gaps = [item for item in legal_gaps if not _anchor_mapping_gap_is_satisfied(seed, item)]
+    blockers = [item for item in blockers if item != "uncovered_intake_objectives"]
 
     intake_case_file = _session_intake_case_file(session)
     canonical_facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
@@ -3421,7 +3428,8 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
     elif "graph_analysis_not_ready" in blockers and timeline_anchors:
         blockers = [item for item in blockers if item != "graph_analysis_not_ready"]
 
-    for gap in _outstanding_intake_gaps(session, limit=5):
+    live_intake_gaps = _outstanding_intake_gaps(session, limit=5)
+    for gap in live_intake_gaps:
         if gap not in factual_gaps:
             factual_gaps.append(gap)
 
@@ -3440,10 +3448,16 @@ def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[st
         if "document_generation_not_ready" not in blockers:
             blockers.append("document_generation_not_ready")
 
+    if live_intake_gaps and "uncovered_intake_objectives" not in blockers:
+        blockers.append("uncovered_intake_objectives")
     if (factual_gaps or legal_gaps) and "document_generation_not_ready" not in blockers:
         blockers.append("document_generation_not_ready")
+    if not factual_gaps and not legal_gaps:
+        blockers = [item for item in blockers if item != "document_generation_not_ready"]
     if (factual_gaps or legal_gaps or coverage < 0.98) and phase_status == "ready":
         phase_status = "warning"
+    if phase_status == "warning" and not factual_gaps and not legal_gaps and not blockers:
+        phase_status = "ready"
 
     return {
         "coverage": max(0.0, min(1.0, coverage)),
@@ -4196,9 +4210,87 @@ def _session_blocker_follow_up_summary(session: Dict[str, Any]) -> Dict[str, Any
     return summary if isinstance(summary, dict) else {}
 
 
+def _candidate_claim_element_statuses(session: Dict[str, Any], claim_type: str) -> Dict[str, str]:
+    intake_case_file = _session_intake_case_file(session)
+    statuses: Dict[str, str] = {}
+    for claim in [dict(item) for item in list(intake_case_file.get("candidate_claims") or []) if isinstance(item, dict)]:
+        if str(claim.get("claim_type") or "").strip().lower() != claim_type:
+            continue
+        for element in list(claim.get("required_elements") or []):
+            if not isinstance(element, dict):
+                continue
+            element_id = str(element.get("element_id") or "").strip().lower()
+            status = str(element.get("status") or "").strip().lower()
+            if element_id and status:
+                statuses[element_id] = status
+    return statuses
+
+
+def _has_structured_retaliation_sequence(session: Dict[str, Any]) -> bool:
+    intake_case_file = _session_intake_case_file(session)
+    canonical_facts = [dict(item) for item in list(intake_case_file.get("canonical_facts") or []) if isinstance(item, dict)]
+    grouped_facts: Dict[str, List[Dict[str, Any]]] = {}
+    for fact in canonical_facts:
+        group_id = str(fact.get("structured_timeline_group") or "").strip()
+        if group_id:
+            grouped_facts.setdefault(group_id, []).append(fact)
+
+    for facts in grouped_facts.values():
+        predicate_families = {str(item.get("predicate_family") or "").strip().lower() for item in facts}
+        if "adverse_action" not in predicate_families:
+            continue
+        if predicate_families & {"protected_activity", "hearing_process"}:
+            return True
+    return False
+
+
+def _blocker_item_is_satisfied(session: Dict[str, Any], item: Dict[str, Any]) -> bool:
+    blocker_id = str(item.get("blocker_id") or "").strip().lower()
+    objective = _normalize_intake_objective(item.get("primary_objective") or "")
+
+    if blocker_id == "missing_retaliation_causation_sequence" or objective == "causation_link":
+        retaliation_statuses = _candidate_claim_element_statuses(session, "retaliation")
+        if retaliation_statuses.get("causation") in {"present", "supported", "complete"} and _has_structured_retaliation_sequence(session):
+            return True
+    return False
+
+
+def _intake_objective_is_satisfied(session: Dict[str, Any], objective: Any) -> bool:
+    normalized = _normalize_intake_objective(objective)
+    if normalized == "causation_link":
+        retaliation_statuses = _candidate_claim_element_statuses(session, "retaliation")
+        return retaliation_statuses.get("causation") in {"present", "supported", "complete"} and _has_structured_retaliation_sequence(session)
+    return False
+
+
+def _anchor_mapping_gap_is_satisfied(seed: Dict[str, Any], gap_text: str) -> bool:
+    normalized_gap = " ".join(str(gap_text or "").split()).strip().lower()
+    if not normalized_gap.startswith("map uploaded evidence into supported policy anchors:"):
+        return False
+    key_facts = dict(seed.get("key_facts") or {})
+    document_signals = dict(key_facts.get("document_generation_signals") or {})
+    if not document_signals:
+        document_signals = dict(dict(key_facts.get("drafting_readiness") or {}).get("document_generation_signals") or {})
+    supported_sections = {
+        str(item).strip().lower()
+        for item in list(document_signals.get("supported_anchor_sections") or [])
+        if str(item).strip()
+    }
+    required_sections = {
+        item.strip().lower().rstrip(".")
+        for item in normalized_gap.split(":", 1)[-1].split(",")
+        if item.strip()
+    }
+    return bool(required_sections) and required_sections.issubset(supported_sections)
+
+
 def _session_blocker_follow_up_items(session: Dict[str, Any]) -> List[Dict[str, Any]]:
     summary = _session_blocker_follow_up_summary(session)
-    return [dict(item) for item in list(summary.get("blocking_items") or []) if isinstance(item, dict)]
+    return [
+        dict(item)
+        for item in list(summary.get("blocking_items") or [])
+        if isinstance(item, dict) and not _blocker_item_is_satisfied(session, item)
+    ]
 
 
 def _session_claim_support_packet_summary(session: Dict[str, Any]) -> Dict[str, Any]:
@@ -4263,6 +4355,20 @@ def _claim_support_summary(session: Dict[str, Any]) -> Dict[str, Any]:
             "supported": present,
             "unsupported": missing,
         }
+    elif candidate_claims and not any(_safe_float(value, 0.0) > 0.0 for value in status_counts.values()):
+        present = 0
+        missing = 0
+        for claim in candidate_claims:
+            for element in list(claim.get("required_elements") or []):
+                status = str((element or {}).get("status") or "").strip().lower()
+                if status in {"present", "supported", "complete"}:
+                    present += 1
+                else:
+                    missing += 1
+        status_counts = {
+            "supported": present,
+            "unsupported": missing,
+        }
     proof_readiness_score = _safe_float(stored.get("proof_readiness_score"), 0.0)
     if proof_readiness_score <= 0.0 and element_count > 0:
         supported = int(_safe_float(status_counts.get("supported"), 0.0))
@@ -4286,13 +4392,27 @@ def _claim_support_summary(session: Dict[str, Any]) -> Dict[str, Any]:
 def _synthesized_blocker_summary(session: Dict[str, Any]) -> Dict[str, Any]:
     summary = dict(_session_blocker_follow_up_summary(session) or {})
     items = _session_blocker_follow_up_items(session)
+    blocking_objectives = [
+        _normalize_intake_objective(item)
+        for item in list(summary.get("blocking_objectives") or [])
+        if _normalize_intake_objective(item)
+    ]
+    if items:
+        blocking_objectives = list(
+            dict.fromkeys(
+                blocking_objectives
+                + [
+                    _normalize_intake_objective(item.get("primary_objective") or "")
+                    for item in items
+                    if _normalize_intake_objective(item.get("primary_objective") or "")
+                ]
+            )
+        )
+    else:
+        blocking_objectives = []
     return {
-        "blocking_item_count": int(summary.get("blocking_item_count") or len(items) or 0),
-        "blocking_objectives": [
-            _normalize_intake_objective(item)
-            for item in list(summary.get("blocking_objectives") or [])
-            if _normalize_intake_objective(item)
-        ],
+        "blocking_item_count": len(items),
+        "blocking_objectives": blocking_objectives,
         "extraction_targets": [str(item) for item in list(summary.get("extraction_targets") or []) if str(item)],
         "workflow_phases": [str(item) for item in list(summary.get("workflow_phases") or []) if str(item)],
         "blocking_items": items,
@@ -4351,6 +4471,8 @@ def _missing_case_facts_from_intake_priorities(session: Dict[str, Any]) -> List[
         if prompt and prompt not in prompts:
             prompts.append(prompt)
     for objective in uncovered:
+        if _intake_objective_is_satisfied(session, objective):
+            continue
         prompt = mapping.get(objective)
         if prompt and prompt not in prompts:
             prompts.append(prompt)
@@ -5689,7 +5811,11 @@ def main(argv: List[str] | None = None) -> int:
     completed_grounded_intake_worksheet_path = (
         Path(args.completed_grounded_intake_worksheet).resolve()
         if args.completed_grounded_intake_worksheet
-        else None
+        else (
+            (grounded_run_dir / "completed_grounded_intake_follow_up_worksheet.json").resolve()
+            if grounded_run_dir and (grounded_run_dir / "completed_grounded_intake_follow_up_worksheet.json").exists()
+            else None
+        )
     )
     completed_grounded_intake_worksheet = _load_optional_json(completed_grounded_intake_worksheet_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)

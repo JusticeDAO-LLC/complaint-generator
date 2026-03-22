@@ -2386,6 +2386,58 @@ class TestOptimizer:
         assert report.document_provenance_summary["avg_exhibit_backed_ratio"] == pytest.approx(1.0)
         assert report.phase_scorecards["document_generation"]["document_exhibit_backed_ratio"] == pytest.approx(1.0)
 
+    def test_optimizer_recommends_stronger_exhibit_grounding_when_ratio_is_low(self):
+        optimizer = Optimizer()
+        result = SessionResult(
+            session_id="session_document_exhibit_gap",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={
+                "workflow_phase_plan": {
+                    "phases": {
+                        "intake_questioning": {"status": "ready"},
+                        "graph_analysis": {"status": "ready"},
+                        "document_generation": {"status": "warning"},
+                    }
+                },
+                "document_provenance_summary": {
+                    "summary_fact_count": 2,
+                    "summary_fact_backed_count": 2,
+                    "summary_fact_exhibit_backed_count": 0,
+                    "factual_allegation_paragraph_count": 2,
+                    "factual_allegation_fact_backed_count": 2,
+                    "factual_allegation_exhibit_backed_count": 0,
+                    "claim_supporting_fact_count": 2,
+                    "claim_supporting_fact_backed_count": 2,
+                    "claim_supporting_fact_exhibit_backed_count": 0,
+                    "low_grounding_flag": False,
+                },
+            },
+            critic_score=CriticScore(
+                overall_score=0.72,
+                question_quality=0.72,
+                information_extraction=0.72,
+                empathy=0.72,
+                efficiency=0.72,
+                coverage=0.72,
+                feedback="Test",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+            ),
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert any("exhibit-backed" in rec for rec in report.recommendations)
+        assert any(item.startswith("Increase exhibit-backed complaint grounding") for item in report.priority_improvements)
+        assert "exhibit_grounding" in report.phase_scorecards["document_generation"]["focus_areas"]
+
     def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
         optimizer = Optimizer()
 

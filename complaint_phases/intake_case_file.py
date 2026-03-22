@@ -625,6 +625,188 @@ def _enrich_canonical_facts_with_relative_anchor_dates(canonical_facts: List[Dic
     return collapsed_facts
 
 
+def _structured_timeline_text_signature(text: Any) -> Set[str]:
+    normalized = _normalize_text(text or "").lower()
+    normalized = re.sub(r"artifact\s*:\s*.*", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\([^()]*\)", "", normalized)
+    normalized = re.sub(r"\b(?:19|20)\d{2}\b", " ", normalized)
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    stopwords = {
+        "a", "an", "and", "after", "at", "by", "for", "from", "hacc", "i", "in", "is", "it", "me",
+        "my", "not", "of", "on", "or", "staff", "tenant", "that", "the", "their", "this", "to", "was",
+        "were", "with", "yet", "still", "unconfirmed", "confirmed", "estimate",
+    }
+    return {
+        token
+        for token in normalized.split()
+        if len(token) > 2 and token not in stopwords
+    }
+
+
+def _structured_timeline_group_similarity(
+    left_facts: List[Dict[str, Any]],
+    right_facts: List[Dict[str, Any]],
+) -> float:
+    if len(left_facts) != len(right_facts) or not left_facts:
+        return 0.0
+    overlap_scores: List[float] = []
+    for left_fact, right_fact in zip(left_facts, right_facts):
+        left_tokens = _structured_timeline_text_signature(left_fact.get("text") or left_fact.get("event_label") or "")
+        right_tokens = _structured_timeline_text_signature(right_fact.get("text") or right_fact.get("event_label") or "")
+        if not left_tokens and not right_tokens:
+            overlap_scores.append(1.0)
+            continue
+        union = left_tokens | right_tokens
+        if not union:
+            overlap_scores.append(0.0)
+            continue
+        overlap_scores.append(len(left_tokens & right_tokens) / len(union))
+    return sum(overlap_scores) / len(overlap_scores)
+
+
+def _structured_timeline_group_score(facts: List[Dict[str, Any]]) -> tuple[int, int, int]:
+    anchored_count = 0
+    dated_count = 0
+    text_length = 0
+    for fact in facts:
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        if temporal_context.get("start_date"):
+            anchored_count += 1
+        if _normalize_text(fact.get("event_date_or_range") or ""):
+            dated_count += 1
+        text_length += len(_normalize_text(fact.get("text") or ""))
+    return (anchored_count, dated_count, text_length)
+
+
+def _has_structured_timeline_counterpart(
+    fact: Dict[str, Any],
+    structured_group_facts: Dict[str, List[Dict[str, Any]]],
+) -> bool:
+    predicate_family = _normalize_text(fact.get("predicate_family") or "").lower()
+    text_value = _normalize_text(fact.get("text") or "").lower()
+    for facts in structured_group_facts.values():
+        for grouped_fact in facts:
+            if not isinstance(grouped_fact, dict):
+                continue
+            grouped_family = _normalize_text(grouped_fact.get("predicate_family") or "").lower()
+            grouped_text = _normalize_text(grouped_fact.get("text") or "").lower()
+            if predicate_family and grouped_family == predicate_family:
+                return True
+            if predicate_family == "causation" and grouped_family in {"protected_activity", "adverse_action", "response_timeline", "hearing_process"}:
+                return True
+            if predicate_family in {"hearing_process", "response_timeline"} and grouped_family in {"hearing_process", "response_timeline"}:
+                if any(token in text_value for token in ("hearing", "review", "response", "rights", "notice")):
+                    return True
+            if predicate_family == "protected_activity" and grouped_family == "hearing_process" and "protected activity" in text_value:
+                return True
+            if predicate_family == "protected_activity" and grouped_family == "hearing_process":
+                if any(token in text_value for token in ("complaint", "review", "grievance", "raised concerns", "spoke up", "disputed")):
+                    return True
+            if grouped_text and text_value and grouped_text in text_value:
+                return True
+    return False
+
+
+def _is_summary_like_timeline_fact(
+    fact: Dict[str, Any],
+    structured_group_facts: Dict[str, List[Dict[str, Any]]],
+) -> bool:
+    if _normalize_text(fact.get("structured_timeline_group") or ""):
+        return False
+    text_value = _normalize_text(fact.get("text") or "").lower()
+    if not text_value:
+        return False
+    meta_prefixes = (
+        "i am filing this complaint",
+        "i want this complaint to include",
+        "the unresolved facts are",
+        "key facts that still need",
+    )
+    if any(text_value.startswith(prefix) for prefix in meta_prefixes):
+        return True
+    summary_relative_prefixes = (
+        "after i made my complaint",
+        "after i made my complaint/request for review",
+        "after i requested review",
+        "after i asked for review",
+    )
+    if _has_structured_timeline_counterpart(fact, structured_group_facts):
+        if any(text_value.startswith(prefix) for prefix in summary_relative_prefixes):
+            return True
+        if any(
+            token in text_value
+            for token in (
+                "retaliated against me",
+                "raised concerns",
+                "grievance process",
+                "hearing rights",
+                "appeal rights",
+                "adverse treatment",
+                "housing at risk",
+                "fair response",
+            )
+        ):
+            return True
+        if len(text_value) >= 90 and "after" in text_value:
+            return True
+    return False
+
+
+def _dedupe_structured_timeline_groups(canonical_facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    ungrouped: List[Dict[str, Any]] = []
+    for fact in canonical_facts:
+        if not isinstance(fact, dict):
+            continue
+        group_id = _normalize_text(fact.get("structured_timeline_group") or "")
+        if not group_id:
+            ungrouped.append(fact)
+            continue
+        groups.setdefault(group_id, []).append(fact)
+
+    if len(groups) < 2:
+        return list(canonical_facts)
+
+    sorted_groups = {
+        group_id: sorted(
+            [item for item in facts if isinstance(item, dict)],
+            key=lambda item: (item.get("sequence_index") or 0, _normalize_text(item.get("fact_id") or "")),
+        )
+        for group_id, facts in groups.items()
+    }
+    drop_groups: Set[str] = set()
+    group_ids = list(sorted_groups.keys())
+    for index, left_group_id in enumerate(group_ids):
+        if left_group_id in drop_groups:
+            continue
+        left_facts = sorted_groups[left_group_id]
+        left_signature = tuple(_normalize_text(item.get("predicate_family") or "").lower() for item in left_facts)
+        for right_group_id in group_ids[index + 1:]:
+            if right_group_id in drop_groups:
+                continue
+            right_facts = sorted_groups[right_group_id]
+            right_signature = tuple(_normalize_text(item.get("predicate_family") or "").lower() for item in right_facts)
+            if left_signature != right_signature or not left_signature:
+                continue
+            if _structured_timeline_group_similarity(left_facts, right_facts) < 0.3:
+                continue
+            if _structured_timeline_group_score(left_facts) >= _structured_timeline_group_score(right_facts):
+                drop_groups.add(right_group_id)
+            else:
+                drop_groups.add(left_group_id)
+                break
+
+    deduped: List[Dict[str, Any]] = []
+    for fact in canonical_facts:
+        if not isinstance(fact, dict):
+            continue
+        group_id = _normalize_text(fact.get("structured_timeline_group") or "")
+        if group_id and group_id in drop_groups:
+            continue
+        deduped.append(fact)
+    return deduped
+
+
 def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
     fact = _coerce_dict(record)
     normalized_text = _normalize_text(fact.get("text") or "")
@@ -1101,6 +1283,8 @@ def build_temporal_issue_registry(
         temporal_context = _coerce_dict(fact.get("temporal_context"))
         if temporal_context.get("start_date"):
             continue
+        if _is_summary_like_timeline_fact(fact, structured_group_facts):
+            continue
 
         relative_markers = _unique_normalized_strings(temporal_context.get("relative_markers") or [])
         issue_type = "relative_only_ordering" if relative_markers else "missing_anchor"
@@ -1120,7 +1304,7 @@ def build_temporal_issue_registry(
         issue_severity = "blocking"
         issue_blocking = True
         recommended_resolution_lane = "clarify_with_complainant"
-        if has_structured_sequence_support and not relative_markers and group_has_any_anchor:
+        if has_structured_sequence_support and group_has_any_anchor:
             issue_severity = "warning"
             issue_blocking = False
             recommended_resolution_lane = "capture_testimony"
@@ -2505,13 +2689,13 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         for claim in build_candidate_claims(knowledge_graph)
         if isinstance(claim, dict)
     ]
-    canonical_facts = _enrich_canonical_facts_with_relative_anchor_dates(
+    canonical_facts = _dedupe_structured_timeline_groups(_enrich_canonical_facts_with_relative_anchor_dates(
         [
             _normalize_canonical_fact_record(fact)
             for fact in build_canonical_facts(knowledge_graph)
             if isinstance(fact, dict)
         ]
-    )
+    ))
     proof_leads = [
         _normalize_proof_lead_record(lead)
         for lead in build_proof_leads(knowledge_graph)
@@ -2594,16 +2778,16 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     previous_temporal_issue_registry = _coerce_list(case_file.get("temporal_issue_registry"))
     if knowledge_graph is not None:
         case_file["candidate_claims"] = build_candidate_claims(knowledge_graph)
-        case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates(
+        case_file["canonical_facts"] = _dedupe_structured_timeline_groups(_enrich_canonical_facts_with_relative_anchor_dates(
             build_canonical_facts(knowledge_graph)
-        )
+        ))
         case_file["proof_leads"] = build_proof_leads(knowledge_graph)
     else:
-        case_file["canonical_facts"] = _enrich_canonical_facts_with_relative_anchor_dates([
+        case_file["canonical_facts"] = _dedupe_structured_timeline_groups(_enrich_canonical_facts_with_relative_anchor_dates([
             _normalize_canonical_fact_record(record)
             for record in _coerce_list(case_file.get("canonical_facts"))
             if isinstance(record, dict)
-        ])
+        ]))
         case_file["proof_leads"] = [
             _normalize_proof_lead_record(record)
             for record in _coerce_list(case_file.get("proof_leads"))

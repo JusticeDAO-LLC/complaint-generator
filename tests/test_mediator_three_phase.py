@@ -3747,6 +3747,60 @@ class TestMediatorThreePhaseIntegration:
         assert selected[0]['selector_signals']['workflow_action_match_count'] >= 1
         assert selected[0]['selector_signals']['workflow_action_phase'] == 'graph_analysis'
         assert selected[0]['selector_signals']['workflow_action_rank'] == 1
+
+    def test_intake_selector_rewrites_document_question_for_exhibit_ready_grounding(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'workflow_optimization_guidance',
+            {
+                'document_provenance_summary': {
+                    'avg_exhibit_backed_ratio': 0.1,
+                }
+            },
+        )
+        candidates = [
+            {
+                'question': 'Do you have a denial notice, email, or other written documents about this?',
+                'type': 'evidence',
+                'question_objective': 'identify_supporting_evidence',
+                'proof_priority': 3,
+                'candidate_source': 'intake_proof_gap',
+                'ranking_explanation': {
+                    'blocking_level': 'important',
+                    'question_goal': 'identify_supporting_proof',
+                    'phase1_section': 'document_generation',
+                    'candidate_source': 'intake_proof_gap',
+                },
+            },
+            {
+                'question': 'What outcome are you hoping for?',
+                'type': 'remedy',
+                'question_objective': 'harm_remedy',
+                'proof_priority': 3,
+                'candidate_source': 'knowledge_graph_gap',
+                'ranking_explanation': {
+                    'blocking_level': 'informational',
+                    'question_goal': 'establish_element',
+                    'phase1_section': 'intake_questioning',
+                    'candidate_source': 'knowledge_graph_gap',
+                },
+            },
+        ]
+
+        selected = mediator.select_intake_question_candidates(candidates, max_questions=2)
+
+        assert selected[0]['question'].startswith('Which uploaded or uploadable documents')
+        assert 'treated as exhibits' in selected[0]['question']
+        assert 'date, sender or source, label or subject line, and the fact the document proves' in selected[0]['question']
+        assert selected[0]['selector_signals']['needs_exhibit_grounding'] is True
+        assert selected[0]['selector_signals']['exhibit_ready_document_match'] is True
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

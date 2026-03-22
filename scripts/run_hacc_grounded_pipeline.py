@@ -181,6 +181,25 @@ def _load_synthesis_roundtrip_artifacts(synthesis_summary: Dict[str, Any]) -> Di
     }
 
 
+def _persist_completed_grounded_worksheet(
+    *,
+    output_root: Path,
+    completed_grounded_intake_worksheet: Optional[str],
+) -> str:
+    destination = output_root / "completed_grounded_intake_follow_up_worksheet.json"
+    if not completed_grounded_intake_worksheet:
+        return str(destination) if destination.exists() and destination.is_file() else ""
+    source_path = Path(completed_grounded_intake_worksheet).resolve()
+    if not source_path.exists() or not source_path.is_file():
+        return str(destination) if destination.exists() and destination.is_file() else ""
+    try:
+        payload = json.loads(source_path.read_text(encoding="utf-8"))
+    except Exception:
+        return str(destination) if destination.exists() and destination.is_file() else ""
+    _write_json(destination, payload)
+    return str(destination)
+
+
 def _run_seeded_discovery_from_plan(engine: Any, seeded_discovery_plan: Dict[str, Any]) -> Dict[str, Any]:
     queries = [
         str(item).strip()
@@ -343,6 +362,7 @@ def _build_grounded_workflow_status(
     recommended_next_action: Dict[str, Any],
     research_action_queue: Sequence[Dict[str, Any]],
     synthesis_roundtrip_artifacts: Dict[str, Any],
+    completed_grounded_intake_worksheet_path: str,
 ) -> Dict[str, Any]:
     refreshed_grounding_state = dict(synthesis_roundtrip_artifacts.get("refreshed_grounding_state") or {})
     grounded_follow_up_answer_summary = dict(synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary") or {})
@@ -361,7 +381,187 @@ def _build_grounded_workflow_status(
         "has_refreshed_grounding_state": bool(refreshed_grounding_state),
         "grounded_follow_up_answer_count": int(grounded_follow_up_answer_summary.get("answered_item_count", 0) or 0),
         "refreshed_grounding_status": str(refreshed_grounding_state.get("status") or ""),
+        "has_persisted_completed_grounded_worksheet": bool(str(completed_grounded_intake_worksheet_path or "").strip()),
+        "persisted_completed_grounded_worksheet_path": str(completed_grounded_intake_worksheet_path or ""),
     }
+
+
+def _render_grounded_workflow_status_markdown(
+    status: Dict[str, Any],
+    history: Optional[Sequence[Dict[str, Any]]] = None,
+) -> str:
+    effective_next_action = dict(status.get("effective_next_action") or {})
+    lines = [
+        "# Grounded Workflow Status",
+        "",
+        f"- Query: {status.get('query', '')}",
+        f"- Workflow stage: {status.get('workflow_stage', '')}",
+        f"- Refreshed grounding available: {'yes' if status.get('has_refreshed_grounding_state') else 'no'}",
+        f"- Grounded follow-up answers: {status.get('grounded_follow_up_answer_count', 0)}",
+        f"- Persisted grounded worksheet: {'yes' if status.get('has_persisted_completed_grounded_worksheet') else 'no'}",
+        "",
+        "## Effective Next Action",
+        "",
+        f"- Phase: {effective_next_action.get('phase_name', '')}",
+        f"- Action: {effective_next_action.get('action', '')}",
+    ]
+    description = str(effective_next_action.get("description") or "").strip()
+    if description:
+        lines.append(f"- Description: {description}")
+    refreshed_status = str(status.get("refreshed_grounding_status") or "").strip()
+    if refreshed_status:
+        lines.extend(
+            [
+                "",
+                "## Refreshed Grounding",
+                "",
+                f"- Status: {refreshed_status}",
+            ]
+        )
+    persisted_path = str(status.get("persisted_completed_grounded_worksheet_path") or "").strip()
+    if persisted_path:
+        lines.extend(
+            [
+                "",
+                "## Resume State",
+                "",
+                f"- Completed grounded worksheet: {persisted_path}",
+            ]
+        )
+    recent_history = [dict(item) for item in list(history or []) if isinstance(item, dict)]
+    if recent_history:
+        lines.extend(
+            [
+                "",
+                "## Recent Workflow Transitions",
+                "",
+                f"- Recorded transitions: {len(recent_history)}",
+            ]
+        )
+        for item in recent_history[-3:]:
+            transition_action = dict(item.get("effective_next_action") or {})
+            lines.append(
+                f"- {item.get('timestamp', '')}: {item.get('workflow_stage', '')} -> {transition_action.get('action', '')}"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def _load_json_file(path: Path) -> Any:
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _build_grounded_workflow_history_entry(status: Dict[str, Any]) -> Dict[str, Any]:
+    effective_next_action = dict(status.get("effective_next_action") or {})
+    return {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "workflow_stage": str(status.get("workflow_stage") or ""),
+        "effective_next_action": {
+            "phase_name": str(effective_next_action.get("phase_name") or ""),
+            "action": str(effective_next_action.get("action") or ""),
+            "description": str(effective_next_action.get("description") or ""),
+        },
+        "has_refreshed_grounding_state": bool(status.get("has_refreshed_grounding_state")),
+        "refreshed_grounding_status": str(status.get("refreshed_grounding_status") or ""),
+        "grounded_follow_up_answer_count": int(status.get("grounded_follow_up_answer_count", 0) or 0),
+        "has_persisted_completed_grounded_worksheet": bool(status.get("has_persisted_completed_grounded_worksheet")),
+        "persisted_completed_grounded_worksheet_path": str(status.get("persisted_completed_grounded_worksheet_path") or ""),
+    }
+
+
+def _update_grounded_workflow_history(output_root: Path, status: Dict[str, Any]) -> list[dict[str, Any]]:
+    history_path = output_root / "grounded_workflow_history.json"
+    history: list[dict[str, Any]] = []
+    if history_path.exists() and history_path.is_file():
+        try:
+            loaded = json.loads(history_path.read_text(encoding="utf-8"))
+        except Exception:
+            loaded = []
+        if isinstance(loaded, list):
+            history = [dict(item) for item in loaded if isinstance(item, dict)]
+    history.append(_build_grounded_workflow_history_entry(status))
+    _write_json(history_path, history)
+    return history
+
+
+def _load_grounded_workflow_inspection(output_root: Path) -> Dict[str, Any]:
+    status = _load_json_file(output_root / "grounded_workflow_status.json")
+    history = _load_json_file(output_root / "grounded_workflow_history.json")
+    worksheet = _load_json_file(output_root / "completed_grounded_intake_follow_up_worksheet.json")
+    refreshed_grounding_state = _load_json_file(output_root / "refreshed_grounding_state.json")
+    grounded_follow_up_answer_summary = _load_json_file(output_root / "grounded_follow_up_answer_summary.json")
+    if not isinstance(status, dict):
+        status = {}
+    if not isinstance(history, list):
+        history = []
+    if not isinstance(worksheet, dict):
+        worksheet = {}
+    if not isinstance(refreshed_grounding_state, dict):
+        refreshed_grounding_state = {}
+    if not isinstance(grounded_follow_up_answer_summary, dict):
+        grounded_follow_up_answer_summary = {}
+    recent_history = [dict(item) for item in history if isinstance(item, dict)][-5:]
+    return {
+        "output_dir": str(output_root),
+        "workflow_status": status,
+        "workflow_history_count": len(history),
+        "recent_workflow_history": recent_history,
+        "completed_grounded_intake_worksheet": worksheet,
+        "has_completed_grounded_intake_worksheet": bool(worksheet),
+        "completed_grounded_intake_item_count": len(list(worksheet.get("follow_up_items") or [])),
+        "refreshed_grounding_state": refreshed_grounding_state,
+        "has_refreshed_grounding_state_artifact": bool(refreshed_grounding_state),
+        "grounded_follow_up_answer_summary": grounded_follow_up_answer_summary,
+        "artifacts": {
+            "grounded_workflow_status_json": str(output_root / "grounded_workflow_status.json"),
+            "grounded_workflow_status_md": str(output_root / "grounded_workflow_status.md"),
+            "grounded_workflow_history_json": str(output_root / "grounded_workflow_history.json"),
+            "completed_grounded_intake_worksheet_json": str(output_root / "completed_grounded_intake_follow_up_worksheet.json"),
+            "refreshed_grounding_state_json": str(output_root / "refreshed_grounding_state.json"),
+            "grounded_follow_up_answer_summary_json": str(output_root / "grounded_follow_up_answer_summary.json"),
+        },
+    }
+
+
+def _render_grounded_workflow_history_inspection(inspection: Dict[str, Any]) -> str:
+    status = dict(inspection.get("workflow_status") or {})
+    recent_history = [dict(item) for item in list(inspection.get("recent_workflow_history") or []) if isinstance(item, dict)]
+    effective_next_action = dict(status.get("effective_next_action") or {})
+    refreshed_grounding_state = dict(inspection.get("refreshed_grounding_state") or {})
+    grounded_follow_up_answer_summary = dict(inspection.get("grounded_follow_up_answer_summary") or {})
+    lines = [
+        f"Output directory: {inspection.get('output_dir', '')}",
+        f"Workflow stage: {status.get('workflow_stage', '')}",
+        f"Recorded transitions: {inspection.get('workflow_history_count', 0)}",
+    ]
+    if effective_next_action.get("action"):
+        lines.append(
+            f"Next action: {effective_next_action.get('action')} ({effective_next_action.get('phase_name', '')})"
+        )
+    lines.append(f"Grounded workflow status: {inspection.get('artifacts', {}).get('grounded_workflow_status_md', '')}")
+    lines.append(f"Grounded workflow history: {inspection.get('artifacts', {}).get('grounded_workflow_history_json', '')}")
+    lines.append(
+        f"Completed grounded worksheet items: {inspection.get('completed_grounded_intake_item_count', 0)}"
+    )
+    if inspection.get("has_refreshed_grounding_state_artifact"):
+        lines.append(
+            f"Refreshed grounding status: {refreshed_grounding_state.get('status', '')}"
+        )
+    answered_item_count = int(grounded_follow_up_answer_summary.get("answered_item_count", 0) or 0)
+    if answered_item_count:
+        lines.append(f"Grounded follow-up answers: {answered_item_count}")
+    if recent_history:
+        lines.append("Recent transitions:")
+        for item in recent_history:
+            transition_action = dict(item.get("effective_next_action") or {})
+            lines.append(
+                f"- {item.get('timestamp', '')}: {item.get('workflow_stage', '')} -> {transition_action.get('action', '')}"
+            )
+    return "\n".join(lines)
 
 
 def _render_grounded_intake_follow_up_markdown(worksheet: Dict[str, Any]) -> str:
@@ -412,6 +612,10 @@ def run_hacc_grounded_pipeline(
 ) -> Dict[str, Any]:
     output_root = Path(output_dir).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
+    completed_grounded_intake_worksheet_copy = _persist_completed_grounded_worksheet(
+        output_root=output_root,
+        completed_grounded_intake_worksheet=completed_grounded_intake_worksheet,
+    )
 
     default_request = _default_grounding_request(hacc_preset)
     resolved_query = str(query or default_request["query"])
@@ -534,7 +738,7 @@ def run_hacc_grounded_pipeline(
             filing_forum=filing_forum,
             preset=hacc_preset,
             completed_intake_worksheet=completed_intake_worksheet,
-            completed_grounded_intake_worksheet=completed_grounded_intake_worksheet,
+            completed_grounded_intake_worksheet=completed_grounded_intake_worksheet_copy or completed_grounded_intake_worksheet,
         )
         synthesis_roundtrip_artifacts = _load_synthesis_roundtrip_artifacts(synthesis_summary)
         if synthesis_roundtrip_artifacts.get("refreshed_grounding_state"):
@@ -552,8 +756,20 @@ def run_hacc_grounded_pipeline(
         recommended_next_action=recommended_next_action,
         research_action_queue=research_action_queue,
         synthesis_roundtrip_artifacts=synthesis_roundtrip_artifacts,
+        completed_grounded_intake_worksheet_path=completed_grounded_intake_worksheet_copy,
     )
     _write_json(output_root / "grounded_workflow_status.json", grounded_workflow_status)
+    grounded_workflow_history = _update_grounded_workflow_history(output_root, grounded_workflow_status)
+    grounded_workflow_status = {
+        **grounded_workflow_status,
+        "workflow_history_count": len(grounded_workflow_history),
+        "last_recorded_transition": dict(grounded_workflow_history[-1] or {}) if grounded_workflow_history else {},
+    }
+    _write_json(output_root / "grounded_workflow_status.json", grounded_workflow_status)
+    (output_root / "grounded_workflow_status.md").write_text(
+        _render_grounded_workflow_status_markdown(grounded_workflow_status, grounded_workflow_history),
+        encoding="utf-8",
+    )
 
     summary = {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -583,6 +799,7 @@ def run_hacc_grounded_pipeline(
         "complaint_synthesis": synthesis_summary,
         "synthesis_roundtrip_artifacts": synthesis_roundtrip_artifacts,
         "grounded_workflow_status": grounded_workflow_status,
+        "grounded_workflow_history": grounded_workflow_history,
         "artifacts": {
             "output_dir": str(output_root),
             "grounding_bundle_json": str(output_root / "grounding_bundle.json"),
@@ -619,6 +836,9 @@ def run_hacc_grounded_pipeline(
             "refreshed_grounding_state_json": str(output_root / "refreshed_grounding_state.json") if synthesis_roundtrip_artifacts.get("refreshed_grounding_state") else "",
             "grounded_follow_up_answer_summary_json": str(output_root / "grounded_follow_up_answer_summary.json") if synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary") else "",
             "grounded_workflow_status_json": str(output_root / "grounded_workflow_status.json"),
+            "grounded_workflow_status_md": str(output_root / "grounded_workflow_status.md"),
+            "grounded_workflow_history_json": str(output_root / "grounded_workflow_history.json"),
+            "completed_grounded_intake_worksheet_json": completed_grounded_intake_worksheet_copy,
         },
     }
     _write_json(output_root / "run_summary.json", summary)
@@ -649,12 +869,20 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--filing-forum", default="court", choices=("court", "hud", "state_agency"))
     parser.add_argument("--completed-intake-worksheet", default=None)
     parser.add_argument("--completed-grounded-intake-worksheet", default=None)
+    parser.add_argument("--show-history", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = create_parser().parse_args(argv)
+    if args.show_history:
+        inspection = _load_grounded_workflow_inspection(Path(args.output_dir).resolve())
+        if args.json:
+            print(json.dumps(_json_safe(inspection), ensure_ascii=False, indent=2))
+        else:
+            print(_render_grounded_workflow_history_inspection(inspection))
+        return 0
     summary = run_hacc_grounded_pipeline(
         output_dir=args.output_dir,
         query=args.query,
@@ -679,8 +907,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"Output directory: {summary['artifacts']['output_dir']}")
         print(f"Grounding query: {summary['grounding_query']}")
         print(f"Uploaded evidence count: {summary['evidence_upload']['upload_count']}")
+        grounded_status = dict(summary.get("grounded_workflow_status") or {})
+        effective_next_action = dict(grounded_status.get("effective_next_action") or {})
+        print(f"Workflow stage: {grounded_status.get('workflow_stage', '')}")
+        if grounded_status.get("workflow_history_count"):
+            print(f"Workflow transitions recorded: {grounded_status.get('workflow_history_count', 0)}")
+        if effective_next_action.get("action"):
+            print(f"Next action: {effective_next_action.get('action')} ({effective_next_action.get('phase_name', '')})")
         print(f"Adversarial output directory: {summary['artifacts']['adversarial_output_dir']}")
         print(f"Synthetic prompts: {summary['artifacts']['synthetic_prompts_json']}")
+        print(f"Grounded workflow status: {summary['artifacts']['grounded_workflow_status_md']}")
+        print(f"Grounded workflow history: {summary['artifacts']['grounded_workflow_history_json']}")
         if summary["artifacts"].get("draft_complaint_package_json"):
             print(f"Draft complaint package: {summary['artifacts']['draft_complaint_package_json']}")
     return 0

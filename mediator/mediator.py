@@ -194,6 +194,7 @@ class Mediator:
 			for value in (gap_context.get('weak_evidence_modalities') or [])
 			if str(value).strip()
 		}
+		needs_exhibit_grounding = bool(gap_context.get('needs_exhibit_grounding'))
 
 		def _signals(candidate: Dict[str, Any]) -> Dict[str, Any]:
 			signals = candidate.get('selector_signals')
@@ -417,6 +418,10 @@ class Mediator:
 				signals.get('policy_or_file_evidence_match', False)
 				or any(token in text for token in ('policy document', 'written policy', 'file evidence', 'case file', 'notice attachment'))
 			)
+			exhibit_ready_document_match = bool(
+				signals.get('exhibit_ready_document_match', False)
+				or self._is_document_question_candidate(candidate, signals)
+			)
 			weak_claim_generalization_match = bool(
 				signals.get('weak_claim_generalization_match', False)
 				or target_claim_type in {'housing_discrimination', 'hacc_research_engine'}
@@ -444,6 +449,8 @@ class Mediator:
 				adjustment += 1.25
 			if policy_or_file_evidence_match and weak_modalities.intersection({'policy_document', 'file_evidence'}):
 				adjustment += 1.0
+			if exhibit_ready_document_match and needs_exhibit_grounding:
+				adjustment += 1.75
 			if weak_claim_generalization_match and target_claim_type in weak_claim_types:
 				adjustment += 1.0
 			return actor_critic_score + adjustment
@@ -488,7 +495,11 @@ class Mediator:
 			)
 
 		scored_candidates.sort(key=_sort_key)
-		return scored_candidates[:max_questions]
+		selected = scored_candidates[:max_questions]
+		return self._apply_exhibit_ready_intake_questioning(
+			selected,
+			gap_context=gap_context,
+		)
 
 	def _phase_focus_rank(self, phase1_section: str) -> int:
 		return {
@@ -503,6 +514,106 @@ class Mediator:
 			'document_generation': 7.0,
 			'intake_questioning': 4.0,
 		}.get(str(phase1_section or '').strip().lower(), 0.0)
+
+	def _is_document_question_candidate(
+		self,
+		candidate: Dict[str, Any],
+		signals: Optional[Dict[str, Any]] = None,
+	) -> bool:
+		signals = signals if isinstance(signals, dict) else {}
+		parts = (
+			candidate.get('question'),
+			candidate.get('question_objective'),
+			candidate.get('type'),
+			candidate.get('expected_proof_gain'),
+			candidate.get('candidate_source'),
+			signals.get('question_objective'),
+			signals.get('question_type'),
+		)
+		text = ' '.join(str(value or '').strip().lower() for value in parts if str(value or '').strip())
+		return bool(
+			any(
+				token in text
+				for token in (
+					'document',
+					'documents',
+					'email',
+					'emails',
+					'notice',
+					'notices',
+					'letter',
+					'letters',
+					'attachment',
+					'attachments',
+					'uploaded',
+					'uploadable',
+					'written decision',
+					'denial letter',
+					'decision notice',
+					'policy document',
+					'file evidence',
+					'exhibit',
+					'exhibits',
+				)
+			)
+			or str(candidate.get('type') or signals.get('question_type') or '').strip().lower() in {'evidence', 'documents', 'document'}
+			or str(candidate.get('question_objective') or signals.get('question_objective') or '').strip().lower() in {
+				'identify_supporting_evidence',
+				'documents',
+				'documentary_support',
+			}
+		)
+
+	def _build_exhibit_ready_document_question(self, candidate: Dict[str, Any]) -> str:
+		question_text = str(candidate.get('question') or '').strip()
+		lowered = question_text.lower()
+		if 'treated as exhibits' in lowered and 'fact' in lowered and 'sender' in lowered:
+			return question_text
+		document_examples: List[str] = []
+		for token, example in (
+			('denial', 'denial notice'),
+			('notice', 'notice'),
+			('decision', 'written decision'),
+			('appeal', 'appeal request'),
+			('hearing', 'hearing request'),
+			('review', 'review request'),
+			('email', 'email'),
+			('policy', 'policy or handbook excerpt'),
+		):
+			if token in lowered and example not in document_examples:
+				document_examples.append(example)
+		if not document_examples:
+			document_examples = ['denial notice', 'email', 'hearing or review request', 'policy excerpt']
+		example_text = ', '.join(document_examples[:4])
+		return (
+			f"Which uploaded or uploadable documents, such as {example_text}, should be treated as exhibits for this issue, "
+			"and for each one what are the date, sender or source, label or subject line, and the fact the document proves?"
+		)
+
+	def _apply_exhibit_ready_intake_questioning(
+		self,
+		candidates: List[Dict[str, Any]],
+		*,
+		gap_context: Optional[Dict[str, Any]] = None,
+	) -> List[Dict[str, Any]]:
+		gap_context = gap_context if isinstance(gap_context, dict) else {}
+		if not bool(gap_context.get('needs_exhibit_grounding')):
+			return list(candidates or [])
+		adjusted: List[Dict[str, Any]] = []
+		for candidate in candidates or []:
+			if not isinstance(candidate, dict):
+				continue
+			updated = dict(candidate)
+			signals = dict(updated.get('selector_signals', {}) if isinstance(updated.get('selector_signals'), dict) else {})
+			exhibit_ready_document_match = self._is_document_question_candidate(updated, signals)
+			signals['needs_exhibit_grounding'] = True
+			signals['exhibit_ready_document_match'] = exhibit_ready_document_match
+			if exhibit_ready_document_match:
+				updated['question'] = self._build_exhibit_ready_document_question(updated)
+				updated['question_objective'] = str(updated.get('question_objective') or 'documents')
+			updated['selector_signals'] = signals
+			adjusted.append(updated)
+		return adjusted
 
 	def _is_exact_dates_closure_match(self, question_text: str, question_objective: str, question_type: str) -> bool:
 		if question_objective in {'establish_chronology', 'timeline'} or question_type == 'timeline':
@@ -1173,6 +1284,8 @@ class Mediator:
 			any(token in question_text for token in ('policy', 'handbook', 'written rule', 'procedure', 'document', 'file', 'email', 'attachment'))
 			or any(token in expected_proof_gain for token in ('policy_document', 'file_evidence', 'policy', 'document', 'file'))
 		)
+		needs_exhibit_grounding = bool(gap_context.get('needs_exhibit_grounding'))
+		exhibit_ready_document_match = self._is_document_question_candidate(candidate)
 		generic_catch_all_prompt = bool(
 			question_type in {'general', 'open_ended', 'open-ended', 'general_intake_clarification', 'clarification'}
 			or any(
@@ -1258,6 +1371,8 @@ class Mediator:
 			score += 18.0
 		if policy_or_file_evidence_match:
 			score += 10.0
+		if exhibit_ready_document_match and needs_exhibit_grounding:
+			score += 14.0
 		if weak_claim_generalization_match:
 			score += 5.0
 		if intake_priority_match:
@@ -1316,6 +1431,8 @@ class Mediator:
 			'anchor_selection_criteria_match': anchor_selection_criteria_match,
 			'generic_catch_all_prompt': generic_catch_all_prompt,
 			'policy_or_file_evidence_match': policy_or_file_evidence_match,
+			'exhibit_ready_document_match': exhibit_ready_document_match,
+			'needs_exhibit_grounding': needs_exhibit_grounding,
 			'weak_claim_generalization_match': weak_claim_generalization_match,
 			'intake_expected_objectives': expected_objectives,
 			'intake_uncovered_objectives': uncovered_objectives,
@@ -1343,6 +1460,8 @@ class Mediator:
 		explanation['anchor_selection_criteria_match'] = anchor_selection_criteria_match
 		explanation['generic_catch_all_prompt'] = generic_catch_all_prompt
 		explanation['policy_or_file_evidence_match'] = policy_or_file_evidence_match
+		explanation['exhibit_ready_document_match'] = exhibit_ready_document_match
+		explanation['needs_exhibit_grounding'] = needs_exhibit_grounding
 		explanation['weak_claim_generalization_match'] = weak_claim_generalization_match
 		explanation['intake_expected_objectives'] = expected_objectives
 		explanation['intake_uncovered_objectives'] = uncovered_objectives
@@ -1487,6 +1606,7 @@ class Mediator:
 		unresolved_temporal_issue_count = 0
 		chronology_task_count = 0
 		missing_proof_artifact_count = 0
+		low_exhibit_grounding = False
 		objectives = set()
 
 		for payload in candidate_containers:
@@ -1542,10 +1662,17 @@ class Mediator:
 						if missing_count > 0:
 							missing_proof_artifact_count += missing_count
 							objectives.add('documents')
+				document_provenance_summary = nested.get('document_provenance_summary')
+				if isinstance(document_provenance_summary, dict):
+					exhibit_backed_ratio = float(document_provenance_summary.get('avg_exhibit_backed_ratio') or 0.0)
+					if exhibit_backed_ratio < 0.6:
+						low_exhibit_grounding = True
+						objectives.add('documents')
 
 		return {
 			'needs_chronology_closure': bool(unresolved_temporal_issue_count or chronology_task_count),
 			'needs_decision_document_precision': bool(missing_proof_artifact_count),
+			'needs_exhibit_grounding': bool(low_exhibit_grounding),
 			'objectives': sorted(objectives),
 			'unresolved_temporal_issue_count': unresolved_temporal_issue_count,
 			'chronology_task_count': chronology_task_count,
@@ -1716,6 +1843,13 @@ class Mediator:
 				'notice email',
 			):
 				_add_priority_term(term)
+		if bool(chronology_priority_hints.get('needs_exhibit_grounding')):
+			for term in (
+				'exhibit-ready upload',
+				'document label or subject line',
+				'date sender and fact proved',
+			):
+				_add_priority_term(term)
 		intake_fallback_probes: List[Dict[str, str]] = []
 		if bool(chronology_priority_hints.get('needs_chronology_closure')):
 			intake_fallback_probes.append({
@@ -1726,6 +1860,11 @@ class Mediator:
 			intake_fallback_probes.append({
 				'objective': 'documents',
 				'question': 'Ask for the denial notice, written decision, appeal notice, or related emails that fix the decision date and stated reason.',
+			})
+		if bool(chronology_priority_hints.get('needs_exhibit_grounding')):
+			intake_fallback_probes.append({
+				'objective': 'documents',
+				'question': 'Ask which uploaded or uploadable documents should be treated as exhibits and, for each one, the date, sender or source, label or subject line, and the fact the document proves.',
 			})
 		if 'anchor_grievance_hearing' in uncovered_objectives:
 			intake_fallback_probes.append({
@@ -1773,6 +1912,7 @@ class Mediator:
 			'gap_count': len(priority_terms),
 			'needs_chronology_closure': bool(chronology_priority_hints.get('needs_chronology_closure')),
 			'needs_decision_document_precision': bool(chronology_priority_hints.get('needs_decision_document_precision')),
+			'needs_exhibit_grounding': bool(chronology_priority_hints.get('needs_exhibit_grounding')),
 			'unresolved_temporal_issue_count': int(chronology_priority_hints.get('unresolved_temporal_issue_count') or 0),
 			'chronology_task_count': int(chronology_priority_hints.get('chronology_task_count') or 0),
 			'missing_proof_artifact_count': int(chronology_priority_hints.get('missing_proof_artifact_count') or 0),

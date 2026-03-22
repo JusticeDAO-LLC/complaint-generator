@@ -151,6 +151,18 @@ def _build_claim_checklist_chip_labels(claim: Dict[str, Any]) -> List[str]:
     if contradiction_candidate_count > 0:
         chip_labels.append(f"contradiction candidates: {contradiction_candidate_count}")
 
+    claim_unresolved_temporal_issue_count = int(claim.get("claim_unresolved_temporal_issue_count") or 0)
+    if claim_unresolved_temporal_issue_count > 0:
+        chip_labels.append(f"unresolved temporal issues: {claim_unresolved_temporal_issue_count}")
+
+    claim_missing_temporal_predicates = _extract_text_candidates(claim.get("claim_missing_temporal_predicates"))
+    if claim_missing_temporal_predicates:
+        chip_labels.append(f"missing temporal predicates: {len(claim_missing_temporal_predicates)}")
+
+    claim_required_provenance_kinds = _extract_text_candidates(claim.get("claim_required_provenance_kinds"))
+    if claim_required_provenance_kinds:
+        chip_labels.append(f"required provenance kinds: {len(claim_required_provenance_kinds)}")
+
     return chip_labels
 
 
@@ -5531,11 +5543,28 @@ class FormalComplaintDocumentBuilder:
                 summary = str(item.get("summary") or "").strip()
                 detail = str(item.get("detail") or "").strip()
                 review_url = str(item.get("review_url") or "").strip()
+                chip_labels = _extract_text_candidates(item.get("chip_labels"))
+                claim_missing_temporal_predicates = _extract_text_candidates(item.get("claim_missing_temporal_predicates"))
+                claim_required_provenance_kinds = _extract_text_candidates(item.get("claim_required_provenance_kinds"))
+                claim_unresolved_temporal_issue_count = int(item.get("claim_unresolved_temporal_issue_count") or 0)
                 lines.append(f"{index}. [{status}] {scope}: {title_text}")
                 if summary:
                     lines.append(f"   Summary: {summary}")
                 if detail:
                     lines.append(f"   Detail: {detail}")
+                if chip_labels:
+                    lines.append(f"   Signals: {' | '.join(chip_labels)}")
+                if claim_unresolved_temporal_issue_count > 0:
+                    lines.append(f"   Unresolved temporal issues: {claim_unresolved_temporal_issue_count}")
+                if claim_missing_temporal_predicates:
+                    lines.append(
+                        f"   Missing temporal predicates: {'; '.join(claim_missing_temporal_predicates)}"
+                    )
+                if claim_required_provenance_kinds:
+                    lines.append(
+                        "   Required provenance kinds: "
+                        + ", ".join(_humanize_checklist_label(value) or str(value) for value in claim_required_provenance_kinds)
+                    )
                 if review_url:
                     lines.append(f"   Review URL: {review_url}")
                 lines.append("")
@@ -8410,6 +8439,22 @@ class FormalComplaintDocumentBuilder:
             support_claim = support_claims.get(claim_type, {}) if isinstance(support_claims.get(claim_type), dict) else {}
             gap_claim = gap_claims.get(claim_type, {}) if isinstance(gap_claims.get(claim_type), dict) else {}
             validation_claim = validation_claims.get(claim_type, {}) if isinstance(validation_claims.get(claim_type), dict) else {}
+            if not isinstance(validation_claim, dict) or not validation_claim:
+                claim_validation_payload = self._safe_mediator_dict(
+                    "get_claim_support_validation",
+                    claim_type=claim_type,
+                    user_id=user_id,
+                )
+                claim_validation_claims = (
+                    claim_validation_payload.get("claims", {})
+                    if isinstance(claim_validation_payload.get("claims"), dict)
+                    else {}
+                )
+                validation_claim = (
+                    claim_validation_claims.get(claim_type, {})
+                    if isinstance(claim_validation_claims.get(claim_type), dict)
+                    else {}
+                )
             draft_claim = draft_claims_by_type.get(claim_type, {}) if isinstance(draft_claims_by_type.get(claim_type), dict) else {}
             overview_payload = self._safe_mediator_dict(
                 "get_claim_overview",
@@ -8421,6 +8466,21 @@ class FormalComplaintDocumentBuilder:
             treatment_summary = support_claim.get("authority_treatment_summary", {}) if isinstance(support_claim.get("authority_treatment_summary"), dict) else {}
             rule_summary = support_claim.get("authority_rule_candidate_summary", {}) if isinstance(support_claim.get("authority_rule_candidate_summary"), dict) else {}
             source_context = self._extract_support_source_context_counts(support_claim)
+            claim_reasoning_summary = summarize_claim_reasoning_review(validation_claim) if validation_claim else {}
+            claim_temporal_issue_count = int(claim_reasoning_summary.get("claim_temporal_issue_count", 0) or 0)
+            claim_unresolved_temporal_issue_count = int(
+                claim_reasoning_summary.get("claim_unresolved_temporal_issue_count", 0) or 0
+            )
+            claim_resolved_temporal_issue_count = int(
+                claim_reasoning_summary.get("claim_resolved_temporal_issue_count", 0) or 0
+            )
+            claim_temporal_issue_ids = _extract_text_candidates(claim_reasoning_summary.get("claim_temporal_issue_ids"))
+            claim_missing_temporal_predicates = _extract_text_candidates(
+                claim_reasoning_summary.get("claim_missing_temporal_predicates")
+            )
+            claim_required_provenance_kinds = _extract_text_candidates(
+                claim_reasoning_summary.get("claim_required_provenance_kinds")
+            )
 
             claim_status = "ready"
             warnings: List[Dict[str, Any]] = []
@@ -8457,6 +8517,11 @@ class FormalComplaintDocumentBuilder:
                     for item in _coerce_list(draft_claim.get("missing_elements"))
                     if str(item or "").strip().lower().startswith("chronology gap")
                 )
+            temporal_gap_hint_count = max(
+                temporal_gap_hint_count,
+                claim_unresolved_temporal_issue_count,
+                len(claim_missing_temporal_predicates),
+            )
             if temporal_gap_hint_count > 0:
                 claim_status = _merge_status(claim_status, "warning")
                 warnings.append(
@@ -8516,6 +8581,12 @@ class FormalComplaintDocumentBuilder:
                 "proof_gap_count": int(validation_claim.get("proof_gap_count", 0) or 0),
                 "temporal_gap_hint_count": temporal_gap_hint_count,
                 "contradiction_candidate_count": int(validation_claim.get("contradiction_candidate_count", 0) or 0),
+                "claim_temporal_issue_count": claim_temporal_issue_count,
+                "claim_unresolved_temporal_issue_count": claim_unresolved_temporal_issue_count,
+                "claim_resolved_temporal_issue_count": claim_resolved_temporal_issue_count,
+                "claim_temporal_issue_ids": claim_temporal_issue_ids,
+                "claim_missing_temporal_predicates": claim_missing_temporal_predicates,
+                "claim_required_provenance_kinds": claim_required_provenance_kinds,
                 "support_by_kind": support_claim.get("support_by_kind", {}),
                 "support_by_source": source_context["support_by_source"],
                 "source_family_counts": source_context["source_family_counts"],
@@ -8527,6 +8598,7 @@ class FormalComplaintDocumentBuilder:
                 "authority_rule_candidate_summary": rule_summary,
                 "warnings": warnings,
             }
+            claim_entry["chip_labels"] = _build_claim_checklist_chip_labels(claim_entry)
             aggregate_warning_count += len(warnings)
             overall_status = _merge_status(overall_status, claim_status)
             claim_readiness.append(claim_entry)
@@ -9168,6 +9240,9 @@ class FormalComplaintDocumentBuilder:
                         "summary": f"{claim_type.title()} is ready for filing review.",
                         "detail": self._summarize_metrics(metrics),
                         "chip_labels": chip_labels,
+                        "claim_unresolved_temporal_issue_count": int(claim.get("claim_unresolved_temporal_issue_count") or 0),
+                        "claim_missing_temporal_predicates": _extract_text_candidates(claim.get("claim_missing_temporal_predicates")),
+                        "claim_required_provenance_kinds": _extract_text_candidates(claim.get("claim_required_provenance_kinds")),
                     }
                 )
                 continue
@@ -9181,6 +9256,9 @@ class FormalComplaintDocumentBuilder:
                     "summary": str(primary_warning.get("message") or f"Review {claim_type.title()} before filing."),
                     "detail": self._summarize_metrics(metrics),
                     "chip_labels": chip_labels,
+                    "claim_unresolved_temporal_issue_count": int(claim.get("claim_unresolved_temporal_issue_count") or 0),
+                    "claim_missing_temporal_predicates": _extract_text_candidates(claim.get("claim_missing_temporal_predicates")),
+                    "claim_required_provenance_kinds": _extract_text_candidates(claim.get("claim_required_provenance_kinds")),
                 }
             )
 

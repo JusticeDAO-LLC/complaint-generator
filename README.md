@@ -217,6 +217,20 @@ The dry run reports legacy testimony rows that can be canonically linked to regi
 The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path.
 The lightweight slice also covers adversarial session intake-prompt regressions that shape HACC-specific questioning and recovery behavior.
 
+To inspect an existing grounded HACC run without rerunning research, upload, or synthesis, use:
+
+```bash
+.venv/bin/python scripts/run_hacc_grounded_pipeline.py \
+    --output-dir output/hacc_grounded/<run_id> \
+    --show-history
+
+.venv/bin/python scripts/run_hacc_grounded_pipeline.py \
+    --output-dir output/hacc_grounded/<run_id> \
+    --show-history --json
+```
+
+That read-only view summarizes the current grounded workflow status, recent transitions, completed grounded worksheet state, refreshed grounding state, and grounded follow-up answer summary for the selected run directory.
+
 Also available via:
 
 - VS Code tasks `HACC Unit Regression` and `HACC Grounding Regression`

@@ -1535,9 +1535,14 @@ class AdversarialSession:
             any(marker in item for marker in decision_document_markers)
             for item in priorities
         ) or bool(chronology_priority_hints.get('needs_decision_document_precision'))
+        needs_exhibit_grounding = any(
+            'exhibit' in item or 'uploaded evidence' in item or 'uploaded document' in item
+            for item in priorities
+        ) or bool(chronology_priority_hints.get('needs_exhibit_grounding'))
         return {
             'needs_chronology_closure': needs_chronology_closure,
             'needs_decision_document_precision': needs_decision_document_precision,
+            'needs_exhibit_grounding': needs_exhibit_grounding,
         }
 
     @staticmethod
@@ -1552,6 +1557,7 @@ class AdversarialSession:
         unresolved_temporal_issue_count = 0
         chronology_task_count = 0
         missing_proof_artifact_count = 0
+        low_exhibit_grounding = False
         objectives: Set[str] = set()
 
         for payload in candidate_containers:
@@ -1607,9 +1613,17 @@ class AdversarialSession:
                             missing_proof_artifact_count += missing_count
                             objectives.add('documents')
 
+                document_provenance_summary = nested.get('document_provenance_summary')
+                if isinstance(document_provenance_summary, dict):
+                    exhibit_backed_ratio = float(document_provenance_summary.get('avg_exhibit_backed_ratio') or 0.0)
+                    if exhibit_backed_ratio < 0.6:
+                        low_exhibit_grounding = True
+                        objectives.add('documents')
+
         return {
             'needs_chronology_closure': bool(unresolved_temporal_issue_count or chronology_task_count),
             'needs_decision_document_precision': bool(missing_proof_artifact_count),
+            'needs_exhibit_grounding': bool(low_exhibit_grounding),
             'objectives': sorted(objectives),
             'unresolved_temporal_issue_count': unresolved_temporal_issue_count,
             'chronology_task_count': chronology_task_count,
@@ -2774,6 +2788,8 @@ class AdversarialSession:
             objective_priority['causation_sequence'] = min(-6, objective_priority['causation_sequence'])
         if bool(chronology_priority_hints.get('needs_decision_document_precision')) and 'documents' in objective_priority:
             objective_priority['documents'] = min(-3, objective_priority['documents'])
+        if bool(chronology_priority_hints.get('needs_exhibit_grounding')) and 'documents' in objective_priority:
+            objective_priority['documents'] = min(-5, objective_priority['documents'])
 
         for objective in list(objective_priority):
             if objective == 'documents' and set(optimizer_context.get('weak_evidence_modalities') or set()).intersection({'policy_document', 'file_evidence'}):
@@ -3649,10 +3665,17 @@ class AdversarialSession:
                 "causation_sequence",
             ))
         if need_documentary_evidence:
-            probe_candidates.append((
-                "Do you have any supporting records such as dated notices, emails, messages, letters, screenshots, or other written documents that match each key event?",
-                "documents",
-            ))
+            chronology_priority_hints = self._extract_document_chronology_priority_hints(seed_complaint)
+            if bool(chronology_priority_hints.get('needs_exhibit_grounding')):
+                probe_candidates.append((
+                    "Which uploaded or uploadable documents should be treated as exhibits for each key event, and for each one what are the date, sender or source, subject or label, and the fact it proves?",
+                    "documents",
+                ))
+            else:
+                probe_candidates.append((
+                    "Do you have any supporting records such as dated notices, emails, messages, letters, screenshots, or other written documents that match each key event?",
+                    "documents",
+                ))
         if need_witness:
             probe_candidates.append((
                 "Were there any witnesses who saw or heard these events, and how can they be identified?",

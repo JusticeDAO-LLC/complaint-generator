@@ -735,6 +735,9 @@ def test_extract_latest_batch_priority_flags_reads_document_chronology_hints():
                     "proof_artifact_status_counts": {"missing": 1, "available": 1},
                 }
             },
+            "document_provenance_summary": {
+                "avg_exhibit_backed_ratio": 0.25,
+            },
         }
     }
 
@@ -742,6 +745,7 @@ def test_extract_latest_batch_priority_flags_reads_document_chronology_hints():
 
     assert flags["needs_chronology_closure"] is True
     assert flags["needs_decision_document_precision"] is True
+    assert flags["needs_exhibit_grounding"] is True
 
 
 def test_reprioritize_candidates_uses_document_chronology_hints_to_frontload_timeline_and_documents():
@@ -768,6 +772,9 @@ def test_reprioritize_candidates_uses_document_chronology_hints_to_frontload_tim
                     "proof_artifact_available_element_count": 0,
                     "proof_artifact_status_counts": {"missing": 1},
                 }
+            },
+            "document_provenance_summary": {
+                "avg_exhibit_backed_ratio": 0.2,
             },
         },
     }
@@ -805,6 +812,48 @@ def test_reprioritize_candidates_uses_document_chronology_hints_to_frontload_tim
     assert ranked[0]["selector_signals"]["intake_priority_match"] == ["timeline"]
     assert ranked[1]["question"].startswith("Do you have any emails, notices")
     assert ranked[1]["selector_signals"]["intake_priority_match"] == ["documents"]
+
+
+def test_build_fallback_probe_asks_for_exhibit_ready_document_details_when_exhibit_grounding_is_weak():
+    session = AdversarialSession(
+        session_id="test-exhibit-grounding",
+        mediator=_DummyMediator(),
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=3,
+    )
+    seed = {
+        "workflow_optimization_guidance": {
+            "document_provenance_summary": {
+                "avg_exhibit_backed_ratio": 0.1,
+            }
+        }
+    }
+
+    probe = session._build_fallback_probe(
+        seed,
+        asked_question_counts={},
+        asked_intent_counts={},
+        need_timeline=False,
+        need_harm_remedy=False,
+        need_actor_decisionmaker=False,
+        need_causation=False,
+        need_documentary_evidence=True,
+        need_witness=False,
+        need_exact_dates=False,
+        need_staff_names_titles=False,
+        need_hearing_request_timing=False,
+        need_response_dates=False,
+        need_causation_sequence=False,
+        last_question_key=None,
+        last_question_intent_key=None,
+        recent_intent_keys=set(),
+        missing_anchor_sections=set(),
+    )
+
+    assert probe["question_objective"] == "documents"
+    assert "treated as exhibits" in probe["question"]
+    assert "date, sender or source" in probe["question"]
 
 
 def test_summarize_intake_priority_coverage_does_not_force_selection_criteria_for_non_selection_seed():

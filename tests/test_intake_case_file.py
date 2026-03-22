@@ -119,6 +119,10 @@ def test_build_intake_case_file_adds_structured_temporal_context_and_anchor_fiel
         "relative_only_fact_ids": [],
         "warnings": [],
         "partial_order_ready": True,
+        "day_precision_fact_count": 1,
+        "non_day_precision_fact_ids": [],
+        "temporal_conflict_relation_count": 0,
+        "orphan_anchor_count": 0,
     }
 
 
@@ -236,8 +240,14 @@ def test_refresh_intake_case_file_backfills_temporal_context_and_links_proof_lea
         "relation_type_counts": {"before": 1},
         "missing_temporal_fact_ids": [],
         "relative_only_fact_ids": [],
-        "warnings": [],
+        "warnings": [
+            "Some anchored facts are only month/year precision and may still need day-level dates."
+        ],
         "partial_order_ready": True,
+        "day_precision_fact_count": 1,
+        "non_day_precision_fact_ids": ["fact_1"],
+        "temporal_conflict_relation_count": 0,
+        "orphan_anchor_count": 0,
     }
 
 
@@ -542,6 +552,257 @@ def test_refresh_intake_case_file_downgrades_sequenced_structured_steps_without_
     assert issue["blocking"] is False
     assert issue["recommended_resolution_lane"] == "capture_testimony"
     assert issue["required_provenance_kinds"] == ["testimony_record", "document_artifact"]
+
+
+def test_refresh_intake_case_file_dedupes_duplicate_structured_timeline_groups():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_group_a_1",
+                "text": "Me raised concerns and asked for review in early 2025.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+                "event_date_or_range": "early 2025",
+            },
+            {
+                "fact_id": "fact_group_a_2",
+                "text": "HACC sent an adverse notice shortly after my complaint.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+            },
+            {
+                "fact_id": "fact_group_b_1",
+                "text": "Me protected activity: I disputed HACC action and asked for review.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_b",
+                "sequence_index": 1,
+                "event_date_or_range": None,
+            },
+            {
+                "fact_id": "fact_group_b_2",
+                "text": "HACC adverse action: notice that put my housing status at risk shortly after my complaint.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_b",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    remaining_groups = {
+        fact["structured_timeline_group"]
+        for fact in refreshed["canonical_facts"]
+        if isinstance(fact, dict) and fact.get("structured_timeline_group")
+    }
+    assert remaining_groups == {"group_a"}
+
+
+def test_refresh_intake_case_file_suppresses_summary_timeline_issue_when_structured_counterpart_exists():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_summary",
+                "text": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "event_date_or_range": "after I raised concerns",
+            },
+            {
+                "fact_id": "fact_structured_1",
+                "text": "Me raised concerns and asked for review in early 2025.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+                "event_date_or_range": "early 2025",
+            },
+            {
+                "fact_id": "fact_structured_2",
+                "text": "HACC sent an adverse notice shortly after my complaint.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    issue_fact_ids = [tuple(item.get("fact_ids") or []) for item in refreshed["temporal_issue_registry"]]
+    assert ("fact_summary",) not in issue_fact_ids
+
+
+def test_refresh_intake_case_file_suppresses_relative_complaint_summary_when_structured_counterpart_exists():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_summary",
+                "text": "After I made my complaint/request for review, communication became inconsistent, and decisions were made that put my housing at risk.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "event_date_or_range": "after I made my complaint/request for review",
+            },
+            {
+                "fact_id": "fact_structured_1",
+                "text": "Me disputed HACC action and asked for review in early 2025.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+                "event_date_or_range": "early 2025",
+            },
+            {
+                "fact_id": "fact_structured_2",
+                "text": "HACC communication became inconsistent and an adverse notice followed shortly after my complaint.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    issue_fact_ids = [tuple(item.get("fact_ids") or []) for item in refreshed["temporal_issue_registry"]]
+    assert ("fact_summary",) not in issue_fact_ids
+
+
+def test_refresh_intake_case_file_suppresses_complaint_summary_when_structured_counterpart_is_hearing_process():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_summary",
+                "text": "After I made my complaint/request for review, communication became inconsistent, and decisions were made that put my housing at risk.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "event_date_or_range": "After I made my complaint/request for review, communication became inconsistent, and decisions were made that put my housing at risk.",
+            },
+            {
+                "fact_id": "fact_structured_1",
+                "text": "Me raised concerns/disputed HACC action and requested review in early 2025.",
+                "fact_type": "timeline",
+                "predicate_family": "hearing_process",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+                "event_date_or_range": "early 2025",
+            },
+            {
+                "fact_id": "fact_structured_2",
+                "text": "HACC communicated adverse action shortly after my complaint.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    issue_fact_ids = [tuple(item.get("fact_ids") or []) for item in refreshed["temporal_issue_registry"]]
+    assert ("fact_summary",) not in issue_fact_ids
+
+
+def test_refresh_intake_case_file_downgrades_structured_relative_only_step_when_group_is_anchored():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_structured_1",
+                "text": "Me raised concerns and asked for review in early 2025.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+                "event_date_or_range": "early 2025",
+            },
+            {
+                "fact_id": "fact_structured_2",
+                "text": "HACC sent an adverse notice shortly after my complaint.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    issue = next(item for item in refreshed["temporal_issue_registry"] if item["fact_ids"] == ["fact_structured_2"])
+    assert issue["issue_type"] == "relative_only_ordering"
+    assert issue["severity"] == "warning"
+    assert issue["blocking"] is False
+    assert issue["recommended_resolution_lane"] == "capture_testimony"
 
 
 def test_knowledge_graph_builder_extracts_quantified_relative_event_dates():

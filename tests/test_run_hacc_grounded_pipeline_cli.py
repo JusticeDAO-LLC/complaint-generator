@@ -31,6 +31,7 @@ def test_create_parser_supports_grounded_pipeline_options():
             "--synthesize-complaint",
             "--completed-grounded-intake-worksheet",
             "grounded_answers.json",
+            "--show-history",
             "--json",
         ]
     )
@@ -40,7 +41,124 @@ def test_create_parser_supports_grounded_pipeline_options():
     assert args.use_hacc_vector_search is True
     assert args.synthesize_complaint is True
     assert args.completed_grounded_intake_worksheet == "grounded_answers.json"
+    assert args.show_history is True
     assert args.json is True
+
+
+def test_load_grounded_workflow_inspection_reads_existing_status_and_history(tmp_path):
+    cli = _load_cli_module()
+    status_path = tmp_path / "grounded_workflow_status.json"
+    history_path = tmp_path / "grounded_workflow_history.json"
+    worksheet_path = tmp_path / "completed_grounded_intake_follow_up_worksheet.json"
+    refreshed_path = tmp_path / "refreshed_grounding_state.json"
+    grounded_answer_path = tmp_path / "grounded_follow_up_answer_summary.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {
+                    "phase_name": "document_generation",
+                    "action": "continue_drafting",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    history_path.write_text(
+        json.dumps(
+            [
+                {
+                    "timestamp": "2026-03-22T00:00:00+00:00",
+                    "workflow_stage": "pre_grounded_follow_up",
+                    "effective_next_action": {"action": "upload_local_repository_evidence"},
+                },
+                {
+                    "timestamp": "2026-03-22T01:00:00+00:00",
+                    "workflow_stage": "post_grounded_follow_up",
+                    "effective_next_action": {"action": "continue_drafting"},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    worksheet_path.write_text(
+        json.dumps({"follow_up_items": [{"id": "grounded_01"}, {"id": "grounded_02"}]}),
+        encoding="utf-8",
+    )
+    refreshed_path.write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+    grounded_answer_path.write_text(
+        json.dumps({"answered_item_count": 2}),
+        encoding="utf-8",
+    )
+
+    inspection = cli._load_grounded_workflow_inspection(tmp_path)
+
+    assert inspection["workflow_status"]["workflow_stage"] == "post_grounded_follow_up"
+    assert inspection["workflow_history_count"] == 2
+    assert inspection["recent_workflow_history"][-1]["effective_next_action"]["action"] == "continue_drafting"
+    assert inspection["has_completed_grounded_intake_worksheet"] is True
+    assert inspection["completed_grounded_intake_item_count"] == 2
+    assert inspection["has_refreshed_grounding_state_artifact"] is True
+    assert inspection["grounded_follow_up_answer_summary"]["answered_item_count"] == 2
+
+
+def test_main_show_history_prints_existing_workflow_summary(tmp_path, capsys):
+    cli = _load_cli_module()
+    (tmp_path / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {
+                    "phase_name": "document_generation",
+                    "action": "continue_drafting",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "grounded_workflow_history.json").write_text(
+        json.dumps(
+            [
+                {
+                    "timestamp": "2026-03-22T00:00:00+00:00",
+                    "workflow_stage": "pre_grounded_follow_up",
+                    "effective_next_action": {"action": "upload_local_repository_evidence"},
+                },
+                {
+                    "timestamp": "2026-03-22T01:00:00+00:00",
+                    "workflow_stage": "post_grounded_follow_up",
+                    "effective_next_action": {"action": "continue_drafting"},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "completed_grounded_intake_follow_up_worksheet.json").write_text(
+        json.dumps({"follow_up_items": [{"id": "grounded_01"}, {"id": "grounded_02"}]}),
+        encoding="utf-8",
+    )
+    (tmp_path / "refreshed_grounding_state.json").write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+    (tmp_path / "grounded_follow_up_answer_summary.json").write_text(
+        json.dumps({"answered_item_count": 2}),
+        encoding="utf-8",
+    )
+
+    result = cli.main(["--output-dir", str(tmp_path), "--show-history"])
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert "Workflow stage: post_grounded_follow_up" in captured.out
+    assert "Recorded transitions: 2" in captured.out
+    assert "Completed grounded worksheet items: 2" in captured.out
+    assert "Refreshed grounding status: chronology_supported" in captured.out
+    assert "Grounded follow-up answers: 2" in captured.out
+    assert "continue_drafting" in captured.out
 
 
 def test_default_grounding_request_uses_first_query_spec(monkeypatch):
@@ -160,6 +278,8 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert Path(artifacts["grounded_intake_follow_up_worksheet_json"]).is_file()
     assert Path(artifacts["grounded_intake_follow_up_worksheet_md"]).is_file()
     assert Path(artifacts["grounded_workflow_status_json"]).is_file()
+    assert Path(artifacts["grounded_workflow_status_md"]).is_file()
+    assert Path(artifacts["grounded_workflow_history_json"]).is_file()
 
     production_steps = json.loads(Path(artifacts["production_evidence_intake_steps_json"]).read_text(encoding="utf-8"))
     mediator_checklist = json.loads(Path(artifacts["mediator_upload_checklist_json"]).read_text(encoding="utf-8"))
@@ -173,6 +293,8 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     grounded_follow_up = json.loads(Path(artifacts["grounded_intake_follow_up_worksheet_json"]).read_text(encoding="utf-8"))
     grounded_follow_up_md = Path(artifacts["grounded_intake_follow_up_worksheet_md"]).read_text(encoding="utf-8")
     grounded_workflow_status = json.loads(Path(artifacts["grounded_workflow_status_json"]).read_text(encoding="utf-8"))
+    grounded_workflow_status_md = Path(artifacts["grounded_workflow_status_md"]).read_text(encoding="utf-8")
+    grounded_workflow_history = json.loads(Path(artifacts["grounded_workflow_history_json"]).read_text(encoding="utf-8"))
 
     assert production_steps == ["Select the strongest dated notice first."]
     assert mediator_checklist == ["Evaluate chronology anchors and named actors."]
@@ -189,6 +311,16 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert "Grounded Intake Follow-Up Worksheet" in grounded_follow_up_md
     assert grounded_workflow_status["workflow_stage"] == "pre_grounded_follow_up"
     assert grounded_workflow_status["effective_next_action"]["action"] == "upload_local_repository_evidence"
+    assert grounded_workflow_status["has_persisted_completed_grounded_worksheet"] is False
+    assert grounded_workflow_status["workflow_history_count"] == 1
+    assert grounded_workflow_status["last_recorded_transition"]["workflow_stage"] == "pre_grounded_follow_up"
+    assert len(grounded_workflow_history) == 1
+    assert grounded_workflow_history[0]["workflow_stage"] == "pre_grounded_follow_up"
+    assert grounded_workflow_history[0]["effective_next_action"]["action"] == "upload_local_repository_evidence"
+    assert "Grounded Workflow Status" in grounded_workflow_status_md
+    assert "Workflow stage: pre_grounded_follow_up" in grounded_workflow_status_md
+    assert "Recent Workflow Transitions" in grounded_workflow_status_md
+    assert "Recorded transitions: 1" in grounded_workflow_status_md
 
 
 def test_run_hacc_grounded_pipeline_degrades_when_seeded_discovery_raises(tmp_path, monkeypatch):
@@ -313,6 +445,11 @@ def test_run_hacc_grounded_pipeline_persists_synthesis_roundtrip_artifacts(tmp_p
         lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
     )
     monkeypatch.setattr(cli, "_run_complaint_synthesis", fake_run_complaint_synthesis)
+    completed_grounded_path = tmp_path / "grounded_answers.json"
+    completed_grounded_path.write_text(
+        json.dumps({"follow_up_items": [{"id": "grounded_priority_01", "answer": "Answered"}]}),
+        encoding="utf-8",
+    )
 
     summary = cli.run_hacc_grounded_pipeline(
         output_dir=tmp_path,
@@ -320,18 +457,202 @@ def test_run_hacc_grounded_pipeline_persists_synthesis_roundtrip_artifacts(tmp_p
         claim_type="housing_discrimination",
         top_k=1,
         synthesize_complaint=True,
-        completed_grounded_intake_worksheet="grounded_answers.json",
+        completed_grounded_intake_worksheet=str(completed_grounded_path),
     )
 
     refreshed_path = Path(summary["artifacts"]["refreshed_grounding_state_json"])
     grounded_answer_path = Path(summary["artifacts"]["grounded_follow_up_answer_summary_json"])
     workflow_status_path = Path(summary["artifacts"]["grounded_workflow_status_json"])
+    workflow_status_md_path = Path(summary["artifacts"]["grounded_workflow_status_md"])
+    workflow_history_path = Path(summary["artifacts"]["grounded_workflow_history_json"])
+    completed_copy_path = Path(summary["artifacts"]["completed_grounded_intake_worksheet_json"])
     assert refreshed_path.is_file()
     assert grounded_answer_path.is_file()
     assert workflow_status_path.is_file()
+    assert workflow_status_md_path.is_file()
+    assert workflow_history_path.is_file()
+    assert completed_copy_path.is_file()
     assert json.loads(refreshed_path.read_text(encoding="utf-8"))["status"] == "chronology_supported"
     assert json.loads(grounded_answer_path.read_text(encoding="utf-8"))["answered_item_count"] == 2
     workflow_status = json.loads(workflow_status_path.read_text(encoding="utf-8"))
+    workflow_history = json.loads(workflow_history_path.read_text(encoding="utf-8"))
     assert workflow_status["workflow_stage"] == "post_grounded_follow_up"
     assert workflow_status["has_refreshed_grounding_state"] is True
     assert workflow_status["grounded_follow_up_answer_count"] == 2
+    assert workflow_status["has_persisted_completed_grounded_worksheet"] is True
+    assert workflow_status["persisted_completed_grounded_worksheet_path"] == str(completed_copy_path)
+    assert workflow_status["workflow_history_count"] == 1
+    assert workflow_status["last_recorded_transition"]["workflow_stage"] == "post_grounded_follow_up"
+    assert len(workflow_history) == 1
+    assert workflow_history[0]["workflow_stage"] == "post_grounded_follow_up"
+    assert workflow_history[0]["grounded_follow_up_answer_count"] == 2
+    assert "Workflow stage: post_grounded_follow_up" in workflow_status_md_path.read_text(encoding="utf-8")
+    assert json.loads(completed_copy_path.read_text(encoding="utf-8"))["follow_up_items"][0]["answer"] == "Answered"
+
+
+def test_run_hacc_grounded_pipeline_reuses_persisted_completed_grounded_worksheet(tmp_path, monkeypatch):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {},
+                "seeded_discovery_plan": {},
+                "research_action_queue": [],
+                "recommended_next_action": {},
+            }
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "synthetic_prompts": {},
+                "anchor_passages": [],
+                "upload_candidates": [],
+                "mediator_evidence_packets": [],
+                "claim_support_temporal_handoff": {},
+                "document_generation_handoff": {},
+                "drafting_readiness": {},
+                "graph_completeness_signals": {},
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 0}
+
+    captured = {}
+
+    def fake_run_complaint_synthesis(**kwargs):
+        captured.update(kwargs)
+        return {}
+
+    persisted = tmp_path / "completed_grounded_intake_follow_up_worksheet.json"
+    persisted.write_text(
+        json.dumps({"follow_up_items": [{"id": "grounded_priority_01", "answer": "Existing answer"}]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", fake_run_complaint_synthesis)
+
+    cli.run_hacc_grounded_pipeline(
+        output_dir=tmp_path,
+        query="termination notice chronology",
+        claim_type="housing_discrimination",
+        top_k=1,
+        synthesize_complaint=True,
+    )
+
+    assert captured["completed_grounded_intake_worksheet"] == str(persisted)
+
+
+def test_run_hacc_grounded_pipeline_appends_workflow_history_across_reruns(tmp_path, monkeypatch):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {},
+                "seeded_discovery_plan": {},
+                "research_action_queue": [],
+                "recommended_next_action": {
+                    "phase_name": "evidence_upload",
+                    "action": "upload_local_repository_evidence",
+                    "description": "Upload repository evidence first.",
+                },
+            }
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "synthetic_prompts": {},
+                "anchor_passages": [],
+                "upload_candidates": [],
+                "mediator_evidence_packets": [],
+                "claim_support_temporal_handoff": {},
+                "document_generation_handoff": {},
+                "drafting_readiness": {},
+                "graph_completeness_signals": {},
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 0}
+
+    run_counter = {"count": 0}
+
+    def fake_run_complaint_synthesis(**kwargs):
+        run_counter["count"] += 1
+        output_dir = tmp_path / "synthesized_complaint"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        draft_path = output_dir / "draft_complaint_package.json"
+        if run_counter["count"] == 1:
+            payload = {}
+        else:
+            payload = {
+                "refreshed_grounding_state": {
+                    "status": "chronology_supported",
+                    "recommended_next_action": {
+                        "phase_name": "document_generation",
+                        "action": "continue_drafting",
+                        "description": "Chronology is now supported enough to continue drafting.",
+                    },
+                },
+                "grounded_follow_up_answer_summary": {"answered_item_count": 3},
+            }
+        draft_path.write_text(json.dumps(payload), encoding="utf-8")
+        return {
+            "output_dir": str(output_dir),
+            "draft_complaint_package_json": str(draft_path),
+            "draft_complaint_package_md": str(output_dir / "draft_complaint_package.md"),
+            "intake_follow_up_worksheet_json": str(output_dir / "intake_follow_up_worksheet.json"),
+            "intake_follow_up_worksheet_md": str(output_dir / "intake_follow_up_worksheet.md"),
+        }
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", fake_run_complaint_synthesis)
+
+    first_summary = cli.run_hacc_grounded_pipeline(
+        output_dir=tmp_path,
+        query="termination notice chronology",
+        claim_type="housing_discrimination",
+        top_k=1,
+        synthesize_complaint=True,
+    )
+    second_summary = cli.run_hacc_grounded_pipeline(
+        output_dir=tmp_path,
+        query="termination notice chronology",
+        claim_type="housing_discrimination",
+        top_k=1,
+        synthesize_complaint=True,
+    )
+
+    history_path = Path(second_summary["artifacts"]["grounded_workflow_history_json"])
+    history = json.loads(history_path.read_text(encoding="utf-8"))
+
+    assert history_path == Path(first_summary["artifacts"]["grounded_workflow_history_json"])
+    assert len(history) == 2
+    assert history[0]["workflow_stage"] == "pre_grounded_follow_up"
+    assert history[0]["effective_next_action"]["action"] == "upload_local_repository_evidence"
+    assert history[1]["workflow_stage"] == "post_grounded_follow_up"
+    assert history[1]["effective_next_action"]["action"] == "continue_drafting"
+    assert history[1]["grounded_follow_up_answer_count"] == 3
+    assert second_summary["grounded_workflow_status"]["workflow_history_count"] == 2
+    assert second_summary["grounded_workflow_status"]["last_recorded_transition"]["workflow_stage"] == "post_grounded_follow_up"

@@ -1014,6 +1014,26 @@ def _build_claim_review_chip_labels(claim: Dict[str, Any]) -> List[str]:
     if contradiction_candidate_count > 0:
         chip_labels.append(f"contradiction candidates: {contradiction_candidate_count}")
 
+    claim_unresolved_temporal_issue_count = int(claim.get("claim_unresolved_temporal_issue_count") or 0)
+    if claim_unresolved_temporal_issue_count > 0:
+        chip_labels.append(f"unresolved temporal issues: {claim_unresolved_temporal_issue_count}")
+
+    claim_missing_temporal_predicates = [
+        str(item).strip()
+        for item in (claim.get("claim_missing_temporal_predicates") or [])
+        if str(item).strip()
+    ]
+    if claim_missing_temporal_predicates:
+        chip_labels.append(f"missing temporal predicates: {len(claim_missing_temporal_predicates)}")
+
+    claim_required_provenance_kinds = [
+        str(item).strip()
+        for item in (claim.get("claim_required_provenance_kinds") or [])
+        if str(item).strip()
+    ]
+    if claim_required_provenance_kinds:
+        chip_labels.append(f"required provenance kinds: {len(claim_required_provenance_kinds)}")
+
     return chip_labels
 
 

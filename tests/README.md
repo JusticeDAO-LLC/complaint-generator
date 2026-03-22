@@ -244,6 +244,23 @@ python scripts/run_hacc_grounding_regression.py --list
 python scripts/run_hacc_grounding_regression.py --skip-smoke
 ```
 
+For an existing grounded run directory, you can inspect the current workflow state without rerunning the full pipeline:
+
+```bash
+python scripts/run_hacc_grounded_pipeline.py --output-dir output/hacc_grounded/<run_id> --show-history
+python scripts/run_hacc_grounded_pipeline.py --output-dir output/hacc_grounded/<run_id> --show-history --json
+```
+
+That read-only inspection summarizes:
+
+- `grounded_workflow_status.json`
+- `grounded_workflow_history.json`
+- `completed_grounded_intake_follow_up_worksheet.json`
+- `refreshed_grounding_state.json`
+- `grounded_follow_up_answer_summary.json`
+
+Use it when you want to confirm whether a grounded worksheet has already been completed, whether refreshed grounding exists yet, and what the last few workflow transitions were.
+
 That helper now covers both:
 
 - the HACC seed-generation regression

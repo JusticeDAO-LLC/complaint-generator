@@ -2110,6 +2110,7 @@ class Optimizer:
                     4,
                 ),
                 "focus_areas": [
+                    *(["exhibit_grounding"] if document_exhibit_backed_ratio < 0.6 else []),
                     *(["chronology_closure"] if chronology_pressure_flag else []),
                     *list((document_handoff_summary or {}).get("unresolved_intake_objectives") or [])[:2],
                     *targeted_claim_elements[:2],
@@ -3374,6 +3375,20 @@ class Optimizer:
                 + (
                     f": fact-backed ratio {float(document_provenance_summary.get('avg_fact_backed_ratio') or 0.0):.2f}"
                     if document_provenance_summary.get("avg_fact_backed_ratio") is not None
+                    else ""
+                ),
+            )
+        exhibit_backed_ratio = float(document_provenance_summary.get("avg_exhibit_backed_ratio") or 0.0)
+        if exhibit_backed_ratio < 0.6:
+            recommendations.append(
+                "Rendered complaints are not surfacing uploaded exhibits strongly enough. Increase exhibit-backed factual paragraphs, count support, and incorporation clauses so the complaint visibly anchors itself to the user's documents."
+            )
+            priority_improvements.insert(
+                0,
+                "Increase exhibit-backed complaint grounding"
+                + (
+                    f": exhibit-backed ratio {exhibit_backed_ratio:.2f}"
+                    if document_provenance_summary.get("avg_exhibit_backed_ratio") is not None
                     else ""
                 ),
             )
