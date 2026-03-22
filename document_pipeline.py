@@ -19,7 +19,11 @@ from document_optimization import (
     AgenticDocumentOptimizer,
     _build_claim_reasoning_theorem_export_metadata,
 )
-from intake_status import build_intake_case_review_summary, build_intake_status_summary
+from intake_status import (
+    build_intake_case_review_summary,
+    build_intake_status_summary,
+    summarize_temporal_issue_registry,
+)
 from workflow_phase_guidance import (
     build_drafting_document_generation_phase_guidance,
     build_graph_analysis_phase_guidance,
@@ -2085,6 +2089,9 @@ class FormalComplaintDocumentBuilder:
         packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
         alignment_tasks = intake_case_summary.get("alignment_evidence_tasks")
         alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+        temporal_issue_registry_summary = summarize_temporal_issue_registry(
+            intake_case_summary.get("temporal_issue_registry_summary")
+        )
 
         unresolved_temporal_issue_ids = _dedupe_text_values(
             packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
@@ -2160,12 +2167,21 @@ class FormalComplaintDocumentBuilder:
         raw_unresolved_temporal_issue_ids = _collect_unresolved_temporal_issue_identifiers(
             intake_case_summary.get("temporal_issue_registry")
         )
+        summary_issue_ids = _dedupe_text_values(temporal_issue_registry_summary.get("issue_ids") or [])
+        summary_missing_temporal_predicates = _dedupe_text_values(
+            temporal_issue_registry_summary.get("missing_temporal_predicates") or []
+        )
+        summary_required_provenance_kinds = _dedupe_text_values(
+            temporal_issue_registry_summary.get("required_provenance_kinds") or []
+        )
 
         unresolved_temporal_issue_count = int(
             packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
         )
         if not unresolved_temporal_issue_count and raw_unresolved_temporal_issue_ids:
             unresolved_temporal_issue_count = len(raw_unresolved_temporal_issue_ids)
+        if not unresolved_temporal_issue_count:
+            unresolved_temporal_issue_count = int(temporal_issue_registry_summary.get("unresolved_count") or 0)
         if not unresolved_temporal_issue_ids:
             unresolved_temporal_issue_ids = raw_unresolved_temporal_issue_ids
 
@@ -2176,18 +2192,18 @@ class FormalComplaintDocumentBuilder:
             "event_ids": _dedupe_text_values(event_ids) or raw_event_ids,
             "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids) or raw_temporal_fact_ids,
             "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids) or raw_temporal_relation_ids,
-            "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids,
-            "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids,
+            "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids or summary_issue_ids,
+            "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids or summary_issue_ids,
             "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
             "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
         }
         normalized_timeline_anchor_ids = _dedupe_text_values(timeline_anchor_ids) or raw_timeline_anchor_ids
         if normalized_timeline_anchor_ids:
             temporal_handoff["timeline_anchor_ids"] = normalized_timeline_anchor_ids
-        normalized_missing_temporal_predicates = _dedupe_text_values(missing_temporal_predicates)
+        normalized_missing_temporal_predicates = _dedupe_text_values(missing_temporal_predicates) or summary_missing_temporal_predicates
         if normalized_missing_temporal_predicates:
             temporal_handoff["missing_temporal_predicates"] = normalized_missing_temporal_predicates
-        normalized_required_provenance_kinds = _dedupe_text_values(required_provenance_kinds)
+        normalized_required_provenance_kinds = _dedupe_text_values(required_provenance_kinds) or summary_required_provenance_kinds
         if normalized_required_provenance_kinds:
             temporal_handoff["required_provenance_kinds"] = normalized_required_provenance_kinds
         if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
@@ -2823,7 +2839,7 @@ class FormalComplaintDocumentBuilder:
             rendered.append(incorporated_clause)
 
         legal_standards = self._normalize_text_lines(claim.get("legal_standards", []))
-        supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+        supporting_facts = self._render_claim_supporting_facts(claim)
         claim_type = normalize_claim_type(claim.get("claim_type") or "")
 
         standard_lead_in = "Plaintiff alleges that"
@@ -2849,12 +2865,64 @@ class FormalComplaintDocumentBuilder:
 
         support_paragraph = self._compose_count_paragraph(
             supporting_facts,
-            lead_in="The record further shows that",
+            lead_in="The pleaded facts further show that",
             mode="sentences",
         )
         if support_paragraph:
             rendered.append(support_paragraph)
         return rendered
+
+    def _render_claim_supporting_facts(self, claim: Dict[str, Any]) -> List[str]:
+        supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+        supporting_entries = self._align_entries_to_lines(
+            claim.get("supporting_fact_entries"),
+            supporting_facts,
+        )
+        if not supporting_entries:
+            return supporting_facts
+
+        prioritized: List[str] = []
+        seen = set()
+        for entry in supporting_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            source_kind = str(entry.get("source_kind") or "").strip().lower()
+            has_fact_ids = bool(_normalize_identifier_list(entry.get("fact_ids") or []))
+            if not has_fact_ids and supporting_entries:
+                continue
+            if source_kind in {"uploaded_evidence_fact", "claim_chronology_support"} or _contains_date_anchor(text):
+                if lowered not in seen:
+                    prioritized.append(text)
+                    seen.add(lowered)
+        for entry in supporting_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            has_fact_ids = bool(_normalize_identifier_list(entry.get("fact_ids") or []))
+            if lowered in seen or not has_fact_ids:
+                continue
+            if "required before enforcement of that adverse action" in lowered or "before a final adverse housing decision was enforced" in lowered:
+                prioritized.append(text)
+                seen.add(lowered)
+        for entry in supporting_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            if lowered in seen:
+                continue
+            prioritized.append(text)
+            seen.add(lowered)
+        return prioritized or supporting_facts
 
     def _compose_authority_paragraph(self, lines: List[str], *, claim_type: str) -> str:
         normalized = [str(line or "").strip().rstrip(".") for line in lines if str(line or "").strip()]
@@ -2865,8 +2933,8 @@ class FormalComplaintDocumentBuilder:
             citation_match = re.search(r"(24\s+C\.F\.R\.\s*982\.555)", text)
             citation = citation_match.group(1) if citation_match else "24 C.F.R. 982.555"
             return (
-                f"Authority for this count includes the informal-review requirements reflected in {citation}, "
-                "which require written notice and an opportunity for informal review before a final adverse housing decision is enforced."
+                f"Federal housing regulations, including {citation}, required written notice and an opportunity "
+                "for informal review before a final adverse housing decision was enforced."
             )
         return self._compose_count_paragraph(normalized, lead_in="Authority for this count includes")
 
@@ -2908,7 +2976,10 @@ class FormalComplaintDocumentBuilder:
         if lowered.startswith("the challenged housing action was unlawful because"):
             return "That housing action was unlawful because" + text[len("the challenged housing action was unlawful because"):]
         if lowered.startswith("the requested relief addresses the resulting denial of housing opportunity"):
-            return "Plaintiff seeks relief for the resulting denial of housing opportunity" + text[len("the requested relief addresses the resulting denial of housing opportunity"):]
+            return (
+                "That unlawful housing decision caused the resulting denial of housing opportunity"
+                + text[len("the requested relief addresses the resulting denial of housing opportunity"):]
+            )
         if first:
             return self._promote_count_sentence_fragment(text)
         return self._promote_count_sentence_fragment(text)
@@ -2950,13 +3021,18 @@ class FormalComplaintDocumentBuilder:
         text = str(fragment or "").strip()
         if not text:
             return ""
+        lowered = text.lower()
+        if lowered.startswith("the requested relief addresses the deprivation of housing benefits and review rights"):
+            return (
+                "That failure of notice and process caused the deprivation of housing benefits and review rights"
+                + text[len("the requested relief addresses the deprivation of housing benefits and review rights"):]
+            )
         promotions = (
             ("plaintiff ", "Plaintiff "),
             ("defendant ", "Defendant "),
             ("the ", "The "),
             ("on ", "On "),
         )
-        lowered = text.lower()
         for prefix, replacement in promotions:
             if lowered.startswith(prefix):
                 return replacement + text[len(prefix):]
@@ -3015,6 +3091,8 @@ class FormalComplaintDocumentBuilder:
         elif index == 0 and fragment.startswith("On ") and (
             lead_in.startswith("The chronology and governing policy further show that")
             or lead_in.startswith("The record further shows that")
+            or lead_in.startswith("These facts further show that")
+            or lead_in.startswith("The pleaded facts further show that")
         ):
             fragment = "on " + fragment[len("On "):]
 
@@ -4510,6 +4588,7 @@ class FormalComplaintDocumentBuilder:
                 "claim_types": allegation_entries[index - 1].get("claim_types", []),
                 "claim_element_ids": allegation_entries[index - 1].get("claim_element_ids", []),
                 "support_trace_ids": allegation_entries[index - 1].get("support_trace_ids", []),
+                "source_kind": allegation_entries[index - 1].get("source_kind"),
                 "document_focus": (
                     dict(allegation_entries[index - 1].get("document_focus") or {})
                     if isinstance(allegation_entries[index - 1].get("document_focus"), dict)
@@ -4519,6 +4598,19 @@ class FormalComplaintDocumentBuilder:
             }
             for index, text in enumerate(allegation_lines, start=1)
         ]
+        paragraph_entries = self._annotate_entries_with_exhibits(
+            paragraph_entries,
+            draft.get("exhibits") if isinstance(draft.get("exhibits"), list) else [],
+        )
+        allegation_entries = [
+            {
+                **dict(allegation_entries[index]),
+                "text": paragraph_entries[index].get("text"),
+                "exhibit_label": paragraph_entries[index].get("exhibit_label"),
+            }
+            for index in range(min(len(allegation_entries), len(paragraph_entries)))
+        ]
+        allegation_lines = [str(entry.get("text") or "").strip() for entry in paragraph_entries if str(entry.get("text") or "").strip()]
         draft["factual_allegations"] = allegation_lines
         draft["factual_allegation_entries"] = allegation_entries
         draft["factual_allegation_paragraphs"] = paragraph_entries
@@ -4549,23 +4641,54 @@ class FormalComplaintDocumentBuilder:
         for paragraph in allegation_paragraphs:
             if not isinstance(paragraph, dict):
                 continue
-            text = str(paragraph.get("text") or "").strip()
-            lowered = text.lower()
-            if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
-                title = "Protected Activity and Complaints"
-            elif re.search(r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied)\b", lowered):
-                title = "Adverse Action and Retaliatory Conduct"
-            elif re.search(r"\b(lost|damages|harm|injur|suffered|experienced|benefits|wages|salary|income)\b", lowered):
-                title = "Damages and Resulting Harm"
-            else:
-                title = "Additional Factual Support"
+            title = self._classify_factual_allegation_group(paragraph)
             groups[title].append(paragraph)
 
         return [
-            {"title": title, "paragraphs": groups[title]}
+            {"title": title, "paragraphs": self._order_factual_group_paragraphs(groups[title])}
             for title in ordered_titles
             if groups[title]
         ]
+
+    def _classify_factual_allegation_group(self, paragraph: Dict[str, Any]) -> str:
+        text = str(paragraph.get("text") or "").strip()
+        lowered = text.lower()
+        if re.search(
+            r"\b(terminated|fired|demoted|suspended|disciplined|retaliated|denied|denial notice|loss of assistance|review decision|adverse action)\b",
+            lowered,
+        ):
+            return "Adverse Action and Retaliatory Conduct"
+        if re.search(r"\b(lost|damages|harm|injur|suffered|experienced|benefits|wages|salary|income)\b", lowered):
+            return "Damages and Resulting Harm"
+        if re.search(r"\b(reported|complained|opposed|informed|notified|told|requested)\b", lowered):
+            return "Protected Activity and Complaints"
+        return "Additional Factual Support"
+
+    def _order_factual_group_paragraphs(self, paragraphs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        def _score(paragraph: Dict[str, Any]) -> tuple[int, int, int, int, str]:
+            text = str(paragraph.get("text") or "").strip()
+            lowered = text.lower()
+            fact_backed = 0 if _normalize_identifier_list(paragraph.get("fact_ids") or []) else 1
+            dated = 0 if _contains_date_anchor(text) else 1
+            adverse_specific = 1
+            if any(
+                marker in lowered
+                for marker in (
+                    "denial notice",
+                    "review decision",
+                    "loss of assistance",
+                    "adverse action",
+                    "denied plaintiff housing assistance",
+                )
+            ):
+                adverse_specific = 0
+            number = int(paragraph.get("number", 0) or 0)
+            return (fact_backed, dated, adverse_specific, number, lowered)
+
+        return sorted(
+            [dict(paragraph) for paragraph in paragraphs if isinstance(paragraph, dict)],
+            key=_score,
+        )
 
     def _build_claim_supporting_fact_provenance(
         self,
@@ -4616,6 +4739,7 @@ class FormalComplaintDocumentBuilder:
         claim_rows = []
         total_claim_support_rows = 0
         total_claim_support_fact_backed_rows = 0
+        total_claim_support_exhibit_backed_rows = 0
         focused_entry_count = 0
         focus_source_counts: Dict[str, int] = {}
         all_fact_ids: List[str] = []
@@ -4628,8 +4752,10 @@ class FormalComplaintDocumentBuilder:
             ]
             fact_backed_count = sum(1 for row in provenance_rows if _normalize_identifier_list(row.get("fact_ids") or []))
             artifact_backed_count = sum(1 for row in provenance_rows if _normalize_identifier_list(row.get("source_artifact_ids") or []))
+            exhibit_backed_count = sum(1 for row in provenance_rows if str(row.get("exhibit_label") or "").strip())
             total_claim_support_rows += len(provenance_rows)
             total_claim_support_fact_backed_rows += fact_backed_count
+            total_claim_support_exhibit_backed_rows += exhibit_backed_count
             for row in provenance_rows:
                 all_fact_ids.extend(_normalize_identifier_list(row.get("fact_ids") or []))
                 all_artifact_ids.extend(_normalize_identifier_list(row.get("source_artifact_ids") or []))
@@ -4644,6 +4770,7 @@ class FormalComplaintDocumentBuilder:
                     "supporting_fact_count": len(provenance_rows),
                     "fact_backed_supporting_fact_count": fact_backed_count,
                     "artifact_backed_supporting_fact_count": artifact_backed_count,
+                    "exhibit_backed_supporting_fact_count": exhibit_backed_count,
                     "fact_ids": _normalize_identifier_list(
                         [
                             fact_id
@@ -4664,6 +4791,9 @@ class FormalComplaintDocumentBuilder:
         factual_fact_backed_count = sum(
             1 for paragraph in factual_paragraphs if _normalize_identifier_list(paragraph.get("fact_ids") or [])
         )
+        factual_exhibit_backed_count = sum(
+            1 for paragraph in factual_paragraphs if str(paragraph.get("exhibit_label") or "").strip()
+        )
         for paragraph in factual_paragraphs:
             all_fact_ids.extend(_normalize_identifier_list(paragraph.get("fact_ids") or []))
             all_artifact_ids.extend(_normalize_identifier_list(paragraph.get("source_artifact_ids") or []))
@@ -4677,6 +4807,7 @@ class FormalComplaintDocumentBuilder:
             entry for entry in _coerce_list(draft.get("summary_of_fact_entries")) if isinstance(entry, dict)
         ]
         summary_fact_backed_count = sum(1 for entry in summary_entries if _normalize_identifier_list(entry.get("fact_ids") or []))
+        summary_exhibit_backed_count = sum(1 for entry in summary_entries if str(entry.get("exhibit_label") or "").strip())
         for entry in summary_entries:
             all_fact_ids.extend(_normalize_identifier_list(entry.get("fact_ids") or []))
             all_artifact_ids.extend(_normalize_identifier_list(entry.get("source_artifact_ids") or []))
@@ -4693,11 +4824,14 @@ class FormalComplaintDocumentBuilder:
         return {
             "summary_fact_count": len(summary_entries),
             "summary_fact_backed_count": summary_fact_backed_count,
+            "summary_fact_exhibit_backed_count": summary_exhibit_backed_count,
             "factual_allegation_paragraph_count": len(factual_paragraphs),
             "factual_allegation_fact_backed_count": factual_fact_backed_count,
+            "factual_allegation_exhibit_backed_count": factual_exhibit_backed_count,
             "claim_count": len(claims),
             "claim_supporting_fact_count": total_claim_support_rows,
             "claim_supporting_fact_backed_count": total_claim_support_fact_backed_rows,
+            "claim_supporting_fact_exhibit_backed_count": total_claim_support_exhibit_backed_rows,
             "fact_id_count": len(_normalize_identifier_list(all_fact_ids)),
             "source_artifact_id_count": len(_normalize_identifier_list(all_artifact_ids)),
             "fact_backed_ratio": round(fact_backed_ratio, 4),
@@ -4721,7 +4855,7 @@ class FormalComplaintDocumentBuilder:
             if not paragraphs:
                 continue
             if title:
-                lines.append(title.upper())
+                lines.append(self._format_group_heading(title, paragraphs))
             for paragraph in paragraphs:
                 if not isinstance(paragraph, dict):
                     continue
@@ -4730,6 +4864,31 @@ class FormalComplaintDocumentBuilder:
                 if text:
                     lines.append(f"{number}. {text}" if number else text)
         return lines
+
+    def _format_group_heading(self, title: str, paragraphs: List[Dict[str, Any]]) -> str:
+        heading = str(title or "").strip().upper()
+        if not heading:
+            return ""
+        primary_exhibit = self._select_primary_group_exhibit_label(paragraphs)
+        if primary_exhibit:
+            return f"{heading} ({primary_exhibit})"
+        return heading
+
+    def _select_primary_group_exhibit_label(self, paragraphs: List[Dict[str, Any]]) -> str:
+        label_counts: Dict[str, int] = {}
+        for paragraph in paragraphs:
+            if not isinstance(paragraph, dict):
+                continue
+            label = str(paragraph.get("exhibit_label") or "").strip()
+            if not label:
+                continue
+            label_counts[label] = label_counts.get(label, 0) + 1
+        if not label_counts:
+            return ""
+        label, count = max(label_counts.items(), key=lambda item: (item[1], item[0]))
+        if count < 2 and len(paragraphs) > 1:
+            return ""
+        return label
 
     def _select_allegation_references_for_claim(
         self,
@@ -4840,20 +4999,27 @@ class FormalComplaintDocumentBuilder:
         return f"{marker} {', '.join(ranges)}"
 
     def _format_exhibit_reference_phrase(self, exhibits: Any) -> str:
-        labels = []
-        for exhibit in _coerce_list(exhibits):
-            if not isinstance(exhibit, dict):
-                continue
+        exhibit_list = [exhibit for exhibit in _coerce_list(exhibits) if isinstance(exhibit, dict)]
+        include_titles_for_all = len(exhibit_list) <= 2
+        exhibit_entries: List[str] = []
+        for exhibit in exhibit_list:
             label = str(exhibit.get("label") or "").strip()
-            if label and label not in labels:
-                labels.append(label)
-        if not labels:
+            if not label:
+                continue
+            title = str(exhibit.get("title") or "").strip()
+            kind = str(exhibit.get("kind") or "").strip().lower()
+            entry = label
+            if title and (kind == "evidence" or include_titles_for_all):
+                entry = f"{label} ({title})"
+            if entry not in exhibit_entries:
+                exhibit_entries.append(entry)
+        if not exhibit_entries:
             return ""
-        if len(labels) == 1:
-            return labels[0]
-        if len(labels) == 2:
-            return f"{labels[0]} and {labels[1]}"
-        return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+        if len(exhibit_entries) == 1:
+            return exhibit_entries[0]
+        if len(exhibit_entries) == 2:
+            return f"{exhibit_entries[0]} and {exhibit_entries[1]}"
+        return f"{', '.join(exhibit_entries[:-1])}, and {exhibit_entries[-1]}"
 
     def _format_paragraph_range(self, start: int, end: int) -> str:
         return str(start) if start == end else f"{start}-{end}"
@@ -5992,6 +6158,7 @@ class FormalComplaintDocumentBuilder:
                         {
                             "label": exhibit.get("label"),
                             "title": exhibit.get("title"),
+                            "kind": exhibit.get("kind"),
                             "link": exhibit.get("link"),
                         }
                         for exhibit in related_exhibits[:8]
@@ -6107,9 +6274,22 @@ class FormalComplaintDocumentBuilder:
             ),
             None,
         )
+        adverse_action_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "denial notice" in str(entry.get("text") or "").lower()
+                or "loss of assistance" in str(entry.get("text") or "").lower()
+                or "challenged adverse housing action" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
         if not (notice_entry and review_entry and authority_entry):
             return self._merge_housing_policy_entries(ordered_entries)
 
+        merged_source_entries = [
+            item for item in (adverse_action_entry, notice_entry, review_entry, authority_entry) if isinstance(item, dict)
+        ]
         merged_entry = {
             "text": (
                 "HACC policy required prompt written notice of a decision denying assistance and a written "
@@ -6117,29 +6297,39 @@ class FormalComplaintDocumentBuilder:
                 f"({self._merge_support_exhibit_labels(notice_entry, review_entry, authority_entry)})."
             ),
             "fact_ids": _normalize_identifier_list(
-                list(notice_entry.get("fact_ids") or [])
-                + list(review_entry.get("fact_ids") or [])
-                + list(authority_entry.get("fact_ids") or [])
+                [
+                    fact_id
+                    for source_entry in merged_source_entries
+                    for fact_id in list(source_entry.get("fact_ids") or [])
+                ]
             ),
             "source_artifact_ids": _normalize_identifier_list(
-                list(notice_entry.get("source_artifact_ids") or [])
-                + list(review_entry.get("source_artifact_ids") or [])
-                + list(authority_entry.get("source_artifact_ids") or [])
+                [
+                    artifact_id
+                    for source_entry in merged_source_entries
+                    for artifact_id in list(source_entry.get("source_artifact_ids") or [])
+                ]
             ),
             "claim_types": _normalize_identifier_list(
-                list(notice_entry.get("claim_types") or [])
-                + list(review_entry.get("claim_types") or [])
-                + list(authority_entry.get("claim_types") or [])
+                [
+                    claim_type
+                    for source_entry in merged_source_entries
+                    for claim_type in list(source_entry.get("claim_types") or [])
+                ]
             ),
             "claim_element_ids": _normalize_identifier_list(
-                list(notice_entry.get("claim_element_ids") or [])
-                + list(review_entry.get("claim_element_ids") or [])
-                + list(authority_entry.get("claim_element_ids") or [])
+                [
+                    element_id
+                    for source_entry in merged_source_entries
+                    for element_id in list(source_entry.get("claim_element_ids") or [])
+                ]
             ),
             "support_trace_ids": _normalize_identifier_list(
-                list(notice_entry.get("support_trace_ids") or [])
-                + list(review_entry.get("support_trace_ids") or [])
-                + list(authority_entry.get("support_trace_ids") or [])
+                [
+                    trace_id
+                    for source_entry in merged_source_entries
+                    for trace_id in list(source_entry.get("support_trace_ids") or [])
+                ]
             ),
             "source_kind": "claim_support_merged",
             "exhibit_label": self._merge_support_exhibit_labels(notice_entry, review_entry, authority_entry),
@@ -6182,29 +6372,60 @@ class FormalComplaintDocumentBuilder:
             ),
             None,
         )
+        adverse_action_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "denial notice" in str(entry.get("text") or "").lower()
+                or "denied or maintained the denial of housing assistance" in str(entry.get("text") or "").lower()
+                or "loss of assistance" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
         if not (notice_entry and review_entry):
             return ordered_entries
 
+        merged_source_entries = [item for item in (adverse_action_entry, notice_entry, review_entry) if isinstance(item, dict)]
         merged_entry = {
             "text": (
-                "HACC's written-notice and informal-review policy support Plaintiff's claim that HACC "
-                "wrongfully denied or maintained the denial of housing assistance without the process "
+                "HACC wrongfully denied or maintained the denial of housing assistance without the written notice "
+                "and informal review "
                 f"required before enforcement of that adverse action ({self._merge_support_exhibit_labels(notice_entry, review_entry)})."
             ),
             "fact_ids": _normalize_identifier_list(
-                list(notice_entry.get("fact_ids") or []) + list(review_entry.get("fact_ids") or [])
+                [
+                    fact_id
+                    for source_entry in merged_source_entries
+                    for fact_id in list(source_entry.get("fact_ids") or [])
+                ]
             ),
             "source_artifact_ids": _normalize_identifier_list(
-                list(notice_entry.get("source_artifact_ids") or []) + list(review_entry.get("source_artifact_ids") or [])
+                [
+                    artifact_id
+                    for source_entry in merged_source_entries
+                    for artifact_id in list(source_entry.get("source_artifact_ids") or [])
+                ]
             ),
             "claim_types": _normalize_identifier_list(
-                list(notice_entry.get("claim_types") or []) + list(review_entry.get("claim_types") or [])
+                [
+                    claim_type
+                    for source_entry in merged_source_entries
+                    for claim_type in list(source_entry.get("claim_types") or [])
+                ]
             ),
             "claim_element_ids": _normalize_identifier_list(
-                list(notice_entry.get("claim_element_ids") or []) + list(review_entry.get("claim_element_ids") or [])
+                [
+                    element_id
+                    for source_entry in merged_source_entries
+                    for element_id in list(source_entry.get("claim_element_ids") or [])
+                ]
             ),
             "support_trace_ids": _normalize_identifier_list(
-                list(notice_entry.get("support_trace_ids") or []) + list(review_entry.get("support_trace_ids") or [])
+                [
+                    trace_id
+                    for source_entry in merged_source_entries
+                    for trace_id in list(source_entry.get("support_trace_ids") or [])
+                ]
             ),
             "source_kind": "claim_support_merged",
             "exhibit_label": self._merge_support_exhibit_labels(notice_entry, review_entry),
@@ -6972,13 +7193,13 @@ class FormalComplaintDocumentBuilder:
         if normalized == "housing_discrimination":
             return [
                 "Plaintiff alleges that Defendant denied, limited, or otherwise interfered with housing assistance or related housing rights.",
-                "Plaintiff further alleges that the challenged housing action was unlawful because it was imposed without the process, neutrality, or equal treatment required by governing housing law and program rules.",
+                "Plaintiff further alleges that the challenged housing action was unlawful because Defendant enforced or maintained the denial of housing assistance without the notice, review, and fair treatment required by governing housing law and program rules.",
                 "Plaintiff seeks relief for the resulting denial of housing opportunity, loss of assistance, and related harms caused by that unlawful housing decision.",
             ]
         if normalized == "due_process_failure":
             return [
                 "Before enforcing a final adverse housing decision, Defendant was required to provide the written notice, review opportunity, hearing, grievance, appeal, or comparable process required by law or program rules.",
-                "Plaintiff alleges that Defendant failed to provide those required procedural protections before or while imposing the challenged denial or loss of assistance.",
+                "Plaintiff alleges that Defendant failed to provide the required written notice and meaningful review process before or while imposing the challenged denial or loss of assistance.",
                 "Plaintiff seeks relief for the deprivation of housing benefits and review rights caused by that failure of notice and process.",
             ]
         if normalized == "retaliation":
@@ -9249,7 +9470,7 @@ class FormalComplaintDocumentBuilder:
         if not isinstance(entry, dict):
             return None
         source_kind = str(entry.get("source_kind") or "").strip().lower()
-        if source_kind in {"uploaded_evidence_fact", "claim_support_fact", "claim_chronology_support"}:
+        if source_kind in {"uploaded_evidence_fact", "claim_support_fact", "claim_chronology_support", "factual_allegation"}:
             preferred = self._select_exhibit_by_kind(exhibits, "evidence")
             if preferred is not None:
                 return preferred

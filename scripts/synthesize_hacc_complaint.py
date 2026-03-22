@@ -20,6 +20,10 @@ DEFAULT_RELIEF = [
     "Compensatory damages or other available monetary relief according to proof.",
     "Costs, fees, and any other relief authorized by law.",
 ]
+WORKSHEET_ANSWER_SOURCES = {
+    "completed_intake_follow_up_worksheet",
+    "completed_grounded_intake_follow_up_worksheet",
+}
 
 DEFAULT_PARTIES = {
     "plaintiff": "Complainant / tenant or program participant (name to be inserted).",
@@ -3279,7 +3283,7 @@ def _blocker_closing_intake_answers(session: Dict[str, Any], limit: int = 4) -> 
             continue
         if str(entry.get("role") or "").strip().lower() != "complainant":
             continue
-        if str(entry.get("source") or "").strip().lower() != "completed_intake_follow_up_worksheet":
+        if str(entry.get("source") or "").strip().lower() not in WORKSHEET_ANSWER_SOURCES:
             continue
         answer = " ".join(str(entry.get("content") or "").split()).strip()
         question = " ".join(str(entry.get("question") or "").split()).strip()
@@ -3298,6 +3302,62 @@ def _blocker_closing_intake_answers(session: Dict[str, Any], limit: int = 4) -> 
         if len(answers) >= limit:
             break
     return answers
+
+
+def _grounded_follow_up_answer_summary(session: Dict[str, Any], limit: int = 6) -> Dict[str, Any]:
+    answered_items: List[Dict[str, str]] = []
+    for entry in list(session.get("conversation_history") or []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("role") or "").strip().lower() != "complainant":
+            continue
+        if str(entry.get("source") or "").strip().lower() != "completed_grounded_intake_follow_up_worksheet":
+            continue
+        answer = " ".join(str(entry.get("content") or "").split()).strip()
+        question = " ".join(str(entry.get("question") or "").split()).strip()
+        if not answer:
+            continue
+        objective = _normalize_intake_objective(
+            str(entry.get("objective") or "").strip() or _classify_intake_question_objective(question or answer)
+        )
+        answered_items.append(
+            {
+                "question": question,
+                "answer": answer,
+                "objective": objective or "intake_follow_up",
+            }
+        )
+        if len(answered_items) >= limit:
+            break
+
+    objective_counts: Dict[str, int] = {}
+    chronology_answer_count = 0
+    evidence_answer_count = 0
+    for item in answered_items:
+        objective = str(item.get("objective") or "").strip()
+        if objective:
+            objective_counts[objective] = int(objective_counts.get(objective, 0) or 0) + 1
+        combined_text = " ".join(
+            [
+                str(item.get("question") or "").strip().lower(),
+                str(item.get("answer") or "").strip().lower(),
+            ]
+        )
+        if objective in {"exact_dates", "timeline", "response_dates", "hearing_request_timing"}:
+            chronology_answer_count += 1
+        if objective in {"documents", "staff_names_titles", "actors"} or any(
+            token in combined_text
+            for token in ("upload", "file", "document", "record", "evidence")
+        ):
+            evidence_answer_count += 1
+
+    return {
+        "answered_item_count": len(answered_items),
+        "objective_counts": objective_counts,
+        "chronology_answer_count": chronology_answer_count,
+        "evidence_answer_count": evidence_answer_count,
+        "answers": answered_items,
+    }
 
 
 def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
@@ -4734,11 +4794,23 @@ def _answered_intake_follow_up_items(worksheet: Dict[str, Any]) -> List[Dict[str
         answer = " ".join(str(item.get("answer") or "").split()).strip()
         if not question or not answer:
             continue
-        items.append({"question": question, "answer": answer})
+        items.append(
+            {
+                "question": question,
+                "answer": answer,
+                "objective": _normalize_intake_objective(str(item.get("objective") or "").strip()),
+                "source": str(item.get("source") or "").strip(),
+            }
+        )
     return items
 
 
-def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_completed_intake_worksheet(
+    session: Dict[str, Any],
+    worksheet: Dict[str, Any],
+    *,
+    source_name: str = "completed_intake_follow_up_worksheet",
+) -> Dict[str, Any]:
     answered_items = _answered_intake_follow_up_items(worksheet)
     if not answered_items:
         return session
@@ -4760,11 +4832,12 @@ def _merge_completed_intake_worksheet(session: Dict[str, Any], worksheet: Dict[s
             {
                 "role": "complainant",
                 "content": item["answer"],
-                "source": "completed_intake_follow_up_worksheet",
+                "source": source_name,
                 "question": item["question"],
+                "objective": item.get("objective") or "",
             }
         )
-        objective = _normalize_intake_objective(_classify_intake_question_objective(item["question"]))
+        objective = _normalize_intake_objective(item.get("objective") or _classify_intake_question_objective(item["question"]))
         if objective:
             counts[objective] = counts.get(objective, 0) + 1
             if objective not in covered:
@@ -5377,6 +5450,31 @@ def _build_intake_follow_up_worksheet(package: Dict[str, Any]) -> Dict[str, Any]
         if str(item)
     ]
     follow_up_items: List[Dict[str, Any]] = []
+    grounded_next_action = dict(package.get("grounded_recommended_next_action") or {})
+    grounded_action = str(grounded_next_action.get("action") or "").strip()
+    grounded_description = str(grounded_next_action.get("description") or "").strip()
+    if grounded_action:
+        grounded_question = grounded_description
+        if not grounded_question:
+            if grounded_action == "fill_chronology_gaps":
+                grounded_question = "What exact dates, notice timing, and event order are still missing before drafting?"
+            elif grounded_action == "upload_local_repository_evidence":
+                grounded_question = "Which repository-backed file should be uploaded first, and what exact fact does it prove?"
+            elif grounded_action == "run_seeded_discovery":
+                grounded_question = "Which seeded discovery query should be run first to find the missing policy or notice?"
+            else:
+                grounded_question = f"What should happen next for grounded action '{grounded_action}'?"
+        follow_up_items.append(
+            {
+                "id": "grounded_priority_01",
+                "gap": str(grounded_next_action.get("phase_name") or "").strip(),
+                "objective": grounded_action,
+                "question": grounded_question,
+                "answer": "",
+                "status": "open",
+                "source": "grounded_recommended_next_action",
+            }
+        )
     for index, question in enumerate(questions, start=1):
         gap = gaps[index - 1] if index - 1 < len(gaps) else ""
         objective = _classify_intake_question_objective(question)
@@ -5477,6 +5575,11 @@ def main(argv: List[str] | None = None) -> int:
         default=None,
         help="Optional completed intake_follow_up_worksheet.json whose answers should be merged back into the synthesized draft.",
     )
+    parser.add_argument(
+        "--completed-grounded-intake-worksheet",
+        default=None,
+        help="Optional completed grounded_intake_follow_up_worksheet.json whose answers should be merged back into the synthesized draft.",
+    )
     parser.add_argument("--grounded-run-dir", default=None, help="Optional grounded pipeline run directory containing grounding_bundle.json and evidence_upload_report.json.")
     parser.add_argument("--grounding-bundle", default=None, help="Optional explicit grounding_bundle.json path.")
     parser.add_argument("--evidence-upload-report", default=None, help="Optional explicit evidence_upload_report.json path.")
@@ -5519,6 +5622,16 @@ def main(argv: List[str] | None = None) -> int:
         if args.evidence_upload_report
         else (grounded_run_dir / "evidence_upload_report.json" if grounded_run_dir else auto_discovered.get("evidence_upload_report"))
     )
+    grounded_recommended_next_action_path = _existing_optional_path(
+        grounded_run_dir / "recommended_next_action.json"
+        if grounded_run_dir
+        else None
+    )
+    grounded_research_action_queue_path = _existing_optional_path(
+        grounded_run_dir / "research_action_queue.json"
+        if grounded_run_dir
+        else None
+    )
     grounding_bundle = _load_optional_json(grounding_bundle_path)
     grounding_overview = _derive_grounding_overview(
         grounding_bundle,
@@ -5526,10 +5639,23 @@ def main(argv: List[str] | None = None) -> int:
         _load_optional_json(grounding_overview_path),
     )
     evidence_upload_report = _load_optional_json(evidence_upload_report_path)
+    grounded_recommended_next_action = _load_optional_json(grounded_recommended_next_action_path)
+    grounded_research_action_queue = list(_load_optional_json(grounded_research_action_queue_path) or [])
     completed_intake_worksheet_path = Path(args.completed_intake_worksheet).resolve() if args.completed_intake_worksheet else None
     completed_intake_worksheet = _load_optional_json(completed_intake_worksheet_path)
+    completed_grounded_intake_worksheet_path = (
+        Path(args.completed_grounded_intake_worksheet).resolve()
+        if args.completed_grounded_intake_worksheet
+        else None
+    )
+    completed_grounded_intake_worksheet = _load_optional_json(completed_grounded_intake_worksheet_path)
     best_session = _pick_best_session(results_payload, preset=args.preset)
     best_session = _merge_completed_intake_worksheet(best_session, completed_intake_worksheet)
+    best_session = _merge_completed_intake_worksheet(
+        best_session,
+        completed_grounded_intake_worksheet,
+        source_name="completed_grounded_intake_follow_up_worksheet",
+    )
     actor_critic_metrics = _extract_actor_critic_metrics(best_session)
     phase_focus_order = _actor_critic_phase_focus_order(best_session)
     router_backed_question_quality = _actor_critic_router_backed_question_quality(best_session)
@@ -5583,6 +5709,9 @@ def main(argv: List[str] | None = None) -> int:
         "grounding_overview": grounding_overview,
         "grounding_prompt_summary": _grounding_prompt_summary(seed, grounding_bundle, evidence_upload_report),
         "search_summary": search_summary,
+        "grounded_recommended_next_action": grounded_recommended_next_action,
+        "grounded_research_action_queue": grounded_research_action_queue,
+        "grounded_follow_up_answer_summary": _grounded_follow_up_answer_summary(best_session),
         "actor_critic_optimizer": {
             "optimization_method": "actor_critic",
             "phase_focus_order": list(phase_focus_order),
@@ -5599,7 +5728,10 @@ def main(argv: List[str] | None = None) -> int:
             "grounding_bundle_json": str(grounding_bundle_path) if grounding_bundle_path else None,
             "grounding_overview_json": str(grounding_overview_path) if grounding_overview_path else None,
             "evidence_upload_report_json": str(evidence_upload_report_path) if evidence_upload_report_path else None,
+            "grounded_recommended_next_action_json": str(grounded_recommended_next_action_path) if grounded_recommended_next_action_path else None,
+            "grounded_research_action_queue_json": str(grounded_research_action_queue_path) if grounded_research_action_queue_path else None,
             "completed_intake_worksheet_json": str(completed_intake_worksheet_path) if completed_intake_worksheet_path else None,
+            "completed_grounded_intake_worksheet_json": str(completed_grounded_intake_worksheet_path) if completed_grounded_intake_worksheet_path else None,
             "search_summary": search_summary,
         },
     }

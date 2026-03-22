@@ -1221,6 +1221,12 @@
                 const claimUnresolvedTemporalIssueCount = Number(review.claim_unresolved_temporal_issue_count || 0);
                 const claimResolvedTemporalIssueCount = Number(review.claim_resolved_temporal_issue_count || 0);
                 const claimTemporalIssueStatusCounts = formatSummaryCountLine(review.claim_temporal_issue_status_counts);
+                const claimMissingTemporalPredicates = Array.isArray(review.claim_missing_temporal_predicates)
+                    ? review.claim_missing_temporal_predicates.filter((item) => String(item || '').trim())
+                    : [];
+                const claimRequiredProvenanceKinds = Array.isArray(review.claim_required_provenance_kinds)
+                    ? review.claim_required_provenance_kinds.filter((item) => String(item || '').trim())
+                    : [];
                 const proofArtifactPreview = Array.isArray(review.proof_artifact_preview)
                     ? review.proof_artifact_preview.filter((item) => String(item || '').trim()).slice(0, 3)
                     : [];
@@ -1248,6 +1254,12 @@
                 }
                 if (claimTemporalIssueStatusCounts) {
                     lines.push(`${claimLabel} chronology statuses: ${claimTemporalIssueStatusCounts}`);
+                }
+                if (claimMissingTemporalPredicates.length) {
+                    lines.push(`${claimLabel} chronology predicates: ${claimMissingTemporalPredicates.join(', ')}`);
+                }
+                if (claimRequiredProvenanceKinds.length) {
+                    lines.push(`${claimLabel} chronology provenance: ${claimRequiredProvenanceKinds.join(', ')}`);
                 }
             });
             return lines;
@@ -1316,6 +1328,12 @@
                 const claimUnresolvedTemporalIssueCount = Number(review.claim_unresolved_temporal_issue_count || 0);
                 const claimResolvedTemporalIssueCount = Number(review.claim_resolved_temporal_issue_count || 0);
                 const claimTemporalIssueStatusCounts = formatSummaryCountLine(review.claim_temporal_issue_status_counts);
+                const claimMissingTemporalPredicates = Array.isArray(review.claim_missing_temporal_predicates)
+                    ? review.claim_missing_temporal_predicates.filter((item) => String(item || '').trim())
+                    : [];
+                const claimRequiredProvenanceKinds = Array.isArray(review.claim_required_provenance_kinds)
+                    ? review.claim_required_provenance_kinds.filter((item) => String(item || '').trim())
+                    : [];
                 const flaggedElements = Array.isArray(review.flagged_elements)
                     ? review.flagged_elements.filter((element) => element && typeof element === 'object')
                     : [];
@@ -1368,6 +1386,8 @@
                             <span class="chip">Resolved ${escapeHtml(String(claimResolvedTemporalIssueCount))}</span>
                             ${statusCounts ? `<span class="chip">Statuses ${escapeHtml(statusCounts)}</span>` : ''}
                             ${claimTemporalIssueStatusCounts ? `<span class="chip">Registry statuses ${escapeHtml(claimTemporalIssueStatusCounts)}</span>` : ''}
+                            ${claimMissingTemporalPredicates.length ? `<span class="chip">Registry predicates ${escapeHtml(claimMissingTemporalPredicates.join(', '))}</span>` : ''}
+                            ${claimRequiredProvenanceKinds.length ? `<span class="chip">Registry provenance ${escapeHtml(claimRequiredProvenanceKinds.join(', '))}</span>` : ''}
                         </div>
                         <div class="proof-detail-grid">${elementCards || '<div class="muted">No flagged proof elements recorded.</div>'}</div>
                     </div>

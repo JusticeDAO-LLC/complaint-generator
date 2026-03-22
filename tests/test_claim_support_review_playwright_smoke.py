@@ -216,6 +216,8 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "resolved_count": 1,
             "status_counts": {"open": 1, "resolved": 1},
             "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+            "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+            "required_provenance_kinds": ["testimony_record", "document_artifact"],
         },
         "harm_profile": {
             "count": 1,
@@ -1372,6 +1374,8 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "resolved_count": 1,
                     "status_counts": {"open": 1, "resolved": 1},
                     "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+                    "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+                    "required_provenance_kinds": ["testimony_record", "document_artifact"],
                 },
                 "harm_profile": {"count": 1, "categories": ["economic"]},
                 "remedy_profile": {"count": 1, "categories": ["monetary"]},
@@ -5248,6 +5252,8 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                     "claim_unresolved_temporal_issue_count": 1,
                     "claim_resolved_temporal_issue_count": 1,
                     "claim_temporal_issue_status_counts": {"open": 1, "resolved": 1},
+                    "claim_missing_temporal_predicates": ["before(event-hr-report,event-termination)"],
+                    "claim_required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
                     "proof_artifact_element_count": 1,
                     "proof_artifact_available_element_count": 1,
                     "proof_artifact_explanation_element_count": 1,
@@ -5394,6 +5400,8 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "retaliation hybrid bridge elements: 1" in review_snapshot_text
             assert "retaliation chronology registry: 2 total, 1 unresolved, 1 resolved" in review_snapshot_text
             assert "retaliation chronology statuses: open=1, resolved=1" in review_snapshot_text
+            assert "retaliation chronology predicates: before(event-hr-report,event-termination)" in review_snapshot_text
+            assert "retaliation chronology provenance: testimony_record, document_artifact, legal_authority" in review_snapshot_text
             assert "retaliation" in proof_drilldown_text
             assert "proof artifacts 1" in proof_drilldown_text
             assert "available 1" in proof_drilldown_text
@@ -5402,6 +5410,8 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "unresolved 1" in proof_drilldown_text
             assert "resolved 1" in proof_drilldown_text
             assert "registry statuses open=1, resolved=1" in proof_drilldown_text
+            assert "registry predicates before(event-hr-report,event-termination)" in proof_drilldown_text
+            assert "registry provenance testimony_record, document_artifact, legal_authority" in proof_drilldown_text
             assert "statuses available=1" in proof_drilldown_text
             assert "causal connection" in proof_drilldown_text
             assert "copy proof id" in proof_drilldown_text
@@ -5443,6 +5453,162 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                 page.locator("#traceStatusMessage").inner_text().strip()
                 == "Proof explanation copied for Causal connection."
             )
+
+            browser.close()
+
+
+def test_document_preview_smoke_renders_claim_reasoning_chronology_rollups():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-22T14:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination before termination."],
+            "factual_allegation_paragraphs": ["1. Plaintiff reported discrimination before termination."],
+            "legal_standards": ["Title VII prohibits retaliation."],
+            "claims_for_relief": ["Retaliation under Title VII."],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft text.",
+            "exhibits": [],
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+        "document_optimization": {
+            "status": "optimized",
+            "method": "actor_mediator_critic_optimizer",
+            "optimizer_backend": "upstream_agentic",
+            "initial_score": 0.48,
+            "final_score": 0.82,
+            "accepted_iterations": 1,
+            "iteration_count": 1,
+            "optimized_sections": ["claims_for_relief"],
+            "intake_status": {
+                "current_phase": "evidence",
+                "score": 0.82,
+                "contradiction_count": 0,
+                "blockers": [],
+                "contradictions": [],
+            },
+            "intake_constraints": [],
+            "intake_case_summary": {
+                "candidate_claims": [
+                    {"claim_type": "retaliation", "label": "Retaliation", "confidence": 0.93},
+                ],
+                "candidate_claim_summary": {
+                    "count": 1,
+                    "claim_types": ["retaliation"],
+                    "average_confidence": 0.93,
+                    "top_claim_type": "retaliation",
+                    "top_confidence": 0.93,
+                    "ambiguous_claim_count": 0,
+                    "ambiguity_flag_count": 0,
+                    "ambiguity_flag_counts": {},
+                    "close_leading_claims": False,
+                },
+                "intake_sections": {},
+                "canonical_fact_summary": {},
+                "canonical_fact_intent_summary": {},
+                "proof_lead_summary": {},
+                "proof_lead_intent_summary": {},
+                "timeline_anchor_summary": {},
+                "harm_profile": {},
+                "remedy_profile": {},
+                "question_candidate_summary": {},
+                "alignment_evidence_tasks": [],
+                "alignment_task_update_history": [],
+                "claim_support_packet_summary": {},
+            },
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 1,
+                "unresolved_temporal_issue_ids": ["temporal-issue-001"],
+                "chronology_task_count": 1,
+                "event_ids": ["event-hr-report", "event-termination"],
+                "temporal_fact_ids": ["fact-hr-report", "fact-termination"],
+                "temporal_relation_ids": ["rel-before-001"],
+                "timeline_anchor_ids": ["anchor-hr-report"],
+                "timeline_issue_ids": ["temporal-issue-001"],
+                "temporal_issue_ids": ["temporal-issue-001"],
+                "missing_temporal_predicates": ["Before(event-hr-report,event-termination)"],
+                "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
+                "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                "temporal_proof_objectives": ["show protected activity preceded termination"],
+            },
+            "claim_reasoning_review": {
+                "retaliation": {
+                    "claim_temporal_issue_count": 2,
+                    "claim_unresolved_temporal_issue_count": 1,
+                    "claim_resolved_temporal_issue_count": 1,
+                    "claim_temporal_issue_status_counts": {"open": 1, "resolved": 1},
+                    "claim_missing_temporal_predicates": ["Before(event-hr-report,event-termination)"],
+                    "claim_required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
+                    "proof_artifact_element_count": 1,
+                    "proof_artifact_available_element_count": 1,
+                    "proof_artifact_explanation_element_count": 1,
+                    "proof_artifact_status_counts": {"available": 1},
+                    "proof_artifact_preview": [
+                        "proof-retaliation-001",
+                        "show protected activity preceded termination",
+                    ],
+                    "flagged_elements": [
+                        {
+                            "element_id": "retaliation:causation",
+                            "element_text": "Causal connection",
+                            "proof_artifact_theorem_export_metadata": {
+                                "chronology_blocked": True,
+                                "chronology_task_count": 1,
+                                "unresolved_temporal_issue_ids": ["temporal-issue-001"],
+                                "timeline_anchor_ids": ["anchor-hr-report"],
+                                "missing_temporal_predicates": ["Before(event-hr-report,event-termination)"],
+                                "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
+                                "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
+                                "temporal_proof_objectives": ["show protected activity preceded termination"],
+                            },
+                        }
+                    ],
+                }
+            },
+            "packet_projection": {},
+            "section_history": [],
+            "initial_review": {},
+            "final_review": {},
+            "router_status": {},
+            "upstream_optimizer": {},
+        },
+        "packet_projection": {},
+        "section_history": [],
+        "initial_review": {},
+        "final_review": {},
+        "router_status": {},
+        "upstream_optimizer": {},
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document")
+            page.evaluate("payload => window.renderPreview(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('previewRoot').innerText.includes('Claim reasoning reviews: 1')"
+            )
+
+            preview_text = page.locator("#previewRoot").inner_text().lower()
+
+            assert "claim reasoning reviews: 1" in preview_text
+            assert "retaliation chronology registry: 2 total, 1 unresolved, 1 resolved" in preview_text
+            assert "retaliation chronology statuses: open=1, resolved=1" in preview_text
+            assert "retaliation chronology predicates: before(event-hr-report,event-termination)" in preview_text
+            assert "retaliation chronology provenance: testimony_record, document_artifact, legal_authority" in preview_text
+            assert "claim support missing predicates: before(event-hr-report,event-termination)" in preview_text
+            assert "claim support required provenance: testimony_record, document_artifact, legal_authority" in preview_text
 
             browser.close()
 

@@ -7658,6 +7658,7 @@ class Mediator:
 						'temporal_relation_ids': temporal_relation_ids,
 						'temporal_relation_formulas': temporal_relation_formulas,
 						'temporal_issue_ids': temporal_issue_ids,
+						'temporal_issue_records': matching_issue_records,
 						'temporal_theorem_formulas': temporal_theorem_formulas,
 						'temporal_proof_objectives': temporal_proof_objectives,
 						'temporal_rule_profile_id': str(packet_element.get('temporal_rule_profile_id') or ''),
@@ -7754,6 +7755,7 @@ class Mediator:
 		temporal_relation_formulas: Any,
 		temporal_theorem_formulas: Any,
 		temporal_proof_objectives: Any,
+		temporal_issue_records: Any = None,
 		temporal_fact_ids: Any = None,
 	) -> List[str]:
 		if not temporal_gap_targeted:
@@ -7765,6 +7767,44 @@ class Mediator:
 		]
 		if relation_formulas:
 			return list(dict.fromkeys(relation_formulas))[:6]
+		issue_records = [
+			issue
+			for issue in (temporal_issue_records if isinstance(temporal_issue_records, list) else [])
+			if isinstance(issue, dict)
+		]
+		explicit_issue_predicates = [
+			str(predicate).strip()
+			for issue in issue_records
+			for predicate in (issue.get('missing_temporal_predicates') if isinstance(issue.get('missing_temporal_predicates'), list) else [])
+			if str(predicate).strip()
+		]
+		if explicit_issue_predicates:
+			return list(dict.fromkeys(explicit_issue_predicates))[:6]
+		issue_predicates: List[str] = []
+		for issue in issue_records:
+			issue_type = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+			issue_fact_ids = [
+				str(fact_id).strip()
+				for fact_id in (issue.get('fact_ids') if isinstance(issue.get('fact_ids'), list) else [])
+				if str(fact_id).strip()
+			]
+			if issue_type == 'relative_only_ordering':
+				if len(issue_fact_ids) >= 2:
+					issue_predicates.append(f'Before({issue_fact_ids[0]},{issue_fact_ids[-1]})')
+				continue
+			if issue_type == 'missing_anchor':
+				anchor_targets = issue_fact_ids or [
+					str(fact_id).strip()
+					for fact_id in (temporal_fact_ids if isinstance(temporal_fact_ids, list) else [])
+					if str(fact_id).strip()
+				]
+				if anchor_targets:
+					issue_predicates.append(f'Anchored({anchor_targets[0]})')
+				continue
+			if issue_type.startswith('temporal') and len(issue_fact_ids) >= 2:
+				issue_predicates.append(f'Before({issue_fact_ids[0]},{issue_fact_ids[-1]})')
+		if issue_predicates:
+			return list(dict.fromkeys(issue_predicates))[:6]
 		theorem_formulas = [
 			str(formula).strip()
 			for formula in (temporal_theorem_formulas if isinstance(temporal_theorem_formulas, list) else [])
@@ -7798,6 +7838,7 @@ class Mediator:
 		preferred_support_kind: str,
 		fallback_support_kinds: List[str],
 		temporal_follow_ups: List[Dict[str, Any]],
+		temporal_issue_records: Any = None,
 	) -> List[str]:
 		kind_map = {
 			'testimony': 'testimony_record',
@@ -7827,6 +7868,22 @@ class Mediator:
 			mapped_lane = lane_map.get(lane)
 			if mapped_lane and mapped_lane not in required_kinds:
 				required_kinds.append(mapped_lane)
+		for issue in (temporal_issue_records if isinstance(temporal_issue_records, list) else []):
+			if not isinstance(issue, dict):
+				continue
+			for required_kind in (issue.get('required_provenance_kinds') if isinstance(issue.get('required_provenance_kinds'), list) else []):
+				normalized_required_kind = str(required_kind or '').strip()
+				if normalized_required_kind and normalized_required_kind not in required_kinds:
+					required_kinds.append(normalized_required_kind)
+			issue_lane = str(issue.get('recommended_resolution_lane') or '').strip().lower()
+			mapped_issue_lane = lane_map.get(issue_lane)
+			if mapped_issue_lane and mapped_issue_lane not in required_kinds:
+				required_kinds.append(mapped_issue_lane)
+			issue_type = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+			if issue_type == 'missing_anchor' and 'document_artifact' not in required_kinds:
+				required_kinds.append('document_artifact')
+			if issue_type == 'relative_only_ordering' and 'testimony_record' not in required_kinds:
+				required_kinds.append('testimony_record')
 		return required_kinds
 
 	def _build_alignment_evidence_tasks(self, alignment_summary: Any) -> List[Dict[str, Any]]:
@@ -7880,12 +7937,14 @@ class Mediator:
 					temporal_relation_formulas=element.get('temporal_relation_formulas', []),
 					temporal_theorem_formulas=element.get('temporal_theorem_formulas', []),
 					temporal_proof_objectives=temporal_proof_objectives,
+					temporal_issue_records=element.get('temporal_issue_records', []),
 					temporal_fact_ids=element.get('temporal_fact_ids', []),
 				)
 				required_provenance_kinds = self._derive_required_provenance_kinds(
 					preferred_support_kind=preferred_support_kind,
 					fallback_support_kinds=fallback_support_kinds,
 					temporal_follow_ups=temporal_follow_ups,
+					temporal_issue_records=element.get('temporal_issue_records', []),
 				)
 				task_priority = 'high' if support_status == 'contradicted' or bool(element.get('blocking', False)) else 'medium'
 				if temporal_gap_targeted:

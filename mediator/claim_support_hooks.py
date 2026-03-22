@@ -2036,6 +2036,20 @@ class ClaimSupportHook:
             if formula not in derived_missing_temporal_predicates:
                 derived_missing_temporal_predicates.append(formula)
 
+        issue_level_missing_temporal_predicates: List[str] = []
+        issue_level_required_provenance_kinds: List[str] = []
+        for issue in selected_temporal_issues:
+            if not isinstance(issue, dict):
+                continue
+            for predicate in (issue.get('missing_temporal_predicates') if isinstance(issue.get('missing_temporal_predicates'), list) else []):
+                normalized_predicate = str(predicate).strip()
+                if normalized_predicate and normalized_predicate not in issue_level_missing_temporal_predicates:
+                    issue_level_missing_temporal_predicates.append(normalized_predicate)
+            for required_kind in (issue.get('required_provenance_kinds') if isinstance(issue.get('required_provenance_kinds'), list) else []):
+                normalized_required_kind = str(required_kind).strip()
+                if normalized_required_kind and normalized_required_kind not in issue_level_required_provenance_kinds:
+                    issue_level_required_provenance_kinds.append(normalized_required_kind)
+
         consistency_payload = timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
         missing_temporal_predicates = [
             str(predicate).strip()
@@ -2043,12 +2057,14 @@ class ClaimSupportHook:
             if str(predicate).strip()
         ]
         if not missing_temporal_predicates:
-            missing_temporal_predicates = list(derived_missing_temporal_predicates)
+            missing_temporal_predicates = list(issue_level_missing_temporal_predicates or derived_missing_temporal_predicates)
         required_provenance_kinds = [
             str(kind).strip()
             for kind in (consistency_payload.get('required_provenance_kinds', []) or [])
             if str(kind).strip()
         ]
+        if not required_provenance_kinds:
+            required_provenance_kinds = list(issue_level_required_provenance_kinds)
         if not required_provenance_kinds:
             for issue in selected_temporal_issues:
                 if str((issue or {}).get('recommended_resolution_lane') or '').strip().lower() == 'request_document':

@@ -296,7 +296,10 @@ def test_refresh_intake_case_file_builds_temporal_issue_registry_for_relative_an
             "left_node_name": "Supervisor acted after the complaint.",
             "right_node_name": None,
             "status": "open",
+            "current_resolution_status": "open",
             "relative_markers": ["after"],
+            "missing_temporal_predicates": ["Anchored(fact_3)"],
+            "required_provenance_kinds": ["testimony_record"],
             "source_kind": "temporal_fact_registry",
             "source_ref": "fact_3",
             "inference_mode": "derived_from_temporal_context",
@@ -316,6 +319,9 @@ def test_refresh_intake_case_file_builds_temporal_issue_registry_for_relative_an
             "left_node_name": "Supervisor acted after the complaint.",
             "right_node_name": "Employee complained to HR.",
             "status": "open",
+            "current_resolution_status": "open",
+            "missing_temporal_predicates": [],
+            "required_provenance_kinds": ["document_artifact"],
             "source_kind": "contradiction_queue",
             "source_ref": "temporal_reverse_before_001",
             "inference_mode": "imported_temporal_contradiction",
@@ -516,6 +522,10 @@ def test_build_intake_case_file_merges_duplicate_relative_only_temporal_issues_f
     assert issues[0]["issue_type"] == "relative_only_ordering"
     assert issues[0]["relative_markers"] == ["two weeks after", "after"]
     assert len(issues[0]["fact_ids"]) >= 2
+    assert issues[0]["missing_temporal_predicates"] == [
+        f"Before({issues[0]['fact_ids'][0]},{issues[0]['fact_ids'][-1]})"
+    ]
+    assert issues[0]["required_provenance_kinds"] == ["testimony_record"]
 
 
 def test_build_intake_case_file_derives_anchor_dates_from_quantified_relative_retaliation_sequence():
@@ -636,6 +646,36 @@ def test_build_intake_case_file_derives_sequence_relations_from_structured_timel
         and relation["inference_mode"] == "derived_from_structured_sequence"
         for relation in relation_registry
     )
+
+
+def test_build_intake_case_file_does_not_promote_structured_timeline_description_into_pseudo_date():
+    knowledge_graph = KnowledgeGraph()
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:response",
+            type="fact",
+            name="Response event: delayed hearing response",
+            attributes={
+                "description": "HACC response to hearing/review request was delayed and unclear. Artifact: response email.",
+                "fact_type": "timeline",
+                "predicate_family": "response_timeline",
+                "event_label": "Response event",
+                "event_id": "structured_event_response",
+                "sequence_index": 5,
+                "structured_timeline_group": "structured_timeline_demo",
+                "event_date_or_range": "",
+                "source_artifact_ids": ["response email"],
+                "event_support_refs": ["response email"],
+            },
+        )
+    )
+
+    intake_case_file = build_intake_case_file(knowledge_graph)
+    response_fact = intake_case_file["canonical_facts"][0]
+
+    assert response_fact["event_date_or_range"] is None
+    assert response_fact["temporal_context"]["raw_text"] == ""
+    assert response_fact["temporal_context"]["start_date"] is None
 
 
 def test_knowledge_graph_builder_extracts_named_staff_role_titles():

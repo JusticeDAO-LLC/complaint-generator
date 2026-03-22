@@ -796,6 +796,34 @@ def test_build_intake_follow_up_worksheet_creates_fillable_items():
     assert worksheet["follow_up_items"][1]["gap"] == "who at HACC made, communicated, or carried out each decision"
 
 
+def test_build_intake_follow_up_worksheet_prioritizes_grounded_recommended_next_action():
+    package = {
+        "generated_at": "2026-03-17T00:00:00+00:00",
+        "preset": "notice_retaliation",
+        "session_id": "session-1",
+        "filing_forum": "hud",
+        "summary": "Summary text.",
+        "grounded_recommended_next_action": {
+            "phase_name": "graph_analysis",
+            "action": "fill_chronology_gaps",
+            "description": "Prioritize dated notices and response timing before broad drafting.",
+        },
+        "outstanding_intake_gaps": [
+            "when the key events happened, including the complaint, notice, review or hearing request, and any denial or termination decision",
+        ],
+        "outstanding_intake_follow_up_questions": [
+            "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+        ],
+    }
+
+    worksheet = MODULE._build_intake_follow_up_worksheet(package)
+
+    assert worksheet["follow_up_items"][0]["id"] == "grounded_priority_01"
+    assert worksheet["follow_up_items"][0]["objective"] == "fill_chronology_gaps"
+    assert worksheet["follow_up_items"][0]["source"] == "grounded_recommended_next_action"
+    assert worksheet["follow_up_items"][1]["id"] == "follow_up_01"
+
+
 def test_merge_completed_intake_worksheet_adds_answers_and_closes_matching_gaps():
     session = {
         "conversation_history": [],
@@ -835,6 +863,76 @@ def test_merge_completed_intake_worksheet_adds_answers_and_closes_matching_gaps(
     assert summary["covered_objectives"] == ["timeline"]
     assert summary["uncovered_objectives"] == ["actors"]
     assert summary["objective_question_counts"]["timeline"] == 1
+
+
+def test_merge_completed_grounded_intake_worksheet_preserves_grounded_source_and_objective():
+    session = {
+        "conversation_history": [],
+        "final_state": {
+            "adversarial_intake_priority_summary": {
+                "expected_objectives": ["documents", "exact_dates"],
+                "covered_objectives": [],
+                "uncovered_objectives": ["documents", "exact_dates"],
+                "objective_question_counts": {
+                    "documents": 0,
+                    "exact_dates": 0,
+                },
+            }
+        },
+    }
+    worksheet = {
+        "follow_up_items": [
+            {
+                "id": "grounded_priority_01",
+                "objective": "documents",
+                "question": "Which repository-backed file should be uploaded first, and what exact fact does it prove?",
+                "answer": "Upload the termination notice first because it proves the date and reason for the adverse action.",
+                "status": "answered",
+                "source": "grounded_recommended_next_action",
+            }
+        ]
+    }
+
+    merged = MODULE._merge_completed_intake_worksheet(
+        session,
+        worksheet,
+        source_name="completed_grounded_intake_follow_up_worksheet",
+    )
+
+    assert merged["conversation_history"][-1]["source"] == "completed_grounded_intake_follow_up_worksheet"
+    summary = merged["final_state"]["adversarial_intake_priority_summary"]
+    assert summary["covered_objectives"] == ["documents"]
+    assert summary["uncovered_objectives"] == ["exact_dates"]
+    assert summary["objective_question_counts"]["documents"] == 1
+
+
+def test_grounded_follow_up_answer_summary_counts_chronology_and_evidence_answers():
+    session = {
+        "conversation_history": [
+            {
+                "role": "complainant",
+                "content": "The denial notice was dated January 15, 2026 and the review request was submitted January 18, 2026.",
+                "question": "What exact dates, notice timing, and event order are still missing before drafting?",
+                "source": "completed_grounded_intake_follow_up_worksheet",
+                "objective": "exact_dates",
+            },
+            {
+                "role": "complainant",
+                "content": "Upload the termination notice first because it proves the adverse action date and stated reason.",
+                "question": "Which repository-backed file should be uploaded first, and what exact fact does it prove?",
+                "source": "completed_grounded_intake_follow_up_worksheet",
+                "objective": "documents",
+            },
+        ]
+    }
+
+    summary = MODULE._grounded_follow_up_answer_summary(session)
+
+    assert summary["answered_item_count"] == 2
+    assert summary["chronology_answer_count"] == 1
+    assert summary["evidence_answer_count"] == 1
+    assert summary["objective_counts"]["exact_dates"] == 1
+    assert summary["objective_counts"]["documents"] == 1
 
 
 def test_render_intake_follow_up_worksheet_markdown_includes_fillable_items():

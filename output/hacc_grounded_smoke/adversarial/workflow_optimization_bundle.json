@@ -1,0 +1,4747 @@
+{
+  "timestamp": "2026-03-22T00:34:40.743007+00:00",
+  "num_sessions_analyzed": 1,
+  "average_score": 0.8246923076923077,
+  "workflow_phase_plan": {
+    "recommended_order": [
+      "graph_analysis",
+      "document_generation",
+      "intake_questioning"
+    ],
+    "phases": {
+      "intake_questioning": {
+        "status": "warning",
+        "summary": "Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage.",
+        "signals": [
+          "1 intake objectives remain uncovered"
+        ],
+        "recommended_actions": [
+          {
+            "focus": "causation_sequence",
+            "signal": "intake_coverage_gap",
+            "recommended_action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
+          }
+        ],
+        "target_files": [
+          "adversarial_harness/session.py",
+          "mediator/mediator.py",
+          "adversarial_harness/complainant.py"
+        ],
+        "priority": 3
+      },
+      "graph_analysis": {
+        "status": "critical",
+        "summary": "Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone.",
+        "signals": [
+          "knowledge graphs average 18.00 unresolved gaps",
+          "knowledge-graph gaps are not reliably shrinking across iterations",
+          "knowledge-graph relationship growth per iteration is low",
+          "dependency satisfaction rate is only 0.11",
+          "graph-blocking intake objectives remain uncovered: causation_sequence"
+        ],
+        "recommended_actions": [
+          {
+            "focus": "gap_reduction",
+            "signal": "kg_gap_count",
+            "recommended_action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative."
+          },
+          {
+            "focus": "iterative_graph_updates",
+            "signal": "kg_gap_delta",
+            "recommended_action": "Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field."
+          },
+          {
+            "focus": "blocker_closure",
+            "signal": "intake_graph_blockers",
+            "recommended_action": "Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set."
+          }
+        ],
+        "target_files": [
+          "complaint_phases/knowledge_graph.py",
+          "complaint_phases/dependency_graph.py",
+          "complaint_phases/denoiser.py",
+          "complaint_phases/intake_case_file.py"
+        ],
+        "priority": 1
+      },
+      "document_generation": {
+        "status": "warning",
+        "summary": "Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time.",
+        "signals": [
+          "drafting still lacks chronology, staff-identity, or causation-sequence details needed for pleading-ready allegations",
+          "drafting depends on stronger graph and denoising handoffs",
+          "draft output is not grounded enough in canonical facts or evidence-backed support rows"
+        ],
+        "recommended_actions": [
+          {
+            "focus": "pleading_anchors",
+            "signal": "intake_blocker_handoff",
+            "recommended_action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence."
+          },
+          {
+            "focus": "graph_to_document_handoff",
+            "signal": "graph_dependency",
+            "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization."
+          },
+          {
+            "focus": "document_provenance_grounding",
+            "signal": "document_provenance",
+            "recommended_action": "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
+          }
+        ],
+        "target_files": [
+          "document_pipeline.py",
+          "document_optimization.py",
+          "scripts/synthesize_hacc_complaint.py",
+          "mediator/formal_document.py"
+        ],
+        "priority": 2
+      }
+    }
+  },
+  "global_objectives": [
+    "Improve complainant and mediator questioning across diverse complaint types.",
+    "Improve knowledge-graph and dependency-graph extraction, gap closure, and legal-issue analysis.",
+    "Improve drafting and synthesis so complaint outputs reflect the collected facts, evidence, and unresolved gaps.",
+    "Improve cross-phase handoffs so intake, graph analysis, and drafting reinforce one another across diverse evidence submissions."
+  ],
+  "phase_tasks": [
+    {
+      "phase_name": "graph_analysis",
+      "task_id": "adversarial_autopatch_graph_analysis_20260322_003440",
+      "description": "Use the test_driven optimizer to improve the complaint-generator graph analysis phase. Target files: complaint_phases/denoiser.py. Phase goal: Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone. Recommended actions: Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative.; Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field.; Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set.. Weak complaint types to generalize for: housing_discrimination, hacc_research_engine. Weak evidence modalities to improve: policy_document, file_evidence. Graph evidence targets: context_or_reason, denial_event, protected_activity. Graph focus areas: claim_elements.",
+      "target_files": [
+        "complaint_phases/denoiser.py"
+      ],
+      "method": "TEST_DRIVEN",
+      "priority": 112,
+      "constraints": {
+        "target_symbols": {
+          "complaint_phases/denoiser.py": [
+            "process_answer"
+          ]
+        },
+        "workflow_phase": "graph_analysis",
+        "preserve_interfaces": true
+      },
+      "metadata": {
+        "source": "adversarial_harness",
+        "workflow_phase": "graph_analysis",
+        "workflow_phase_priority": 1,
+        "workflow_phase_status": "critical",
+        "workflow_phase_summary": "Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone.",
+        "workflow_phase_actions": [
+          "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative.",
+          "Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field.",
+          "Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set."
+        ],
+        "workflow_phase_secondary_target_files": [
+          "complaint_phases/dependency_graph.py"
+        ],
+        "workflow_phase_secondary_constraints": {
+          "target_symbols": {
+            "complaint_phases/dependency_graph.py": [
+              "get_claim_readiness"
+            ]
+          },
+          "workflow_phase": "graph_analysis",
+          "preserve_interfaces": true
+        },
+        "workflow_phase_tertiary_target_files": [
+          "complaint_phases/knowledge_graph.py"
+        ],
+        "workflow_phase_tertiary_constraints": {
+          "target_symbols": {
+            "complaint_phases/knowledge_graph.py": [
+              "build_from_text"
+            ]
+          },
+          "workflow_phase": "graph_analysis",
+          "preserve_interfaces": true
+        },
+        "workflow_capabilities": [
+          "knowledge_graph_population",
+          "dependency_graph_population",
+          "gap_reduction",
+          "timeline_and_proof_modeling"
+        ],
+        "workflow_phase_task_priority": 112,
+        "workflow_phase_task_priority_components": {
+          "base_priority": 70,
+          "phase_rank_bonus": 30,
+          "status_bonus": 12,
+          "chronology_bonus": 0,
+          "execution_bonus": 0
+        },
+        "weak_complaint_types": [
+          "housing_discrimination",
+          "hacc_research_engine"
+        ],
+        "weak_evidence_modalities": [
+          "policy_document",
+          "file_evidence"
+        ],
+        "phase_scorecard": {
+          "status": "critical",
+          "score": 0.3209,
+          "focus_areas": [
+            "gap_reduction",
+            "dependency_satisfaction"
+          ],
+          "generalization_targets": [
+            "hacc_research_engine",
+            "housing_discrimination"
+          ],
+          "evidence_targets": [
+            "file_evidence",
+            "policy_document"
+          ],
+          "targeted_claim_elements": [
+            "context_or_reason",
+            "denial_event",
+            "protected_activity"
+          ]
+        },
+        "phase_signal_context": {
+          "kg_avg_gaps": 18.0,
+          "kg_avg_gaps_delta_per_iter": 6.0,
+          "dg_avg_satisfaction_rate": 0.1111111111111111,
+          "kg_sessions_gaps_not_reducing": 1,
+          "chronology_pressure_flag": false,
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0
+        },
+        "cross_phase_findings": [
+          "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+          "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+        ],
+        "intake_targeting_summary": {
+          "count": 7,
+          "objective_counts": {
+            "causation_sequence": 1,
+            "retaliation": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_priority": 1,
+            "intake_workflow_action": 3,
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_priority",
+              "objective": "causation_sequence",
+              "claim_element_id": "",
+              "focus_areas": [
+                "intake_priorities"
+              ],
+              "text": "Uncovered intake objective: causation_sequence"
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "retaliation",
+              "claim_element_id": "",
+              "focus_areas": [
+                "retaliation",
+                "denial",
+                "protected_activity",
+                "denial_event"
+              ],
+              "text": "Close graph and legal-element gaps that still block complaint development."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "conduct",
+              "claim_element_id": "",
+              "focus_areas": [
+                "conduct"
+              ],
+              "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "",
+              "claim_element_id": "",
+              "focus_areas": [],
+              "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: protected_activity"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: denial_event"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: context_or_reason"
+            }
+          ]
+        },
+        "workflow_targeting_summary": {
+          "count": 10,
+          "phase_counts": {
+            "intake_questioning": 7,
+            "graph_analysis": 3,
+            "document_generation": 0
+          },
+          "prioritized_phases": [
+            "intake_questioning",
+            "graph_analysis"
+          ],
+          "shared_claim_element_counts": {
+            "protected_activity": 2,
+            "denial_event": 2,
+            "context_or_reason": 2
+          },
+          "shared_focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 6
+          },
+          "phase_summaries": {
+            "intake_questioning": {
+              "count": 7,
+              "objective_counts": {
+                "causation_sequence": 1,
+                "retaliation": 1,
+                "conduct": 1,
+                "claim_elements": 3
+              },
+              "claim_element_counts": {
+                "protected_activity": 1,
+                "denial_event": 1,
+                "context_or_reason": 1
+              },
+              "focus_area_counts": {
+                "intake_priorities": 1,
+                "retaliation": 1,
+                "denial": 1,
+                "protected_activity": 1,
+                "denial_event": 1,
+                "conduct": 1,
+                "claim_elements": 3
+              },
+              "source_counts": {
+                "intake_priority": 1,
+                "intake_workflow_action": 3,
+                "intake_legal_targeting": 3
+              },
+              "targets": [
+                {
+                  "source": "intake_priority",
+                  "objective": "causation_sequence",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "intake_priorities"
+                  ],
+                  "text": "Uncovered intake objective: causation_sequence"
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "retaliation",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "retaliation",
+                    "denial",
+                    "protected_activity",
+                    "denial_event"
+                  ],
+                  "text": "Close graph and legal-element gaps that still block complaint development."
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "conduct",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "conduct"
+                  ],
+                  "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "",
+                  "claim_element_id": "",
+                  "focus_areas": [],
+                  "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "protected_activity",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: protected_activity"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "denial_event",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: denial_event"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "context_or_reason",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: context_or_reason"
+                }
+              ]
+            },
+            "graph_analysis": {
+              "count": 3,
+              "claim_type_counts": {
+                "retaliation": 1,
+                "denial": 2
+              },
+              "claim_element_counts": {
+                "protected_activity": 1,
+                "denial_event": 1,
+                "context_or_reason": 1
+              },
+              "focus_area_counts": {
+                "claim_elements": 3
+              },
+              "source_counts": {
+                "intake_legal_targeting": 3
+              },
+              "targets": [
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "retaliation",
+                  "claim_element_id": "protected_activity",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for retaliation"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "denial",
+                  "claim_element_id": "denial_event",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for denial"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "denial",
+                  "claim_element_id": "context_or_reason",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for denial"
+                }
+              ]
+            },
+            "document_generation": {
+              "count": 0,
+              "focus_section_counts": {},
+              "claim_type_counts": {},
+              "claim_element_counts": {},
+              "support_kind_counts": {},
+              "targets": []
+            }
+          }
+        },
+        "graph_element_targeting_summary": {
+          "count": 3,
+          "claim_type_counts": {
+            "retaliation": 1,
+            "denial": 2
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "retaliation",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for retaliation"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            }
+          ]
+        },
+        "document_evidence_targeting_summary": {
+          "count": 0,
+          "focus_section_counts": {},
+          "claim_type_counts": {},
+          "claim_element_counts": {},
+          "support_kind_counts": {},
+          "targets": []
+        },
+        "document_provenance_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_fact_backed_ratio": 0.0,
+          "avg_summary_fact_backed_ratio": 0.0,
+          "avg_factual_allegation_fact_backed_ratio": 0.0,
+          "avg_claim_supporting_fact_backed_ratio": 0.0,
+          "low_grounding_session_count": 0,
+          "low_grounding_flag": false
+        },
+        "document_grounding_improvement_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_initial_fact_backed_ratio": 0.0,
+          "avg_final_fact_backed_ratio": 0.0,
+          "avg_fact_backed_ratio_delta": 0.0,
+          "improved_session_count": 0,
+          "regressed_session_count": 0,
+          "stalled_session_count": 0,
+          "recovery_attempted_session_count": 0,
+          "low_grounding_resolved_session_count": 0,
+          "improved_flag": false
+        },
+        "document_grounding_lane_outcome_summary": {
+          "support_kind_stats": {},
+          "claim_element_stats": {},
+          "recommended_future_support_kind": "",
+          "recommended_future_claim_element": ""
+        },
+        "document_workflow_execution_summary": {
+          "iteration_count": 0,
+          "accepted_iteration_count": 0,
+          "focus_section_counts": {},
+          "top_support_kind_counts": {},
+          "targeted_claim_element_counts": {},
+          "preferred_support_kind_counts": {},
+          "first_focus_section": "",
+          "first_top_support_kind": "",
+          "first_targeted_claim_element": "",
+          "first_preferred_support_kind": ""
+        },
+        "document_execution_drift_summary": {
+          "drift_flag": false,
+          "top_targeted_claim_element": "",
+          "top_targeted_claim_element_count": 0,
+          "first_executed_claim_element": "",
+          "first_focus_section": "",
+          "first_preferred_support_kind": "",
+          "iteration_count": 0,
+          "accepted_iteration_count": 0
+        },
+        "document_chronology_reasoning_summary": {
+          "count": 0,
+          "sessions_with_temporal_handoff": 0,
+          "sessions_with_reasoning_review": 0,
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0,
+          "proof_artifact_element_count": 0,
+          "proof_artifact_available_element_count": 0,
+          "proof_artifact_status_counts": {},
+          "claim_type_counts": {},
+          "unresolved_claim_type_counts": {},
+          "temporal_proof_bundle_count": 0,
+          "temporal_proof_bundle_ids": [],
+          "chronology_pressure_flag": false
+        },
+        "report_summary": {
+          "average_score": 0.8246923076923077,
+          "score_trend": "insufficient_data",
+          "priority_improvements": [
+            "Improve intake targeting: claim_elements, causation_sequence, conduct",
+            "Improve intake priority coverage: causation_sequence",
+            "Improve graph element targeting: context_or_reason, denial_event, protected_activity"
+          ],
+          "workflow_phase_plan": {
+            "recommended_order": [
+              "graph_analysis",
+              "document_generation",
+              "intake_questioning"
+            ],
+            "phases": {
+              "intake_questioning": {
+                "status": "warning",
+                "summary": "Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage.",
+                "signals": [
+                  "1 intake objectives remain uncovered"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "causation_sequence",
+                    "signal": "intake_coverage_gap",
+                    "recommended_action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
+                  }
+                ],
+                "target_files": [
+                  "adversarial_harness/session.py",
+                  "mediator/mediator.py",
+                  "adversarial_harness/complainant.py"
+                ],
+                "priority": 3
+              },
+              "graph_analysis": {
+                "status": "critical",
+                "summary": "Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone.",
+                "signals": [
+                  "knowledge graphs average 18.00 unresolved gaps",
+                  "knowledge-graph gaps are not reliably shrinking across iterations",
+                  "knowledge-graph relationship growth per iteration is low",
+                  "dependency satisfaction rate is only 0.11",
+                  "graph-blocking intake objectives remain uncovered: causation_sequence"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "gap_reduction",
+                    "signal": "kg_gap_count",
+                    "recommended_action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative."
+                  },
+                  {
+                    "focus": "iterative_graph_updates",
+                    "signal": "kg_gap_delta",
+                    "recommended_action": "Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field."
+                  },
+                  {
+                    "focus": "blocker_closure",
+                    "signal": "intake_graph_blockers",
+                    "recommended_action": "Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set."
+                  }
+                ],
+                "target_files": [
+                  "complaint_phases/knowledge_graph.py",
+                  "complaint_phases/dependency_graph.py",
+                  "complaint_phases/denoiser.py",
+                  "complaint_phases/intake_case_file.py"
+                ],
+                "priority": 1
+              },
+              "document_generation": {
+                "status": "warning",
+                "summary": "Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time.",
+                "signals": [
+                  "drafting still lacks chronology, staff-identity, or causation-sequence details needed for pleading-ready allegations",
+                  "drafting depends on stronger graph and denoising handoffs",
+                  "draft output is not grounded enough in canonical facts or evidence-backed support rows"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "pleading_anchors",
+                    "signal": "intake_blocker_handoff",
+                    "recommended_action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence."
+                  },
+                  {
+                    "focus": "graph_to_document_handoff",
+                    "signal": "graph_dependency",
+                    "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization."
+                  },
+                  {
+                    "focus": "document_provenance_grounding",
+                    "signal": "document_provenance",
+                    "recommended_action": "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
+                  }
+                ],
+                "target_files": [
+                  "document_pipeline.py",
+                  "document_optimization.py",
+                  "scripts/synthesize_hacc_complaint.py",
+                  "mediator/formal_document.py"
+                ],
+                "priority": 2
+              }
+            }
+          },
+          "complaint_type_performance": {
+            "housing_discrimination": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            },
+            "hacc_research_engine": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            }
+          },
+          "evidence_modality_performance": {
+            "policy_document": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            },
+            "file_evidence": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            }
+          },
+          "phase_scorecards": {
+            "intake_questioning": {
+              "status": "warning",
+              "score": 0.8213,
+              "focus_areas": [
+                "causation_sequence",
+                "claim_elements",
+                "causation_sequence"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_intake_objectives": [
+                "claim_elements",
+                "causation_sequence",
+                "conduct"
+              ]
+            },
+            "graph_analysis": {
+              "status": "critical",
+              "score": 0.3209,
+              "focus_areas": [
+                "gap_reduction",
+                "dependency_satisfaction"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_claim_elements": [
+                "context_or_reason",
+                "denial_event",
+                "protected_activity"
+              ]
+            },
+            "document_generation": {
+              "status": "warning",
+              "score": 0.5785,
+              "focus_areas": [
+                "causation_sequence"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_claim_elements": [],
+              "executed_claim_elements": [],
+              "first_executed_claim_element": "",
+              "first_focus_section": "",
+              "first_top_support_kind": "",
+              "document_fact_backed_ratio": 0.0,
+              "document_low_grounding_flag": false,
+              "document_provenance_summary": {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_fact_backed_ratio": 0.0,
+                "avg_summary_fact_backed_ratio": 0.0,
+                "avg_factual_allegation_fact_backed_ratio": 0.0,
+                "avg_claim_supporting_fact_backed_ratio": 0.0,
+                "low_grounding_session_count": 0,
+                "low_grounding_flag": false
+              },
+              "document_grounding_improvement_summary": {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_initial_fact_backed_ratio": 0.0,
+                "avg_final_fact_backed_ratio": 0.0,
+                "avg_fact_backed_ratio_delta": 0.0,
+                "improved_session_count": 0,
+                "regressed_session_count": 0,
+                "stalled_session_count": 0,
+                "recovery_attempted_session_count": 0,
+                "low_grounding_resolved_session_count": 0,
+                "improved_flag": false
+              },
+              "document_grounding_lane_outcome_summary": {
+                "support_kind_stats": {},
+                "claim_element_stats": {},
+                "recommended_future_support_kind": "",
+                "recommended_future_claim_element": ""
+              },
+              "document_grounding_improved_flag": false,
+              "execution_mismatch_flag": false,
+              "execution_drift_summary": {
+                "drift_flag": false,
+                "top_targeted_claim_element": "",
+                "top_targeted_claim_element_count": 0,
+                "first_executed_claim_element": "",
+                "first_focus_section": "",
+                "first_preferred_support_kind": "",
+                "iteration_count": 0,
+                "accepted_iteration_count": 0
+              },
+              "unresolved_temporal_issue_count": 0,
+              "chronology_task_count": 0,
+              "proof_artifact_element_count": 0,
+              "proof_artifact_available_element_count": 0,
+              "document_chronology_reasoning_summary": {
+                "count": 0,
+                "sessions_with_temporal_handoff": 0,
+                "sessions_with_reasoning_review": 0,
+                "unresolved_temporal_issue_count": 0,
+                "chronology_task_count": 0,
+                "proof_artifact_element_count": 0,
+                "proof_artifact_available_element_count": 0,
+                "proof_artifact_status_counts": {},
+                "claim_type_counts": {},
+                "unresolved_claim_type_counts": {},
+                "temporal_proof_bundle_count": 0,
+                "temporal_proof_bundle_ids": [],
+                "chronology_pressure_flag": false
+              },
+              "chronology_pressure_flag": false
+            }
+          },
+          "document_handoff_summary": {
+            "unresolved_intake_objectives": [
+              "causation_sequence"
+            ],
+            "graph_dependency_status": "critical",
+            "document_generation_status": "warning",
+            "complaint_type_gap_count": 0,
+            "evidence_modality_gap_count": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "blockers": [
+              "uncovered_intake_objectives",
+              "graph_analysis_not_ready",
+              "document_generation_not_ready"
+            ],
+            "ready_for_document_optimization": false
+          },
+          "intake_targeting_summary": {
+            "count": 7,
+            "objective_counts": {
+              "causation_sequence": 1,
+              "retaliation": 1,
+              "conduct": 1,
+              "claim_elements": 3
+            },
+            "claim_element_counts": {
+              "protected_activity": 1,
+              "denial_event": 1,
+              "context_or_reason": 1
+            },
+            "focus_area_counts": {
+              "intake_priorities": 1,
+              "retaliation": 1,
+              "denial": 1,
+              "protected_activity": 1,
+              "denial_event": 1,
+              "conduct": 1,
+              "claim_elements": 3
+            },
+            "source_counts": {
+              "intake_priority": 1,
+              "intake_workflow_action": 3,
+              "intake_legal_targeting": 3
+            },
+            "targets": [
+              {
+                "source": "intake_priority",
+                "objective": "causation_sequence",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "intake_priorities"
+                ],
+                "text": "Uncovered intake objective: causation_sequence"
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "retaliation",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "retaliation",
+                  "denial",
+                  "protected_activity",
+                  "denial_event"
+                ],
+                "text": "Close graph and legal-element gaps that still block complaint development."
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "conduct",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "conduct"
+                ],
+                "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "",
+                "claim_element_id": "",
+                "focus_areas": [],
+                "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "protected_activity",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: protected_activity"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "denial_event",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: denial_event"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "context_or_reason",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: context_or_reason"
+              }
+            ]
+          },
+          "workflow_targeting_summary": {
+            "count": 10,
+            "phase_counts": {
+              "intake_questioning": 7,
+              "graph_analysis": 3,
+              "document_generation": 0
+            },
+            "prioritized_phases": [
+              "intake_questioning",
+              "graph_analysis"
+            ],
+            "shared_claim_element_counts": {
+              "protected_activity": 2,
+              "denial_event": 2,
+              "context_or_reason": 2
+            },
+            "shared_focus_area_counts": {
+              "intake_priorities": 1,
+              "retaliation": 1,
+              "denial": 1,
+              "protected_activity": 1,
+              "denial_event": 1,
+              "conduct": 1,
+              "claim_elements": 6
+            },
+            "phase_summaries": {
+              "intake_questioning": {
+                "count": 7,
+                "objective_counts": {
+                  "causation_sequence": 1,
+                  "retaliation": 1,
+                  "conduct": 1,
+                  "claim_elements": 3
+                },
+                "claim_element_counts": {
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "context_or_reason": 1
+                },
+                "focus_area_counts": {
+                  "intake_priorities": 1,
+                  "retaliation": 1,
+                  "denial": 1,
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "conduct": 1,
+                  "claim_elements": 3
+                },
+                "source_counts": {
+                  "intake_priority": 1,
+                  "intake_workflow_action": 3,
+                  "intake_legal_targeting": 3
+                },
+                "targets": [
+                  {
+                    "source": "intake_priority",
+                    "objective": "causation_sequence",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "intake_priorities"
+                    ],
+                    "text": "Uncovered intake objective: causation_sequence"
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "retaliation",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "retaliation",
+                      "denial",
+                      "protected_activity",
+                      "denial_event"
+                    ],
+                    "text": "Close graph and legal-element gaps that still block complaint development."
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "conduct",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "conduct"
+                    ],
+                    "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "",
+                    "claim_element_id": "",
+                    "focus_areas": [],
+                    "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "protected_activity",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: protected_activity"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "denial_event",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: denial_event"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "context_or_reason",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: context_or_reason"
+                  }
+                ]
+              },
+              "graph_analysis": {
+                "count": 3,
+                "claim_type_counts": {
+                  "retaliation": 1,
+                  "denial": 2
+                },
+                "claim_element_counts": {
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "context_or_reason": 1
+                },
+                "focus_area_counts": {
+                  "claim_elements": 3
+                },
+                "source_counts": {
+                  "intake_legal_targeting": 3
+                },
+                "targets": [
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "protected_activity",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for retaliation"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "denial",
+                    "claim_element_id": "denial_event",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for denial"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "denial",
+                    "claim_element_id": "context_or_reason",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for denial"
+                  }
+                ]
+              },
+              "document_generation": {
+                "count": 0,
+                "focus_section_counts": {},
+                "claim_type_counts": {},
+                "claim_element_counts": {},
+                "support_kind_counts": {},
+                "targets": []
+              }
+            }
+          },
+          "graph_element_targeting_summary": {
+            "count": 3,
+            "claim_type_counts": {
+              "retaliation": 1,
+              "denial": 2
+            },
+            "claim_element_counts": {
+              "protected_activity": 1,
+              "denial_event": 1,
+              "context_or_reason": 1
+            },
+            "focus_area_counts": {
+              "claim_elements": 3
+            },
+            "source_counts": {
+              "intake_legal_targeting": 3
+            },
+            "targets": [
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for retaliation"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "denial",
+                "claim_element_id": "denial_event",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for denial"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "denial",
+                "claim_element_id": "context_or_reason",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for denial"
+              }
+            ]
+          },
+          "document_evidence_targeting_summary": {
+            "count": 0,
+            "focus_section_counts": {},
+            "claim_type_counts": {},
+            "claim_element_counts": {},
+            "support_kind_counts": {},
+            "targets": []
+          },
+          "document_provenance_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_fact_backed_ratio": 0.0,
+            "avg_summary_fact_backed_ratio": 0.0,
+            "avg_factual_allegation_fact_backed_ratio": 0.0,
+            "avg_claim_supporting_fact_backed_ratio": 0.0,
+            "low_grounding_session_count": 0,
+            "low_grounding_flag": false
+          },
+          "document_grounding_improvement_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_initial_fact_backed_ratio": 0.0,
+            "avg_final_fact_backed_ratio": 0.0,
+            "avg_fact_backed_ratio_delta": 0.0,
+            "improved_session_count": 0,
+            "regressed_session_count": 0,
+            "stalled_session_count": 0,
+            "recovery_attempted_session_count": 0,
+            "low_grounding_resolved_session_count": 0,
+            "improved_flag": false
+          },
+          "document_grounding_lane_outcome_summary": {
+            "support_kind_stats": {},
+            "claim_element_stats": {},
+            "recommended_future_support_kind": "",
+            "recommended_future_claim_element": ""
+          },
+          "document_workflow_execution_summary": {
+            "iteration_count": 0,
+            "accepted_iteration_count": 0,
+            "focus_section_counts": {},
+            "top_support_kind_counts": {},
+            "targeted_claim_element_counts": {},
+            "preferred_support_kind_counts": {},
+            "first_focus_section": "",
+            "first_top_support_kind": "",
+            "first_targeted_claim_element": "",
+            "first_preferred_support_kind": ""
+          },
+          "document_execution_drift_summary": {
+            "drift_flag": false,
+            "top_targeted_claim_element": "",
+            "top_targeted_claim_element_count": 0,
+            "first_executed_claim_element": "",
+            "first_focus_section": "",
+            "first_preferred_support_kind": "",
+            "iteration_count": 0,
+            "accepted_iteration_count": 0
+          },
+          "document_chronology_reasoning_summary": {
+            "count": 0,
+            "sessions_with_temporal_handoff": 0,
+            "sessions_with_reasoning_review": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "proof_artifact_available_element_count": 0,
+            "proof_artifact_status_counts": {},
+            "claim_type_counts": {},
+            "unresolved_claim_type_counts": {},
+            "temporal_proof_bundle_count": 0,
+            "temporal_proof_bundle_ids": [],
+            "chronology_pressure_flag": false
+          },
+          "cross_phase_findings": [
+            "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+            "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+          ]
+        }
+      }
+    },
+    {
+      "phase_name": "document_generation",
+      "task_id": "adversarial_autopatch_document_generation_20260322_003440",
+      "description": "Use the test_driven optimizer to improve the complaint-generator document generation phase. Target files: document_optimization.py. Phase goal: Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time. Recommended actions: Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence.; Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization.; Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence.. Weak complaint types to generalize for: housing_discrimination, hacc_research_engine. Weak evidence modalities to improve: policy_document, file_evidence.",
+      "target_files": [
+        "document_optimization.py"
+      ],
+      "method": "TEST_DRIVEN",
+      "priority": 96,
+      "constraints": {
+        "target_symbols": {
+          "document_optimization.py": [
+            "_build_workflow_phase_targeting"
+          ]
+        },
+        "workflow_phase": "document_generation",
+        "preserve_interfaces": true
+      },
+      "metadata": {
+        "source": "adversarial_harness",
+        "workflow_phase": "document_generation",
+        "workflow_phase_priority": 2,
+        "workflow_phase_status": "warning",
+        "workflow_phase_summary": "Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time.",
+        "workflow_phase_actions": [
+          "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence.",
+          "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization.",
+          "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
+        ],
+        "workflow_phase_secondary_target_files": [
+          "scripts/synthesize_hacc_complaint.py"
+        ],
+        "workflow_phase_secondary_constraints": {
+          "target_symbols": {
+            "scripts/synthesize_hacc_complaint.py": [
+              "_merge_seed_with_grounding"
+            ]
+          },
+          "workflow_phase": "document_generation",
+          "preserve_interfaces": true
+        },
+        "workflow_phase_tertiary_target_files": [
+          "mediator/formal_document.py"
+        ],
+        "workflow_phase_tertiary_constraints": {
+          "target_symbols": {
+            "mediator/formal_document.py": [
+              "render_text"
+            ]
+          },
+          "workflow_phase": "document_generation",
+          "preserve_interfaces": true
+        },
+        "workflow_capabilities": [
+          "drafting_readiness",
+          "document_optimization",
+          "complaint_synthesis",
+          "evidence_to_exhibit_handoff"
+        ],
+        "workflow_phase_task_priority": 96,
+        "workflow_phase_task_priority_components": {
+          "base_priority": 70,
+          "phase_rank_bonus": 20,
+          "status_bonus": 6,
+          "chronology_bonus": 0,
+          "execution_bonus": 0
+        },
+        "weak_complaint_types": [
+          "housing_discrimination",
+          "hacc_research_engine"
+        ],
+        "weak_evidence_modalities": [
+          "policy_document",
+          "file_evidence"
+        ],
+        "phase_scorecard": {
+          "status": "warning",
+          "score": 0.5785,
+          "focus_areas": [
+            "causation_sequence"
+          ],
+          "generalization_targets": [
+            "hacc_research_engine",
+            "housing_discrimination"
+          ],
+          "evidence_targets": [
+            "file_evidence",
+            "policy_document"
+          ],
+          "targeted_claim_elements": [],
+          "executed_claim_elements": [],
+          "first_executed_claim_element": "",
+          "first_focus_section": "",
+          "first_top_support_kind": "",
+          "document_fact_backed_ratio": 0.0,
+          "document_low_grounding_flag": false,
+          "document_provenance_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_fact_backed_ratio": 0.0,
+            "avg_summary_fact_backed_ratio": 0.0,
+            "avg_factual_allegation_fact_backed_ratio": 0.0,
+            "avg_claim_supporting_fact_backed_ratio": 0.0,
+            "low_grounding_session_count": 0,
+            "low_grounding_flag": false
+          },
+          "document_grounding_improvement_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_initial_fact_backed_ratio": 0.0,
+            "avg_final_fact_backed_ratio": 0.0,
+            "avg_fact_backed_ratio_delta": 0.0,
+            "improved_session_count": 0,
+            "regressed_session_count": 0,
+            "stalled_session_count": 0,
+            "recovery_attempted_session_count": 0,
+            "low_grounding_resolved_session_count": 0,
+            "improved_flag": false
+          },
+          "document_grounding_lane_outcome_summary": {
+            "support_kind_stats": {},
+            "claim_element_stats": {},
+            "recommended_future_support_kind": "",
+            "recommended_future_claim_element": ""
+          },
+          "document_grounding_improved_flag": false,
+          "execution_mismatch_flag": false,
+          "execution_drift_summary": {
+            "drift_flag": false,
+            "top_targeted_claim_element": "",
+            "top_targeted_claim_element_count": 0,
+            "first_executed_claim_element": "",
+            "first_focus_section": "",
+            "first_preferred_support_kind": "",
+            "iteration_count": 0,
+            "accepted_iteration_count": 0
+          },
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0,
+          "proof_artifact_element_count": 0,
+          "proof_artifact_available_element_count": 0,
+          "document_chronology_reasoning_summary": {
+            "count": 0,
+            "sessions_with_temporal_handoff": 0,
+            "sessions_with_reasoning_review": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "proof_artifact_available_element_count": 0,
+            "proof_artifact_status_counts": {},
+            "claim_type_counts": {},
+            "unresolved_claim_type_counts": {},
+            "temporal_proof_bundle_count": 0,
+            "temporal_proof_bundle_ids": [],
+            "chronology_pressure_flag": false
+          },
+          "chronology_pressure_flag": false
+        },
+        "phase_signal_context": {
+          "coverage_avg": 0.8840384615384616,
+          "document_generation_status": "warning",
+          "document_blockers": [
+            "uncovered_intake_objectives",
+            "graph_analysis_not_ready",
+            "document_generation_not_ready"
+          ],
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0,
+          "proof_artifact_element_count": 0,
+          "proof_artifact_available_element_count": 0,
+          "chronology_pressure_flag": false
+        },
+        "cross_phase_findings": [
+          "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+          "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+        ],
+        "intake_targeting_summary": {
+          "count": 7,
+          "objective_counts": {
+            "causation_sequence": 1,
+            "retaliation": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_priority": 1,
+            "intake_workflow_action": 3,
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_priority",
+              "objective": "causation_sequence",
+              "claim_element_id": "",
+              "focus_areas": [
+                "intake_priorities"
+              ],
+              "text": "Uncovered intake objective: causation_sequence"
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "retaliation",
+              "claim_element_id": "",
+              "focus_areas": [
+                "retaliation",
+                "denial",
+                "protected_activity",
+                "denial_event"
+              ],
+              "text": "Close graph and legal-element gaps that still block complaint development."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "conduct",
+              "claim_element_id": "",
+              "focus_areas": [
+                "conduct"
+              ],
+              "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "",
+              "claim_element_id": "",
+              "focus_areas": [],
+              "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: protected_activity"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: denial_event"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: context_or_reason"
+            }
+          ]
+        },
+        "workflow_targeting_summary": {
+          "count": 10,
+          "phase_counts": {
+            "intake_questioning": 7,
+            "graph_analysis": 3,
+            "document_generation": 0
+          },
+          "prioritized_phases": [
+            "intake_questioning",
+            "graph_analysis"
+          ],
+          "shared_claim_element_counts": {
+            "protected_activity": 2,
+            "denial_event": 2,
+            "context_or_reason": 2
+          },
+          "shared_focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 6
+          },
+          "phase_summaries": {
+            "intake_questioning": {
+              "count": 7,
+              "objective_counts": {
+                "causation_sequence": 1,
+                "retaliation": 1,
+                "conduct": 1,
+                "claim_elements": 3
+              },
+              "claim_element_counts": {
+                "protected_activity": 1,
+                "denial_event": 1,
+                "context_or_reason": 1
+              },
+              "focus_area_counts": {
+                "intake_priorities": 1,
+                "retaliation": 1,
+                "denial": 1,
+                "protected_activity": 1,
+                "denial_event": 1,
+                "conduct": 1,
+                "claim_elements": 3
+              },
+              "source_counts": {
+                "intake_priority": 1,
+                "intake_workflow_action": 3,
+                "intake_legal_targeting": 3
+              },
+              "targets": [
+                {
+                  "source": "intake_priority",
+                  "objective": "causation_sequence",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "intake_priorities"
+                  ],
+                  "text": "Uncovered intake objective: causation_sequence"
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "retaliation",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "retaliation",
+                    "denial",
+                    "protected_activity",
+                    "denial_event"
+                  ],
+                  "text": "Close graph and legal-element gaps that still block complaint development."
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "conduct",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "conduct"
+                  ],
+                  "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "",
+                  "claim_element_id": "",
+                  "focus_areas": [],
+                  "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "protected_activity",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: protected_activity"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "denial_event",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: denial_event"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "context_or_reason",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: context_or_reason"
+                }
+              ]
+            },
+            "graph_analysis": {
+              "count": 3,
+              "claim_type_counts": {
+                "retaliation": 1,
+                "denial": 2
+              },
+              "claim_element_counts": {
+                "protected_activity": 1,
+                "denial_event": 1,
+                "context_or_reason": 1
+              },
+              "focus_area_counts": {
+                "claim_elements": 3
+              },
+              "source_counts": {
+                "intake_legal_targeting": 3
+              },
+              "targets": [
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "retaliation",
+                  "claim_element_id": "protected_activity",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for retaliation"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "denial",
+                  "claim_element_id": "denial_event",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for denial"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "denial",
+                  "claim_element_id": "context_or_reason",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for denial"
+                }
+              ]
+            },
+            "document_generation": {
+              "count": 0,
+              "focus_section_counts": {},
+              "claim_type_counts": {},
+              "claim_element_counts": {},
+              "support_kind_counts": {},
+              "targets": []
+            }
+          }
+        },
+        "graph_element_targeting_summary": {
+          "count": 3,
+          "claim_type_counts": {
+            "retaliation": 1,
+            "denial": 2
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "retaliation",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for retaliation"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            }
+          ]
+        },
+        "document_evidence_targeting_summary": {
+          "count": 0,
+          "focus_section_counts": {},
+          "claim_type_counts": {},
+          "claim_element_counts": {},
+          "support_kind_counts": {},
+          "targets": []
+        },
+        "document_provenance_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_fact_backed_ratio": 0.0,
+          "avg_summary_fact_backed_ratio": 0.0,
+          "avg_factual_allegation_fact_backed_ratio": 0.0,
+          "avg_claim_supporting_fact_backed_ratio": 0.0,
+          "low_grounding_session_count": 0,
+          "low_grounding_flag": false
+        },
+        "document_grounding_improvement_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_initial_fact_backed_ratio": 0.0,
+          "avg_final_fact_backed_ratio": 0.0,
+          "avg_fact_backed_ratio_delta": 0.0,
+          "improved_session_count": 0,
+          "regressed_session_count": 0,
+          "stalled_session_count": 0,
+          "recovery_attempted_session_count": 0,
+          "low_grounding_resolved_session_count": 0,
+          "improved_flag": false
+        },
+        "document_grounding_lane_outcome_summary": {
+          "support_kind_stats": {},
+          "claim_element_stats": {},
+          "recommended_future_support_kind": "",
+          "recommended_future_claim_element": ""
+        },
+        "document_workflow_execution_summary": {
+          "iteration_count": 0,
+          "accepted_iteration_count": 0,
+          "focus_section_counts": {},
+          "top_support_kind_counts": {},
+          "targeted_claim_element_counts": {},
+          "preferred_support_kind_counts": {},
+          "first_focus_section": "",
+          "first_top_support_kind": "",
+          "first_targeted_claim_element": "",
+          "first_preferred_support_kind": ""
+        },
+        "document_execution_drift_summary": {
+          "drift_flag": false,
+          "top_targeted_claim_element": "",
+          "top_targeted_claim_element_count": 0,
+          "first_executed_claim_element": "",
+          "first_focus_section": "",
+          "first_preferred_support_kind": "",
+          "iteration_count": 0,
+          "accepted_iteration_count": 0
+        },
+        "document_chronology_reasoning_summary": {
+          "count": 0,
+          "sessions_with_temporal_handoff": 0,
+          "sessions_with_reasoning_review": 0,
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0,
+          "proof_artifact_element_count": 0,
+          "proof_artifact_available_element_count": 0,
+          "proof_artifact_status_counts": {},
+          "claim_type_counts": {},
+          "unresolved_claim_type_counts": {},
+          "temporal_proof_bundle_count": 0,
+          "temporal_proof_bundle_ids": [],
+          "chronology_pressure_flag": false
+        },
+        "report_summary": {
+          "average_score": 0.8246923076923077,
+          "score_trend": "insufficient_data",
+          "priority_improvements": [
+            "Improve intake targeting: claim_elements, causation_sequence, conduct",
+            "Improve intake priority coverage: causation_sequence",
+            "Improve graph element targeting: context_or_reason, denial_event, protected_activity"
+          ],
+          "workflow_phase_plan": {
+            "recommended_order": [
+              "graph_analysis",
+              "document_generation",
+              "intake_questioning"
+            ],
+            "phases": {
+              "intake_questioning": {
+                "status": "warning",
+                "summary": "Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage.",
+                "signals": [
+                  "1 intake objectives remain uncovered"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "causation_sequence",
+                    "signal": "intake_coverage_gap",
+                    "recommended_action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
+                  }
+                ],
+                "target_files": [
+                  "adversarial_harness/session.py",
+                  "mediator/mediator.py",
+                  "adversarial_harness/complainant.py"
+                ],
+                "priority": 3
+              },
+              "graph_analysis": {
+                "status": "critical",
+                "summary": "Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone.",
+                "signals": [
+                  "knowledge graphs average 18.00 unresolved gaps",
+                  "knowledge-graph gaps are not reliably shrinking across iterations",
+                  "knowledge-graph relationship growth per iteration is low",
+                  "dependency satisfaction rate is only 0.11",
+                  "graph-blocking intake objectives remain uncovered: causation_sequence"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "gap_reduction",
+                    "signal": "kg_gap_count",
+                    "recommended_action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative."
+                  },
+                  {
+                    "focus": "iterative_graph_updates",
+                    "signal": "kg_gap_delta",
+                    "recommended_action": "Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field."
+                  },
+                  {
+                    "focus": "blocker_closure",
+                    "signal": "intake_graph_blockers",
+                    "recommended_action": "Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set."
+                  }
+                ],
+                "target_files": [
+                  "complaint_phases/knowledge_graph.py",
+                  "complaint_phases/dependency_graph.py",
+                  "complaint_phases/denoiser.py",
+                  "complaint_phases/intake_case_file.py"
+                ],
+                "priority": 1
+              },
+              "document_generation": {
+                "status": "warning",
+                "summary": "Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time.",
+                "signals": [
+                  "drafting still lacks chronology, staff-identity, or causation-sequence details needed for pleading-ready allegations",
+                  "drafting depends on stronger graph and denoising handoffs",
+                  "draft output is not grounded enough in canonical facts or evidence-backed support rows"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "pleading_anchors",
+                    "signal": "intake_blocker_handoff",
+                    "recommended_action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence."
+                  },
+                  {
+                    "focus": "graph_to_document_handoff",
+                    "signal": "graph_dependency",
+                    "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization."
+                  },
+                  {
+                    "focus": "document_provenance_grounding",
+                    "signal": "document_provenance",
+                    "recommended_action": "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
+                  }
+                ],
+                "target_files": [
+                  "document_pipeline.py",
+                  "document_optimization.py",
+                  "scripts/synthesize_hacc_complaint.py",
+                  "mediator/formal_document.py"
+                ],
+                "priority": 2
+              }
+            }
+          },
+          "complaint_type_performance": {
+            "housing_discrimination": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            },
+            "hacc_research_engine": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            }
+          },
+          "evidence_modality_performance": {
+            "policy_document": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            },
+            "file_evidence": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            }
+          },
+          "phase_scorecards": {
+            "intake_questioning": {
+              "status": "warning",
+              "score": 0.8213,
+              "focus_areas": [
+                "causation_sequence",
+                "claim_elements",
+                "causation_sequence"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_intake_objectives": [
+                "claim_elements",
+                "causation_sequence",
+                "conduct"
+              ]
+            },
+            "graph_analysis": {
+              "status": "critical",
+              "score": 0.3209,
+              "focus_areas": [
+                "gap_reduction",
+                "dependency_satisfaction"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_claim_elements": [
+                "context_or_reason",
+                "denial_event",
+                "protected_activity"
+              ]
+            },
+            "document_generation": {
+              "status": "warning",
+              "score": 0.5785,
+              "focus_areas": [
+                "causation_sequence"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_claim_elements": [],
+              "executed_claim_elements": [],
+              "first_executed_claim_element": "",
+              "first_focus_section": "",
+              "first_top_support_kind": "",
+              "document_fact_backed_ratio": 0.0,
+              "document_low_grounding_flag": false,
+              "document_provenance_summary": {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_fact_backed_ratio": 0.0,
+                "avg_summary_fact_backed_ratio": 0.0,
+                "avg_factual_allegation_fact_backed_ratio": 0.0,
+                "avg_claim_supporting_fact_backed_ratio": 0.0,
+                "low_grounding_session_count": 0,
+                "low_grounding_flag": false
+              },
+              "document_grounding_improvement_summary": {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_initial_fact_backed_ratio": 0.0,
+                "avg_final_fact_backed_ratio": 0.0,
+                "avg_fact_backed_ratio_delta": 0.0,
+                "improved_session_count": 0,
+                "regressed_session_count": 0,
+                "stalled_session_count": 0,
+                "recovery_attempted_session_count": 0,
+                "low_grounding_resolved_session_count": 0,
+                "improved_flag": false
+              },
+              "document_grounding_lane_outcome_summary": {
+                "support_kind_stats": {},
+                "claim_element_stats": {},
+                "recommended_future_support_kind": "",
+                "recommended_future_claim_element": ""
+              },
+              "document_grounding_improved_flag": false,
+              "execution_mismatch_flag": false,
+              "execution_drift_summary": {
+                "drift_flag": false,
+                "top_targeted_claim_element": "",
+                "top_targeted_claim_element_count": 0,
+                "first_executed_claim_element": "",
+                "first_focus_section": "",
+                "first_preferred_support_kind": "",
+                "iteration_count": 0,
+                "accepted_iteration_count": 0
+              },
+              "unresolved_temporal_issue_count": 0,
+              "chronology_task_count": 0,
+              "proof_artifact_element_count": 0,
+              "proof_artifact_available_element_count": 0,
+              "document_chronology_reasoning_summary": {
+                "count": 0,
+                "sessions_with_temporal_handoff": 0,
+                "sessions_with_reasoning_review": 0,
+                "unresolved_temporal_issue_count": 0,
+                "chronology_task_count": 0,
+                "proof_artifact_element_count": 0,
+                "proof_artifact_available_element_count": 0,
+                "proof_artifact_status_counts": {},
+                "claim_type_counts": {},
+                "unresolved_claim_type_counts": {},
+                "temporal_proof_bundle_count": 0,
+                "temporal_proof_bundle_ids": [],
+                "chronology_pressure_flag": false
+              },
+              "chronology_pressure_flag": false
+            }
+          },
+          "document_handoff_summary": {
+            "unresolved_intake_objectives": [
+              "causation_sequence"
+            ],
+            "graph_dependency_status": "critical",
+            "document_generation_status": "warning",
+            "complaint_type_gap_count": 0,
+            "evidence_modality_gap_count": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "blockers": [
+              "uncovered_intake_objectives",
+              "graph_analysis_not_ready",
+              "document_generation_not_ready"
+            ],
+            "ready_for_document_optimization": false
+          },
+          "intake_targeting_summary": {
+            "count": 7,
+            "objective_counts": {
+              "causation_sequence": 1,
+              "retaliation": 1,
+              "conduct": 1,
+              "claim_elements": 3
+            },
+            "claim_element_counts": {
+              "protected_activity": 1,
+              "denial_event": 1,
+              "context_or_reason": 1
+            },
+            "focus_area_counts": {
+              "intake_priorities": 1,
+              "retaliation": 1,
+              "denial": 1,
+              "protected_activity": 1,
+              "denial_event": 1,
+              "conduct": 1,
+              "claim_elements": 3
+            },
+            "source_counts": {
+              "intake_priority": 1,
+              "intake_workflow_action": 3,
+              "intake_legal_targeting": 3
+            },
+            "targets": [
+              {
+                "source": "intake_priority",
+                "objective": "causation_sequence",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "intake_priorities"
+                ],
+                "text": "Uncovered intake objective: causation_sequence"
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "retaliation",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "retaliation",
+                  "denial",
+                  "protected_activity",
+                  "denial_event"
+                ],
+                "text": "Close graph and legal-element gaps that still block complaint development."
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "conduct",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "conduct"
+                ],
+                "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "",
+                "claim_element_id": "",
+                "focus_areas": [],
+                "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "protected_activity",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: protected_activity"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "denial_event",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: denial_event"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "context_or_reason",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: context_or_reason"
+              }
+            ]
+          },
+          "workflow_targeting_summary": {
+            "count": 10,
+            "phase_counts": {
+              "intake_questioning": 7,
+              "graph_analysis": 3,
+              "document_generation": 0
+            },
+            "prioritized_phases": [
+              "intake_questioning",
+              "graph_analysis"
+            ],
+            "shared_claim_element_counts": {
+              "protected_activity": 2,
+              "denial_event": 2,
+              "context_or_reason": 2
+            },
+            "shared_focus_area_counts": {
+              "intake_priorities": 1,
+              "retaliation": 1,
+              "denial": 1,
+              "protected_activity": 1,
+              "denial_event": 1,
+              "conduct": 1,
+              "claim_elements": 6
+            },
+            "phase_summaries": {
+              "intake_questioning": {
+                "count": 7,
+                "objective_counts": {
+                  "causation_sequence": 1,
+                  "retaliation": 1,
+                  "conduct": 1,
+                  "claim_elements": 3
+                },
+                "claim_element_counts": {
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "context_or_reason": 1
+                },
+                "focus_area_counts": {
+                  "intake_priorities": 1,
+                  "retaliation": 1,
+                  "denial": 1,
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "conduct": 1,
+                  "claim_elements": 3
+                },
+                "source_counts": {
+                  "intake_priority": 1,
+                  "intake_workflow_action": 3,
+                  "intake_legal_targeting": 3
+                },
+                "targets": [
+                  {
+                    "source": "intake_priority",
+                    "objective": "causation_sequence",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "intake_priorities"
+                    ],
+                    "text": "Uncovered intake objective: causation_sequence"
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "retaliation",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "retaliation",
+                      "denial",
+                      "protected_activity",
+                      "denial_event"
+                    ],
+                    "text": "Close graph and legal-element gaps that still block complaint development."
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "conduct",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "conduct"
+                    ],
+                    "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "",
+                    "claim_element_id": "",
+                    "focus_areas": [],
+                    "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "protected_activity",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: protected_activity"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "denial_event",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: denial_event"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "context_or_reason",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: context_or_reason"
+                  }
+                ]
+              },
+              "graph_analysis": {
+                "count": 3,
+                "claim_type_counts": {
+                  "retaliation": 1,
+                  "denial": 2
+                },
+                "claim_element_counts": {
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "context_or_reason": 1
+                },
+                "focus_area_counts": {
+                  "claim_elements": 3
+                },
+                "source_counts": {
+                  "intake_legal_targeting": 3
+                },
+                "targets": [
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "protected_activity",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for retaliation"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "denial",
+                    "claim_element_id": "denial_event",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for denial"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "denial",
+                    "claim_element_id": "context_or_reason",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for denial"
+                  }
+                ]
+              },
+              "document_generation": {
+                "count": 0,
+                "focus_section_counts": {},
+                "claim_type_counts": {},
+                "claim_element_counts": {},
+                "support_kind_counts": {},
+                "targets": []
+              }
+            }
+          },
+          "graph_element_targeting_summary": {
+            "count": 3,
+            "claim_type_counts": {
+              "retaliation": 1,
+              "denial": 2
+            },
+            "claim_element_counts": {
+              "protected_activity": 1,
+              "denial_event": 1,
+              "context_or_reason": 1
+            },
+            "focus_area_counts": {
+              "claim_elements": 3
+            },
+            "source_counts": {
+              "intake_legal_targeting": 3
+            },
+            "targets": [
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for retaliation"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "denial",
+                "claim_element_id": "denial_event",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for denial"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "denial",
+                "claim_element_id": "context_or_reason",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for denial"
+              }
+            ]
+          },
+          "document_evidence_targeting_summary": {
+            "count": 0,
+            "focus_section_counts": {},
+            "claim_type_counts": {},
+            "claim_element_counts": {},
+            "support_kind_counts": {},
+            "targets": []
+          },
+          "document_provenance_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_fact_backed_ratio": 0.0,
+            "avg_summary_fact_backed_ratio": 0.0,
+            "avg_factual_allegation_fact_backed_ratio": 0.0,
+            "avg_claim_supporting_fact_backed_ratio": 0.0,
+            "low_grounding_session_count": 0,
+            "low_grounding_flag": false
+          },
+          "document_grounding_improvement_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_initial_fact_backed_ratio": 0.0,
+            "avg_final_fact_backed_ratio": 0.0,
+            "avg_fact_backed_ratio_delta": 0.0,
+            "improved_session_count": 0,
+            "regressed_session_count": 0,
+            "stalled_session_count": 0,
+            "recovery_attempted_session_count": 0,
+            "low_grounding_resolved_session_count": 0,
+            "improved_flag": false
+          },
+          "document_grounding_lane_outcome_summary": {
+            "support_kind_stats": {},
+            "claim_element_stats": {},
+            "recommended_future_support_kind": "",
+            "recommended_future_claim_element": ""
+          },
+          "document_workflow_execution_summary": {
+            "iteration_count": 0,
+            "accepted_iteration_count": 0,
+            "focus_section_counts": {},
+            "top_support_kind_counts": {},
+            "targeted_claim_element_counts": {},
+            "preferred_support_kind_counts": {},
+            "first_focus_section": "",
+            "first_top_support_kind": "",
+            "first_targeted_claim_element": "",
+            "first_preferred_support_kind": ""
+          },
+          "document_execution_drift_summary": {
+            "drift_flag": false,
+            "top_targeted_claim_element": "",
+            "top_targeted_claim_element_count": 0,
+            "first_executed_claim_element": "",
+            "first_focus_section": "",
+            "first_preferred_support_kind": "",
+            "iteration_count": 0,
+            "accepted_iteration_count": 0
+          },
+          "document_chronology_reasoning_summary": {
+            "count": 0,
+            "sessions_with_temporal_handoff": 0,
+            "sessions_with_reasoning_review": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "proof_artifact_available_element_count": 0,
+            "proof_artifact_status_counts": {},
+            "claim_type_counts": {},
+            "unresolved_claim_type_counts": {},
+            "temporal_proof_bundle_count": 0,
+            "temporal_proof_bundle_ids": [],
+            "chronology_pressure_flag": false
+          },
+          "cross_phase_findings": [
+            "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+            "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+          ]
+        }
+      }
+    },
+    {
+      "phase_name": "intake_questioning",
+      "task_id": "adversarial_autopatch_intake_questioning_20260322_003440",
+      "description": "Use the test_driven optimizer to improve the complaint-generator intake questioning phase. Target files: mediator/mediator.py. Phase goal: Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage. Recommended actions: Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly.. Weak complaint types to generalize for: housing_discrimination, hacc_research_engine. Weak evidence modalities to improve: policy_document, file_evidence. Intake targets: claim_elements, causation_sequence, conduct. Legal elements to probe: context_or_reason, denial_event.",
+      "target_files": [
+        "mediator/mediator.py"
+      ],
+      "method": "TEST_DRIVEN",
+      "priority": 86,
+      "constraints": {
+        "target_symbols": {
+          "mediator/mediator.py": [
+            "build_inquiry_gap_context"
+          ]
+        },
+        "workflow_phase": "intake_questioning",
+        "preserve_interfaces": true
+      },
+      "metadata": {
+        "source": "adversarial_harness",
+        "workflow_phase": "intake_questioning",
+        "workflow_phase_priority": 3,
+        "workflow_phase_status": "warning",
+        "workflow_phase_summary": "Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage.",
+        "workflow_phase_actions": [
+          "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
+        ],
+        "workflow_phase_secondary_target_files": [
+          "adversarial_harness/session.py"
+        ],
+        "workflow_phase_secondary_constraints": {
+          "target_symbols": {
+            "adversarial_harness/session.py": [
+              "_inject_intake_prompt_questions"
+            ]
+          },
+          "workflow_phase": "intake_questioning",
+          "preserve_interfaces": true
+        },
+        "workflow_phase_tertiary_target_files": [
+          "adversarial_harness/complainant.py"
+        ],
+        "workflow_phase_tertiary_constraints": {
+          "target_symbols": {
+            "adversarial_harness/complainant.py": [
+              "_build_actor_critic_guidance"
+            ]
+          },
+          "workflow_phase": "intake_questioning",
+          "preserve_interfaces": true
+        },
+        "workflow_capabilities": [
+          "complainant_prompting",
+          "mediator_question_ordering",
+          "intake_priority_coverage",
+          "anchor_section_coverage"
+        ],
+        "workflow_phase_task_priority": 86,
+        "workflow_phase_task_priority_components": {
+          "base_priority": 70,
+          "phase_rank_bonus": 10,
+          "status_bonus": 6,
+          "chronology_bonus": 0,
+          "execution_bonus": 0
+        },
+        "weak_complaint_types": [
+          "housing_discrimination",
+          "hacc_research_engine"
+        ],
+        "weak_evidence_modalities": [
+          "policy_document",
+          "file_evidence"
+        ],
+        "phase_scorecard": {
+          "status": "warning",
+          "score": 0.8213,
+          "focus_areas": [
+            "causation_sequence",
+            "claim_elements",
+            "causation_sequence"
+          ],
+          "generalization_targets": [
+            "hacc_research_engine",
+            "housing_discrimination"
+          ],
+          "evidence_targets": [
+            "file_evidence",
+            "policy_document"
+          ],
+          "targeted_intake_objectives": [
+            "claim_elements",
+            "causation_sequence",
+            "conduct"
+          ]
+        },
+        "phase_signal_context": {
+          "question_quality_avg": 0.72,
+          "empathy_avg": 0.84,
+          "efficiency_avg": 0.86,
+          "uncovered_intake_objectives": [
+            "causation_sequence"
+          ]
+        },
+        "cross_phase_findings": [
+          "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+          "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+        ],
+        "intake_targeting_summary": {
+          "count": 7,
+          "objective_counts": {
+            "causation_sequence": 1,
+            "retaliation": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_priority": 1,
+            "intake_workflow_action": 3,
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_priority",
+              "objective": "causation_sequence",
+              "claim_element_id": "",
+              "focus_areas": [
+                "intake_priorities"
+              ],
+              "text": "Uncovered intake objective: causation_sequence"
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "retaliation",
+              "claim_element_id": "",
+              "focus_areas": [
+                "retaliation",
+                "denial",
+                "protected_activity",
+                "denial_event"
+              ],
+              "text": "Close graph and legal-element gaps that still block complaint development."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "conduct",
+              "claim_element_id": "",
+              "focus_areas": [
+                "conduct"
+              ],
+              "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "",
+              "claim_element_id": "",
+              "focus_areas": [],
+              "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: protected_activity"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: denial_event"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: context_or_reason"
+            }
+          ]
+        },
+        "workflow_targeting_summary": {
+          "count": 10,
+          "phase_counts": {
+            "intake_questioning": 7,
+            "graph_analysis": 3,
+            "document_generation": 0
+          },
+          "prioritized_phases": [
+            "intake_questioning",
+            "graph_analysis"
+          ],
+          "shared_claim_element_counts": {
+            "protected_activity": 2,
+            "denial_event": 2,
+            "context_or_reason": 2
+          },
+          "shared_focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 6
+          },
+          "phase_summaries": {
+            "intake_questioning": {
+              "count": 7,
+              "objective_counts": {
+                "causation_sequence": 1,
+                "retaliation": 1,
+                "conduct": 1,
+                "claim_elements": 3
+              },
+              "claim_element_counts": {
+                "protected_activity": 1,
+                "denial_event": 1,
+                "context_or_reason": 1
+              },
+              "focus_area_counts": {
+                "intake_priorities": 1,
+                "retaliation": 1,
+                "denial": 1,
+                "protected_activity": 1,
+                "denial_event": 1,
+                "conduct": 1,
+                "claim_elements": 3
+              },
+              "source_counts": {
+                "intake_priority": 1,
+                "intake_workflow_action": 3,
+                "intake_legal_targeting": 3
+              },
+              "targets": [
+                {
+                  "source": "intake_priority",
+                  "objective": "causation_sequence",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "intake_priorities"
+                  ],
+                  "text": "Uncovered intake objective: causation_sequence"
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "retaliation",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "retaliation",
+                    "denial",
+                    "protected_activity",
+                    "denial_event"
+                  ],
+                  "text": "Close graph and legal-element gaps that still block complaint development."
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "conduct",
+                  "claim_element_id": "",
+                  "focus_areas": [
+                    "conduct"
+                  ],
+                  "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+                },
+                {
+                  "source": "intake_workflow_action",
+                  "objective": "",
+                  "claim_element_id": "",
+                  "focus_areas": [],
+                  "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "protected_activity",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: protected_activity"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "denial_event",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: denial_event"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "objective": "claim_elements",
+                  "claim_element_id": "context_or_reason",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Missing intake legal element: context_or_reason"
+                }
+              ]
+            },
+            "graph_analysis": {
+              "count": 3,
+              "claim_type_counts": {
+                "retaliation": 1,
+                "denial": 2
+              },
+              "claim_element_counts": {
+                "protected_activity": 1,
+                "denial_event": 1,
+                "context_or_reason": 1
+              },
+              "focus_area_counts": {
+                "claim_elements": 3
+              },
+              "source_counts": {
+                "intake_legal_targeting": 3
+              },
+              "targets": [
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "retaliation",
+                  "claim_element_id": "protected_activity",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for retaliation"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "denial",
+                  "claim_element_id": "denial_event",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for denial"
+                },
+                {
+                  "source": "intake_legal_targeting",
+                  "claim_type": "denial",
+                  "claim_element_id": "context_or_reason",
+                  "focus_areas": [
+                    "claim_elements"
+                  ],
+                  "text": "Unresolved legal requirement for denial"
+                }
+              ]
+            },
+            "document_generation": {
+              "count": 0,
+              "focus_section_counts": {},
+              "claim_type_counts": {},
+              "claim_element_counts": {},
+              "support_kind_counts": {},
+              "targets": []
+            }
+          }
+        },
+        "graph_element_targeting_summary": {
+          "count": 3,
+          "claim_type_counts": {
+            "retaliation": 1,
+            "denial": 2
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "retaliation",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for retaliation"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            }
+          ]
+        },
+        "document_evidence_targeting_summary": {
+          "count": 0,
+          "focus_section_counts": {},
+          "claim_type_counts": {},
+          "claim_element_counts": {},
+          "support_kind_counts": {},
+          "targets": []
+        },
+        "document_provenance_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_fact_backed_ratio": 0.0,
+          "avg_summary_fact_backed_ratio": 0.0,
+          "avg_factual_allegation_fact_backed_ratio": 0.0,
+          "avg_claim_supporting_fact_backed_ratio": 0.0,
+          "low_grounding_session_count": 0,
+          "low_grounding_flag": false
+        },
+        "document_grounding_improvement_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_initial_fact_backed_ratio": 0.0,
+          "avg_final_fact_backed_ratio": 0.0,
+          "avg_fact_backed_ratio_delta": 0.0,
+          "improved_session_count": 0,
+          "regressed_session_count": 0,
+          "stalled_session_count": 0,
+          "recovery_attempted_session_count": 0,
+          "low_grounding_resolved_session_count": 0,
+          "improved_flag": false
+        },
+        "document_grounding_lane_outcome_summary": {
+          "support_kind_stats": {},
+          "claim_element_stats": {},
+          "recommended_future_support_kind": "",
+          "recommended_future_claim_element": ""
+        },
+        "document_workflow_execution_summary": {
+          "iteration_count": 0,
+          "accepted_iteration_count": 0,
+          "focus_section_counts": {},
+          "top_support_kind_counts": {},
+          "targeted_claim_element_counts": {},
+          "preferred_support_kind_counts": {},
+          "first_focus_section": "",
+          "first_top_support_kind": "",
+          "first_targeted_claim_element": "",
+          "first_preferred_support_kind": ""
+        },
+        "document_execution_drift_summary": {
+          "drift_flag": false,
+          "top_targeted_claim_element": "",
+          "top_targeted_claim_element_count": 0,
+          "first_executed_claim_element": "",
+          "first_focus_section": "",
+          "first_preferred_support_kind": "",
+          "iteration_count": 0,
+          "accepted_iteration_count": 0
+        },
+        "document_chronology_reasoning_summary": {
+          "count": 0,
+          "sessions_with_temporal_handoff": 0,
+          "sessions_with_reasoning_review": 0,
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0,
+          "proof_artifact_element_count": 0,
+          "proof_artifact_available_element_count": 0,
+          "proof_artifact_status_counts": {},
+          "claim_type_counts": {},
+          "unresolved_claim_type_counts": {},
+          "temporal_proof_bundle_count": 0,
+          "temporal_proof_bundle_ids": [],
+          "chronology_pressure_flag": false
+        },
+        "report_summary": {
+          "average_score": 0.8246923076923077,
+          "score_trend": "insufficient_data",
+          "priority_improvements": [
+            "Improve intake targeting: claim_elements, causation_sequence, conduct",
+            "Improve intake priority coverage: causation_sequence",
+            "Improve graph element targeting: context_or_reason, denial_event, protected_activity"
+          ],
+          "workflow_phase_plan": {
+            "recommended_order": [
+              "graph_analysis",
+              "document_generation",
+              "intake_questioning"
+            ],
+            "phases": {
+              "intake_questioning": {
+                "status": "warning",
+                "summary": "Improve complainant and mediator questioning so intake exits with stronger factual, evidentiary, and anchor coverage.",
+                "signals": [
+                  "1 intake objectives remain uncovered"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "causation_sequence",
+                    "signal": "intake_coverage_gap",
+                    "recommended_action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
+                  }
+                ],
+                "target_files": [
+                  "adversarial_harness/session.py",
+                  "mediator/mediator.py",
+                  "adversarial_harness/complainant.py"
+                ],
+                "priority": 3
+              },
+              "graph_analysis": {
+                "status": "critical",
+                "summary": "Improve knowledge-graph and dependency-graph population so denoising and legal reasoning operate on structured facts instead of raw narrative alone.",
+                "signals": [
+                  "knowledge graphs average 18.00 unresolved gaps",
+                  "knowledge-graph gaps are not reliably shrinking across iterations",
+                  "knowledge-graph relationship growth per iteration is low",
+                  "dependency satisfaction rate is only 0.11",
+                  "graph-blocking intake objectives remain uncovered: causation_sequence"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "gap_reduction",
+                    "signal": "kg_gap_count",
+                    "recommended_action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative."
+                  },
+                  {
+                    "focus": "iterative_graph_updates",
+                    "signal": "kg_gap_delta",
+                    "recommended_action": "Make answer processing update entities, relationships, and satisfied requirements deterministically when the complainant supplies the missing field."
+                  },
+                  {
+                    "focus": "blocker_closure",
+                    "signal": "intake_graph_blockers",
+                    "recommended_action": "Promote exact dates, staff names/titles, hearing-request timing, response dates, and causation sequencing into graph updates before broadening the next question set."
+                  }
+                ],
+                "target_files": [
+                  "complaint_phases/knowledge_graph.py",
+                  "complaint_phases/dependency_graph.py",
+                  "complaint_phases/denoiser.py",
+                  "complaint_phases/intake_case_file.py"
+                ],
+                "priority": 1
+              },
+              "document_generation": {
+                "status": "warning",
+                "summary": "Improve drafting handoff so complaint generation reflects the collected facts, exhibits, and unresolved gaps at formalization time.",
+                "signals": [
+                  "drafting still lacks chronology, staff-identity, or causation-sequence details needed for pleading-ready allegations",
+                  "drafting depends on stronger graph and denoising handoffs",
+                  "draft output is not grounded enough in canonical facts or evidence-backed support rows"
+                ],
+                "recommended_actions": [
+                  {
+                    "focus": "pleading_anchors",
+                    "signal": "intake_blocker_handoff",
+                    "recommended_action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence."
+                  },
+                  {
+                    "focus": "graph_to_document_handoff",
+                    "signal": "graph_dependency",
+                    "recommended_action": "Gate document generation on graph completeness signals and surface unresolved factual or legal gaps in drafting readiness before formalization."
+                  },
+                  {
+                    "focus": "document_provenance_grounding",
+                    "signal": "document_provenance",
+                    "recommended_action": "Carry canonical fact ids, support traces, and artifact-backed support rows through drafting so the complaint text is grounded in traceable evidence."
+                  }
+                ],
+                "target_files": [
+                  "document_pipeline.py",
+                  "document_optimization.py",
+                  "scripts/synthesize_hacc_complaint.py",
+                  "mediator/formal_document.py"
+                ],
+                "priority": 2
+              }
+            }
+          },
+          "complaint_type_performance": {
+            "housing_discrimination": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            },
+            "hacc_research_engine": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            }
+          },
+          "evidence_modality_performance": {
+            "policy_document": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            },
+            "file_evidence": {
+              "count": 1,
+              "average_score": 0.8246923076923077,
+              "min_score": 0.8246923076923077,
+              "max_score": 0.8246923076923077
+            }
+          },
+          "phase_scorecards": {
+            "intake_questioning": {
+              "status": "warning",
+              "score": 0.8213,
+              "focus_areas": [
+                "causation_sequence",
+                "claim_elements",
+                "causation_sequence"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_intake_objectives": [
+                "claim_elements",
+                "causation_sequence",
+                "conduct"
+              ]
+            },
+            "graph_analysis": {
+              "status": "critical",
+              "score": 0.3209,
+              "focus_areas": [
+                "gap_reduction",
+                "dependency_satisfaction"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_claim_elements": [
+                "context_or_reason",
+                "denial_event",
+                "protected_activity"
+              ]
+            },
+            "document_generation": {
+              "status": "warning",
+              "score": 0.5785,
+              "focus_areas": [
+                "causation_sequence"
+              ],
+              "generalization_targets": [
+                "hacc_research_engine",
+                "housing_discrimination"
+              ],
+              "evidence_targets": [
+                "file_evidence",
+                "policy_document"
+              ],
+              "targeted_claim_elements": [],
+              "executed_claim_elements": [],
+              "first_executed_claim_element": "",
+              "first_focus_section": "",
+              "first_top_support_kind": "",
+              "document_fact_backed_ratio": 0.0,
+              "document_low_grounding_flag": false,
+              "document_provenance_summary": {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_fact_backed_ratio": 0.0,
+                "avg_summary_fact_backed_ratio": 0.0,
+                "avg_factual_allegation_fact_backed_ratio": 0.0,
+                "avg_claim_supporting_fact_backed_ratio": 0.0,
+                "low_grounding_session_count": 0,
+                "low_grounding_flag": false
+              },
+              "document_grounding_improvement_summary": {
+                "count": 0,
+                "sessions_with_summary": 0,
+                "avg_initial_fact_backed_ratio": 0.0,
+                "avg_final_fact_backed_ratio": 0.0,
+                "avg_fact_backed_ratio_delta": 0.0,
+                "improved_session_count": 0,
+                "regressed_session_count": 0,
+                "stalled_session_count": 0,
+                "recovery_attempted_session_count": 0,
+                "low_grounding_resolved_session_count": 0,
+                "improved_flag": false
+              },
+              "document_grounding_lane_outcome_summary": {
+                "support_kind_stats": {},
+                "claim_element_stats": {},
+                "recommended_future_support_kind": "",
+                "recommended_future_claim_element": ""
+              },
+              "document_grounding_improved_flag": false,
+              "execution_mismatch_flag": false,
+              "execution_drift_summary": {
+                "drift_flag": false,
+                "top_targeted_claim_element": "",
+                "top_targeted_claim_element_count": 0,
+                "first_executed_claim_element": "",
+                "first_focus_section": "",
+                "first_preferred_support_kind": "",
+                "iteration_count": 0,
+                "accepted_iteration_count": 0
+              },
+              "unresolved_temporal_issue_count": 0,
+              "chronology_task_count": 0,
+              "proof_artifact_element_count": 0,
+              "proof_artifact_available_element_count": 0,
+              "document_chronology_reasoning_summary": {
+                "count": 0,
+                "sessions_with_temporal_handoff": 0,
+                "sessions_with_reasoning_review": 0,
+                "unresolved_temporal_issue_count": 0,
+                "chronology_task_count": 0,
+                "proof_artifact_element_count": 0,
+                "proof_artifact_available_element_count": 0,
+                "proof_artifact_status_counts": {},
+                "claim_type_counts": {},
+                "unresolved_claim_type_counts": {},
+                "temporal_proof_bundle_count": 0,
+                "temporal_proof_bundle_ids": [],
+                "chronology_pressure_flag": false
+              },
+              "chronology_pressure_flag": false
+            }
+          },
+          "document_handoff_summary": {
+            "unresolved_intake_objectives": [
+              "causation_sequence"
+            ],
+            "graph_dependency_status": "critical",
+            "document_generation_status": "warning",
+            "complaint_type_gap_count": 0,
+            "evidence_modality_gap_count": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "blockers": [
+              "uncovered_intake_objectives",
+              "graph_analysis_not_ready",
+              "document_generation_not_ready"
+            ],
+            "ready_for_document_optimization": false
+          },
+          "intake_targeting_summary": {
+            "count": 7,
+            "objective_counts": {
+              "causation_sequence": 1,
+              "retaliation": 1,
+              "conduct": 1,
+              "claim_elements": 3
+            },
+            "claim_element_counts": {
+              "protected_activity": 1,
+              "denial_event": 1,
+              "context_or_reason": 1
+            },
+            "focus_area_counts": {
+              "intake_priorities": 1,
+              "retaliation": 1,
+              "denial": 1,
+              "protected_activity": 1,
+              "denial_event": 1,
+              "conduct": 1,
+              "claim_elements": 3
+            },
+            "source_counts": {
+              "intake_priority": 1,
+              "intake_workflow_action": 3,
+              "intake_legal_targeting": 3
+            },
+            "targets": [
+              {
+                "source": "intake_priority",
+                "objective": "causation_sequence",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "intake_priorities"
+                ],
+                "text": "Uncovered intake objective: causation_sequence"
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "retaliation",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "retaliation",
+                  "denial",
+                  "protected_activity",
+                  "denial_event"
+                ],
+                "text": "Close graph and legal-element gaps that still block complaint development."
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "conduct",
+                "claim_element_id": "",
+                "focus_areas": [
+                  "conduct"
+                ],
+                "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+              },
+              {
+                "source": "intake_workflow_action",
+                "objective": "",
+                "claim_element_id": "",
+                "focus_areas": [],
+                "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "protected_activity",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: protected_activity"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "denial_event",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: denial_event"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "objective": "claim_elements",
+                "claim_element_id": "context_or_reason",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Missing intake legal element: context_or_reason"
+              }
+            ]
+          },
+          "workflow_targeting_summary": {
+            "count": 10,
+            "phase_counts": {
+              "intake_questioning": 7,
+              "graph_analysis": 3,
+              "document_generation": 0
+            },
+            "prioritized_phases": [
+              "intake_questioning",
+              "graph_analysis"
+            ],
+            "shared_claim_element_counts": {
+              "protected_activity": 2,
+              "denial_event": 2,
+              "context_or_reason": 2
+            },
+            "shared_focus_area_counts": {
+              "intake_priorities": 1,
+              "retaliation": 1,
+              "denial": 1,
+              "protected_activity": 1,
+              "denial_event": 1,
+              "conduct": 1,
+              "claim_elements": 6
+            },
+            "phase_summaries": {
+              "intake_questioning": {
+                "count": 7,
+                "objective_counts": {
+                  "causation_sequence": 1,
+                  "retaliation": 1,
+                  "conduct": 1,
+                  "claim_elements": 3
+                },
+                "claim_element_counts": {
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "context_or_reason": 1
+                },
+                "focus_area_counts": {
+                  "intake_priorities": 1,
+                  "retaliation": 1,
+                  "denial": 1,
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "conduct": 1,
+                  "claim_elements": 3
+                },
+                "source_counts": {
+                  "intake_priority": 1,
+                  "intake_workflow_action": 3,
+                  "intake_legal_targeting": 3
+                },
+                "targets": [
+                  {
+                    "source": "intake_priority",
+                    "objective": "causation_sequence",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "intake_priorities"
+                    ],
+                    "text": "Uncovered intake objective: causation_sequence"
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "retaliation",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "retaliation",
+                      "denial",
+                      "protected_activity",
+                      "denial_event"
+                    ],
+                    "text": "Close graph and legal-element gaps that still block complaint development."
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "conduct",
+                    "claim_element_id": "",
+                    "focus_areas": [
+                      "conduct"
+                    ],
+                    "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+                  },
+                  {
+                    "source": "intake_workflow_action",
+                    "objective": "",
+                    "claim_element_id": "",
+                    "focus_areas": [],
+                    "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "protected_activity",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: protected_activity"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "denial_event",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: denial_event"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "objective": "claim_elements",
+                    "claim_element_id": "context_or_reason",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Missing intake legal element: context_or_reason"
+                  }
+                ]
+              },
+              "graph_analysis": {
+                "count": 3,
+                "claim_type_counts": {
+                  "retaliation": 1,
+                  "denial": 2
+                },
+                "claim_element_counts": {
+                  "protected_activity": 1,
+                  "denial_event": 1,
+                  "context_or_reason": 1
+                },
+                "focus_area_counts": {
+                  "claim_elements": 3
+                },
+                "source_counts": {
+                  "intake_legal_targeting": 3
+                },
+                "targets": [
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "protected_activity",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for retaliation"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "denial",
+                    "claim_element_id": "denial_event",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for denial"
+                  },
+                  {
+                    "source": "intake_legal_targeting",
+                    "claim_type": "denial",
+                    "claim_element_id": "context_or_reason",
+                    "focus_areas": [
+                      "claim_elements"
+                    ],
+                    "text": "Unresolved legal requirement for denial"
+                  }
+                ]
+              },
+              "document_generation": {
+                "count": 0,
+                "focus_section_counts": {},
+                "claim_type_counts": {},
+                "claim_element_counts": {},
+                "support_kind_counts": {},
+                "targets": []
+              }
+            }
+          },
+          "graph_element_targeting_summary": {
+            "count": 3,
+            "claim_type_counts": {
+              "retaliation": 1,
+              "denial": 2
+            },
+            "claim_element_counts": {
+              "protected_activity": 1,
+              "denial_event": 1,
+              "context_or_reason": 1
+            },
+            "focus_area_counts": {
+              "claim_elements": 3
+            },
+            "source_counts": {
+              "intake_legal_targeting": 3
+            },
+            "targets": [
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "retaliation",
+                "claim_element_id": "protected_activity",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for retaliation"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "denial",
+                "claim_element_id": "denial_event",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for denial"
+              },
+              {
+                "source": "intake_legal_targeting",
+                "claim_type": "denial",
+                "claim_element_id": "context_or_reason",
+                "focus_areas": [
+                  "claim_elements"
+                ],
+                "text": "Unresolved legal requirement for denial"
+              }
+            ]
+          },
+          "document_evidence_targeting_summary": {
+            "count": 0,
+            "focus_section_counts": {},
+            "claim_type_counts": {},
+            "claim_element_counts": {},
+            "support_kind_counts": {},
+            "targets": []
+          },
+          "document_provenance_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_fact_backed_ratio": 0.0,
+            "avg_summary_fact_backed_ratio": 0.0,
+            "avg_factual_allegation_fact_backed_ratio": 0.0,
+            "avg_claim_supporting_fact_backed_ratio": 0.0,
+            "low_grounding_session_count": 0,
+            "low_grounding_flag": false
+          },
+          "document_grounding_improvement_summary": {
+            "count": 0,
+            "sessions_with_summary": 0,
+            "avg_initial_fact_backed_ratio": 0.0,
+            "avg_final_fact_backed_ratio": 0.0,
+            "avg_fact_backed_ratio_delta": 0.0,
+            "improved_session_count": 0,
+            "regressed_session_count": 0,
+            "stalled_session_count": 0,
+            "recovery_attempted_session_count": 0,
+            "low_grounding_resolved_session_count": 0,
+            "improved_flag": false
+          },
+          "document_grounding_lane_outcome_summary": {
+            "support_kind_stats": {},
+            "claim_element_stats": {},
+            "recommended_future_support_kind": "",
+            "recommended_future_claim_element": ""
+          },
+          "document_workflow_execution_summary": {
+            "iteration_count": 0,
+            "accepted_iteration_count": 0,
+            "focus_section_counts": {},
+            "top_support_kind_counts": {},
+            "targeted_claim_element_counts": {},
+            "preferred_support_kind_counts": {},
+            "first_focus_section": "",
+            "first_top_support_kind": "",
+            "first_targeted_claim_element": "",
+            "first_preferred_support_kind": ""
+          },
+          "document_execution_drift_summary": {
+            "drift_flag": false,
+            "top_targeted_claim_element": "",
+            "top_targeted_claim_element_count": 0,
+            "first_executed_claim_element": "",
+            "first_focus_section": "",
+            "first_preferred_support_kind": "",
+            "iteration_count": 0,
+            "accepted_iteration_count": 0
+          },
+          "document_chronology_reasoning_summary": {
+            "count": 0,
+            "sessions_with_temporal_handoff": 0,
+            "sessions_with_reasoning_review": 0,
+            "unresolved_temporal_issue_count": 0,
+            "chronology_task_count": 0,
+            "proof_artifact_element_count": 0,
+            "proof_artifact_available_element_count": 0,
+            "proof_artifact_status_counts": {},
+            "claim_type_counts": {},
+            "unresolved_claim_type_counts": {},
+            "temporal_proof_bundle_count": 0,
+            "temporal_proof_bundle_ids": [],
+            "chronology_pressure_flag": false
+          },
+          "cross_phase_findings": [
+            "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+            "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+          ]
+        }
+      }
+    }
+  ],
+  "shared_context": {
+    "recommended_hacc_preset": "core_hacc_policies",
+    "priority_improvements": [
+      "Improve intake targeting: claim_elements, causation_sequence, conduct",
+      "Improve intake priority coverage: causation_sequence",
+      "Improve graph element targeting: context_or_reason, denial_event, protected_activity"
+    ],
+    "recommendations": [
+      "Performance is good. Focus on consistency and edge cases.",
+      "Evidence-section coverage is improving. Preserve explicit questioning around: grievance_hearing, appeal_rights.",
+      "Knowledge graph gap count is high on average. Improve gap-reduction logic in complaint_phases/denoiser.py and ensure process_answer updates entities/relationships meaningfully.",
+      "In 1 sessions, KG gaps did not reduce over iterations. Consider making denoiser.process_answer reduce gaps deterministically (e.g., marking gap items as addressed when answers supply the missing fields).",
+      "Knowledge graph relationships are not increasing across iterations. Consider adding relationship updates when answers mention who/what/when/where/why links.",
+      "KG gaps are not decreasing on average (or are increasing). Improve gap selection + answer processing so each turn reduces uncertainty.",
+      "Dependency satisfaction rate is very low on average. Consider having denoising answers mark requirements as satisfied or add evidence/fact nodes as they are provided.",
+      "Add a targeted causation follow-up: ask what specifically links the protected activity to retaliation beyond timing (who said what, when, and any comparator treatment).",
+      "Add questions covering intake objectives: causation_sequence",
+      "Replace internal jargon with plain-language prompts and break one complex ask into 3 short parts: dates, actors, documents.",
+      "Best HACC preset so far is 'core_hacc_policies'. Prefer it when generating evidence-backed adversarial batches.",
+      "Graph analysis is repeatedly targeting these claim elements for stronger structure and support propagation: context_or_reason, denial_event, protected_activity. Improve KG/DG updates and denoiser routing for those elements.",
+      "Adversarial intake priorities are not fully covered. Add stronger probes or fallback prompts for: causation_sequence (0/1).",
+      "Intake questioning is repeatedly targeting these objectives/elements: claim_elements, causation_sequence, conduct, context_or_reason. Improve intake routing, fallback prompts, and legal-element probes for those gaps."
+    ],
+    "common_weaknesses": [
+      "The wording included technical/internal phrasing that can confuse complainants and reduce clarity.",
+      "It did not directly elicit non-timing causation facts (e.g., statements, comparative treatment, pretext indicators).",
+      "Missed intake objectives: causation_sequence"
+    ],
+    "common_strengths": [
+      "The mediator used empathetic language and reduced defensiveness while requesting precision.",
+      "The question was focused and high-yield for chronology, producing actionable follow-up leads.",
+      "Covered all seeded anchor sections: grievance_hearing, appeal_rights"
+    ],
+    "complaint_type_performance": {
+      "housing_discrimination": {
+        "count": 1,
+        "average_score": 0.8246923076923077,
+        "min_score": 0.8246923076923077,
+        "max_score": 0.8246923076923077
+      },
+      "hacc_research_engine": {
+        "count": 1,
+        "average_score": 0.8246923076923077,
+        "min_score": 0.8246923076923077,
+        "max_score": 0.8246923076923077
+      }
+    },
+    "evidence_modality_performance": {
+      "policy_document": {
+        "count": 1,
+        "average_score": 0.8246923076923077,
+        "min_score": 0.8246923076923077,
+        "max_score": 0.8246923076923077
+      },
+      "file_evidence": {
+        "count": 1,
+        "average_score": 0.8246923076923077,
+        "min_score": 0.8246923076923077,
+        "max_score": 0.8246923076923077
+      }
+    },
+    "intake_priority_performance": {
+      "expected_counts": {
+        "anchor_grievance_hearing": 1,
+        "anchor_adverse_action": 1,
+        "exact_dates": 1,
+        "staff_names_titles": 1,
+        "anchor_appeal_rights": 1,
+        "hearing_request_timing": 1,
+        "response_dates": 1,
+        "adverse_action_details": 1,
+        "timeline": 1,
+        "actors": 1,
+        "causation_sequence": 1,
+        "documents": 1,
+        "harm_remedy": 1
+      },
+      "covered_counts": {
+        "anchor_grievance_hearing": 1,
+        "anchor_adverse_action": 1,
+        "exact_dates": 1,
+        "staff_names_titles": 1,
+        "anchor_appeal_rights": 1,
+        "hearing_request_timing": 1,
+        "response_dates": 1,
+        "adverse_action_details": 1,
+        "timeline": 1,
+        "actors": 1,
+        "documents": 1,
+        "harm_remedy": 1
+      },
+      "uncovered_counts": {
+        "causation_sequence": 1
+      },
+      "coverage_by_objective": {
+        "actors": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "adverse_action_details": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "anchor_adverse_action": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "anchor_appeal_rights": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "anchor_grievance_hearing": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "causation_sequence": {
+          "expected": 1,
+          "covered": 0,
+          "uncovered": 1,
+          "coverage_rate": 0.0
+        },
+        "documents": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "exact_dates": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "harm_remedy": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "hearing_request_timing": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "response_dates": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "staff_names_titles": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        },
+        "timeline": {
+          "expected": 1,
+          "covered": 1,
+          "uncovered": 0,
+          "coverage_rate": 1.0
+        }
+      },
+      "sessions_with_full_coverage": 0,
+      "sessions_with_partial_coverage": 1
+    },
+    "coverage_remediation": {
+      "anchor_sections": {
+        "missing_sections": [],
+        "recommended_actions": []
+      },
+      "intake_priorities": {
+        "uncovered_objectives": [
+          "causation_sequence"
+        ],
+        "recommended_actions": [
+          {
+            "objective": "causation_sequence",
+            "expected": 1,
+            "covered": 0,
+            "uncovered": 1,
+            "coverage_rate": 0.0,
+            "recommended_action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly."
+          }
+        ],
+        "sessions_with_full_coverage": 0,
+        "sessions_with_partial_coverage": 1
+      }
+    },
+    "phase_scorecards": {
+      "intake_questioning": {
+        "status": "warning",
+        "score": 0.8213,
+        "focus_areas": [
+          "causation_sequence",
+          "claim_elements",
+          "causation_sequence"
+        ],
+        "generalization_targets": [
+          "hacc_research_engine",
+          "housing_discrimination"
+        ],
+        "evidence_targets": [
+          "file_evidence",
+          "policy_document"
+        ],
+        "targeted_intake_objectives": [
+          "claim_elements",
+          "causation_sequence",
+          "conduct"
+        ]
+      },
+      "graph_analysis": {
+        "status": "critical",
+        "score": 0.3209,
+        "focus_areas": [
+          "gap_reduction",
+          "dependency_satisfaction"
+        ],
+        "generalization_targets": [
+          "hacc_research_engine",
+          "housing_discrimination"
+        ],
+        "evidence_targets": [
+          "file_evidence",
+          "policy_document"
+        ],
+        "targeted_claim_elements": [
+          "context_or_reason",
+          "denial_event",
+          "protected_activity"
+        ]
+      },
+      "document_generation": {
+        "status": "warning",
+        "score": 0.5785,
+        "focus_areas": [
+          "causation_sequence"
+        ],
+        "generalization_targets": [
+          "hacc_research_engine",
+          "housing_discrimination"
+        ],
+        "evidence_targets": [
+          "file_evidence",
+          "policy_document"
+        ],
+        "targeted_claim_elements": [],
+        "executed_claim_elements": [],
+        "first_executed_claim_element": "",
+        "first_focus_section": "",
+        "first_top_support_kind": "",
+        "document_fact_backed_ratio": 0.0,
+        "document_low_grounding_flag": false,
+        "document_provenance_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_fact_backed_ratio": 0.0,
+          "avg_summary_fact_backed_ratio": 0.0,
+          "avg_factual_allegation_fact_backed_ratio": 0.0,
+          "avg_claim_supporting_fact_backed_ratio": 0.0,
+          "low_grounding_session_count": 0,
+          "low_grounding_flag": false
+        },
+        "document_grounding_improvement_summary": {
+          "count": 0,
+          "sessions_with_summary": 0,
+          "avg_initial_fact_backed_ratio": 0.0,
+          "avg_final_fact_backed_ratio": 0.0,
+          "avg_fact_backed_ratio_delta": 0.0,
+          "improved_session_count": 0,
+          "regressed_session_count": 0,
+          "stalled_session_count": 0,
+          "recovery_attempted_session_count": 0,
+          "low_grounding_resolved_session_count": 0,
+          "improved_flag": false
+        },
+        "document_grounding_lane_outcome_summary": {
+          "support_kind_stats": {},
+          "claim_element_stats": {},
+          "recommended_future_support_kind": "",
+          "recommended_future_claim_element": ""
+        },
+        "document_grounding_improved_flag": false,
+        "execution_mismatch_flag": false,
+        "execution_drift_summary": {
+          "drift_flag": false,
+          "top_targeted_claim_element": "",
+          "top_targeted_claim_element_count": 0,
+          "first_executed_claim_element": "",
+          "first_focus_section": "",
+          "first_preferred_support_kind": "",
+          "iteration_count": 0,
+          "accepted_iteration_count": 0
+        },
+        "unresolved_temporal_issue_count": 0,
+        "chronology_task_count": 0,
+        "proof_artifact_element_count": 0,
+        "proof_artifact_available_element_count": 0,
+        "document_chronology_reasoning_summary": {
+          "count": 0,
+          "sessions_with_temporal_handoff": 0,
+          "sessions_with_reasoning_review": 0,
+          "unresolved_temporal_issue_count": 0,
+          "chronology_task_count": 0,
+          "proof_artifact_element_count": 0,
+          "proof_artifact_available_element_count": 0,
+          "proof_artifact_status_counts": {},
+          "claim_type_counts": {},
+          "unresolved_claim_type_counts": {},
+          "temporal_proof_bundle_count": 0,
+          "temporal_proof_bundle_ids": [],
+          "chronology_pressure_flag": false
+        },
+        "chronology_pressure_flag": false
+      }
+    },
+    "intake_targeting_summary": {
+      "count": 7,
+      "objective_counts": {
+        "causation_sequence": 1,
+        "retaliation": 1,
+        "conduct": 1,
+        "claim_elements": 3
+      },
+      "claim_element_counts": {
+        "protected_activity": 1,
+        "denial_event": 1,
+        "context_or_reason": 1
+      },
+      "focus_area_counts": {
+        "intake_priorities": 1,
+        "retaliation": 1,
+        "denial": 1,
+        "protected_activity": 1,
+        "denial_event": 1,
+        "conduct": 1,
+        "claim_elements": 3
+      },
+      "source_counts": {
+        "intake_priority": 1,
+        "intake_workflow_action": 3,
+        "intake_legal_targeting": 3
+      },
+      "targets": [
+        {
+          "source": "intake_priority",
+          "objective": "causation_sequence",
+          "claim_element_id": "",
+          "focus_areas": [
+            "intake_priorities"
+          ],
+          "text": "Uncovered intake objective: causation_sequence"
+        },
+        {
+          "source": "intake_workflow_action",
+          "objective": "retaliation",
+          "claim_element_id": "",
+          "focus_areas": [
+            "retaliation",
+            "denial",
+            "protected_activity",
+            "denial_event"
+          ],
+          "text": "Close graph and legal-element gaps that still block complaint development."
+        },
+        {
+          "source": "intake_workflow_action",
+          "objective": "conduct",
+          "claim_element_id": "",
+          "focus_areas": [
+            "conduct"
+          ],
+          "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+        },
+        {
+          "source": "intake_workflow_action",
+          "objective": "",
+          "claim_element_id": "",
+          "focus_areas": [],
+          "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+        },
+        {
+          "source": "intake_legal_targeting",
+          "objective": "claim_elements",
+          "claim_element_id": "protected_activity",
+          "focus_areas": [
+            "claim_elements"
+          ],
+          "text": "Missing intake legal element: protected_activity"
+        },
+        {
+          "source": "intake_legal_targeting",
+          "objective": "claim_elements",
+          "claim_element_id": "denial_event",
+          "focus_areas": [
+            "claim_elements"
+          ],
+          "text": "Missing intake legal element: denial_event"
+        },
+        {
+          "source": "intake_legal_targeting",
+          "objective": "claim_elements",
+          "claim_element_id": "context_or_reason",
+          "focus_areas": [
+            "claim_elements"
+          ],
+          "text": "Missing intake legal element: context_or_reason"
+        }
+      ]
+    },
+    "workflow_targeting_summary": {
+      "count": 10,
+      "phase_counts": {
+        "intake_questioning": 7,
+        "graph_analysis": 3,
+        "document_generation": 0
+      },
+      "prioritized_phases": [
+        "intake_questioning",
+        "graph_analysis"
+      ],
+      "shared_claim_element_counts": {
+        "protected_activity": 2,
+        "denial_event": 2,
+        "context_or_reason": 2
+      },
+      "shared_focus_area_counts": {
+        "intake_priorities": 1,
+        "retaliation": 1,
+        "denial": 1,
+        "protected_activity": 1,
+        "denial_event": 1,
+        "conduct": 1,
+        "claim_elements": 6
+      },
+      "phase_summaries": {
+        "intake_questioning": {
+          "count": 7,
+          "objective_counts": {
+            "causation_sequence": 1,
+            "retaliation": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "intake_priorities": 1,
+            "retaliation": 1,
+            "denial": 1,
+            "protected_activity": 1,
+            "denial_event": 1,
+            "conduct": 1,
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_priority": 1,
+            "intake_workflow_action": 3,
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_priority",
+              "objective": "causation_sequence",
+              "claim_element_id": "",
+              "focus_areas": [
+                "intake_priorities"
+              ],
+              "text": "Uncovered intake objective: causation_sequence"
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "retaliation",
+              "claim_element_id": "",
+              "focus_areas": [
+                "retaliation",
+                "denial",
+                "protected_activity",
+                "denial_event"
+              ],
+              "text": "Close graph and legal-element gaps that still block complaint development."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "conduct",
+              "claim_element_id": "",
+              "focus_areas": [
+                "conduct"
+              ],
+              "text": "Target remaining intake sections that still prevent a complete complaint narrative."
+            },
+            {
+              "source": "intake_workflow_action",
+              "objective": "",
+              "claim_element_id": "",
+              "focus_areas": [],
+              "text": "Collect proof, harm, and remedy details needed for drafting-ready allegations."
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: protected_activity"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: denial_event"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "objective": "claim_elements",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Missing intake legal element: context_or_reason"
+            }
+          ]
+        },
+        "graph_analysis": {
+          "count": 3,
+          "claim_type_counts": {
+            "retaliation": 1,
+            "denial": 2
+          },
+          "claim_element_counts": {
+            "protected_activity": 1,
+            "denial_event": 1,
+            "context_or_reason": 1
+          },
+          "focus_area_counts": {
+            "claim_elements": 3
+          },
+          "source_counts": {
+            "intake_legal_targeting": 3
+          },
+          "targets": [
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "retaliation",
+              "claim_element_id": "protected_activity",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for retaliation"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "denial_event",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            },
+            {
+              "source": "intake_legal_targeting",
+              "claim_type": "denial",
+              "claim_element_id": "context_or_reason",
+              "focus_areas": [
+                "claim_elements"
+              ],
+              "text": "Unresolved legal requirement for denial"
+            }
+          ]
+        },
+        "document_generation": {
+          "count": 0,
+          "focus_section_counts": {},
+          "claim_type_counts": {},
+          "claim_element_counts": {},
+          "support_kind_counts": {},
+          "targets": []
+        }
+      }
+    },
+    "complaint_type_generalization_summary": {
+      "count": 2,
+      "weakest": [
+        {
+          "name": "hacc_research_engine",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        },
+        {
+          "name": "housing_discrimination",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        }
+      ],
+      "strongest": [
+        {
+          "name": "housing_discrimination",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        },
+        {
+          "name": "hacc_research_engine",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        }
+      ],
+      "score_spread": 0.0,
+      "below_baseline_count": 0
+    },
+    "evidence_modality_generalization_summary": {
+      "count": 2,
+      "weakest": [
+        {
+          "name": "file_evidence",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        },
+        {
+          "name": "policy_document",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        }
+      ],
+      "strongest": [
+        {
+          "name": "policy_document",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        },
+        {
+          "name": "file_evidence",
+          "average_score": 0.8246923076923077,
+          "count": 1
+        }
+      ],
+      "score_spread": 0.0,
+      "below_baseline_count": 0
+    },
+    "document_handoff_summary": {
+      "unresolved_intake_objectives": [
+        "causation_sequence"
+      ],
+      "graph_dependency_status": "critical",
+      "document_generation_status": "warning",
+      "complaint_type_gap_count": 0,
+      "evidence_modality_gap_count": 0,
+      "unresolved_temporal_issue_count": 0,
+      "chronology_task_count": 0,
+      "proof_artifact_element_count": 0,
+      "blockers": [
+        "uncovered_intake_objectives",
+        "graph_analysis_not_ready",
+        "document_generation_not_ready"
+      ],
+      "ready_for_document_optimization": false
+    },
+    "graph_element_targeting_summary": {
+      "count": 3,
+      "claim_type_counts": {
+        "retaliation": 1,
+        "denial": 2
+      },
+      "claim_element_counts": {
+        "protected_activity": 1,
+        "denial_event": 1,
+        "context_or_reason": 1
+      },
+      "focus_area_counts": {
+        "claim_elements": 3
+      },
+      "source_counts": {
+        "intake_legal_targeting": 3
+      },
+      "targets": [
+        {
+          "source": "intake_legal_targeting",
+          "claim_type": "retaliation",
+          "claim_element_id": "protected_activity",
+          "focus_areas": [
+            "claim_elements"
+          ],
+          "text": "Unresolved legal requirement for retaliation"
+        },
+        {
+          "source": "intake_legal_targeting",
+          "claim_type": "denial",
+          "claim_element_id": "denial_event",
+          "focus_areas": [
+            "claim_elements"
+          ],
+          "text": "Unresolved legal requirement for denial"
+        },
+        {
+          "source": "intake_legal_targeting",
+          "claim_type": "denial",
+          "claim_element_id": "context_or_reason",
+          "focus_areas": [
+            "claim_elements"
+          ],
+          "text": "Unresolved legal requirement for denial"
+        }
+      ]
+    },
+    "document_evidence_targeting_summary": {
+      "count": 0,
+      "focus_section_counts": {},
+      "claim_type_counts": {},
+      "claim_element_counts": {},
+      "support_kind_counts": {},
+      "targets": []
+    },
+    "document_provenance_summary": {
+      "count": 0,
+      "sessions_with_summary": 0,
+      "avg_fact_backed_ratio": 0.0,
+      "avg_summary_fact_backed_ratio": 0.0,
+      "avg_factual_allegation_fact_backed_ratio": 0.0,
+      "avg_claim_supporting_fact_backed_ratio": 0.0,
+      "low_grounding_session_count": 0,
+      "low_grounding_flag": false
+    },
+    "document_grounding_improvement_summary": {
+      "count": 0,
+      "sessions_with_summary": 0,
+      "avg_initial_fact_backed_ratio": 0.0,
+      "avg_final_fact_backed_ratio": 0.0,
+      "avg_fact_backed_ratio_delta": 0.0,
+      "improved_session_count": 0,
+      "regressed_session_count": 0,
+      "stalled_session_count": 0,
+      "recovery_attempted_session_count": 0,
+      "low_grounding_resolved_session_count": 0,
+      "improved_flag": false
+    },
+    "document_grounding_lane_outcome_summary": {
+      "support_kind_stats": {},
+      "claim_element_stats": {},
+      "recommended_future_support_kind": "",
+      "recommended_future_claim_element": ""
+    },
+    "document_workflow_execution_summary": {
+      "iteration_count": 0,
+      "accepted_iteration_count": 0,
+      "focus_section_counts": {},
+      "top_support_kind_counts": {},
+      "targeted_claim_element_counts": {},
+      "preferred_support_kind_counts": {},
+      "first_focus_section": "",
+      "first_top_support_kind": "",
+      "first_targeted_claim_element": "",
+      "first_preferred_support_kind": ""
+    },
+    "document_execution_drift_summary": {
+      "drift_flag": false,
+      "top_targeted_claim_element": "",
+      "top_targeted_claim_element_count": 0,
+      "first_executed_claim_element": "",
+      "first_focus_section": "",
+      "first_preferred_support_kind": "",
+      "iteration_count": 0,
+      "accepted_iteration_count": 0
+    },
+    "document_chronology_reasoning_summary": {
+      "count": 0,
+      "sessions_with_temporal_handoff": 0,
+      "sessions_with_reasoning_review": 0,
+      "unresolved_temporal_issue_count": 0,
+      "chronology_task_count": 0,
+      "proof_artifact_element_count": 0,
+      "proof_artifact_available_element_count": 0,
+      "proof_artifact_status_counts": {},
+      "claim_type_counts": {},
+      "unresolved_claim_type_counts": {},
+      "temporal_proof_bundle_count": 0,
+      "temporal_proof_bundle_ids": [],
+      "chronology_pressure_flag": false
+    },
+    "cross_phase_findings": [
+      "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+      "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+    ],
+    "workflow_action_queue": [
+      {
+        "rank": 1,
+        "phase_name": "graph_analysis",
+        "status": "critical",
+        "action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative.",
+        "focus_areas": [
+          "gap_reduction",
+          "dependency_satisfaction"
+        ],
+        "score": 0.3209
+      },
+      {
+        "rank": 2,
+        "phase_name": "document_generation",
+        "status": "warning",
+        "action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence.",
+        "focus_areas": [
+          "causation_sequence"
+        ],
+        "score": 0.5785
+      },
+      {
+        "rank": 3,
+        "phase_name": "intake_questioning",
+        "status": "warning",
+        "action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly.",
+        "focus_areas": [
+          "causation_sequence",
+          "claim_elements",
+          "causation_sequence"
+        ],
+        "score": 0.8213
+      },
+      {
+        "rank": 4,
+        "phase_name": "cross_phase",
+        "status": "warning",
+        "action": "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+        "focus_areas": [],
+        "score": 0.0
+      },
+      {
+        "rank": 5,
+        "phase_name": "cross_phase",
+        "status": "warning",
+        "action": "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting.",
+        "focus_areas": [],
+        "score": 0.0
+      }
+    ]
+  },
+  "phase_scorecards": {
+    "intake_questioning": {
+      "status": "warning",
+      "score": 0.8213,
+      "focus_areas": [
+        "causation_sequence",
+        "claim_elements",
+        "causation_sequence"
+      ],
+      "generalization_targets": [
+        "hacc_research_engine",
+        "housing_discrimination"
+      ],
+      "evidence_targets": [
+        "file_evidence",
+        "policy_document"
+      ],
+      "targeted_intake_objectives": [
+        "claim_elements",
+        "causation_sequence",
+        "conduct"
+      ]
+    },
+    "graph_analysis": {
+      "status": "critical",
+      "score": 0.3209,
+      "focus_areas": [
+        "gap_reduction",
+        "dependency_satisfaction"
+      ],
+      "generalization_targets": [
+        "hacc_research_engine",
+        "housing_discrimination"
+      ],
+      "evidence_targets": [
+        "file_evidence",
+        "policy_document"
+      ],
+      "targeted_claim_elements": [
+        "context_or_reason",
+        "denial_event",
+        "protected_activity"
+      ]
+    },
+    "document_generation": {
+      "status": "warning",
+      "score": 0.5785,
+      "focus_areas": [
+        "causation_sequence"
+      ],
+      "generalization_targets": [
+        "hacc_research_engine",
+        "housing_discrimination"
+      ],
+      "evidence_targets": [
+        "file_evidence",
+        "policy_document"
+      ],
+      "targeted_claim_elements": [],
+      "executed_claim_elements": [],
+      "first_executed_claim_element": "",
+      "first_focus_section": "",
+      "first_top_support_kind": "",
+      "document_fact_backed_ratio": 0.0,
+      "document_low_grounding_flag": false,
+      "document_provenance_summary": {
+        "count": 0,
+        "sessions_with_summary": 0,
+        "avg_fact_backed_ratio": 0.0,
+        "avg_summary_fact_backed_ratio": 0.0,
+        "avg_factual_allegation_fact_backed_ratio": 0.0,
+        "avg_claim_supporting_fact_backed_ratio": 0.0,
+        "low_grounding_session_count": 0,
+        "low_grounding_flag": false
+      },
+      "document_grounding_improvement_summary": {
+        "count": 0,
+        "sessions_with_summary": 0,
+        "avg_initial_fact_backed_ratio": 0.0,
+        "avg_final_fact_backed_ratio": 0.0,
+        "avg_fact_backed_ratio_delta": 0.0,
+        "improved_session_count": 0,
+        "regressed_session_count": 0,
+        "stalled_session_count": 0,
+        "recovery_attempted_session_count": 0,
+        "low_grounding_resolved_session_count": 0,
+        "improved_flag": false
+      },
+      "document_grounding_lane_outcome_summary": {
+        "support_kind_stats": {},
+        "claim_element_stats": {},
+        "recommended_future_support_kind": "",
+        "recommended_future_claim_element": ""
+      },
+      "document_grounding_improved_flag": false,
+      "execution_mismatch_flag": false,
+      "execution_drift_summary": {
+        "drift_flag": false,
+        "top_targeted_claim_element": "",
+        "top_targeted_claim_element_count": 0,
+        "first_executed_claim_element": "",
+        "first_focus_section": "",
+        "first_preferred_support_kind": "",
+        "iteration_count": 0,
+        "accepted_iteration_count": 0
+      },
+      "unresolved_temporal_issue_count": 0,
+      "chronology_task_count": 0,
+      "proof_artifact_element_count": 0,
+      "proof_artifact_available_element_count": 0,
+      "document_chronology_reasoning_summary": {
+        "count": 0,
+        "sessions_with_temporal_handoff": 0,
+        "sessions_with_reasoning_review": 0,
+        "unresolved_temporal_issue_count": 0,
+        "chronology_task_count": 0,
+        "proof_artifact_element_count": 0,
+        "proof_artifact_available_element_count": 0,
+        "proof_artifact_status_counts": {},
+        "claim_type_counts": {},
+        "unresolved_claim_type_counts": {},
+        "temporal_proof_bundle_count": 0,
+        "temporal_proof_bundle_ids": [],
+        "chronology_pressure_flag": false
+      },
+      "chronology_pressure_flag": false
+    }
+  },
+  "cross_phase_findings": [
+    "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+    "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting."
+  ],
+  "workflow_action_queue": [
+    {
+      "rank": 1,
+      "phase_name": "graph_analysis",
+      "status": "critical",
+      "action": "Improve denoiser gap selection and answer processing so each turn closes a concrete knowledge-graph gap instead of only restating the narrative.",
+      "focus_areas": [
+        "gap_reduction",
+        "dependency_satisfaction"
+      ],
+      "score": 0.3209
+    },
+    {
+      "rank": 2,
+      "phase_name": "document_generation",
+      "status": "warning",
+      "action": "Carry blocker-closing intake answers directly into factual allegations, claim support, and exhibit descriptions so drafted complaints preserve timing, actor identity, and causation sequence.",
+      "focus_areas": [
+        "causation_sequence"
+      ],
+      "score": 0.5785
+    },
+    {
+      "rank": 3,
+      "phase_name": "intake_questioning",
+      "status": "warning",
+      "action": "Ask the complainant to walk step-by-step through protected activity, response, and adverse action so causation can be modeled directly.",
+      "focus_areas": [
+        "causation_sequence",
+        "claim_elements",
+        "causation_sequence"
+      ],
+      "score": 0.8213
+    },
+    {
+      "rank": 4,
+      "phase_name": "cross_phase",
+      "status": "warning",
+      "action": "Intake questioning gaps are likely suppressing graph extraction quality; optimize question targeting before expanding graph heuristics further.",
+      "focus_areas": [],
+      "score": 0.0
+    },
+    {
+      "rank": 5,
+      "phase_name": "cross_phase",
+      "status": "warning",
+      "action": "Document generation is currently bottlenecked by graph-analysis readiness; improve structured fact and requirement propagation into drafting.",
+      "focus_areas": [],
+      "score": 0.0
+    }
+  ]
+}

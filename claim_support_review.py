@@ -40,6 +40,7 @@ except ModuleNotFoundError:
             }
 
 from complaint_phases.denoiser import ComplaintDenoiser
+from complaint_phases.phase_manager import ComplaintPhase
 from intake_status import (
     build_intake_case_review_summary,
     build_intake_status_summary,
@@ -60,6 +61,61 @@ DEFAULT_REQUIRED_SUPPORT_KINDS = ["evidence", "authority"]
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _build_document_focus_preview(draft: Dict[str, Any]) -> List[Dict[str, Any]]:
+    preview_rows: List[Dict[str, Any]] = []
+
+    def _append_rows(section: str, entries: Any) -> None:
+        for entry in list(entries or []):
+            if not isinstance(entry, dict):
+                continue
+            focus = entry.get("document_focus")
+            if not isinstance(focus, dict) or not focus:
+                continue
+            preview_rows.append(
+                {
+                    "section": section,
+                    "text": str(entry.get("text") or "").strip(),
+                    "focus_source": str(focus.get("focus_source") or "").strip(),
+                    "action": str(focus.get("action") or "").strip(),
+                    "target_claim_element_id": str(focus.get("target_claim_element_id") or "").strip(),
+                    "original_claim_element_id": str(focus.get("original_claim_element_id") or "").strip(),
+                    "preferred_support_kind": str(focus.get("preferred_support_kind") or "").strip(),
+                    "priority_rank": int(entry.get("document_focus_priority_rank") or 0),
+                }
+            )
+
+    _append_rows("summary_of_facts", draft.get("summary_of_fact_entries"))
+    _append_rows("factual_allegations", draft.get("factual_allegation_paragraphs"))
+    claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        _append_rows(
+            f"claims_for_relief:{str(claim.get('claim_type') or '').strip() or 'claim'}",
+            claim.get("supporting_fact_provenance"),
+        )
+
+    preview_rows.sort(
+        key=lambda row: (
+            int(row.get("priority_rank") or 0) or 9999,
+            str(row.get("section") or ""),
+            str(row.get("text") or ""),
+        )
+    )
+    return preview_rows[:8]
+
+
+def _get_formalization_document_focus_preview(mediator: Any) -> List[Dict[str, Any]]:
+    phase_manager = getattr(mediator, "phase_manager", None)
+    get_phase_data = getattr(phase_manager, "get_phase_data", None)
+    if not callable(get_phase_data):
+        return []
+    formal_complaint = get_phase_data(ComplaintPhase.FORMALIZATION, "formal_complaint")
+    if not isinstance(formal_complaint, dict):
+        return []
+    return _build_document_focus_preview(formal_complaint)
 
 
 def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
@@ -441,6 +497,15 @@ def _merge_claim_temporal_registry_into_reasoning_review(
     )
     merged_review["claim_temporal_issue_status_counts"] = dict(
         claim_temporal_registry_summary.get("status_counts") or {}
+    )
+    merged_review["claim_temporal_issue_ids"] = list(
+        claim_temporal_registry_summary.get("issue_ids") or []
+    )
+    merged_review["claim_missing_temporal_predicates"] = list(
+        claim_temporal_registry_summary.get("missing_temporal_predicates") or []
+    )
+    merged_review["claim_required_provenance_kinds"] = list(
+        claim_temporal_registry_summary.get("required_provenance_kinds") or []
     )
     return merged_review
 
@@ -1509,6 +1574,21 @@ def summarize_claim_reasoning_review(
         if isinstance(claim_validation.get("claim_temporal_issue_status_counts"), dict)
         else {}
     )
+    claim_temporal_issue_ids = [
+        str(item).strip()
+        for item in (claim_validation.get("claim_temporal_issue_ids") or [])
+        if str(item).strip()
+    ]
+    claim_missing_temporal_predicates = [
+        str(item).strip()
+        for item in (claim_validation.get("claim_missing_temporal_predicates") or [])
+        if str(item).strip()
+    ]
+    claim_required_provenance_kinds = [
+        str(item).strip()
+        for item in (claim_validation.get("claim_required_provenance_kinds") or [])
+        if str(item).strip()
+    ]
 
     flagged_elements: List[Dict[str, Any]] = []
     fallback_ontology_element_count = 0
@@ -1938,6 +2018,9 @@ def summarize_claim_reasoning_review(
         "claim_unresolved_temporal_issue_count": claim_unresolved_temporal_issue_count,
         "claim_resolved_temporal_issue_count": claim_resolved_temporal_issue_count,
         "claim_temporal_issue_status_counts": claim_temporal_issue_status_counts,
+        "claim_temporal_issue_ids": claim_temporal_issue_ids,
+        "claim_missing_temporal_predicates": claim_missing_temporal_predicates,
+        "claim_required_provenance_kinds": claim_required_provenance_kinds,
         "theorem_export_blocked_element_count": theorem_export_blocked_element_count,
         "theorem_export_chronology_task_count": theorem_export_chronology_task_count,
         "proof_artifact_element_count": proof_artifact_element_count,
@@ -4006,6 +4089,7 @@ def build_claim_support_review_payload(
         workflow_phase_priority=workflow_phase_priority,
     )
     handoff_metadata = _build_confirmed_intake_summary_handoff_metadata(mediator)
+    document_focus_preview = _get_formalization_document_focus_preview(mediator)
 
     payload: Dict[str, Any] = {
         "user_id": resolved_user_id,
@@ -4043,6 +4127,7 @@ def build_claim_support_review_payload(
             if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)
             else {}
         ),
+        "document_focus_preview": document_focus_preview,
         "recommended_next_action": (
             str((intake_status.get("next_action") or {}).get("action") or "")
             if isinstance(intake_status.get("next_action"), dict)

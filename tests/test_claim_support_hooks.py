@@ -2644,6 +2644,8 @@ class TestClaimSupportHook:
                         'severity': 'blocking',
                         'recommended_resolution_lane': 'clarify_with_complainant',
                         'fact_ids': ['fact_1'],
+                        'missing_temporal_predicates': ['Anchored(fact_1)'],
+                        'required_provenance_kinds': ['testimony_record'],
                         'claim_types': ['retaliation'],
                         'element_tags': ['protected_activity'],
                     },
@@ -2671,6 +2673,8 @@ class TestClaimSupportHook:
         assert [fact['fact_id'] for fact in context['temporal_facts']] == ['fact_1']
         assert [relation['relation_id'] for relation in context['temporal_relations']] == ['timeline_relation_001']
         assert [issue['issue_type'] for issue in context['temporal_issues']] == ['relative_only_ordering']
+        assert context['consistency_summary']['missing_temporal_predicates'] == ['Anchored(fact_1)']
+        assert context['consistency_summary']['required_provenance_kinds'] == ['testimony_record']
         assert context['consistency_summary']['warning_count'] == 1
 
     def test_retaliation_temporal_rule_profile_requires_ordering_for_causation(self):

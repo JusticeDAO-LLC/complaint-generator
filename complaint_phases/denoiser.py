@@ -480,13 +480,19 @@ class ComplaintDenoiser:
         lowered = text.lower()
         signals = [
             "terminated",
+            "termination",
             "fired",
             "demoted",
             "disciplined",
             "suspended",
             "evicted",
             "denied",
+            "denial",
             "rejected",
+            "threatened",
+            "adverse steps",
+            "status change",
+            "status-change",
             "written up",
             "write-up",
             "adverse action",
@@ -515,11 +521,34 @@ class ComplaintDenoiser:
             return extracted_dates[0]
         if lowered in placeholder_tokens:
             return ""
+        normalized_without_parenthetical = re.sub(r"\([^()]*\)", "", cleaned).strip(" .")
+        normalized_without_parenthetical = re.sub(
+            r"\b(?:exact date|date|request date|response date)\s+(?:still )?(?:not |un)?confirmed\b",
+            "",
+            normalized_without_parenthetical,
+            flags=re.IGNORECASE,
+        ).strip(" .")
+        lowered_without_parenthetical = normalized_without_parenthetical.lower()
+        if normalized_without_parenthetical and lowered_without_parenthetical not in placeholder_tokens:
+            if any(
+                token in lowered_without_parenthetical
+                for token in ("after ", "before ", "shortly after", "ongoing", "same day", "next day")
+            ):
+                return normalized_without_parenthetical
+        if any(token in lowered for token in ("exact date still unconfirmed", "request date still", "response date unconfirmed")):
+            return ""
         parenthetical = re.findall(r"\(([^()]+)\)", cleaned)
         for item in parenthetical:
             normalized_item = self._normalize_structured_timeline_field(item)
             normalized_item = re.sub(r"^best estimate\s*:\s*", "", normalized_item, flags=re.IGNORECASE)
-            if normalized_item and normalized_item.lower() not in placeholder_tokens:
+            lowered_item = normalized_item.lower()
+            if (
+                normalized_item
+                and lowered_item not in placeholder_tokens
+                and "unconfirmed" not in lowered_item
+                and "email copy" not in lowered_item
+                and "portal" not in lowered_item
+            ):
                 return normalized_item
         if "ongoing" in lowered:
             return "ongoing"
@@ -570,10 +599,18 @@ class ComplaintDenoiser:
             return []
         group_hash = hashlib.md5(self._strip_markdown_formatting(text).encode("utf-8")).hexdigest()[:10]
         events: List[Dict[str, Any]] = []
+        candidate_lines: List[str] = []
         for raw_line in str(text).splitlines():
             line = str(raw_line or "").strip()
-            if "|" not in line or not re.match(r"^\s*[-*]", line):
-                continue
+            if "|" in line and re.match(r"^\s*[-*]", line):
+                candidate_lines.append(line)
+        if not candidate_lines:
+            flattened = str(text).replace("\n", " ")
+            for match in re.finditer(r"(?:^|\s)([-*]\s*[^|]+?\|\s*.*?)(?=(?:\s[-*]\s*[^|]+?\|)|$)", flattened):
+                candidate = str(match.group(1) or "").strip()
+                if "|" in candidate:
+                    candidate_lines.append(candidate)
+        for line in candidate_lines:
             cleaned_line = self._normalize_structured_timeline_field(line)
             parts = []
             for part in cleaned_line.split("|"):
@@ -582,8 +619,8 @@ class ComplaintDenoiser:
                     parts.append(normalized)
             if len(parts) < 2:
                 continue
-            actor_text = parts[0]
-            action_text = parts[1]
+            actor_text = re.sub(r"^(?:who|actor)\s*:\s*", "", parts[0], flags=re.IGNORECASE).strip()
+            action_text = re.sub(r"^action\s*:\s*", "", parts[1], flags=re.IGNORECASE).strip()
             trailing_parts = parts[2:]
             date_text = ""
             artifact_text = ""
@@ -4502,6 +4539,42 @@ class ComplaintDenoiser:
                 return
             claim_entity = _find_claim_entity_from_context()
             claim_id = claim_entity.id if claim_entity else _single_claim_id()
+            structured_timeline_events = self._extract_structured_timeline_events(answer_text)
+            if claim_entity and structured_timeline_events:
+                for event in structured_timeline_events[:10]:
+                    fact_entity, created = self._add_entity_if_missing(
+                        knowledge_graph,
+                        'fact',
+                        f"{event['event_label']}: {self._short_description(event['description'], 72)}",
+                        {
+                            'fact_type': 'timeline',
+                            'predicate_family': event['predicate_family'],
+                            'event_label': event['event_label'],
+                            'event_id': event['event_id'],
+                            'sequence_index': event['sequence_index'],
+                            'structured_timeline_group': event['structured_timeline_group'],
+                            'description': event['description'],
+                            'event_date_or_range': event['event_date_or_range'],
+                            'fact_participants': {'actor_label': event['actor_text']},
+                            'event_support_refs': [event['artifact_text']] if event['artifact_text'] else [],
+                            'source_artifact_ids': [event['artifact_text']] if event['artifact_text'] else [],
+                            'source_span_refs': [{'kind': 'structured_answer_line', 'text': event['source_line']}],
+                            'source': 'structured_timeline_answer',
+                        },
+                        0.77,
+                    )
+                    if created:
+                        updates['entities_updated'] += 1
+                    if claim_id and fact_entity:
+                        _, rel_created = self._add_relationship_if_missing(
+                            knowledge_graph,
+                            claim_id,
+                            fact_entity.id,
+                            'has_timeline_detail',
+                            0.68,
+                        )
+                        if rel_created:
+                            updates['relationships_added'] += 1
             dates = self._extract_date_strings(answer_text)
             if dates:
                 for date_str in dates:

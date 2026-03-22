@@ -7,6 +7,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from adversarial_harness.session import AdversarialSession
+from adversarial_harness.optimizer import Optimizer
+from complaint_phases import ComplaintPhase, build_intake_case_file
+from complaint_phases.knowledge_graph import Entity, KnowledgeGraphBuilder
 
 
 class _DummyMediator:
@@ -37,9 +40,27 @@ class _DummyComplainant:
 class _DummyCritic:
     class _Score:
         overall_score = 1.0
+        question_quality = 1.0
+        information_extraction = 1.0
+        empathy = 1.0
+        efficiency = 1.0
+        coverage = 1.0
+        strengths = []
+        weaknesses = []
+        suggestions = []
 
         def to_dict(self):
-            return {"overall_score": 1.0}
+            return {
+                "overall_score": 1.0,
+                "question_quality": 1.0,
+                "information_extraction": 1.0,
+                "empathy": 1.0,
+                "efficiency": 1.0,
+                "coverage": 1.0,
+                "strengths": [],
+                "weaknesses": [],
+                "suggestions": [],
+            }
 
     def evaluate_session(self, *args, **kwargs):
         return self._Score()
@@ -169,6 +190,78 @@ class _FallbackDocumentMediator(_ConvergingMediator):
         return {}
 
 
+class _OptimizerStatusMediator(_ConvergingMediator):
+    def __init__(self):
+        super().__init__()
+        self.phase_manager = type(
+            "_PhaseManager",
+            (),
+            {"get_phase_data": staticmethod(lambda phase, key: None)},
+        )()
+
+    def get_three_phase_status(self):
+        history = [
+            {"metrics": {"entities": 1, "relationships": 0, "gaps": 4}},
+            {"metrics": {"entities": 3, "relationships": 2, "gaps": 1}},
+        ]
+        return {
+            "alignment_evidence_tasks": [
+                {
+                    "action": "fill_temporal_chronology_gap",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "fallback_lanes": ["authority", "testimony"],
+                }
+            ],
+            "evidence_workflow_action_queue": [
+                {
+                    "phase_name": "graph_analysis",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "focus_areas": ["timeline", "chronology"],
+                    "action": "Resolve chronology support for causation.",
+                }
+            ],
+            "intake_legal_targeting_summary": {
+                "claims": {
+                    "retaliation": {
+                        "missing_requirement_element_ids": ["protected_activity"],
+                    }
+                }
+            },
+            "loss_history": list(history),
+            "convergence_history": list(history),
+        }
+
+
+class _PhaseManagerStub:
+    def __init__(self, phase_data):
+        self._phase_data = dict(phase_data)
+
+    def get_phase_data(self, phase, key):
+        return self._phase_data.get((phase, key))
+
+    def update_phase_data(self, phase, key, value):
+        self._phase_data[(phase, key)] = value
+
+
+class _StaleFinalStateMediator:
+    def __init__(self, phase_manager):
+        self.phase_manager = phase_manager
+
+    def start_three_phase_process(self, complaint_text):
+        return {"initial_questions": []}
+
+    def process_denoising_answer(self, question, answer):
+        return {"next_questions": [], "converged": True}
+
+    def get_three_phase_status(self):
+        return {
+            "intake_readiness": {"ready_to_advance": False},
+            "intake_case_file": self.phase_manager.get_phase_data(ComplaintPhase.INTAKE, "intake_case_file") or {},
+        }
+
+
 def _make_session() -> AdversarialSession:
     return AdversarialSession(
         session_id="test_session",
@@ -219,6 +312,16 @@ def _make_fallback_document_session(mediator: _FallbackDocumentMediator) -> Adve
     )
 
 
+def _make_stale_final_state_session(mediator: _StaleFinalStateMediator) -> AdversarialSession:
+    return AdversarialSession(
+        session_id="stale_final_state_session",
+        mediator=mediator,
+        complainant=_DummyComplainant(),
+        critic=_DummyCritic(),
+        max_turns=0,
+    )
+
+
 def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
     seed = {
         "key_facts": {
@@ -251,6 +354,75 @@ def test_extract_intake_prompt_candidates_classifies_missing_fact_questions():
             "What written notice, grievance, informal review, hearing, or appeal rights were provided, requested, denied, or ignored?"
         ]
     ) == {"documents", "anchor_grievance_hearing", "anchor_appeal_rights", "hearing_request_timing"}
+
+
+def test_run_refreshes_final_intake_case_file_snapshot_from_live_knowledge_graph():
+    complaint_text = "HACC retaliated against me after I used the grievance process."
+    knowledge_graph = KnowledgeGraphBuilder().build_from_text(complaint_text)
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:protected_activity",
+            type="fact",
+            name="Protected activity",
+            attributes={
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "event_label": "Protected activity",
+                "event_id": "event_1",
+                "structured_timeline_group": "group_1",
+                "sequence_index": 1,
+                "event_date_or_range": "",
+                "source_artifact_ids": ["grievance_email.pdf"],
+                "event_support_refs": ["grievance_email.pdf"],
+                "description": "Me used the grievance process. Artifact: grievance_email.pdf",
+            },
+        )
+    )
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:adverse_action",
+            type="fact",
+            name="Adverse action",
+            attributes={
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "event_label": "Adverse action",
+                "event_id": "event_2",
+                "structured_timeline_group": "group_1",
+                "sequence_index": 2,
+                "event_date_or_range": "shortly after my complaint",
+                "source_artifact_ids": ["termination_notice.pdf"],
+                "event_support_refs": ["termination_notice.pdf"],
+                "description": "HACC threatened termination. Artifact: termination_notice.pdf",
+            },
+        )
+    )
+
+    stale_intake_case_file = build_intake_case_file(KnowledgeGraphBuilder().build_from_text(complaint_text))
+    assert stale_intake_case_file.get("timeline_relations") == []
+
+    phase_manager = _PhaseManagerStub(
+        {
+            (ComplaintPhase.INTAKE, "knowledge_graph"): knowledge_graph,
+            (ComplaintPhase.INTAKE, "intake_case_file"): stale_intake_case_file,
+        }
+    )
+    mediator = _StaleFinalStateMediator(phase_manager)
+    session = _make_stale_final_state_session(mediator)
+
+    result = session.run({"summary": complaint_text, "key_facts": {}})
+
+    refreshed = result.final_state["intake_case_file"]
+    assert refreshed["timeline_relations"]
+    assert any(
+        relation.get("relation_type") == "before"
+        and relation.get("inference_mode") == "derived_from_structured_sequence"
+        for relation in refreshed["timeline_relations"]
+    )
+    assert any(
+        (fact.get("structured_timeline_group") or "") == "group_1"
+        for fact in refreshed["canonical_facts"]
+    )
 
 
 def test_extract_intake_prompt_candidates_supplements_seed_anchor_sections():
@@ -959,3 +1131,35 @@ def test_session_builds_fallback_document_packet_when_builder_is_unavailable():
     assert result.final_state["document_generation"]["factual_allegation_count"] >= 1
     assert result.final_state["document_generation"]["requested_relief_count"] >= 1
     assert result.final_state["document_generation"]["draft_text_available"] is True
+
+
+def test_session_result_preserves_optimizer_graph_targets_and_kg_dynamics():
+    mediator = _OptimizerStatusMediator()
+    session = _make_converging_session(mediator)
+    seed = {
+        "summary": "Retaliation timeline needs better chronology support.",
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [],
+            }
+        },
+    }
+
+    result = session.run(seed)
+
+    assert result.success is True
+    assert result.final_state["evidence_workflow_action_queue"][0]["claim_element_id"] == "causation"
+    assert result.final_state["alignment_evidence_tasks"][0]["claim_element_id"] == "causation"
+    assert result.final_state["loss_history"][0]["metrics"]["entities"] == 1
+
+    report = Optimizer().analyze([result])
+
+    assert report.graph_element_targeting_summary["count"] == 3
+    assert report.graph_element_targeting_summary["claim_element_counts"] == {
+        "causation": 2,
+        "protected_activity": 1,
+    }
+    assert report.kg_avg_entities_delta_per_iter == 2.0
+    assert report.kg_avg_relationships_delta_per_iter == 2.0
+    assert report.kg_avg_gaps_delta_per_iter == -3.0
+    assert report.kg_sessions_gaps_not_reducing == 0

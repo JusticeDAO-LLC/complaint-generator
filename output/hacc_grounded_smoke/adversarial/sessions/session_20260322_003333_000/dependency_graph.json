@@ -1,0 +1,1145 @@
+{
+  "metadata": {
+    "created_at": "2026-03-22T00:33:48.933878+00:00",
+    "last_updated": "2026-03-22T00:34:24.962261+00:00",
+    "version": "1.0",
+    "readiness_history": {
+      "avg_gaps": 7.0,
+      "gap_stall_sessions": 2,
+      "updated_at": "2026-03-22T00:34:24.971092+00:00"
+    }
+  },
+  "nodes": {
+    "node_1": {
+      "id": "node_1",
+      "node_type": "claim",
+      "name": "Retaliation Claim",
+      "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {
+        "claim_type": "retaliation"
+      }
+    },
+    "node_2": {
+      "id": "node_2",
+      "node_type": "claim",
+      "name": "Denial/Refusal Claim",
+      "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {
+        "claim_type": "denial"
+      }
+    },
+    "node_3": {
+      "id": "node_3",
+      "node_type": "fact",
+      "name": "Timeline of events",
+      "description": "Dates or sequence of key events related to this claim",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_4": {
+      "id": "node_4",
+      "node_type": "fact",
+      "name": "Actor-by-actor decision timeline",
+      "description": "For each actor, identify the decision/action taken and the date anchor (or best estimate) for that step",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_5": {
+      "id": "node_5",
+      "node_type": "fact",
+      "name": "Responsible party",
+      "description": "Who took the action or decision tied to this claim",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_6": {
+      "id": "node_6",
+      "node_type": "fact",
+      "name": "Adverse action facts",
+      "description": "What happened after protected activity, by whom, and on what date",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_7": {
+      "id": "node_7",
+      "node_type": "fact",
+      "name": "Retaliation causation chronology",
+      "description": "Sequence from protected activity to adverse action with dates and actor identities",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_8": {
+      "id": "node_8",
+      "node_type": "fact",
+      "name": "Retaliation causation link facts",
+      "description": "Facts that directly connect protected activity to the adverse treatment, including actors and date anchors for each step",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_9": {
+      "id": "node_9",
+      "node_type": "fact",
+      "name": "Hearing request date",
+      "description": "Date a hearing/grievance/appeal was requested and any response date",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_10": {
+      "id": "node_10",
+      "node_type": "fact",
+      "name": "Timeline of events",
+      "description": "Dates or sequence of key events related to this claim",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_11": {
+      "id": "node_11",
+      "node_type": "fact",
+      "name": "Actor-by-actor decision timeline",
+      "description": "For each actor, identify the decision/action taken and the date anchor (or best estimate) for that step",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_12": {
+      "id": "node_12",
+      "node_type": "fact",
+      "name": "Responsible party",
+      "description": "Who took the action or decision tied to this claim",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_13": {
+      "id": "node_13",
+      "node_type": "fact",
+      "name": "Adverse action facts",
+      "description": "What happened after protected activity, by whom, and on what date",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_14": {
+      "id": "node_14",
+      "node_type": "fact",
+      "name": "Retaliation causation chronology",
+      "description": "Sequence from protected activity to adverse action with dates and actor identities",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_15": {
+      "id": "node_15",
+      "node_type": "fact",
+      "name": "Retaliation causation link facts",
+      "description": "Facts that directly connect protected activity to the adverse treatment, including actors and date anchors for each step",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_16": {
+      "id": "node_16",
+      "node_type": "fact",
+      "name": "Hearing request date",
+      "description": "Date a hearing/grievance/appeal was requested and any response date",
+      "satisfied": false,
+      "confidence": 0.0,
+      "attributes": {}
+    },
+    "node_36": {
+      "id": "node_36",
+      "node_type": "fact",
+      "name": "I also understand that I should receive notice of my ability to request a hearing.",
+      "description": "I also understand that I should receive notice of my ability to request a hearing.",
+      "satisfied": false,
+      "confidence": 0.9028571428571429,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_3",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I also understand that I should receive notice of my ability to request a hearing.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_37": {
+      "id": "node_37",
+      "node_type": "fact",
+      "name": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "satisfied": false,
+      "confidence": 0.9028571428571429,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_4",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_38": {
+      "id": "node_38",
+      "node_type": "fact",
+      "name": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+      "description": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_5",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_39": {
+      "id": "node_39",
+      "node_type": "fact",
+      "name": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+      "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+      "satisfied": true,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_6",
+        "fact_type": "timeline",
+        "event_date_or_range": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+        "temporal_context": {
+          "raw_text": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [
+            "after"
+          ],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_40": {
+      "id": "node_40",
+      "node_type": "fact",
+      "name": "I want this complaint to address both the retaliation and the due process problems.",
+      "description": "I want this complaint to address both the retaliation and the due process problems.",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_7",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I want this complaint to address both the retaliation and the due process problems.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_41": {
+      "id": "node_41",
+      "node_type": "fact",
+      "name": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+      "description": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_8",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": true,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_42": {
+      "id": "node_42",
+      "node_type": "fact",
+      "name": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_9",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_43": {
+      "id": "node_43",
+      "node_type": "fact",
+      "name": "I felt ignored, and the response I got did not match what I believed the policy required.",
+      "description": "I felt ignored, and the response I got did not match what I believed the policy required.",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_10",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I felt ignored, and the response I got did not match what I believed the policy required.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_44": {
+      "id": "node_44",
+      "node_type": "fact",
+      "name": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+      "description": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_11",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_45": {
+      "id": "node_45",
+      "node_type": "fact",
+      "name": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+      "description": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_12",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": true,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_46": {
+      "id": "node_46",
+      "node_type": "fact",
+      "name": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "satisfied": false,
+      "confidence": 0.9,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_13",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_47": {
+      "id": "node_47",
+      "node_type": "fact",
+      "name": "I also understand that I should receive notice of my ability to request a hearing.",
+      "description": "I also understand that I should receive notice of my ability to request a hearing.",
+      "satisfied": false,
+      "confidence": 0.8971428571428571,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_14",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I also understand that I should receive notice of my ability to request a hearing.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_48": {
+      "id": "node_48",
+      "node_type": "fact",
+      "name": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+      "description": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+      "satisfied": false,
+      "confidence": 0.8971428571428571,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_15",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_49": {
+      "id": "node_49",
+      "node_type": "fact",
+      "name": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "description": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+      "satisfied": false,
+      "confidence": 0.8971428571428571,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_16",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "There are still key facts that need to be confirmed as part of this complaint process: the exact adverse action HACC took or threatened, the dates of each event (my complaint, notice, hearing request, and HACC responses), the names/title...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_50": {
+      "id": "node_50",
+      "node_type": "fact",
+      "name": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+      "description": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+      "satisfied": false,
+      "confidence": 0.8942857142857142,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_17",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I am asking for a full review of the adverse actions taken against me, restoration of any housing assistance or status that was reduced or threatened, and a proper hearing/appeal opportunity with clear written notice and timelines.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_51": {
+      "id": "node_51",
+      "node_type": "fact",
+      "name": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+      "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+      "satisfied": true,
+      "confidence": 0.8942857142857142,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_18",
+        "fact_type": "timeline",
+        "event_date_or_range": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+        "temporal_context": {
+          "raw_text": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [
+            "after"
+          ],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_52": {
+      "id": "node_52",
+      "node_type": "fact",
+      "name": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+      "description": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+      "satisfied": false,
+      "confidence": 0.8942857142857142,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_19",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "I have spent time trying to figure out who made these decisions and how to appeal them, instead of being able to focus on my family and stability.",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_53": {
+      "id": "node_53",
+      "node_type": "fact",
+      "name": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+      "description": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+      "satisfied": false,
+      "confidence": 0.8942857142857142,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_20",
+        "fact_type": "timeline",
+        "event_date_or_range": null,
+        "temporal_context": {
+          "raw_text": "My understanding from HACC’s own policies is that a grievance includes disputes about HACC action or failure to act, and that residents should be given an opportunity for an informal hearing when a decision affects their rights, welfare,...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": true,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_54": {
+      "id": "node_54",
+      "node_type": "fact",
+      "name": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+      "description": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+      "satisfied": true,
+      "confidence": 0.8914285714285715,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "entity_21",
+        "fact_type": "timeline",
+        "event_date_or_range": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+        "temporal_context": {
+          "raw_text": "I am filing this complaint because I believe HACC retaliated against me after I raised concerns and tried to use the grievance process. After I spoke up, I started experiencing negative treatment related to my housing assistance, includi...",
+          "start_date": null,
+          "end_date": null,
+          "granularity": "unknown",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [
+            "after"
+          ],
+          "sortable_date": null,
+          "matched_text": ""
+        },
+        "claim_types": [],
+        "element_tags": []
+      }
+    },
+    "node_55": {
+      "id": "node_55",
+      "node_type": "fact",
+      "name": "I’m very stressed by this, but I want to be as clear as I can about the timeline. - `Me (tenant)` | Raised concerns and tried to use grievance process | `exact date still needs confirmation` (estimate: early 2025) | `my grievance request/email (I need to pull the exact file/date)` - `HACC staff (name/title unknown)` | Negative housing-assistance action started after I raised concerns (reduction/threat to status and housing stability) | `date still needs confirmation` (estimate: shortly after my complaint) | `notice/communication from HACC (ID/date still needed)` - `Me (tenant)` | Requested hearing/review | `exact request date still needs confirmation` | `hearing request record (email/portal/mail proof still needed)` - `HACC decision-maker(s) (name/title unknown)` | Responded, but I did not get a meaningful hearing process or clear notice/timeline | `response date still needs confirmation` | `HACC response letter/email (date and sender still needed)` - `HACC decision-maker(s)` | Final/ongoing adverse impact on assistance and housing stability | `final decision date still needs confirmation` | `final notice or case communication still needed` Strongest policy anchor: `ADMINISTRATIVE PLAN` (effective July 1, 2025) says residents must get notice of the ability to request an informal hearing and hearing opportunity for disputes affecting rights/status. Secondary anchors: `ADMISSIONS AND CONTINUED OCCUPANCY POLICY` (grievance and appeal language) and `Supportive Housing Services Program` (formal appeals process language). Inference: the retaliation sequence is based on timing (protected activity followed by adverse treatment), but exact causation proof depends on the missing dated notices and named staff records. Concrete impacts: risk to my housing stability and extra financial strain; emotionally, ongoing anxiety. Still needs confirmation: `exact_dates`, `staff_names_titles`, `causation_sequence`.",
+      "description": "July 1, 2025",
+      "satisfied": true,
+      "confidence": 0.75,
+      "attributes": {
+        "timeline_fact_node": true,
+        "source_fact_id": "fact_022",
+        "fact_type": "timeline",
+        "event_date_or_range": "July 1, 2025",
+        "temporal_context": {
+          "raw_text": "July 1, 2025",
+          "start_date": "2025-07-01",
+          "end_date": "2025-07-01",
+          "granularity": "day",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": [],
+          "sortable_date": "2025-07-01",
+          "matched_text": "July 1, 2025"
+        },
+        "claim_types": [
+          "retaliation",
+          "denial"
+        ],
+        "element_tags": []
+      }
+    }
+  },
+  "dependencies": {
+    "dep_1": {
+      "id": "dep_1",
+      "source_id": "node_3",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_2": {
+      "id": "dep_2",
+      "source_id": "node_4",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_3": {
+      "id": "dep_3",
+      "source_id": "node_5",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_4": {
+      "id": "dep_4",
+      "source_id": "node_6",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_5": {
+      "id": "dep_5",
+      "source_id": "node_7",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_6": {
+      "id": "dep_6",
+      "source_id": "node_8",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_7": {
+      "id": "dep_7",
+      "source_id": "node_9",
+      "target_id": "node_1",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_8": {
+      "id": "dep_8",
+      "source_id": "node_10",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_9": {
+      "id": "dep_9",
+      "source_id": "node_11",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_10": {
+      "id": "dep_10",
+      "source_id": "node_12",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_11": {
+      "id": "dep_11",
+      "source_id": "node_13",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_12": {
+      "id": "dep_12",
+      "source_id": "node_14",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_13": {
+      "id": "dep_13",
+      "source_id": "node_15",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_14": {
+      "id": "dep_14",
+      "source_id": "node_16",
+      "target_id": "node_2",
+      "dependency_type": "depends_on",
+      "required": true,
+      "strength": 1.0
+    },
+    "dep_53": {
+      "id": "dep_53",
+      "source_id": "node_36",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9028571428571429
+    },
+    "dep_54": {
+      "id": "dep_54",
+      "source_id": "node_36",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9028571428571429
+    },
+    "dep_55": {
+      "id": "dep_55",
+      "source_id": "node_37",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9028571428571429
+    },
+    "dep_56": {
+      "id": "dep_56",
+      "source_id": "node_37",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9028571428571429
+    },
+    "dep_57": {
+      "id": "dep_57",
+      "source_id": "node_38",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_58": {
+      "id": "dep_58",
+      "source_id": "node_38",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_59": {
+      "id": "dep_59",
+      "source_id": "node_39",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_60": {
+      "id": "dep_60",
+      "source_id": "node_39",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_61": {
+      "id": "dep_61",
+      "source_id": "node_40",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_62": {
+      "id": "dep_62",
+      "source_id": "node_40",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_63": {
+      "id": "dep_63",
+      "source_id": "node_41",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_64": {
+      "id": "dep_64",
+      "source_id": "node_41",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_65": {
+      "id": "dep_65",
+      "source_id": "node_42",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_66": {
+      "id": "dep_66",
+      "source_id": "node_42",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_67": {
+      "id": "dep_67",
+      "source_id": "node_43",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_68": {
+      "id": "dep_68",
+      "source_id": "node_43",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_69": {
+      "id": "dep_69",
+      "source_id": "node_44",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_70": {
+      "id": "dep_70",
+      "source_id": "node_44",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_71": {
+      "id": "dep_71",
+      "source_id": "node_45",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_72": {
+      "id": "dep_72",
+      "source_id": "node_45",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_73": {
+      "id": "dep_73",
+      "source_id": "node_46",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_74": {
+      "id": "dep_74",
+      "source_id": "node_46",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.9
+    },
+    "dep_75": {
+      "id": "dep_75",
+      "source_id": "node_47",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8971428571428571
+    },
+    "dep_76": {
+      "id": "dep_76",
+      "source_id": "node_47",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8971428571428571
+    },
+    "dep_77": {
+      "id": "dep_77",
+      "source_id": "node_48",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8971428571428571
+    },
+    "dep_78": {
+      "id": "dep_78",
+      "source_id": "node_48",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8971428571428571
+    },
+    "dep_79": {
+      "id": "dep_79",
+      "source_id": "node_49",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8971428571428571
+    },
+    "dep_80": {
+      "id": "dep_80",
+      "source_id": "node_49",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8971428571428571
+    },
+    "dep_81": {
+      "id": "dep_81",
+      "source_id": "node_50",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_82": {
+      "id": "dep_82",
+      "source_id": "node_50",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_83": {
+      "id": "dep_83",
+      "source_id": "node_51",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_84": {
+      "id": "dep_84",
+      "source_id": "node_51",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_85": {
+      "id": "dep_85",
+      "source_id": "node_52",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_86": {
+      "id": "dep_86",
+      "source_id": "node_52",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_87": {
+      "id": "dep_87",
+      "source_id": "node_53",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_88": {
+      "id": "dep_88",
+      "source_id": "node_53",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8942857142857142
+    },
+    "dep_89": {
+      "id": "dep_89",
+      "source_id": "node_54",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8914285714285715
+    },
+    "dep_90": {
+      "id": "dep_90",
+      "source_id": "node_54",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.8914285714285715
+    },
+    "dep_91": {
+      "id": "dep_91",
+      "source_id": "node_55",
+      "target_id": "node_1",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.75
+    },
+    "dep_92": {
+      "id": "dep_92",
+      "source_id": "node_55",
+      "target_id": "node_2",
+      "dependency_type": "supports",
+      "required": false,
+      "strength": 0.75
+    }
+  }
+}

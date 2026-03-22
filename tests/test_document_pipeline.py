@@ -655,16 +655,21 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert all(" and i lost " not in allegation.lower() for allegation in result["draft"]["factual_allegations"])
     assert result["draft"]["factual_allegation_paragraphs"][0]["number"] == 1
     assert result["draft"]["factual_allegation_paragraphs"][0]["text"] == result["draft"]["factual_allegations"][0]
-    assert result["draft"]["factual_allegation_groups"][0]["title"] == "Protected Activity and Complaints"
+    assert result["draft"]["factual_allegation_groups"][0]["title"] == "Adverse Action and Retaliatory Conduct"
+    assert [group["title"] for group in result["draft"]["factual_allegation_groups"]] == [
+        "Adverse Action and Retaliatory Conduct",
+        "Additional Factual Support",
+    ]
     assert "COMPLAINT" in result["draft"]["draft_text"]
     assert "EXHIBITS" in result["draft"]["draft_text"]
     assert "FACTUAL ALLEGATIONS" in result["draft"]["draft_text"]
-    assert "PROTECTED ACTIVITY AND COMPLAINTS" in result["draft"]["draft_text"]
     assert "ADVERSE ACTION AND RETALIATORY CONDUCT" in result["draft"]["draft_text"]
+    assert "ADDITIONAL FACTUAL SUPPORT" in result["draft"]["draft_text"]
     assert "Plaintiff repeats and realleges ¶" in result["draft"]["draft_text"]
     assert "and incorporates Exhibit" in result["draft"]["draft_text"]
     assert "as if fully set forth herein." in result["draft"]["draft_text"]
     assert "Claim-Specific Support:" in result["draft"]["draft_text"]
+    assert "The pleaded facts further show that" in result["draft"]["draft_text"]
     assert any("terminated" in allegation.lower() for allegation in result["draft"]["factual_allegations"])
     assert all(claim.get("allegation_references") for claim in result["draft"]["claims_for_relief"])
     assert any("See Exhibit" in fact for fact in result["draft"]["summary_of_facts"])
@@ -824,6 +829,11 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
     intake_case_summary = {
         "claim_support_packet_summary": {},
         "alignment_evidence_tasks": [],
+        "timeline_anchors": [
+            {
+                "anchor_id": "anchor-ledger-001",
+            }
+        ],
         "event_ledger": [
             {
                 "event_id": "event-ledger-001",
@@ -840,6 +850,14 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
                 "relation_id": "relation-ledger-001",
             }
         ],
+        "temporal_issue_registry_summary": {
+            "count": 2,
+            "unresolved_count": 1,
+            "resolved_count": 1,
+            "issue_ids": ["issue-open-001", "issue-resolved-001"],
+            "missing_temporal_predicates": ["Before(fact-ledger-001,fact-ledger-termination)"],
+            "required_provenance_kinds": ["testimony_record", "document_artifact"],
+        },
         "temporal_issue_registry": [
             {
                 "temporal_issue_id": "issue-open-001",
@@ -858,8 +876,11 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
         "event_ids": ["event-ledger-001"],
         "temporal_fact_ids": ["fact-ledger-001"],
         "temporal_relation_ids": ["relation-ledger-001"],
+        "timeline_anchor_ids": ["anchor-ledger-001"],
         "timeline_issue_ids": ["issue-open-001", "issue-resolved-001"],
         "temporal_issue_ids": ["issue-open-001", "issue-resolved-001"],
+        "missing_temporal_predicates": ["Before(fact-ledger-001,fact-ledger-termination)"],
+        "required_provenance_kinds": ["testimony_record", "document_artifact"],
         "temporal_proof_bundle_ids": [],
         "temporal_proof_objectives": [],
     }
@@ -877,6 +898,11 @@ def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chrono
             {
                 "claim_type": "retaliation",
                 "claim_element_id": "causation",
+            }
+        ],
+        "timeline_anchors": [
+            {
+                "anchor_id": "anchor-ledger-001",
             }
         ],
         "event_ledger": [
@@ -901,6 +927,14 @@ def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chrono
                 "status": "open",
             }
         ],
+        "temporal_issue_registry_summary": {
+            "count": 1,
+            "unresolved_count": 1,
+            "resolved_count": 0,
+            "issue_ids": ["issue-open-001"],
+            "missing_temporal_predicates": ["Anchored(fact-ledger-001,anchor-ledger-001)"],
+            "required_provenance_kinds": ["document_artifact", "legal_authority"],
+        },
     }
 
     assert document_optimization._build_claim_reasoning_theorem_export_metadata(
@@ -918,8 +952,11 @@ def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chrono
         "event_ids": ["event-ledger-001"],
         "temporal_fact_ids": ["fact-ledger-001"],
         "temporal_relation_ids": ["relation-ledger-001"],
+        "timeline_anchor_ids": ["anchor-ledger-001"],
         "timeline_issue_ids": ["issue-open-001"],
         "temporal_issue_ids": ["issue-open-001"],
+        "missing_temporal_predicates": ["Anchored(fact-ledger-001,anchor-ledger-001)"],
+        "required_provenance_kinds": ["document_artifact", "legal_authority"],
         "temporal_proof_bundle_ids": [],
         "temporal_proof_objectives": [],
     }
@@ -2554,8 +2591,8 @@ def test_review_api_generated_docx_preserves_grouped_factual_headings_end_to_end
     assert docx_path.exists()
     with zipfile.ZipFile(docx_path) as archive:
         document_xml = archive.read("word/document.xml").decode("utf-8")
-    assert "Protected Activity and Complaints" in document_xml
     assert "Adverse Action and Retaliatory Conduct" in document_xml
+    assert "Additional Factual Support" in document_xml
 
     docx_path.unlink(missing_ok=True)
 
@@ -3976,8 +4013,8 @@ def test_review_surface_generated_docx_preserves_grouped_factual_headings_end_to
     assert docx_path.exists()
     with zipfile.ZipFile(docx_path) as archive:
         document_xml = archive.read('word/document.xml').decode('utf-8')
-    assert 'Protected Activity and Complaints' in document_xml
     assert 'Adverse Action and Retaliatory Conduct' in document_xml
+    assert 'Additional Factual Support' in document_xml
 
     docx_path.unlink(missing_ok=True)
 
