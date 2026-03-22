@@ -229,10 +229,10 @@ def test_external_authority_basis_prefers_ranked_legal_authorities():
 
     lines = MODULE._external_authority_basis(grounding_bundle)
 
-    assert lines
-    assert "24 C.F.R. 982.555" in lines[0]
-    assert "source: federal_register" in lines[0]
-    assert "ranking: has formal citation, contains chronology cues" in lines[0]
+    assert lines["authorities"]
+    assert "24 C.F.R. 982.555" in lines["authorities"][0]
+    assert "source: federal_register" in lines["authorities"][0]
+    assert "ranking: has formal citation, contains chronology cues" in lines["authorities"][0]
 
 
 def test_external_authority_basis_promotes_formal_authority_like_web_results_when_legal_bucket_is_empty():
@@ -258,9 +258,9 @@ def test_external_authority_basis_promotes_formal_authority_like_web_results_whe
 
     lines = MODULE._external_authority_basis(grounding_bundle)
 
-    assert lines
-    assert "source: promoted_web_authority" in lines[0]
-    assert "24 CFR Part 966 Subpart B" in lines[0]
+    assert lines["authorities"]
+    assert "source: promoted_web_authority" in lines["authorities"][0]
+    assert "24 CFR Part 966 Subpart B" in lines["authorities"][0]
     assert summary["uploaded_titles"] == ["Denial Notice"]
     assert summary["evidence_upload_questions"] == ["Please upload the notice if you have it."]
 
@@ -890,9 +890,14 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "factual_allegations": [],
         "claims_theory": [],
         "policy_basis": [],
-        "authorities_and_research_basis": [
-            "24 C.F.R. 982.555 — Informal hearing for participants. source: federal_register ranking: has formal citation, contains chronology cues",
-        ],
+        "authorities_and_research_basis": {
+            "authorities": [
+                "24 C.F.R. 982.555 — Informal hearing for participants. source: federal_register ranking: has formal citation, contains chronology cues",
+            ],
+            "corroborating_web_research": [
+                "HUD grievance guidance — https://www.hud.gov/example. ranking: trusted domain: www.hud.gov",
+            ],
+        },
         "causes_of_action": [],
         "proposed_allegations": ["Narrative line."],
         "anchored_chronology_summary": [
@@ -961,7 +966,9 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "## Evidence Attachments" in markdown
     assert "- ADMINISTRATIVE PLAN (hacc_website/admin-plan.txt): prepared for mediator; uploaded to mediator evidence store for housing_discrimination; anchors: grievance_hearing, appeal_rights" in markdown
     assert "## Authorities And Research Basis" in markdown
+    assert "### Authorities" in markdown
     assert "24 C.F.R. 982.555 — Informal hearing for participants." in markdown
+    assert "### Corroborating Web Research" in markdown
     assert "## Search Summary" in markdown
     assert "- Requested search mode: hybrid" in markdown
     assert "- Effective search mode: lexical_only" in markdown

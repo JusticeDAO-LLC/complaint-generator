@@ -2067,7 +2067,7 @@ def _grounding_prompt_summary(
     }
 
 
-def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) -> List[str]:
+def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) -> Dict[str, Any]:
     external_bundle = dict(grounding_bundle.get("external_research_bundle") or {})
     legal_results = [
         dict(item)
@@ -2079,7 +2079,49 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         for item in list((external_bundle.get("web_discovery") or {}).get("results") or [])
         if isinstance(item, dict)
     ]
-    lines: List[str] = []
+    authority_lines: List[str] = []
+    corroborating_lines: List[str] = []
+    authority_records: List[Dict[str, Any]] = []
+    corroborating_records: List[Dict[str, Any]] = []
+
+    def _authority_type_label(item: Dict[str, Any]) -> str:
+        citation = str(item.get("citation") or "").lower()
+        title = str(item.get("title") or "").lower()
+        url = str(item.get("url") or "").lower()
+        authority_source = str(item.get("authority_source") or "").lower()
+        combined = " ".join(part for part in (citation, title, url, authority_source) if part)
+        if any(marker in combined for marker in ("c.f.r.", "ecfr", "federal register", "part 966", "part 982")):
+            return "Regulation"
+        if any(marker in combined for marker in ("hud.gov", "hud", "pih notice", "handbook")):
+            return "HUD guidance"
+        if any(marker in combined for marker in ("courtlistener", "casetext", "justia", "v.", "court", "recap")):
+            return "Case law"
+        if any(marker in combined for marker in ("u.s.c.", "usc", "code")):
+            return "Statute"
+        return "Authority"
+
+    def _authority_why_it_matters(item: Dict[str, Any]) -> str:
+        combined = " ".join(
+            str(part or "").lower()
+            for part in (
+                item.get("citation"),
+                item.get("title"),
+                item.get("summary"),
+                item.get("description"),
+                item.get("url"),
+            )
+        )
+        if any(term in combined for term in ("grievance", "informal hearing", "hearing")):
+            return "why it matters: supports hearing and grievance-process allegations"
+        if any(term in combined for term in ("written notice", "notice", "adverse action", "termination")):
+            return "why it matters: supports notice and adverse-action process allegations"
+        if "appeal" in combined or "review" in combined:
+            return "why it matters: supports appeal and review-rights allegations"
+        if "retaliat" in combined:
+            return "why it matters: supports retaliation framing and causation theory"
+        if "accommodation" in combined or "disabil" in combined:
+            return "why it matters: supports accommodation and disability-rights allegations"
+        return "why it matters: provides procedural housing-authority context for the complaint"
 
     def _looks_like_formal_authority(item: Dict[str, Any]) -> bool:
         title = str(item.get("title") or "").lower()
@@ -2116,21 +2158,38 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         label = citation or title
         if not label:
             continue
-        line = label
+        authority_type = _authority_type_label(item)
+        why_it_matters = _authority_why_it_matters(item)
+        line = f"{authority_type}: {label}"
         if title and citation and title != citation:
             line += f" — {title}"
         details: List[str] = []
         if authority_source:
             details.append(f"source: {authority_source}")
+        details.append(why_it_matters)
         if reasons:
             details.append(f"ranking: {', '.join(reasons[:3])}")
         if summary:
             details.append(f"summary: {summary}")
         if details:
             line += ". " + " ".join(details)
-        lines.append(line)
+        authority_lines.append(line)
+        authority_records.append(
+            {
+                "type": authority_type,
+                "label": label,
+                "title": title,
+                "citation": citation,
+                "url": str(item.get("url") or "").strip(),
+                "source": authority_source or "legal_authority",
+                "why_it_matters": why_it_matters,
+                "ranking_reasons": reasons[:3],
+                "summary": summary,
+                "line": line,
+            }
+        )
 
-    remaining = max(0, limit - len(lines))
+    remaining = max(0, limit - len(authority_lines))
     if remaining:
         for item in promoted_web_authorities[:remaining]:
             title = str(item.get("title") or item.get("url") or "").strip()
@@ -2138,17 +2197,34 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
             reasons = [str(value).strip() for value in list(item.get("research_priority_reasons") or []) if str(value).strip()]
             if not title:
                 continue
-            line = title
+            authority_type = _authority_type_label(item)
+            why_it_matters = _authority_why_it_matters(item)
+            line = f"{authority_type}: {title}"
             if url and url != title:
                 line += f" — {url}"
             line += ". source: promoted_web_authority"
+            line += f" {why_it_matters}"
             if reasons:
                 line += f" ranking: {', '.join(reasons[:3])}"
-            lines.append(line)
-            if len(lines) >= limit:
+            authority_lines.append(line)
+            authority_records.append(
+                {
+                    "type": authority_type,
+                    "label": title,
+                    "title": title,
+                    "citation": "",
+                    "url": url,
+                    "source": "promoted_web_authority",
+                    "why_it_matters": why_it_matters,
+                    "ranking_reasons": reasons[:3],
+                    "summary": str(item.get("summary") or item.get("description") or "").strip(),
+                    "line": line,
+                }
+            )
+            if len(authority_lines) >= limit:
                 break
 
-    remaining = max(0, limit - len(lines))
+    remaining = max(0, limit - len(authority_lines))
     if remaining:
         for item in remaining_web_results[:remaining]:
             title = str(item.get("title") or item.get("url") or "").strip()
@@ -2161,11 +2237,30 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                 line += f" — {url}"
             if reasons:
                 line += f". ranking: {', '.join(reasons[:3])}"
-            lines.append(line)
-            if len(lines) >= limit:
+            corroborating_lines.append(line)
+            corroborating_records.append(
+                {
+                    "type": "Corroborating web research",
+                    "label": title,
+                    "title": title,
+                    "citation": "",
+                    "url": url,
+                    "source": "web_research",
+                    "why_it_matters": "why it matters: provides corroborating web research context for the complaint",
+                    "ranking_reasons": reasons[:3],
+                    "summary": str(item.get("summary") or item.get("description") or "").strip(),
+                    "line": line,
+                }
+            )
+            if len(corroborating_lines) >= remaining:
                 break
 
-    return _dedupe_sentences(lines, limit=limit)
+    return {
+        "authorities": _dedupe_sentences(authority_lines, limit=limit),
+        "corroborating_web_research": _dedupe_sentences(corroborating_lines, limit=limit),
+        "authority_records": authority_records[:limit],
+        "corroborating_web_research_records": corroborating_records[:limit],
+    }
 
 
 def _derive_grounding_overview(
@@ -5788,14 +5883,34 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
     ])
     lines.extend(_render_grouped_lines(list(package["policy_basis"]), "basis", exhibit_index))
-    authority_basis = [str(item) for item in list(package.get("authorities_and_research_basis") or []) if str(item)]
-    if authority_basis:
+    authority_basis_payload = package.get("authorities_and_research_basis") or {}
+    if isinstance(authority_basis_payload, dict):
+        authority_basis = [str(item) for item in list(authority_basis_payload.get("authorities") or []) if str(item)]
+        corroborating_basis = [
+            str(item) for item in list(authority_basis_payload.get("corroborating_web_research") or []) if str(item)
+        ]
+    else:
+        authority_basis = [str(item) for item in list(authority_basis_payload or []) if str(item)]
+        corroborating_basis = []
+
+    if authority_basis or corroborating_basis:
         lines.extend([
             "",
             "## Authorities And Research Basis",
             "",
         ])
-        lines.extend(_render_grouped_lines(authority_basis, "authority", exhibit_index))
+        if authority_basis:
+            lines.extend([
+                "### Authorities",
+                "",
+            ])
+            lines.extend(_render_grouped_lines(authority_basis, "authority", exhibit_index))
+        if corroborating_basis:
+            lines.extend([
+                "### Corroborating Web Research",
+                "",
+            ])
+            lines.extend(_render_grouped_lines(corroborating_basis, "authority", exhibit_index))
     lines.extend([
         f"## {section_labels['causes']}",
         "",
