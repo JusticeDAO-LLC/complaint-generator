@@ -805,6 +805,158 @@ def test_refresh_intake_case_file_downgrades_structured_relative_only_step_when_
     assert issue["recommended_resolution_lane"] == "capture_testimony"
 
 
+def test_refresh_intake_case_file_suppresses_flattened_structured_timeline_summary_blob():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_blob",
+                "text": (
+                    "Best timeline anchor I can give right now is: - `Who:` me; `Action:` raised concerns; "
+                    "`Date:` exact date still being confirmed; `Artifact:` grievance email. "
+                    "Still needs confirmation: `exact_dates`, `staff_names_titles`."
+                ),
+                "fact_type": "timeline",
+                "predicate_family": "timeline",
+                "event_date_or_range": (
+                    "Best timeline anchor I can give right now is: - `Who:` me; `Action:` raised concerns; "
+                    "`Date:` exact date still being confirmed; `Artifact:` grievance email. "
+                    "Still needs confirmation: `exact_dates`, `staff_names_titles`."
+                ),
+            },
+            {
+                "fact_id": "fact_structured_1",
+                "text": "me raised concerns. Artifact: grievance email.",
+                "fact_type": "timeline",
+                "predicate_family": "protected_activity",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 1,
+            },
+            {
+                "fact_id": "fact_structured_2",
+                "text": "HACC issued adverse treatment after my grievance. Artifact: notice.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+                "structured_timeline_group": "group_a",
+                "sequence_index": 2,
+                "event_date_or_range": "after my grievance",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    issue_fact_ids = [tuple(item.get("fact_ids") or []) for item in refreshed["temporal_issue_registry"]]
+    assert ("fact_blob",) not in issue_fact_ids
+
+
+def test_refresh_intake_case_file_suppresses_duplicate_undated_timeline_text_across_families():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_notice_1",
+                "text": "I either did not receive clear notice of hearing rights, or the opportunity to use those rights was delayed, limited, or ignored.",
+                "fact_type": "timeline",
+                "predicate_family": "response_timeline",
+            },
+            {
+                "fact_id": "fact_notice_2",
+                "text": "I either did not receive clear notice of hearing rights, or the opportunity to use those rights was delayed, limited, or ignored.",
+                "fact_type": "timeline",
+                "predicate_family": "notice_chain",
+            },
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    assert refreshed["temporal_issue_registry"] == []
+
+
+def test_refresh_intake_case_file_ignores_policy_titles_for_staff_name_blockers():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_policy_title",
+                "text": "Administrative Plan",
+                "fact_type": "general",
+            }
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "Administrative Plan",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    blocker_ids = [
+        item["blocker_id"]
+        for item in refreshed["blocker_follow_up_summary"]["blocking_items"]
+    ]
+    assert "missing_staff_name_title_mapping" not in blocker_ids
+
+
+def test_refresh_intake_case_file_still_detects_named_staff_when_org_name_is_present():
+    intake_case_file = {
+        "candidate_claims": [],
+        "intake_sections": {},
+        "canonical_facts": [
+            {
+                "fact_id": "fact_named_staff",
+                "text": "Jane Doe from the Housing Authority denied my request.",
+                "fact_type": "timeline",
+                "predicate_family": "adverse_action",
+            }
+        ],
+        "proof_leads": [],
+        "timeline_anchors": [],
+        "harm_profile": {},
+        "remedy_profile": {},
+        "contradiction_queue": [],
+        "open_items": [],
+        "summary_snapshots": [],
+        "complainant_summary_confirmation": {},
+        "source_complaint_text": "Jane Doe from the Housing Authority denied my request.",
+    }
+
+    refreshed = refresh_intake_case_file(intake_case_file, None)
+
+    blocker_ids = [
+        item["blocker_id"]
+        for item in refreshed["blocker_follow_up_summary"]["blocking_items"]
+    ]
+    assert "missing_staff_name_title_mapping" in blocker_ids
+
+
 def test_knowledge_graph_builder_extracts_quantified_relative_event_dates():
     builder = KnowledgeGraphBuilder()
     graph = builder.build_from_text("Two weeks after I complained to HR, my employer terminated me.")

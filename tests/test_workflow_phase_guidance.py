@@ -187,6 +187,41 @@ def test_review_document_generation_phase_guidance_flags_missing_proof_artifacts
     assert any("denial notice" in action for action in review_phase["recommended_actions"])
 
 
+def test_review_document_generation_phase_guidance_dedupes_nested_reasoning_artifacts():
+    review_phase = build_review_document_generation_phase_guidance(
+        intake_status={"next_action": {"action": "generate_formal_complaint"}},
+        intake_case_summary={
+            "claim_support_temporal_handoff": {
+                "unresolved_temporal_issue_count": 1,
+            },
+            "claim_reasoning_review": {
+                "retaliation": {
+                    "proof_artifact_status_counts": {"missing": 2},
+                }
+            },
+            "workflow_optimization_guidance": {
+                "claim_support_temporal_handoff": {
+                    "unresolved_temporal_issue_count": 1,
+                },
+                "claim_reasoning_review": {
+                    "retaliation": {
+                        "proof_artifact_status_counts": {"missing": 2},
+                    }
+                },
+            },
+            "claim_support_packet_summary": {
+                "proof_readiness_score": 0.9,
+                "claim_support_unresolved_temporal_issue_count": 0,
+                "claim_support_unresolved_without_review_path_count": 0,
+            },
+        },
+    )
+
+    assert review_phase["signals"]["unresolved_temporal_issue_count"] == 1
+    assert review_phase["signals"]["missing_proof_artifact_count"] == 2
+
+
+
 def test_document_generation_phase_guidance_blocks_on_temporal_gap_tasks_even_without_issue_ids():
     review_phase = build_review_document_generation_phase_guidance(
         intake_status={"next_action": {"action": "generate_formal_complaint"}},

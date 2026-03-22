@@ -358,16 +358,33 @@ def _build_claim_support_temporal_handoff_metadata(
         )
     ]
 
-    unresolved_temporal_issue_count = max(
-        int(claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0),
-        int(temporal_issue_registry_summary.get("unresolved_count") or 0),
-    )
-    chronology_task_count = int(claim_support_packet_summary.get("temporal_gap_task_count", 0) or 0)
+    scoped_temporal_issue_ids: List[str] = []
+    for task in matching_tasks:
+        scoped_temporal_issue_ids.extend(_dedupe_handoff_ids(task.get("temporal_issue_ids")))
+        scoped_temporal_issue_ids.extend(_dedupe_handoff_ids(task.get("timeline_issue_ids")))
+    scoped_temporal_issue_ids = _dedupe_handoff_ids(scoped_temporal_issue_ids)
+
+    if normalized_claim_type or normalized_claim_element_id:
+        unresolved_temporal_issue_count = len(scoped_temporal_issue_ids)
+    else:
+        unresolved_temporal_issue_count = max(
+            int(claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0),
+            int(temporal_issue_registry_summary.get("unresolved_count") or 0),
+        )
+
+    if normalized_claim_type or normalized_claim_element_id:
+        chronology_task_count = len(matching_tasks)
+    else:
+        chronology_task_count = int(claim_support_packet_summary.get("temporal_gap_task_count", 0) or 0)
 
     temporal_handoff: Dict[str, Any] = {
         "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
-        "unresolved_temporal_issue_ids": _dedupe_handoff_ids(
-            claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_ids")
+        "unresolved_temporal_issue_ids": (
+            scoped_temporal_issue_ids
+            if normalized_claim_type or normalized_claim_element_id
+            else _dedupe_handoff_ids(
+                claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_ids")
+            )
         ),
     }
     if chronology_task_count > 0:

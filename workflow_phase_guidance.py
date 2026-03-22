@@ -107,18 +107,22 @@ def _collect_reasoning_review_summary(payload: Any) -> Dict[str, int]:
         payload.get("document_optimization") if isinstance(payload.get("document_optimization"), dict) else None,
         payload.get("optimization_guidance") if isinstance(payload.get("optimization_guidance"), dict) else None,
     ]
+    reasoning_missing_counts: Dict[str, int] = {}
     for candidate in candidate_payloads:
         if not isinstance(candidate, dict):
             continue
         temporal_handoff = candidate.get("claim_support_temporal_handoff")
         if isinstance(temporal_handoff, dict):
-            summary["unresolved_temporal_issue_count"] += _coerce_int(
-                temporal_handoff.get("unresolved_temporal_issue_count"),
-                0,
+            summary["unresolved_temporal_issue_count"] = max(
+                summary["unresolved_temporal_issue_count"],
+                _coerce_int(
+                    temporal_handoff.get("unresolved_temporal_issue_count"),
+                    0,
+                ),
             )
         claim_reasoning_review = candidate.get("claim_reasoning_review")
         if isinstance(claim_reasoning_review, dict):
-            for review in claim_reasoning_review.values():
+            for claim_key, review in claim_reasoning_review.items():
                 if not isinstance(review, dict):
                     continue
                 status_counts = dict(review.get("proof_artifact_status_counts") or {})
@@ -127,7 +131,12 @@ def _collect_reasoning_review_summary(payload: Any) -> Dict[str, int]:
                     total_count = _coerce_int(review.get("proof_artifact_element_count"), 0)
                     available_count = _coerce_int(review.get("proof_artifact_available_element_count"), 0)
                     missing_count = max(0, total_count - available_count)
-                summary["missing_proof_artifact_count"] += missing_count
+                normalized_claim_key = str(claim_key or "").strip().lower() or f"__anonymous_{len(reasoning_missing_counts)}"
+                reasoning_missing_counts[normalized_claim_key] = max(
+                    reasoning_missing_counts.get(normalized_claim_key, 0),
+                    missing_count,
+                )
+    summary["missing_proof_artifact_count"] = sum(reasoning_missing_counts.values())
     return summary
 
 

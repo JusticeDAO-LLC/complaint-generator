@@ -137,6 +137,38 @@ def _prompt_examples_for_theory(
     ]
 
 
+def _document_generation_guidance_for_theory(
+    *,
+    theory_labels: Optional[Sequence[str]],
+    protected_bases: Optional[Sequence[str]],
+    anchor_sections: Optional[Sequence[str]],
+    anchor_terms: Optional[Sequence[str]],
+) -> str:
+    if _supports_reasonable_accommodation_path(
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
+    ):
+        return (
+            " Emphasize accommodation-request chronology, the interactive process, response or denial letters, "
+            "supporting disability-related records when provided, and relief requiring accommodation review or reversal of the denial."
+        )
+    if _is_notice_review_focused(
+        theory_labels=theory_labels,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
+    ):
+        return (
+            " Emphasize notice, hearing or review procedures, denial and review-decision chronology, due-process and retaliation counts when supported, "
+            "and relief requiring rescission, stay, or a proper hearing or review."
+        )
+    return (
+        " Emphasize the strongest adverse-action chronology, the supporting exhibits for each decision event, "
+        "and relief that tracks the supported theory."
+    )
+
+
 def _repo_root() -> Path:
     complaint_generator_root = Path(__file__).resolve().parents[1]
     candidates = [
@@ -707,6 +739,12 @@ def _build_repository_grounding_bundle(
             "factual allegations, exhibits, and requested relief."
         ),
     }
+    synthetic_prompts["document_generation_prompt"] += _document_generation_guidance_for_theory(
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
+    )
     mediator_evidence_packets: List[Dict[str, Any]] = []
     for candidate in upload_candidates[: max(1, int(top_k))]:
         path = Path(str(candidate.get("source_path") or ""))
@@ -1672,6 +1710,12 @@ def _build_fallback_synthetic_prompts(
     document_generation_prompt = (
         "Promote uploaded evidence, chronology anchors, actor identities, and exhibit references directly into the knowledge graph, "
         "claim-support analysis, and formal complaint sections so the final draft is source-anchored."
+    )
+    document_generation_prompt += _document_generation_guidance_for_theory(
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
     )
     if not supports_reasonable_accommodation:
         document_generation_prompt += " Keep the draft tied to the supported theory and avoid adding accommodation allegations unless uploaded evidence supports them."

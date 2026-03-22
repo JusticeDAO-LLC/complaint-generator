@@ -115,6 +115,18 @@ def test_main_show_history_prints_existing_workflow_summary(tmp_path, capsys):
                     "phase_name": "document_generation",
                     "action": "continue_drafting",
                 },
+                "recommended_commands": {
+                    "inspect_command": "python scripts/show_hacc_grounded_history.py --output-dir /tmp/example_run",
+                    "recommended_command": (
+                        "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/example_run"
+                    ),
+                    "recommended_command_kind": "synthesize",
+                    "pipeline_resume_command": (
+                        "python scripts/run_hacc_grounded_pipeline.py --output-dir /tmp/example_run "
+                        "--synthesize-complaint --completed-grounded-intake-worksheet "
+                        "/tmp/example_run/completed_grounded_intake_follow_up_worksheet.json"
+                    ),
+                },
             }
         ),
         encoding="utf-8",
@@ -158,7 +170,75 @@ def test_main_show_history_prints_existing_workflow_summary(tmp_path, capsys):
     assert "Completed grounded worksheet items: 2" in captured.out
     assert "Refreshed grounding status: chronology_supported" in captured.out
     assert "Grounded follow-up answers: 2" in captured.out
+    assert "Inspect:" in captured.out
+    assert "Recommended synthesis:" in captured.out
+    assert "Pipeline resume:" in captured.out
     assert "continue_drafting" in captured.out
+
+
+def test_main_show_history_json_prints_existing_workflow_summary(tmp_path, capsys):
+    cli = _load_cli_module()
+    (tmp_path / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {
+                    "phase_name": "document_generation",
+                    "action": "continue_drafting",
+                },
+                "recommended_commands": {
+                    "inspect_command": "python scripts/show_hacc_grounded_history.py --output-dir /tmp/example_run",
+                    "recommended_command": (
+                        "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/example_run"
+                    ),
+                    "recommended_command_kind": "synthesize",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "grounded_workflow_history.json").write_text(
+        json.dumps(
+            [
+                {
+                    "timestamp": "2026-03-22T00:00:00+00:00",
+                    "workflow_stage": "pre_grounded_follow_up",
+                    "effective_next_action": {"action": "upload_local_repository_evidence"},
+                },
+                {
+                    "timestamp": "2026-03-22T01:00:00+00:00",
+                    "workflow_stage": "post_grounded_follow_up",
+                    "effective_next_action": {"action": "continue_drafting"},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "completed_grounded_intake_follow_up_worksheet.json").write_text(
+        json.dumps({"follow_up_items": [{"id": "grounded_01"}, {"id": "grounded_02"}]}),
+        encoding="utf-8",
+    )
+    (tmp_path / "refreshed_grounding_state.json").write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+    (tmp_path / "grounded_follow_up_answer_summary.json").write_text(
+        json.dumps({"answered_item_count": 2}),
+        encoding="utf-8",
+    )
+
+    result = cli.main(["--output-dir", str(tmp_path), "--show-history", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert result == 0
+    assert payload["workflow_status"]["workflow_stage"] == "post_grounded_follow_up"
+    assert payload["workflow_history_count"] == 2
+    assert payload["completed_grounded_intake_item_count"] == 2
+    assert payload["refreshed_grounding_state"]["status"] == "chronology_supported"
+    assert payload["grounded_follow_up_answer_summary"]["answered_item_count"] == 2
+    assert payload["workflow_status"]["recommended_commands"]["recommended_command_kind"] == "synthesize"
+    assert payload["recent_workflow_history"][-1]["effective_next_action"]["action"] == "continue_drafting"
 
 
 def test_main_prints_recommended_commands_for_fresh_grounded_run(tmp_path, monkeypatch, capsys):

@@ -163,6 +163,8 @@ def test_merge_synthetic_prompts_uses_notice_review_examples_for_due_process_the
     assert "denial notice" in prompts["evidence_upload_prompt"]
     assert "hearing or review request" in prompts["evidence_upload_prompt"]
     assert "review decision" in joined_questions
+    assert "due-process and retaliation counts" in prompts["document_generation_prompt"]
+    assert "proper hearing or review" in prompts["document_generation_prompt"]
 
 
 def test_merge_synthetic_prompts_uses_accommodation_examples_for_disability_theory():
@@ -184,6 +186,8 @@ def test_merge_synthetic_prompts_uses_accommodation_examples_for_disability_theo
     assert "accommodation request" in prompts["evidence_upload_prompt"]
     assert "medical or disability-support record" in prompts["evidence_upload_prompt"]
     assert "accommodation request" in joined_questions
+    assert "interactive process" in prompts["document_generation_prompt"]
+    assert "accommodation review or reversal of the denial" in prompts["document_generation_prompt"]
 
 
 def test_merge_synthetic_prompts_adds_non_accommodation_guardrail_when_seed_is_not_accommodation():
@@ -649,3 +653,5 @@ POLICY = "Notice to the Applicant requires prompt written notice of a decision d
     titles = [item["title"] for item in bundle["upload_candidates"]]
 
     assert titles == ["test_hacc_evidence_loader.py"]
+    assert "due-process and retaliation counts" in bundle["synthetic_prompts"]["document_generation_prompt"]
+    assert "proper hearing or review" in bundle["synthetic_prompts"]["document_generation_prompt"]

@@ -260,12 +260,98 @@ def test_main_list_runs_prints_available_runs(tmp_path, capsys):
     assert "continue_drafting" in captured.out
 
 
+def test_main_list_runs_prints_alias_targets_and_stage_aware_commands(tmp_path, capsys):
+    cli = _load_cli_module()
+    older = tmp_path / "20260322_100000"
+    newer = tmp_path / "20260322_120000"
+    older.mkdir()
+    newer.mkdir()
+    (older / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "grounding_query": "older chronology query",
+                "claim_type": "housing_discrimination",
+                "hacc_preset": "core_hacc_policies",
+                "use_hacc_vector_search": False,
+                "hacc_search_mode": "package",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (older / "refreshed_grounding_state.json").write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+    (older / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {"action": "continue_drafting"},
+                "grounded_follow_up_answer_count": 2,
+                "has_refreshed_grounding_state": True,
+                "has_persisted_completed_grounded_worksheet": True,
+                "persisted_completed_grounded_worksheet_path": str(older / "completed_grounded_intake_follow_up_worksheet.json"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    (newer / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "pre_grounded_follow_up",
+                "effective_next_action": {"action": "upload_local_repository_evidence"},
+                "grounded_follow_up_answer_count": 0,
+                "has_refreshed_grounding_state": False,
+                "has_persisted_completed_grounded_worksheet": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = cli.main(["--grounded-root", str(tmp_path), "--list-runs"])
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert "Alias targets: latest=20260322_120000, previous=20260322_100000, last-successful=20260322_100000" in captured.out
+    assert "Best candidate to resume: 20260322_100000" in captured.out
+    assert "Inspect command: python scripts/show_hacc_grounded_history.py --output-dir" in captured.out
+    assert "Synthesis command: python scripts/synthesize_hacc_complaint.py --grounded-run-dir" in captured.out
+    assert "Pipeline rerun command: python scripts/run_hacc_grounded_pipeline.py --output-dir" in captured.out
+    assert "--query older chronology query" in captured.out
+    assert "20260322_120000" in captured.out
+    assert "20260322_100000" in captured.out
+
+
 def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
     cli = _load_cli_module()
     older = tmp_path / "20260322_100000"
     newer = tmp_path / "20260322_120000"
     older.mkdir()
     newer.mkdir()
+    (older / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "grounding_query": "older chronology query",
+                "claim_type": "housing_discrimination",
+                "hacc_preset": "core_hacc_policies",
+                "use_hacc_vector_search": False,
+                "hacc_search_mode": "package",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (newer / "run_summary.json").write_text(
+        json.dumps(
+            {
+                "grounding_query": "newer chronology query",
+                "claim_type": "housing_discrimination",
+                "hacc_preset": "core_hacc_policies",
+                "use_hacc_vector_search": True,
+                "hacc_search_mode": "hybrid",
+            }
+        ),
+        encoding="utf-8",
+    )
     (older / "refreshed_grounding_state.json").write_text(
         json.dumps({"status": "chronology_supported"}),
         encoding="utf-8",
@@ -312,6 +398,13 @@ def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
     )
     assert payload["best_resume_candidate"]["resume_command"].endswith(
         str((tmp_path / "20260322_100000").resolve())
+    )
+    assert payload["best_resume_candidate"]["rerun_command"].startswith(
+        "python scripts/run_hacc_grounded_pipeline.py --output-dir "
+    )
+    assert "--query older chronology query" in payload["best_resume_candidate"]["rerun_command"]
+    assert payload["best_resume_candidate"]["synthesize_command"].startswith(
+        "python scripts/synthesize_hacc_complaint.py --grounded-run-dir "
     )
     assert "--synthesize-complaint" in payload["best_resume_candidate"]["pipeline_resume_command"]
     assert "--completed-grounded-intake-worksheet" in payload["best_resume_candidate"]["pipeline_resume_command"]

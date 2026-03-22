@@ -45,6 +45,85 @@ def test_graph_readiness_counts_only_blocking_open_temporal_issues():
     assert graph_summary["tracked_temporal_issue_count"] == 2
 
 
+def test_graph_readiness_refreshes_saved_intake_case_file_before_counting():
+    session = {
+        "final_state": {
+            "intake_case_file": {
+                "candidate_claims": [],
+                "canonical_facts": [
+                    {
+                        "fact_id": "fact_blob",
+                        "text": (
+                            "Best timeline anchor I can give right now is: - `Who:` me; `Action:` raised concerns; "
+                            "`Date:` exact date still being confirmed; `Artifact:` grievance email. "
+                            "Still needs confirmation: `exact_dates`, `staff_names_titles`."
+                        ),
+                        "fact_type": "timeline",
+                        "predicate_family": "timeline",
+                        "event_date_or_range": (
+                            "Best timeline anchor I can give right now is: - `Who:` me; `Action:` raised concerns; "
+                            "`Date:` exact date still being confirmed; `Artifact:` grievance email. "
+                            "Still needs confirmation: `exact_dates`, `staff_names_titles`."
+                        ),
+                    },
+                    {
+                        "fact_id": "fact_structured_1",
+                        "text": "me raised concerns. Artifact: grievance email.",
+                        "fact_type": "timeline",
+                        "predicate_family": "protected_activity",
+                        "structured_timeline_group": "group_a",
+                        "sequence_index": 1,
+                    },
+                    {
+                        "fact_id": "fact_structured_2",
+                        "text": "HACC issued adverse treatment after my grievance. Artifact: notice.",
+                        "fact_type": "timeline",
+                        "predicate_family": "adverse_action",
+                        "structured_timeline_group": "group_a",
+                        "sequence_index": 2,
+                        "event_date_or_range": "after my grievance",
+                    },
+                    {
+                        "fact_id": "fact_policy_title",
+                        "text": "Administrative Plan",
+                        "fact_type": "general",
+                    },
+                ],
+                "proof_leads": [],
+                "timeline_anchors": [],
+                "timeline_relations": [],
+                "temporal_issue_registry": [
+                    {"issue_id": "temp:blob", "status": "open", "blocking": True, "severity": "blocking", "fact_ids": ["fact_blob"]},
+                ],
+                "blocker_follow_up_summary": {
+                    "blocking_item_count": 1,
+                    "blocking_items": [
+                        {
+                            "blocker_id": "missing_staff_name_title_mapping",
+                            "primary_objective": "staff_names_titles",
+                            "reason": "Named staff are present but title/role mapping is incomplete.",
+                        }
+                    ],
+                    "extraction_targets": [],
+                },
+                "harm_profile": {},
+                "remedy_profile": {},
+                "contradiction_queue": [],
+                "open_items": [],
+                "summary_snapshots": [],
+                "complainant_summary_confirmation": {},
+                "source_complaint_text": "Administrative Plan",
+            }
+        }
+    }
+
+    graph_summary = MODULE._graph_readiness_summary(session)
+    blocker_summary = MODULE._synthesized_blocker_summary(session)
+
+    assert graph_summary["open_temporal_issue_count"] == 0
+    assert blocker_summary["blocking_item_count"] == 0
+
+
 def test_clean_policy_text_removes_generic_prefixes():
     text = "The strongest supporting material is 'ADMINISTRATIVE PLAN'. HACC Policy Written notice is required."
 

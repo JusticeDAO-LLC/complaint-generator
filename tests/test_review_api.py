@@ -20,6 +20,7 @@ from claim_support_review import (
     ClaimSupportTestimonySaveRequest,
     _summarize_follow_up_execution_claim,
     _summarize_follow_up_plan_claim,
+    _build_claim_support_temporal_handoff_metadata,
     build_claim_support_document_payload,
     build_claim_support_follow_up_execution_payload,
     build_claim_support_intake_summary_confirmation_payload,
@@ -5463,6 +5464,102 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
         "claim_element_id": "retaliation:1",
         "chronology_blocked": True,
         "chronology_task_count": 1,
+    }
+
+
+def test_claim_support_temporal_handoff_metadata_scopes_counts_to_matching_claim_task():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "claim_support_packet_summary": {
+            "claim_support_unresolved_temporal_issue_count": 2,
+            "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001", "temporal_issue_999"],
+            "temporal_gap_task_count": 2,
+        },
+        "temporal_issue_registry_summary": {
+            "count": 2,
+            "unresolved_count": 2,
+            "resolved_count": 0,
+        },
+        "alignment_evidence_tasks": [
+            {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "temporal_issue_ids": ["temporal_issue_001"],
+                "timeline_issue_ids": ["temporal_issue_001"],
+                "temporal_fact_ids": ["fact_001"],
+            },
+            {
+                "claim_type": "discrimination",
+                "claim_element_id": "discrimination:1",
+                "temporal_issue_ids": ["temporal_issue_999"],
+            },
+        ],
+    }
+
+    payload = _build_claim_support_temporal_handoff_metadata(
+        mediator,
+        claim_type="retaliation",
+        claim_element_id="retaliation:2",
+    )
+
+    assert payload == {
+        "claim_support_temporal_handoff": {
+            "unresolved_temporal_issue_count": 1,
+            "unresolved_temporal_issue_ids": ["temporal_issue_001"],
+            "chronology_task_count": 1,
+            "temporal_issue_count": 2,
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "temporal_fact_ids": ["fact_001"],
+            "timeline_issue_ids": ["temporal_issue_001"],
+            "temporal_issue_ids": ["temporal_issue_001"],
+        }
+    }
+
+
+def test_claim_support_temporal_handoff_metadata_does_not_leak_global_issue_ids_for_scoped_claim_without_ids():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "claim_support_packet_summary": {
+            "claim_support_unresolved_temporal_issue_count": 2,
+            "claim_support_unresolved_temporal_issue_ids": ["temporal_issue_001", "temporal_issue_999"],
+            "temporal_gap_task_count": 2,
+        },
+        "temporal_issue_registry_summary": {
+            "count": 2,
+            "unresolved_count": 2,
+            "resolved_count": 0,
+        },
+        "alignment_evidence_tasks": [
+            {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "temporal_fact_ids": ["fact_001"],
+            },
+            {
+                "claim_type": "discrimination",
+                "claim_element_id": "discrimination:1",
+                "temporal_issue_ids": ["temporal_issue_999"],
+            },
+        ],
+    }
+
+    payload = _build_claim_support_temporal_handoff_metadata(
+        mediator,
+        claim_type="retaliation",
+        claim_element_id="retaliation:2",
+    )
+
+    assert payload == {
+        "claim_support_temporal_handoff": {
+            "unresolved_temporal_issue_count": 0,
+            "unresolved_temporal_issue_ids": [],
+            "chronology_task_count": 1,
+            "temporal_issue_count": 2,
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "temporal_fact_ids": ["fact_001"],
+        }
     }
 
 

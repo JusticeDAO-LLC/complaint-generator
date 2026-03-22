@@ -61,6 +61,33 @@ def _unique_normalized_strings(values: Any) -> List[str]:
     return normalized_values
 
 
+def _looks_like_staff_person_name(value: Any) -> bool:
+    text = _normalize_text(value)
+    if not text:
+        return False
+    disallowed_tokens = {
+        "administrative",
+        "plan",
+        "policy",
+        "housing authority",
+        "clackamas",
+        "county",
+        "continued occupancy",
+        "admissions",
+        "program",
+        "nondiscrimination",
+        "housing",
+        "authority",
+    }
+    for match in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text):
+        matched_text = match.group(0).strip()
+        matched_lowered = matched_text.lower()
+        if any(token in matched_lowered for token in disallowed_tokens):
+            continue
+        return True
+    return False
+
+
 def _derive_temporal_issue_missing_predicates(
     issue_type: Any,
     fact_ids: Any,
@@ -721,6 +748,9 @@ def _is_summary_like_timeline_fact(
         "i want this complaint to include",
         "the unresolved facts are",
         "key facts that still need",
+        "the dates of each event",
+        "the exact adverse action",
+        "the hacc staff names and titles",
     )
     if any(text_value.startswith(prefix) for prefix in meta_prefixes):
         return True
@@ -730,7 +760,33 @@ def _is_summary_like_timeline_fact(
         "after i requested review",
         "after i asked for review",
     )
+    if structured_group_facts and any(
+        token in text_value
+        for token in (
+            "best timeline anchor i can give right now is",
+            "still needs confirmation:",
+            "`who:`",
+            "`action:`",
+            "`date:`",
+            "`artifact:`",
+        )
+    ):
+        return True
     if _has_structured_timeline_counterpart(fact, structured_group_facts):
+        if any(
+            token in text_value
+            for token in (
+                "best timeline anchor i can give right now is",
+                "still needs confirmation:",
+                "`who:`",
+                "`action:`",
+                "`date:`",
+                "`artifact:`",
+                "timing felt connected",
+                "once i complained",
+            )
+        ):
+            return True
         if any(text_value.startswith(prefix) for prefix in summary_relative_prefixes):
             return True
         if any(
@@ -1458,11 +1514,15 @@ def build_temporal_issue_registry(
     seen_issue_ids = set()
     issue_index_by_signature: Dict[tuple[str, str, tuple[str, ...]], int] = {}
     structured_group_facts: Dict[str, List[Dict[str, Any]]] = {}
+    duplicate_timeline_text_counts: Dict[str, int] = {}
 
     for fact in _timeline_capable_facts(canonical_facts):
         structured_group = _normalize_text(fact.get("structured_timeline_group") or "")
         if structured_group:
             structured_group_facts.setdefault(structured_group, []).append(fact)
+        text_value = _normalize_text(fact.get("text") or "").lower()
+        if text_value:
+            duplicate_timeline_text_counts[text_value] = duplicate_timeline_text_counts.get(text_value, 0) + 1
 
     for fact in _timeline_capable_facts(canonical_facts):
         fact_id = _normalize_text(fact.get("fact_id") or "")
@@ -1470,6 +1530,14 @@ def build_temporal_issue_registry(
         if temporal_context.get("start_date"):
             continue
         if _is_summary_like_timeline_fact(fact, structured_group_facts):
+            continue
+        normalized_text = _normalize_text(fact.get("text") or "").lower()
+        if (
+            normalized_text
+            and duplicate_timeline_text_counts.get(normalized_text, 0) > 1
+            and _normalize_text(fact.get("structured_timeline_group") or "") == ""
+            and not _unique_normalized_strings(temporal_context.get("relative_markers") or [])
+        ):
             continue
 
         relative_markers = _unique_normalized_strings(temporal_context.get("relative_markers") or [])
@@ -1487,10 +1555,15 @@ def build_temporal_issue_registry(
             for item in grouped_facts
             if isinstance(item, dict)
         )
+        group_has_relative_support = any(
+            bool(_coerce_dict(item.get("temporal_context")).get("relative_markers"))
+            for item in grouped_facts
+            if isinstance(item, dict)
+        )
         issue_severity = "blocking"
         issue_blocking = True
         recommended_resolution_lane = "clarify_with_complainant"
-        if has_structured_sequence_support and group_has_any_anchor:
+        if has_structured_sequence_support and (group_has_any_anchor or group_has_relative_support):
             issue_severity = "warning"
             issue_blocking = False
             recommended_resolution_lane = "capture_testimony"
@@ -2002,9 +2075,8 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
     hearing_fact_ids = set()
     hearing_dated_fact_ids = set()
     response_dated_fact_ids = set()
-    staff_name_pattern = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
     staff_title_pattern = re.compile(r"\b(manager|supervisor|director|officer|specialist|coordinator|landlord|owner|hr)\b", flags=re.IGNORECASE)
-    has_named_staff = bool(staff_name_pattern.search(case_file.get("source_complaint_text") or ""))
+    has_named_staff = _looks_like_staff_person_name(case_file.get("source_complaint_text") or "")
     has_staff_title = bool(staff_title_pattern.search(case_file.get("source_complaint_text") or ""))
     has_causation_sequence = _has_retaliation_causation_link(candidate_claims, normalized_facts, source_text)
 
@@ -2023,7 +2095,7 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
         if predicate_family == "response_timeline" or any(token in text_value for token in ("respond", "denied", "approved", "ignored", "no response", "decision")):
             if start_date:
                 response_dated_fact_ids.add(fact_id)
-        if staff_name_pattern.search(_normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "")):
+        if _looks_like_staff_person_name(_normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "")):
             has_named_staff = True
         if staff_title_pattern.search(_normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "")):
             has_staff_title = True
@@ -2448,8 +2520,10 @@ def build_blocker_follow_up_summary(
             })
         )
 
-    staff_name_pattern = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
-    has_named_staff = bool(staff_name_pattern.search(source_text or ""))
+    has_named_staff = _looks_like_staff_person_name(source_text or "") or any(
+        _looks_like_staff_person_name(fact.get("text") or fact.get("event_label") or "")
+        for fact in facts
+    )
     has_staff_title = bool(
         re.search(r"\b(manager|supervisor|director|officer|specialist|landlord|owner|hr)\b", full_text)
     )

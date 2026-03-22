@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from adversarial_harness.hacc_evidence import _extract_source_window as _extract_grounded_source_window
+from complaint_phases.intake_case_file import refresh_intake_case_file
 
 
 DEFAULT_RELIEF = [
@@ -737,7 +738,16 @@ def _dedupe_timeline_summaries(items: List[str], limit: int = 2) -> List[str]:
 def _session_intake_case_file(session: Dict[str, Any]) -> Dict[str, Any]:
     final_state = session.get("final_state") if isinstance(session.get("final_state"), dict) else {}
     intake_case_file = final_state.get("intake_case_file") if isinstance(final_state.get("intake_case_file"), dict) else {}
-    return dict(intake_case_file or {})
+    if not intake_case_file:
+        return {}
+    refreshed_case_file = refresh_intake_case_file(dict(intake_case_file), None)
+    if refreshed_case_file != intake_case_file:
+        final_state["intake_case_file"] = refreshed_case_file
+        blocker_follow_up_summary = dict(refreshed_case_file.get("blocker_follow_up_summary") or {})
+        if blocker_follow_up_summary:
+            final_state["blocker_follow_up_summary"] = blocker_follow_up_summary
+        session["final_state"] = final_state
+    return dict(refreshed_case_file or {})
 
 
 def _format_timeline_date(value: Any) -> str:
@@ -3851,7 +3861,13 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         for item in list(handoff.get("unresolved_legal_gaps") or [])
         if str(item) and not _anchor_mapping_gap_is_satisfied(seed, item)
     ]
-    handoff_follow_up = [str(item) for item in list(handoff.get("follow_up_questioning") or []) if str(item)]
+    handoff_follow_up = [
+        str(item)
+        for item in list(handoff.get("follow_up_questioning") or [])
+        if str(item)
+        and not _intake_objective_is_satisfied(session, _classify_intake_question_objective(item))
+        and not (_intake_objective_is_satisfied(session, "causation_link") and "causation" in str(item).lower())
+    ]
     canonical_fact_ids = [str(item) for item in list(handoff.get("canonical_fact_ids") or key_facts.get("canonical_fact_ids") or []) if str(item)]
     support_trace_rows = [dict(item) for item in list(handoff.get("support_trace_rows") or key_facts.get("support_trace_rows") or []) if isinstance(item, dict)]
     artifact_support_rows = [dict(item) for item in list(handoff.get("artifact_support_rows") or key_facts.get("artifact_support_rows") or []) if isinstance(item, dict)]
@@ -4111,7 +4127,13 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         for item in list(handoff.get("unresolved_legal_gaps") or [])
         if str(item) and not _anchor_mapping_gap_is_satisfied(seed, item)
     ]
-    handoff_follow_up = [str(item) for item in list(handoff.get("follow_up_questioning") or []) if str(item)]
+    handoff_follow_up = [
+        str(item)
+        for item in list(handoff.get("follow_up_questioning") or [])
+        if str(item)
+        and not _intake_objective_is_satisfied(session, _classify_intake_question_objective(item))
+        and not (_intake_objective_is_satisfied(session, "causation_link") and "causation" in str(item).lower())
+    ]
     claims: List[str] = []
     if readiness["phase_status"] != "ready":
         blockers = ", ".join(readiness.get("blockers") or [])
@@ -5227,8 +5249,13 @@ def _outstanding_intake_follow_up_questions(
     ]
     combined_uncovered: List[str] = []
     for objective in uncovered + blocker_objectives:
-        if objective and objective not in combined_uncovered:
+        if objective and not _intake_objective_is_satisfied(session, objective) and objective not in combined_uncovered:
             combined_uncovered.append(objective)
+    combined_uncovered = [
+        objective
+        for objective in combined_uncovered
+        if not _intake_objective_is_satisfied(session, objective)
+    ]
     if not combined_uncovered and not blocker_items:
         return []
     objective_counts = {
