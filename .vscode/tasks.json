@@ -151,6 +151,25 @@
       }
     },
     {
+      "label": "HACC Grounded History",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/show_hacc_grounded_history.py",
+        "--grounded-root",
+        "output/hacc_grounded"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "HACC Preset Matrix Smoke",
       "type": "shell",
       "command": "${workspaceFolder}/.venv/bin/python",

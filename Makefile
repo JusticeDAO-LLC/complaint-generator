@@ -1,4 +1,6 @@
-.PHONY: canary-validate canary-smoke canary-sample regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-unit
+.PHONY: canary-validate canary-smoke canary-sample regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit
+
+HACC_GROUNDED_RUN_DIR ?= output/hacc_grounded/latest
 
 regression: regression-full
 
@@ -16,6 +18,9 @@ hacc-grounding:
 
 hacc-grounding-no-smoke:
 	.venv/bin/python scripts/run_hacc_grounding_regression.py --skip-smoke
+
+hacc-grounded-history:
+	.venv/bin/python scripts/show_hacc_grounded_history.py --output-dir "$(HACC_GROUNDED_RUN_DIR)"
 
 hacc-unit:
 	.venv/bin/python scripts/run_hacc_unit_regression.py

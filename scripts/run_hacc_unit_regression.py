@@ -19,6 +19,7 @@ HACC_UNIT_TESTS = [
     "tests/test_run_hacc_unit_regression_cli.py",
     "tests/test_run_hacc_grounding_regression_cli.py",
     "tests/test_run_hacc_grounded_pipeline_cli.py",
+    "tests/test_show_hacc_grounded_history_cli.py",
 ]
 
 

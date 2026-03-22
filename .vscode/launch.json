@@ -95,6 +95,18 @@
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "HACC Grounded History",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/show_hacc_grounded_history.py",
+      "args": [
+        "--grounded-root",
+        "output/hacc_grounded"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }

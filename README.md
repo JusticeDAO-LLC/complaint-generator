@@ -220,13 +220,12 @@ The lightweight slice also covers adversarial session intake-prompt regressions 
 To inspect an existing grounded HACC run without rerunning research, upload, or synthesis, use:
 
 ```bash
-.venv/bin/python scripts/run_hacc_grounded_pipeline.py \
-    --output-dir output/hacc_grounded/<run_id> \
-    --show-history
+.venv/bin/python scripts/show_hacc_grounded_history.py
 
-.venv/bin/python scripts/run_hacc_grounded_pipeline.py \
-    --output-dir output/hacc_grounded/<run_id> \
-    --show-history --json
+.venv/bin/python scripts/show_hacc_grounded_history.py --json
+
+.venv/bin/python scripts/show_hacc_grounded_history.py \
+    --output-dir output/hacc_grounded/<run_id>
 ```
 
 That read-only view summarizes the current grounded workflow status, recent transitions, completed grounded worksheet state, refreshed grounding state, and grounded follow-up answer summary for the selected run directory.
@@ -245,10 +244,17 @@ Grounded follow-up answers: 3
 
 Also available via:
 
-- VS Code tasks `HACC Unit Regression` and `HACC Grounding Regression`
-- Make targets `hacc-unit`, `hacc-grounding`, and `hacc-grounding-no-smoke`
+- VS Code tasks `HACC Unit Regression`, `HACC Grounding Regression`, and `HACC Grounded History`
+- Run and Debug entries `HACC Unit Regression`, `HACC Grounding Regression`, `HACC Grounding Regression (No Smoke)`, and `HACC Grounded History`
+- Make targets `hacc-unit`, `hacc-grounding`, `hacc-grounding-no-smoke`, and `hacc-grounded-history`
 - GitHub Actions workflow `hacc-unit-regression.yml`
 - Manual workflow `hacc-grounding-regression.yml`
+
+The helper defaults to the latest run under `output/hacc_grounded`. Set the grounded run directory explicitly when using `make`:
+
+```bash
+make hacc-grounded-history HACC_GROUNDED_RUN_DIR=output/hacc_grounded/<run_id>
+```
 
 **Hugging Face Router Quick Start:**
 ```bash

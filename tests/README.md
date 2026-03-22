@@ -247,8 +247,9 @@ python scripts/run_hacc_grounding_regression.py --skip-smoke
 For an existing grounded run directory, you can inspect the current workflow state without rerunning the full pipeline:
 
 ```bash
-python scripts/run_hacc_grounded_pipeline.py --output-dir output/hacc_grounded/<run_id> --show-history
-python scripts/run_hacc_grounded_pipeline.py --output-dir output/hacc_grounded/<run_id> --show-history --json
+python scripts/show_hacc_grounded_history.py
+python scripts/show_hacc_grounded_history.py --json
+python scripts/show_hacc_grounded_history.py --output-dir output/hacc_grounded/<run_id>
 ```
 
 That read-only inspection summarizes:
@@ -282,12 +283,15 @@ The same HACC slice is also available through editor and shell tooling:
 
 - VS Code task:
   - `HACC Grounding Regression`
+  - `HACC Grounded History`
 - Run and Debug:
   - `HACC Grounding Regression`
   - `HACC Grounding Regression (No Smoke)`
+  - `HACC Grounded History`
 - Make targets:
   - `make hacc-grounding`
   - `make hacc-grounding-no-smoke`
+  - `make hacc-grounded-history HACC_GROUNDED_RUN_DIR=output/hacc_grounded/<run_id>`
 - GitHub Actions:
   - `.github/workflows/hacc-grounding-regression.yml` as a manual workflow, defaulting to `--skip-smoke`
 

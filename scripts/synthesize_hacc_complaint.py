@@ -3197,10 +3197,27 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
 
     if (factual_gaps or legal_gaps) and "document_generation_not_ready" not in blockers:
         blockers.append("document_generation_not_ready")
+    if not unresolved_objectives:
+        blockers = [item for item in blockers if item != "uncovered_intake_objectives"]
+        factual_gaps = [
+            item
+            for item in factual_gaps
+            if "uncovered intake objectives remain open" not in " ".join(str(item).split()).strip().lower()
+        ]
 
     phase_status = str(readiness.get("phase_status") or "warning").strip().lower() or "warning"
     if phase_status == "ready" and (_safe_float(readiness.get("coverage"), 0.0) < 0.98 or factual_gaps or legal_gaps):
         phase_status = "warning"
+
+    merged_document_generation_signals = dict(readiness.get("document_generation_signals") or {})
+    merged_document_generation_signals.update(
+        {
+            "phase_status": document_phase_status or str(document_signals.get("status") or ""),
+            "coverage": document_coverage,
+            "summary": str(document_signals.get("summary") or "").strip(),
+            "blockers": [str(item) for item in list(document_signals.get("blockers") or []) if str(item)][:5],
+        }
+    )
 
     readiness.update(
         {
@@ -3222,12 +3239,7 @@ def _merge_seed_with_grounding(seed: Dict[str, Any], grounding_bundle: Dict[str,
                 "remaining_gap_count": graph_gap_count,
                 "gate_on_graph_completeness": graph_gate_active,
             },
-            "document_generation_signals": {
-                "phase_status": document_phase_status or str(document_signals.get("status") or ""),
-                "coverage": document_coverage,
-                "summary": str(document_signals.get("summary") or "").strip(),
-                "blockers": [str(item) for item in list(document_signals.get("blockers") or []) if str(item)][:5],
-            },
+            "document_generation_signals": merged_document_generation_signals,
             "ready_for_formalization": phase_status == "ready" and not blockers,
         }
     )

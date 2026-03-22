@@ -710,6 +710,60 @@ class ComplaintDenoiser:
         return documents
 
 
+    def _needs_exhibit_ready_document_questions(self) -> bool:
+        mediator = self.mediator
+        if mediator is None:
+            return False
+        build_gap_context = getattr(mediator, "build_inquiry_gap_context", None)
+        if not callable(build_gap_context):
+            return False
+        try:
+            gap_context = build_gap_context()
+        except Exception:
+            return False
+        return bool(gap_context.get("needs_exhibit_grounding"))
+
+
+    def _build_exhibit_ready_document_prompt(
+        self,
+        *,
+        claim_label: str = "",
+        include_policy_document: bool = False,
+        include_file_evidence: bool = False,
+        base_question: str = "",
+    ) -> str:
+        lowered = str(base_question or "").strip().lower()
+        examples: List[str] = []
+        if include_file_evidence:
+            for token, label in (
+                ("denial", "denial notice"),
+                ("notice", "notice"),
+                ("appeal", "appeal request"),
+                ("hearing", "hearing request"),
+                ("review", "review request"),
+                ("email", "email"),
+                ("message", "message"),
+                ("attachment", "attachment"),
+                ("lease", "lease or tenancy record"),
+            ):
+                if token in lowered and label not in examples:
+                    examples.append(label)
+            for fallback in ("denial notice", "email", "hearing or review request"):
+                if fallback not in examples:
+                    examples.append(fallback)
+        if include_policy_document:
+            for fallback in ("policy excerpt", "handbook section"):
+                if fallback not in examples:
+                    examples.append(fallback)
+        if not examples:
+            examples = ["denial notice", "email", "policy excerpt"]
+        claim_phrase = f" for {claim_label.strip()}" if str(claim_label or "").strip() else ""
+        return (
+            f"Which uploaded or uploadable documents, such as {', '.join(examples[:4])}, should be treated as exhibits{claim_phrase}, "
+            "and for each one what are the date, sender or source, label or subject line, and the fact the document proves?"
+        )
+
+
     def _append_unique_text_item(self, values: Any, text_value: str) -> List[str]:
         normalized_value = str(text_value or "").strip()
         if not normalized_value:
@@ -1526,6 +1580,7 @@ class ComplaintDenoiser:
 
         questions: List[Dict[str, Any]] = []
         seen_keys: Set[str] = set()
+        exhibit_ready_documents = self._needs_exhibit_ready_document_questions()
         candidate_claims = intake_case_file.get('candidate_claims', [])
         if not isinstance(candidate_claims, list):
             return []
@@ -1628,7 +1683,16 @@ class ComplaintDenoiser:
                     element_id,
                     element_label,
                 )
-                if 'policy_document' in expected_modalities and 'file_evidence' in expected_modalities:
+                if exhibit_ready_documents and (
+                    'policy_document' in expected_modalities or 'file_evidence' in expected_modalities
+                ):
+                    question_text = self._build_exhibit_ready_document_prompt(
+                        claim_label=claim_label,
+                        include_policy_document='policy_document' in expected_modalities,
+                        include_file_evidence='file_evidence' in expected_modalities,
+                        base_question=question_text,
+                    )
+                elif 'policy_document' in expected_modalities and 'file_evidence' in expected_modalities:
                     question_text = (
                         f"{question_text} If available, identify one policy document and one file record "
                         "(notice, lease, email, or upload) with date and sender."
@@ -1702,6 +1766,7 @@ class ComplaintDenoiser:
         questions: List[Dict[str, Any]] = []
         seen_keys: Set[str] = set()
         candidate_claims = intake_case_file.get('candidate_claims', [])
+        exhibit_ready_documents = self._needs_exhibit_ready_document_questions()
         if not isinstance(candidate_claims, list):
             return []
 
@@ -1724,7 +1789,16 @@ class ComplaintDenoiser:
             seen_keys.add(question_key)
             question_intent = build_proof_lead_question_intent(claim_type, claim_label)
             question_text = build_proof_lead_question_text(claim_type, claim_label)
-            if missing_modalities == ['policy_document', 'file_evidence'] or missing_modalities == ['file_evidence', 'policy_document']:
+            if exhibit_ready_documents and (
+                'policy_document' in missing_modalities or 'file_evidence' in missing_modalities
+            ):
+                question_text = self._build_exhibit_ready_document_prompt(
+                    claim_label=claim_label,
+                    include_policy_document='policy_document' in missing_modalities,
+                    include_file_evidence='file_evidence' in missing_modalities,
+                    base_question=question_text,
+                )
+            elif missing_modalities == ['policy_document', 'file_evidence'] or missing_modalities == ['file_evidence', 'policy_document']:
                 question_text = (
                     f"{question_text} Please name at least one policy document and one file record "
                     "(notice, lease, email, or attachment) with date, sender, and where it can be obtained."
