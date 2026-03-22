@@ -843,6 +843,11 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
     intake_case_summary = {
         "claim_support_packet_summary": {},
         "alignment_evidence_tasks": [],
+        "timeline_anchors": [
+            {
+                "anchor_id": "anchor-ledger-001",
+            }
+        ],
         "event_ledger": [
             {
                 "event_id": "event-ledger-001",
@@ -859,6 +864,14 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
                 "relation_id": "relation-ledger-001",
             }
         ],
+        "temporal_issue_registry_summary": {
+            "count": 2,
+            "unresolved_count": 1,
+            "resolved_count": 1,
+            "issue_ids": ["issue-open-001", "issue-resolved-001"],
+            "missing_temporal_predicates": ["Before(fact-ledger-001,fact-ledger-termination)"],
+            "required_provenance_kinds": ["testimony_record", "document_artifact"],
+        },
         "temporal_issue_registry": [
             {
                 "temporal_issue_id": "issue-open-001",
@@ -877,8 +890,11 @@ def test_claim_support_temporal_handoff_falls_back_to_raw_intake_chronology_regi
         "event_ids": ["event-ledger-001"],
         "temporal_fact_ids": ["fact-ledger-001"],
         "temporal_relation_ids": ["relation-ledger-001"],
+        "timeline_anchor_ids": ["anchor-ledger-001"],
         "timeline_issue_ids": ["issue-open-001", "issue-resolved-001"],
         "temporal_issue_ids": ["issue-open-001", "issue-resolved-001"],
+        "missing_temporal_predicates": ["Before(fact-ledger-001,fact-ledger-termination)"],
+        "required_provenance_kinds": ["testimony_record", "document_artifact"],
         "temporal_proof_bundle_ids": [],
         "temporal_proof_objectives": [],
     }
@@ -896,6 +912,11 @@ def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chrono
             {
                 "claim_type": "retaliation",
                 "claim_element_id": "causation",
+            }
+        ],
+        "timeline_anchors": [
+            {
+                "anchor_id": "anchor-ledger-001",
             }
         ],
         "event_ledger": [
@@ -920,6 +941,14 @@ def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chrono
                 "status": "open",
             }
         ],
+        "temporal_issue_registry_summary": {
+            "count": 1,
+            "unresolved_count": 1,
+            "resolved_count": 0,
+            "issue_ids": ["issue-open-001"],
+            "missing_temporal_predicates": ["Anchored(fact-ledger-001,anchor-ledger-001)"],
+            "required_provenance_kinds": ["document_artifact", "legal_authority"],
+        },
     }
 
     assert document_optimization._build_claim_reasoning_theorem_export_metadata(
@@ -937,8 +966,11 @@ def test_claim_reasoning_theorem_export_metadata_falls_back_to_raw_intake_chrono
         "event_ids": ["event-ledger-001"],
         "temporal_fact_ids": ["fact-ledger-001"],
         "temporal_relation_ids": ["relation-ledger-001"],
+        "timeline_anchor_ids": ["anchor-ledger-001"],
         "timeline_issue_ids": ["issue-open-001"],
         "temporal_issue_ids": ["issue-open-001"],
+        "missing_temporal_predicates": ["Anchored(fact-ledger-001,anchor-ledger-001)"],
+        "required_provenance_kinds": ["document_artifact", "legal_authority"],
         "temporal_proof_bundle_ids": [],
         "temporal_proof_objectives": [],
     }

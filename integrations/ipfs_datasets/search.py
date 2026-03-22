@@ -165,6 +165,22 @@ def fetch_commoncrawl_latest_index(session: requests.Session) -> str:
     return str(indexes[0]["cdx-api"])
 
 
+def fetch_commoncrawl_index_candidates(session: requests.Session) -> list[str]:
+    response = session.get("https://index.commoncrawl.org/collinfo.json", timeout=30)
+    response.raise_for_status()
+    indexes = response.json()
+    if not indexes:
+        raise RuntimeError("CommonCrawl collinfo.json returned no indexes")
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for item in indexes:
+        candidate = str(item.get("cdx-api") or "").strip()
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            candidates.append(candidate)
+    return candidates
+
+
 def commoncrawl_list_urls(session: requests.Session, cdx_api: str, site: str, limit: int) -> list[dict[str, Any]]:
     response = session.get(cdx_api, params={"url": f"{site}/*", "output": "json", "limit": int(limit)}, timeout=60)
     response.raise_for_status()
@@ -227,10 +243,12 @@ def discover_seeded_commoncrawl(
         site_terms[site] = deduped[:200]
 
     session = requests.Session()
-    cdx_api = fetch_commoncrawl_latest_index(session)
+    cdx_api_candidates = fetch_commoncrawl_index_candidates(session)
+    cdx_api = cdx_api_candidates[0]
     candidates: Dict[str, Any] = {
         "generated": datetime.now().isoformat(timespec="seconds"),
         "cdx_api": cdx_api,
+        "cdx_api_candidates": cdx_api_candidates[:10],
         "queries_file": str(query_path),
         "sites": {},
     }
@@ -243,7 +261,22 @@ def discover_seeded_commoncrawl(
     for site, terms in sorted(site_terms.items()):
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
-        rows = commoncrawl_list_urls(session, cdx_api, site, limit=cc_limit)
+        rows: list[dict[str, Any]] | None = None
+        selected_cdx_api = cdx_api
+        last_error: Exception | None = None
+        for candidate_cdx_api in cdx_api_candidates:
+            try:
+                rows = commoncrawl_list_urls(session, candidate_cdx_api, site, limit=cc_limit)
+                selected_cdx_api = candidate_cdx_api
+                break
+            except requests.HTTPError as exc:
+                status_code = exc.response.status_code if exc.response is not None else None
+                last_error = exc
+                if status_code in {404, 429, 500, 502, 503, 504}:
+                    continue
+                raise
+        if rows is None:
+            raise last_error or RuntimeError(f"CommonCrawl query failed for {site}")
         scored: list[Dict[str, Any]] = []
         for row in rows:
             url = str(row.get("url") or "")
@@ -262,6 +295,7 @@ def discover_seeded_commoncrawl(
         scored.sort(key=lambda item: (item["score"], item.get("url", "")), reverse=True)
         candidates["sites"][site] = {
             "terms": terms[:50],
+            "cdx_api": selected_cdx_api,
             "total_cc_rows": len(rows),
             "scored_rows": len(scored),
             "top": scored[:top_per_site],

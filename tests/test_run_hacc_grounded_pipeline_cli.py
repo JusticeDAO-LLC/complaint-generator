@@ -172,3 +172,64 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert recommended_next_action["action"] == "upload_local_repository_evidence"
     assert seeded_discovery["status"] == "success"
     assert seeded_discovery["queries"][0].startswith("site:hacc.example")
+
+
+def test_run_hacc_grounded_pipeline_degrades_when_seeded_discovery_raises(tmp_path, monkeypatch):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {},
+                "seeded_discovery_plan": {
+                    "queries": ['site:hacc.example "termination notice chronology" policy notice hearing'],
+                },
+                "research_action_queue": [],
+                "recommended_next_action": {},
+            }
+
+        def discover_seeded_commoncrawl(self, queries, **kwargs):
+            raise RuntimeError("temporary commoncrawl failure")
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "synthetic_prompts": {},
+                "anchor_passages": [],
+                "upload_candidates": [],
+                "mediator_evidence_packets": [],
+                "claim_support_temporal_handoff": {},
+                "document_generation_handoff": {},
+                "drafting_readiness": {},
+                "graph_completeness_signals": {},
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 0}
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", lambda **kwargs: {})
+
+    summary = cli.run_hacc_grounded_pipeline(
+        output_dir=tmp_path,
+        query="termination notice chronology",
+        claim_type="housing_discrimination",
+        top_k=1,
+    )
+
+    seeded_discovery = json.loads(
+        Path(summary["artifacts"]["seeded_commoncrawl_discovery_json"]).read_text(encoding="utf-8")
+    )
+    assert seeded_discovery["status"] == "degraded"
+    assert seeded_discovery["reason"] == "seeded_discovery_failed"
+    assert "temporary commoncrawl failure" in seeded_discovery["error"]

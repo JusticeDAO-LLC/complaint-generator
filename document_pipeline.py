@@ -19,7 +19,11 @@ from document_optimization import (
     AgenticDocumentOptimizer,
     _build_claim_reasoning_theorem_export_metadata,
 )
-from intake_status import build_intake_case_review_summary, build_intake_status_summary
+from intake_status import (
+    build_intake_case_review_summary,
+    build_intake_status_summary,
+    summarize_temporal_issue_registry,
+)
 from workflow_phase_guidance import (
     build_drafting_document_generation_phase_guidance,
     build_graph_analysis_phase_guidance,
@@ -2037,6 +2041,9 @@ class FormalComplaintDocumentBuilder:
         packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
         alignment_tasks = intake_case_summary.get("alignment_evidence_tasks")
         alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+        temporal_issue_registry_summary = summarize_temporal_issue_registry(
+            intake_case_summary.get("temporal_issue_registry_summary")
+        )
 
         unresolved_temporal_issue_ids = _dedupe_text_values(
             packet_summary.get("claim_support_unresolved_temporal_issue_ids") or []
@@ -2112,12 +2119,21 @@ class FormalComplaintDocumentBuilder:
         raw_unresolved_temporal_issue_ids = _collect_unresolved_temporal_issue_identifiers(
             intake_case_summary.get("temporal_issue_registry")
         )
+        summary_issue_ids = _dedupe_text_values(temporal_issue_registry_summary.get("issue_ids") or [])
+        summary_missing_temporal_predicates = _dedupe_text_values(
+            temporal_issue_registry_summary.get("missing_temporal_predicates") or []
+        )
+        summary_required_provenance_kinds = _dedupe_text_values(
+            temporal_issue_registry_summary.get("required_provenance_kinds") or []
+        )
 
         unresolved_temporal_issue_count = int(
             packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
         )
         if not unresolved_temporal_issue_count and raw_unresolved_temporal_issue_ids:
             unresolved_temporal_issue_count = len(raw_unresolved_temporal_issue_ids)
+        if not unresolved_temporal_issue_count:
+            unresolved_temporal_issue_count = int(temporal_issue_registry_summary.get("unresolved_count") or 0)
         if not unresolved_temporal_issue_ids:
             unresolved_temporal_issue_ids = raw_unresolved_temporal_issue_ids
 
@@ -2128,18 +2144,18 @@ class FormalComplaintDocumentBuilder:
             "event_ids": _dedupe_text_values(event_ids) or raw_event_ids,
             "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids) or raw_temporal_fact_ids,
             "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids) or raw_temporal_relation_ids,
-            "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids,
-            "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids,
+            "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids or summary_issue_ids,
+            "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids or summary_issue_ids,
             "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
             "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
         }
         normalized_timeline_anchor_ids = _dedupe_text_values(timeline_anchor_ids) or raw_timeline_anchor_ids
         if normalized_timeline_anchor_ids:
             temporal_handoff["timeline_anchor_ids"] = normalized_timeline_anchor_ids
-        normalized_missing_temporal_predicates = _dedupe_text_values(missing_temporal_predicates)
+        normalized_missing_temporal_predicates = _dedupe_text_values(missing_temporal_predicates) or summary_missing_temporal_predicates
         if normalized_missing_temporal_predicates:
             temporal_handoff["missing_temporal_predicates"] = normalized_missing_temporal_predicates
-        normalized_required_provenance_kinds = _dedupe_text_values(required_provenance_kinds)
+        normalized_required_provenance_kinds = _dedupe_text_values(required_provenance_kinds) or summary_required_provenance_kinds
         if normalized_required_provenance_kinds:
             temporal_handoff["required_provenance_kinds"] = normalized_required_provenance_kinds
         if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
@@ -4780,7 +4796,7 @@ class FormalComplaintDocumentBuilder:
             if not paragraphs:
                 continue
             if title:
-                lines.append(title.upper())
+                lines.append(self._format_group_heading(title, paragraphs))
             for paragraph in paragraphs:
                 if not isinstance(paragraph, dict):
                     continue
@@ -4789,6 +4805,31 @@ class FormalComplaintDocumentBuilder:
                 if text:
                     lines.append(f"{number}. {text}" if number else text)
         return lines
+
+    def _format_group_heading(self, title: str, paragraphs: List[Dict[str, Any]]) -> str:
+        heading = str(title or "").strip().upper()
+        if not heading:
+            return ""
+        primary_exhibit = self._select_primary_group_exhibit_label(paragraphs)
+        if primary_exhibit:
+            return f"{heading} ({primary_exhibit})"
+        return heading
+
+    def _select_primary_group_exhibit_label(self, paragraphs: List[Dict[str, Any]]) -> str:
+        label_counts: Dict[str, int] = {}
+        for paragraph in paragraphs:
+            if not isinstance(paragraph, dict):
+                continue
+            label = str(paragraph.get("exhibit_label") or "").strip()
+            if not label:
+                continue
+            label_counts[label] = label_counts.get(label, 0) + 1
+        if not label_counts:
+            return ""
+        label, count = max(label_counts.items(), key=lambda item: (item[1], item[0]))
+        if count < 2 and len(paragraphs) > 1:
+            return ""
+        return label
 
     def _select_allegation_references_for_claim(
         self,

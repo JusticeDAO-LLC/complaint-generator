@@ -183,13 +183,21 @@ def _run_seeded_discovery_from_plan(engine: Any, seeded_discovery_plan: Dict[str
             "reason": "engine_missing_discover_seeded_commoncrawl",
             "queries": queries,
         }
-    payload = discover_seeded_commoncrawl(
-        queries,
-        cc_limit=100,
-        top_per_site=10,
-        fetch_top=0,
-        sleep_seconds=0.0,
-    )
+    try:
+        payload = discover_seeded_commoncrawl(
+            queries,
+            cc_limit=100,
+            top_per_site=10,
+            fetch_top=0,
+            sleep_seconds=0.0,
+        )
+    except Exception as exc:
+        return {
+            "status": "degraded",
+            "reason": "seeded_discovery_failed",
+            "queries": queries,
+            "error": str(exc),
+        }
     if isinstance(payload, dict):
         payload.setdefault("queries", queries)
     return payload if isinstance(payload, dict) else {"status": "error", "queries": queries, "value": str(payload)}

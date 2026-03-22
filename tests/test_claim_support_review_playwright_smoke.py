@@ -5252,6 +5252,8 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                     "claim_unresolved_temporal_issue_count": 1,
                     "claim_resolved_temporal_issue_count": 1,
                     "claim_temporal_issue_status_counts": {"open": 1, "resolved": 1},
+                    "claim_missing_temporal_predicates": ["before(event-hr-report,event-termination)"],
+                    "claim_required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
                     "proof_artifact_element_count": 1,
                     "proof_artifact_available_element_count": 1,
                     "proof_artifact_explanation_element_count": 1,
@@ -5398,6 +5400,8 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "retaliation hybrid bridge elements: 1" in review_snapshot_text
             assert "retaliation chronology registry: 2 total, 1 unresolved, 1 resolved" in review_snapshot_text
             assert "retaliation chronology statuses: open=1, resolved=1" in review_snapshot_text
+            assert "retaliation chronology predicates: before(event-hr-report,event-termination)" in review_snapshot_text
+            assert "retaliation chronology provenance: testimony_record, document_artifact, legal_authority" in review_snapshot_text
             assert "retaliation" in proof_drilldown_text
             assert "proof artifacts 1" in proof_drilldown_text
             assert "available 1" in proof_drilldown_text
@@ -5406,6 +5410,8 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "unresolved 1" in proof_drilldown_text
             assert "resolved 1" in proof_drilldown_text
             assert "registry statuses open=1, resolved=1" in proof_drilldown_text
+            assert "registry predicates before(event-hr-report,event-termination)" in proof_drilldown_text
+            assert "registry provenance testimony_record, document_artifact, legal_authority" in proof_drilldown_text
             assert "statuses available=1" in proof_drilldown_text
             assert "causal connection" in proof_drilldown_text
             assert "copy proof id" in proof_drilldown_text

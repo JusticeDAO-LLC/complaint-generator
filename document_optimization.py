@@ -720,6 +720,9 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     packet_summary = packet_summary if isinstance(packet_summary, dict) else {}
     alignment_tasks = summary.get("alignment_evidence_tasks")
     alignment_tasks = alignment_tasks if isinstance(alignment_tasks, list) else []
+    temporal_issue_registry_summary = summarize_temporal_issue_registry(
+        summary.get("temporal_issue_registry_summary")
+    )
 
     def _collect_temporal_registry_identifiers(registry: Any, *keys: str) -> List[str]:
         identifiers: List[str] = []
@@ -757,8 +760,11 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     event_ids: List[str] = []
     temporal_fact_ids: List[str] = []
     temporal_relation_ids: List[str] = []
+    timeline_anchor_ids: List[str] = []
     timeline_issue_ids: List[str] = []
     temporal_issue_ids: List[str] = []
+    missing_temporal_predicates: List[str] = []
+    required_provenance_kinds: List[str] = []
     temporal_proof_bundle_ids: List[str] = []
     temporal_proof_objectives: List[str] = []
 
@@ -768,8 +774,11 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
         event_ids.extend(_dedupe_text_values(task.get("event_ids") or []))
         temporal_fact_ids.extend(_dedupe_text_values(task.get("temporal_fact_ids") or []))
         temporal_relation_ids.extend(_dedupe_text_values(task.get("temporal_relation_ids") or []))
+        timeline_anchor_ids.extend(_dedupe_text_values(task.get("anchor_ids") or task.get("timeline_anchor_ids") or []))
         timeline_issue_ids.extend(_dedupe_text_values(task.get("timeline_issue_ids") or []))
         temporal_issue_ids.extend(_dedupe_text_values(task.get("temporal_issue_ids") or []))
+        missing_temporal_predicates.extend(_dedupe_text_values(task.get("missing_temporal_predicates") or []))
+        required_provenance_kinds.extend(_dedupe_text_values(task.get("required_provenance_kinds") or []))
         proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
         if proof_bundle_id:
             temporal_proof_bundle_ids.append(proof_bundle_id)
@@ -807,6 +816,11 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
             "temporal_relation_id",
             "relation_id",
         )
+    raw_timeline_anchor_ids = _collect_temporal_registry_identifiers(
+        summary.get("timeline_anchors"),
+        "anchor_id",
+        "timeline_anchor_id",
+    )
     raw_temporal_issue_ids = _collect_temporal_registry_identifiers(
         summary.get("temporal_issue_registry"),
         "temporal_issue_id",
@@ -816,12 +830,21 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
     raw_unresolved_temporal_issue_ids = _collect_unresolved_temporal_issue_identifiers(
         summary.get("temporal_issue_registry")
     )
+    summary_issue_ids = _dedupe_text_values(temporal_issue_registry_summary.get("issue_ids") or [])
+    summary_missing_temporal_predicates = _dedupe_text_values(
+        temporal_issue_registry_summary.get("missing_temporal_predicates") or []
+    )
+    summary_required_provenance_kinds = _dedupe_text_values(
+        temporal_issue_registry_summary.get("required_provenance_kinds") or []
+    )
 
     unresolved_temporal_issue_count = int(
         packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0
     )
     if not unresolved_temporal_issue_count and raw_unresolved_temporal_issue_ids:
         unresolved_temporal_issue_count = len(raw_unresolved_temporal_issue_ids)
+    if not unresolved_temporal_issue_count:
+        unresolved_temporal_issue_count = int(temporal_issue_registry_summary.get("unresolved_count") or 0)
     if not unresolved_temporal_issue_ids:
         unresolved_temporal_issue_ids = raw_unresolved_temporal_issue_ids
 
@@ -832,11 +855,20 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
         "event_ids": _dedupe_text_values(event_ids) or raw_event_ids,
         "temporal_fact_ids": _dedupe_text_values(temporal_fact_ids) or raw_temporal_fact_ids,
         "temporal_relation_ids": _dedupe_text_values(temporal_relation_ids) or raw_temporal_relation_ids,
-        "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids,
-        "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids,
+        "timeline_issue_ids": _dedupe_text_values(timeline_issue_ids) or raw_temporal_issue_ids or summary_issue_ids,
+        "temporal_issue_ids": _dedupe_text_values(temporal_issue_ids) or raw_temporal_issue_ids or summary_issue_ids,
         "temporal_proof_bundle_ids": _dedupe_text_values(temporal_proof_bundle_ids),
         "temporal_proof_objectives": _dedupe_text_values(temporal_proof_objectives),
     }
+    normalized_timeline_anchor_ids = _dedupe_text_values(timeline_anchor_ids) or raw_timeline_anchor_ids
+    if normalized_timeline_anchor_ids:
+        temporal_handoff["timeline_anchor_ids"] = normalized_timeline_anchor_ids
+    normalized_missing_temporal_predicates = _dedupe_text_values(missing_temporal_predicates) or summary_missing_temporal_predicates
+    if normalized_missing_temporal_predicates:
+        temporal_handoff["missing_temporal_predicates"] = normalized_missing_temporal_predicates
+    normalized_required_provenance_kinds = _dedupe_text_values(required_provenance_kinds) or summary_required_provenance_kinds
+    if normalized_required_provenance_kinds:
+        temporal_handoff["required_provenance_kinds"] = normalized_required_provenance_kinds
     if not temporal_handoff["unresolved_temporal_issue_count"] and not any(
         temporal_handoff[key]
         for key in (
@@ -844,8 +876,11 @@ def _build_claim_support_temporal_handoff(intake_case_summary: Any) -> Dict[str,
             "event_ids",
             "temporal_fact_ids",
             "temporal_relation_ids",
+            "timeline_anchor_ids",
             "timeline_issue_ids",
             "temporal_issue_ids",
+            "missing_temporal_predicates",
+            "required_provenance_kinds",
             "temporal_proof_bundle_ids",
             "temporal_proof_objectives",
         )
@@ -905,6 +940,12 @@ def _build_claim_reasoning_theorem_export_metadata(
     temporal_relation_ids = _dedupe_text_values(
         selected_task.get("temporal_relation_ids") or temporal_handoff.get("temporal_relation_ids") or []
     )
+    timeline_anchor_ids = _dedupe_text_values(
+        selected_task.get("anchor_ids")
+        or selected_task.get("timeline_anchor_ids")
+        or temporal_handoff.get("timeline_anchor_ids")
+        or []
+    )
     timeline_issue_ids = _dedupe_text_values(
         selected_task.get("timeline_issue_ids")
         or temporal_handoff.get("timeline_issue_ids")
@@ -923,6 +964,16 @@ def _build_claim_reasoning_theorem_export_metadata(
     temporal_proof_objectives = _dedupe_text_values(
         ([selected_task.get("temporal_proof_objective")] if selected_task.get("temporal_proof_objective") else [])
         or temporal_handoff.get("temporal_proof_objectives")
+        or []
+    )
+    missing_temporal_predicates = _dedupe_text_values(
+        selected_task.get("missing_temporal_predicates")
+        or temporal_handoff.get("missing_temporal_predicates")
+        or []
+    )
+    required_provenance_kinds = _dedupe_text_values(
+        selected_task.get("required_provenance_kinds")
+        or temporal_handoff.get("required_provenance_kinds")
         or []
     )
     proof_bundle_id = str(
@@ -960,6 +1011,12 @@ def _build_claim_reasoning_theorem_export_metadata(
         "temporal_proof_bundle_ids": temporal_proof_bundle_ids,
         "temporal_proof_objectives": temporal_proof_objectives,
     }
+    if timeline_anchor_ids:
+        metadata["timeline_anchor_ids"] = timeline_anchor_ids
+    if missing_temporal_predicates:
+        metadata["missing_temporal_predicates"] = missing_temporal_predicates
+    if required_provenance_kinds:
+        metadata["required_provenance_kinds"] = required_provenance_kinds
     if not any(
         metadata[key]
         for key in (
@@ -970,8 +1027,11 @@ def _build_claim_reasoning_theorem_export_metadata(
             "event_ids",
             "temporal_fact_ids",
             "temporal_relation_ids",
+            "timeline_anchor_ids",
             "timeline_issue_ids",
             "temporal_issue_ids",
+            "missing_temporal_predicates",
+            "required_provenance_kinds",
             "temporal_proof_bundle_ids",
             "temporal_proof_objectives",
         )
