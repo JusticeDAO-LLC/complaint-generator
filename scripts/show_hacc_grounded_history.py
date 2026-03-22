@@ -171,8 +171,12 @@ def _best_resume_candidate(runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
         )
         resume_command_kind = "synthesize"
     else:
-        resume_command = inspect_command
-        resume_command_kind = "inspect"
+        resume_command = (
+            f"python scripts/run_hacc_grounded_pipeline.py --output-dir {run_dir}"
+            if run_dir
+            else ""
+        )
+        resume_command_kind = "rerun"
     return {
         "run_name": str(best_run.get("run_name") or ""),
         "run_dir": run_dir,
@@ -216,6 +220,8 @@ def _render_grounded_run_list(
             label = "Resume command"
             if resume_command_kind == "inspect":
                 label = "Next command"
+            elif resume_command_kind == "rerun":
+                label = "Grounded rerun command"
             elif resume_command_kind == "synthesize":
                 label = "Synthesis command"
             lines.append(f"{label}: {resume_command}")

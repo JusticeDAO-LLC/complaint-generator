@@ -321,6 +321,31 @@ def test_best_resume_candidate_falls_back_to_inspection_for_pre_follow_up_runs()
     )
 
     assert candidate["run_name"] == "20260322_120000"
-    assert candidate["resume_command_kind"] == "inspect"
+    assert candidate["resume_command_kind"] == "rerun"
     assert candidate["inspect_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_120000"
-    assert candidate["resume_command"] == candidate["inspect_command"]
+    assert candidate["resume_command"] == "python scripts/run_hacc_grounded_pipeline.py --output-dir /tmp/20260322_120000"
+
+
+def test_main_list_runs_prints_rerun_command_for_pre_follow_up_candidate(tmp_path, capsys):
+    cli = _load_cli_module()
+    grounded_run = tmp_path / "20260322_120000"
+    grounded_run.mkdir()
+    (grounded_run / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "pre_grounded_follow_up",
+                "effective_next_action": {"action": "upload_local_repository_evidence"},
+                "grounded_follow_up_answer_count": 0,
+                "has_refreshed_grounding_state": False,
+                "has_persisted_completed_grounded_worksheet": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = cli.main(["--grounded-root", str(tmp_path), "--list-runs"])
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert "Grounded rerun command:" in captured.out
+    assert "python scripts/run_hacc_grounded_pipeline.py --output-dir" in captured.out
