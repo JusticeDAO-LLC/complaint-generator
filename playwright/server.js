@@ -7,7 +7,18 @@ const root = path.resolve(__dirname, '..');
 const templatesDir = path.join(root, 'templates');
 const staticDir = path.join(root, 'static');
 const sdkPreviewPath = path.join(root, 'ipfs_datasets_py', 'ipfs_accelerate_py', 'SDK_PLAYGROUND_PREVIEW.html');
+const ipfsDatasetsTemplatesDir = path.join(root, 'ipfs_datasets_py', 'ipfs_datasets_py', 'templates');
+const ipfsDatasetsStaticDir = path.join(root, 'ipfs_datasets_py', 'ipfs_datasets_py', 'static');
 const port = 19000;
+
+const dashboardEntries = [
+  {
+    slug: 'mcp',
+    title: 'IPFS Datasets MCP Dashboard',
+    templateName: 'mcp_dashboard.html',
+    summary: 'Primary MCP datasets console.',
+  },
+];
 
 const profileData = {
   hashed_username: 'demo-user',
@@ -78,6 +89,72 @@ function template(name) {
   return path.join(templatesDir, name);
 }
 
+function ipfsTemplate(name) {
+  return path.join(ipfsDatasetsTemplatesDir, name);
+}
+
+function renderDashboardHub() {
+  const links = dashboardEntries.map((entry) => (
+    `<li><a href="/dashboards/ipfs-datasets/${entry.slug}">${entry.title}</a><span>${entry.summary}</span></li>`
+  )).join('');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unified Dashboard Hub</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f2; color: #122033; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 24px 48px; }
+    .card { background: white; border-radius: 18px; padding: 24px; box-shadow: 0 12px 28px rgba(18, 32, 51, 0.08); }
+    ul { padding-left: 20px; }
+    li { margin: 12px 0; }
+    span { display: block; color: #536471; margin-top: 4px; }
+    a { color: #0a4f66; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>Unified Dashboard Hub</h1>
+      <p>One complaint-generator website entry point for compatibility dashboard previews.</p>
+      <ul>${links}</ul>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function renderDashboardShell(entry) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${entry.title} | Complaint Generator Dashboard Shell</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f6f4ef; color: #122033; }
+    header { padding: 20px 24px; background: linear-gradient(135deg, #14324a, #204f6d); color: white; }
+    main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .card { background: white; border-radius: 18px; padding: 20px; box-shadow: 0 12px 28px rgba(18, 32, 51, 0.08); }
+    iframe { width: 100%; min-height: 900px; border: 0; border-radius: 18px; background: white; margin-top: 18px; }
+    a { color: #0a4f66; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header>Complaint Generator Unified Dashboards</header>
+  <main>
+    <section class="card">
+      <h1>${entry.title}</h1>
+      <p>${entry.summary}</p>
+      <p><a href="/dashboards/raw/ipfs-datasets/${entry.slug}" target="_blank" rel="noopener">Open raw dashboard</a></p>
+      <iframe src="/dashboards/raw/ipfs-datasets/${entry.slug}" title="${entry.title}"></iframe>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 const routes = new Map([
   ['/', template('index.html')],
   ['/home', template('home.html')],
@@ -137,8 +214,38 @@ const server = http.createServer(async (request, response) => {
     return sendFile(response, sdkPreviewPath);
   }
 
+  if (request.method === 'GET' && url.pathname === '/dashboards') {
+    return sendText(response, renderDashboardHub(), 'text/html; charset=utf-8');
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/dashboards/ipfs-datasets/')) {
+    const slug = url.pathname.replace('/dashboards/ipfs-datasets/', '');
+    const entry = dashboardEntries.find((item) => item.slug === slug);
+    if (!entry) {
+      response.writeHead(404);
+      response.end('Not found');
+      return;
+    }
+    return sendText(response, renderDashboardShell(entry), 'text/html; charset=utf-8');
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/dashboards/raw/ipfs-datasets/')) {
+    const slug = url.pathname.replace('/dashboards/raw/ipfs-datasets/', '');
+    const entry = dashboardEntries.find((item) => item.slug === slug);
+    if (!entry) {
+      response.writeHead(404);
+      response.end('Not found');
+      return;
+    }
+    return sendFile(response, ipfsTemplate(entry.templateName));
+  }
+
   if (request.method === 'GET' && url.pathname.startsWith('/static/')) {
     return sendFile(response, path.join(staticDir, url.pathname.replace('/static/', '')));
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/ipfs-datasets-static/')) {
+    return sendFile(response, path.join(ipfsDatasetsStaticDir, url.pathname.replace('/ipfs-datasets-static/', '')));
   }
 
   if (request.method === 'GET' && routes.has(url.pathname)) {

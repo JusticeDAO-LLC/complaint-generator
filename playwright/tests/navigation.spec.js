@@ -19,6 +19,8 @@ test.describe('website surface navigation', () => {
       ['/claim-support-review', /Operator Review Surface/i],
       ['/document/optimization-trace', /Optimization Trace Viewer/i],
       ['/ipfs-datasets/sdk-playground', /SDK Playground Preview|SDK Playground/i],
+      ['/dashboards', /Unified Dashboard Hub/i],
+      ['/dashboards/ipfs-datasets/mcp', /IPFS Datasets MCP Dashboard/i],
     ];
 
     for (const [path, heading] of routes) {
@@ -47,6 +49,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
     await expect(page.locator('a[href="/mlwysiwyg"]').first()).toBeVisible();
     await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/dashboards"]').first()).toBeVisible();
   });
 
   test('document and dashboard remain mutually navigable as one website', async ({ page }) => {
@@ -73,5 +76,15 @@ test.describe('website surface navigation', () => {
     await page.locator('a[href="/document"]').first().click();
     await expect(page).toHaveURL(/\/document/);
     await expect(page.locator('body')).toContainText(/Formal Complaint Builder/i);
+  });
+
+  test('dashboard hub and shell routes are reachable in the JS stub surface', async ({ page }) => {
+    await page.goto('/dashboards');
+    await expect(page.locator('body')).toContainText(/Unified Dashboard Hub/i);
+    await page.locator('a[href="/dashboards/ipfs-datasets/mcp"]').first().click();
+
+    await expect(page).toHaveURL(/\/dashboards\/ipfs-datasets\/mcp/);
+    await expect(page.locator('body')).toContainText(/IPFS Datasets MCP Dashboard/i);
+    await expect(page.locator('iframe')).toBeVisible();
   });
 });
