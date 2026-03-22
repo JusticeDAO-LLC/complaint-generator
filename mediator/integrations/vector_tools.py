@@ -1,4 +1,5 @@
-import importlib
+import importlib.util
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 
@@ -23,8 +24,25 @@ class VectorRetrievalAugmentor:
     @staticmethod
     def _module_available(module_name: str) -> bool:
         try:
-            importlib.import_module(module_name)
-            return True
+            top_level, _, remainder = str(module_name or "").partition(".")
+            if not top_level:
+                return False
+            top_level_spec = importlib.util.find_spec(top_level)
+            if top_level_spec is None:
+                return False
+            if not remainder:
+                return True
+            search_locations = list(top_level_spec.submodule_search_locations or [])
+            if not search_locations:
+                return False
+            relative_parts = remainder.split(".")
+            for base_dir in search_locations:
+                candidate = Path(base_dir).joinpath(*relative_parts)
+                if candidate.is_dir() and (candidate / "__init__.py").exists():
+                    return True
+                if candidate.with_suffix(".py").exists():
+                    return True
+            return False
         except Exception:
             return False
 

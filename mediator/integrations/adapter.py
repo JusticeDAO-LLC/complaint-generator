@@ -1,16 +1,49 @@
-import importlib
+import importlib.util
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from .contracts import CapabilityCatalog, CapabilityStatus, NormalizedRetrievalRecord
 from .settings import IntegrationFeatureFlags
 
 
+def _module_path_available(module_name: str) -> tuple[bool, str]:
+    top_level, _, remainder = str(module_name or "").partition(".")
+    if not top_level:
+        return False, "Module name missing"
+
+    try:
+        top_level_spec = importlib.util.find_spec(top_level)
+    except Exception as exc:
+        return False, f"{top_level}: {exc}"
+
+    if top_level_spec is None:
+        return False, f"{top_level}: spec not found"
+
+    if not remainder:
+        return True, ""
+
+    search_locations = list(top_level_spec.submodule_search_locations or [])
+    if not search_locations:
+        return False, f"{top_level}: not a package"
+
+    relative_parts = remainder.split(".")
+    for base_dir in search_locations:
+        candidate = Path(base_dir).joinpath(*relative_parts)
+        if candidate.is_dir() and (candidate / "__init__.py").exists():
+            return True, ""
+        if candidate.with_suffix(".py").exists():
+            return True, ""
+    return False, f"{module_name}: path not found"
+
+
 def _module_available(module_names: Iterable[str]) -> CapabilityStatus:
     errors: List[str] = []
     for module_name in module_names:
         try:
-            importlib.import_module(module_name)
-            return CapabilityStatus(name=module_name, available=True)
+            available, detail = _module_path_available(module_name)
+            if available:
+                return CapabilityStatus(name=module_name, available=True)
+            errors.append(detail or f"{module_name}: unavailable")
         except Exception as exc:
             errors.append(f"{module_name}: {exc}")
     details = "; ".join(errors[:2]) if errors else "Module not found"

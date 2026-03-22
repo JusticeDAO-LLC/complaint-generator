@@ -7,7 +7,7 @@ Manages a single adversarial training session between complainant and mediator.
 import logging
 import re
 from contextlib import contextmanager
-from typing import Dict, Any, List, Set, Sequence
+from typing import Dict, Any, List, Set, Sequence, Callable, Optional
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import time
@@ -95,7 +95,8 @@ class AdversarialSession:
                   complainant: Any,  # Complainant instance
                   mediator: Any,  # Mediator instance
                   critic: Any,  # Critic instance
-                max_turns: int = 12):
+                max_turns: int = 12,
+                progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None):
         """
         Initialize adversarial session.
         
@@ -111,10 +112,23 @@ class AdversarialSession:
         self.mediator = mediator
         self.critic = critic
         self.max_turns = max_turns
+        self.progress_callback = progress_callback
         
         self.conversation_history = []
         self.start_time = None
         self.end_time = None
+
+    def _emit_progress(self, stage: str, *, metadata: Optional[Dict[str, Any]] = None) -> None:
+        if not callable(self.progress_callback):
+            return
+        self.progress_callback(
+            {
+                'session_id': self.session_id,
+                'stage': str(stage or ''),
+                'timestamp': datetime.now(UTC).isoformat(),
+                'metadata': metadata or {},
+            }
+        )
 
     @staticmethod
     def _extract_question_text(question: Any) -> str:
@@ -4309,11 +4323,19 @@ class AdversarialSession:
         try:
             # Step 1: Generate initial complaint
             initial_complaint = self.complainant.generate_initial_complaint(seed_complaint)
+            self._emit_progress(
+                'initial_complaint_generated',
+                metadata={'complaint_length': len(initial_complaint or '')},
+            )
             logger.debug(f"Initial complaint generated: {initial_complaint[:100]}...")
             
             # Step 2: Initialize mediator with complaint
             with self._temporarily_prioritize_mediator_intake_objectives(seed_complaint):
                 result = self.mediator.start_three_phase_process(initial_complaint)
+            self._emit_progress(
+                'mediator_initialized',
+                metadata={'initial_question_count': len(list((result or {}).get('initial_questions', []) or [])) if isinstance(result, dict) else 0},
+            )
             if isinstance(result, dict):
                 result['initial_questions'] = self._inject_intake_prompt_questions(
                     seed_complaint,
@@ -4500,8 +4522,23 @@ class AdversarialSession:
                         if self._has_empathy_prefix(question_text)
                         else f"{empathic_prefix} {question_text}".strip()
                     )
+                self._emit_progress(
+                    'awaiting_complainant_answer',
+                    metadata={
+                        'turn_index': turns + 1,
+                        'question_objective': question_objective,
+                        'question_preview': question_text[:160],
+                    },
+                )
                 answer = self.complainant.respond_to_question(
                     complainant_prompt
+                )
+                self._emit_progress(
+                    'complainant_answer_received',
+                    metadata={
+                        'turn_index': turns + 1,
+                        'answer_length': len(answer or ''),
+                    },
                 )
                 logger.debug(f"Complainant answers: {answer[:100]}...")
 
@@ -4545,6 +4582,14 @@ class AdversarialSession:
                 
                 # Process answer with mediator
                 result = self.mediator.process_denoising_answer(question, answer)
+                self._emit_progress(
+                    'turn_processed',
+                    metadata={
+                        'turn_index': turns + 1,
+                        'questions_asked': questions_asked + 1,
+                        'converged': bool(result.get('converged', False) or result.get('ready_for_evidence_phase', False)),
+                    },
+                )
 
                 asked_question_keys.add(question_key)
                 asked_question_counts[question_key] = asked_question_counts.get(question_key, 0) + 1
@@ -4620,6 +4665,13 @@ class AdversarialSession:
                         'document_generation': self._compact_document_generation_result(document_generation_result),
                     }
                 final_state['grounding_summary'] = self._build_grounding_summary(seed_complaint, final_state)
+            self._emit_progress(
+                'final_state_built',
+                metadata={
+                    'has_final_state': isinstance(final_state, dict),
+                    'final_state_keys': sorted(list(final_state.keys()))[:20] if isinstance(final_state, dict) else [],
+                },
+            )
 
             refreshed_intake_case_file_snapshot = (
                 self._refresh_final_intake_case_file_snapshot()
@@ -4675,6 +4727,10 @@ class AdversarialSession:
                 final_state,
                 context=seed_complaint
             )
+            self._emit_progress(
+                'critic_evaluated',
+                metadata={'overall_score': float(getattr(critic_score, 'overall_score', 0.0) or 0.0)},
+            )
             
             self.end_time = time.time()
             duration = self.end_time - self.start_time
@@ -4700,6 +4756,10 @@ class AdversarialSession:
             
             logger.info(f"Session {self.session_id} completed successfully. "
                        f"Score: {critic_score.overall_score:.3f}")
+            self._emit_progress(
+                'session_completed',
+                metadata={'success': True, 'overall_score': float(getattr(critic_score, 'overall_score', 0.0) or 0.0)},
+            )
             
             return result
             
@@ -4707,6 +4767,10 @@ class AdversarialSession:
             logger.error(f"Session {self.session_id} failed: {e}", exc_info=True)
             self.end_time = time.time()
             duration = self.end_time - self.start_time if self.start_time else 0
+            self._emit_progress(
+                'session_failed',
+                metadata={'success': False, 'error': str(e)},
+            )
             
             return SessionResult(
                 session_id=self.session_id,

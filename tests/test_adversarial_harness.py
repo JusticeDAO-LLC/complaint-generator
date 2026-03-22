@@ -2001,6 +2001,43 @@ class TestAdversarialHarness:
         assert captured[0]['mime_type'] == 'text/plain'
         assert captured[0]['metadata']['upload_strategy'] == 'extracted_text_fallback'
 
+    def test_run_batch_writes_progress_callback_and_session_progress(self, tmp_path):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1,
+            session_state_dir=str(tmp_path / "sessions"),
+        )
+
+        progress_events = []
+        seeds = [
+            {
+                'type': 'housing_discrimination',
+                'summary': 'Grounded complaint seed',
+                'key_facts': {},
+            }
+        ]
+
+        results = harness.run_batch(
+            num_sessions=1,
+            seed_complaints=seeds,
+            max_turns_per_session=1,
+            progress_callback=lambda payload: progress_events.append(json.loads(json.dumps(payload))),
+        )
+
+        assert len(results) == 1
+        assert progress_events
+        assert progress_events[0]['status'] == 'running'
+        assert progress_events[-1]['status'] == 'completed'
+        session_id = results[0].session_id
+        progress_path = tmp_path / "sessions" / session_id / "progress.json"
+        assert progress_path.exists()
+        session_progress = json.loads(progress_path.read_text(encoding='utf-8'))
+        assert session_progress['session_id'] == session_id
+        assert session_progress['stage'] == 'completed'
+        assert session_progress['status'] == 'completed'
+
     def test_ensure_session_db_paths_rebinds_shared_storage_hooks(self):
         harness = AdversarialHarness(
             MockLLMBackend(),

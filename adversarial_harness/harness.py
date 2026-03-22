@@ -464,7 +464,57 @@ class AdversarialHarness:
                 f.write(json.dumps(line, ensure_ascii=False) + '\n')
 
         logger.info('Session artifacts saved to %s', session_dir)
-    
+
+    def _write_session_progress(
+        self,
+        session_id: str,
+        *,
+        stage: str,
+        status: str,
+        session_dir: str | None = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not self.session_state_dir:
+            return
+        resolved_session_dir = session_dir or self._get_session_dir(session_id)
+        if not resolved_session_dir:
+            return
+        os.makedirs(resolved_session_dir, exist_ok=True)
+        payload = {
+            'session_id': session_id,
+            'stage': str(stage or ''),
+            'status': str(status or ''),
+            'timestamp': datetime.now(UTC).isoformat(),
+            'metadata': metadata or {},
+        }
+        with open(os.path.join(resolved_session_dir, 'progress.json'), 'w', encoding='utf-8') as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+    def _emit_batch_progress(
+        self,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]],
+        *,
+        status: str,
+        total_sessions: int,
+        completed_sessions: int,
+        successful_sessions: int,
+        failed_sessions: int,
+        active_session_ids: List[str],
+        latest_session: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not callable(progress_callback):
+            return
+        progress_callback({
+            'status': str(status or ''),
+            'timestamp': datetime.now(UTC).isoformat(),
+            'total_sessions': int(total_sessions or 0),
+            'completed_sessions': int(completed_sessions or 0),
+            'successful_sessions': int(successful_sessions or 0),
+            'failed_sessions': int(failed_sessions or 0),
+            'active_session_ids': [str(value) for value in list(active_session_ids or []) if str(value)],
+            'latest_session': dict(latest_session or {}),
+        })
+
     def run_batch(self,
                    num_sessions: int = 10,
                    seed_complaints: List[Dict[str, Any]] = None,
@@ -475,7 +525,8 @@ class AdversarialHarness:
                   hacc_preset: str | None = None,
                   hacc_query_specs: List[Dict[str, Any]] | None = None,
                   use_hacc_vector_search: bool = False,
-                  hacc_search_mode: str = 'package') -> List[SessionResult]:
+                  hacc_search_mode: str = 'package',
+                  progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> List[SessionResult]:
         """
         Run a batch of adversarial sessions in parallel.
         
@@ -526,10 +577,21 @@ class AdversarialHarness:
                 'use_hacc_vector_search': use_hacc_vector_search,
                 'hacc_search_mode': hacc_search_mode,
             })
-        
+
+        self._emit_batch_progress(
+            progress_callback,
+            status='running',
+            total_sessions=num_sessions,
+            completed_sessions=0,
+            successful_sessions=0,
+            failed_sessions=0,
+            active_session_ids=[],
+        )
+
         # Run sessions in parallel while allowing completed results to steer later seeds.
         results = []
         pending_specs = list(session_specs)
+        active_session_ids: List[str] = []
         with ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
             future_to_spec = {}
 
@@ -544,6 +606,20 @@ class AdversarialHarness:
                         'seed': self._merge_optimizer_feedback(next_spec['seed'], feedback),
                     }
                 future_to_spec[executor.submit(self._run_single_session, next_spec)] = next_spec
+                active_session_ids.append(str(next_spec['session_id']))
+                self._emit_batch_progress(
+                    progress_callback,
+                    status='running',
+                    total_sessions=num_sessions,
+                    completed_sessions=len(results),
+                    successful_sessions=len([r for r in results if r.success]),
+                    failed_sessions=len([r for r in results if not r.success]),
+                    active_session_ids=active_session_ids,
+                    latest_session={
+                        'session_id': str(next_spec['session_id']),
+                        'status': 'started',
+                    },
+                )
 
             for _ in range(min(self.max_parallel, len(pending_specs))):
                 submit_next_spec()
@@ -558,6 +634,7 @@ class AdversarialHarness:
                         results.append(result)
                         self._persist_session(result)
                         completed += 1
+                        active_session_ids = [value for value in active_session_ids if value != str(spec['session_id'])]
 
                         if result.success:
                             logger.info(f"Session {spec['session_id']} completed ({completed}/{num_sessions}). "
@@ -565,14 +642,54 @@ class AdversarialHarness:
                         else:
                             logger.warning(f"Session {spec['session_id']} failed ({completed}/{num_sessions}): "
                                          f"{result.error}")
+                        self._emit_batch_progress(
+                            progress_callback,
+                            status='running' if completed < num_sessions else 'completed',
+                            total_sessions=num_sessions,
+                            completed_sessions=completed,
+                            successful_sessions=len([r for r in results if r.success]),
+                            failed_sessions=len([r for r in results if not r.success]),
+                            active_session_ids=active_session_ids,
+                            latest_session={
+                                'session_id': str(spec['session_id']),
+                                'status': 'completed',
+                                'success': bool(result.success),
+                                'error': str(result.error or ''),
+                            },
+                        )
                     except Exception as e:
                         logger.error(f"Error in session {spec['session_id']}: {e}")
                         completed += 1
+                        active_session_ids = [value for value in active_session_ids if value != str(spec['session_id'])]
+                        self._emit_batch_progress(
+                            progress_callback,
+                            status='running' if completed < num_sessions else 'completed',
+                            total_sessions=num_sessions,
+                            completed_sessions=completed,
+                            successful_sessions=len([r for r in results if r.success]),
+                            failed_sessions=len([r for r in results if not r.success]) + 1,
+                            active_session_ids=active_session_ids,
+                            latest_session={
+                                'session_id': str(spec['session_id']),
+                                'status': 'error',
+                                'success': False,
+                                'error': str(e),
+                            },
+                        )
                     submit_next_spec()
-        
+
         self.results.extend(results)
         logger.info(f"Batch complete. {len([r for r in results if r.success])}/{num_sessions} successful")
-        
+        self._emit_batch_progress(
+            progress_callback,
+            status='completed',
+            total_sessions=num_sessions,
+            completed_sessions=len(results),
+            successful_sessions=len([r for r in results if r.success]),
+            failed_sessions=len([r for r in results if not r.success]),
+            active_session_ids=[],
+        )
+
         return results
     
     def _run_single_session(self, spec: Dict[str, Any]) -> SessionResult:
@@ -581,6 +698,13 @@ class AdversarialHarness:
             session_dir = self._get_session_dir(spec['session_id'])
             if session_dir:
                 os.makedirs(session_dir, exist_ok=True)
+            self._write_session_progress(
+                spec['session_id'],
+                stage='initializing',
+                status='running',
+                session_dir=session_dir,
+                metadata={'personality': spec.get('personality', ''), 'max_turns': int(spec.get('max_turns', 0) or 0)},
+            )
 
             complainant_backend = self.llm_backend_complainant
             if callable(self.llm_backend_complainant_factory):
@@ -640,10 +764,23 @@ class AdversarialHarness:
                 legal_authority_db_path=legal_authority_db_path,
                 claim_support_db_path=claim_support_db_path,
             )
+            self._write_session_progress(
+                spec['session_id'],
+                stage='mediator_ready',
+                status='running',
+                session_dir=session_dir,
+            )
             preloaded_evidence = self._preload_hacc_seed_evidence(
                 mediator,
                 spec['seed'],
                 session_id=spec['session_id'],
+            )
+            self._write_session_progress(
+                spec['session_id'],
+                stage='evidence_preloaded',
+                status='running',
+                session_dir=session_dir,
+                metadata={'preloaded_evidence_count': len(preloaded_evidence)},
             )
             if preloaded_evidence and isinstance(spec['seed'], dict):
                 spec['seed'].setdefault('_meta', {})
@@ -662,14 +799,40 @@ class AdversarialHarness:
                 complainant=complainant,
                 mediator=mediator,
                 critic=critic,
-                max_turns=spec['max_turns']
+                max_turns=spec['max_turns'],
+                progress_callback=lambda payload: self._write_session_progress(
+                    spec['session_id'],
+                    stage=str((payload or {}).get('stage') or 'session_running'),
+                    status='running',
+                    session_dir=session_dir,
+                    metadata=dict((payload or {}).get('metadata') or {}),
+                ),
             )
-            
+            self._write_session_progress(
+                spec['session_id'],
+                stage='session_running',
+                status='running',
+                session_dir=session_dir,
+            )
             result = session.run(spec['seed'])
+            self._write_session_progress(
+                spec['session_id'],
+                stage='completed',
+                status='completed',
+                session_dir=session_dir,
+                metadata={'success': bool(result.success), 'error': str(result.error or '')},
+            )
             return result
             
         except Exception as e:
             logger.error(f"Error running session {spec['session_id']}: {e}", exc_info=True)
+            self._write_session_progress(
+                spec['session_id'],
+                stage='failed',
+                status='failed',
+                session_dir=self._get_session_dir(spec['session_id']),
+                metadata={'error': str(e)},
+            )
             return SessionResult(
                 session_id=spec['session_id'],
                 timestamp=datetime.now(UTC).isoformat(),

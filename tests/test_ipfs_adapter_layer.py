@@ -2,10 +2,10 @@
 
 from io import BytesIO
 import json
+import tempfile
 import integrations.ipfs_datasets.vector_store as vector_store_module
 import integrations.ipfs_datasets as adapter
 from pathlib import Path
-import tempfile
 from unittest.mock import Mock, patch
 import zipfile
 
@@ -62,6 +62,32 @@ from integrations.ipfs_datasets.vector_store import (
     search_vector_index,
 )
 from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend, ensure_ipfs_backend
+from mediator.integrations import adapter as mediator_adapter_module
+
+
+def test_mediator_adapter_capability_detection_uses_module_paths_without_importing():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        package_root = Path(tmpdir) / "ipfs_datasets_py"
+        search_root = package_root / "search"
+        package_root.mkdir()
+        search_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+        (search_root / "__init__.py").write_text("", encoding="utf-8")
+        (search_root / "search_embeddings.py").write_text("", encoding="utf-8")
+
+        fake_spec = type(
+            "FakeSpec",
+            (),
+            {"submodule_search_locations": [str(package_root)]},
+        )()
+
+        with patch("mediator.integrations.adapter.importlib.util.find_spec", return_value=fake_spec):
+            status = mediator_adapter_module._module_available(
+                ["ipfs_datasets_py.search.search_embeddings"]
+            )
+
+    assert status.available is True
+    assert status.name == "ipfs_datasets_py.search.search_embeddings"
 
 
 def test_capability_registry_has_expected_keys():

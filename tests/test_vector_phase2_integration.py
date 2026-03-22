@@ -1,3 +1,7 @@
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
+
 from mediator.integrations.vector_tools import VectorRetrievalAugmentor
 
 
@@ -55,3 +59,22 @@ def test_vector_augmentor_applies_evidence_context_similarity_metadata():
     assert augmented[0]["metadata"]["evidence_similarity_overlap"] > 0
     assert augmented[0]["metadata"]["evidence_similarity_score"] > 0.0
     assert augmented[0]["metadata"]["evidence_similarity_boost"] > 0.0
+
+
+def test_vector_augmentor_capability_detection_uses_module_paths_without_importing():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        package_root = Path(tmpdir) / "ipfs_datasets_py"
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+        (package_root / "embeddings_router.py").write_text("", encoding="utf-8")
+
+        fake_spec = type(
+            "FakeSpec",
+            (),
+            {"submodule_search_locations": [str(package_root)]},
+        )()
+
+        with patch("mediator.integrations.vector_tools.importlib.util.find_spec", return_value=fake_spec):
+            augmentor = VectorRetrievalAugmentor()
+
+    assert augmentor.capabilities()["embeddings_available"] is True
