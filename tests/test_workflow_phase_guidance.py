@@ -44,6 +44,32 @@ def test_build_graph_analysis_phase_guidance_supports_review_and_drafting_audien
     ]
 
 
+def test_build_graph_analysis_phase_guidance_elevates_temporal_issue_registry_gaps():
+    phase_data = {
+        (ComplaintPhase.INTAKE, "knowledge_graph"): {"nodes": ["claim"]},
+        (ComplaintPhase.INTAKE, "dependency_graph"): {"edges": ["support"]},
+        (ComplaintPhase.INTAKE, "current_gaps"): [],
+        (ComplaintPhase.INTAKE, "remaining_gaps"): 0,
+        (ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced"): True,
+        (ComplaintPhase.INTAKE, "intake_case_file"): {
+            "temporal_issue_registry": [
+                {"status": "open", "summary": "Need tighter chronology anchor."},
+                {"status": "resolved", "summary": "Protected activity chronology resolved."},
+            ]
+        },
+    }
+
+    phase_manager = SimpleNamespace(get_phase_data=lambda phase, key: phase_data.get((phase, key)))
+
+    phase = build_graph_analysis_phase_guidance(phase_manager, audience="drafting")
+
+    assert phase["status"] == "warning"
+    assert "Chronology review still shows 1 unresolved temporal issue(s)" in phase["summary"]
+    assert phase["signals"]["unresolved_temporal_issue_count"] == 1
+    assert phase["signals"]["resolved_temporal_issue_count"] == 1
+    assert any("Anchor protected activity" in action for action in phase["recommended_actions"])
+
+
 def test_build_workflow_phase_plan_orders_and_warns_by_status_priority():
     plan = build_workflow_phase_plan(
         {
@@ -131,6 +157,31 @@ def test_document_generation_phase_guidance_supports_review_and_drafting_context
         "Run another document-optimization pass or accept the draft with recorded review warnings.",
     ]
     assert drafting_phase["signals"]["optimization_final_score"] == 0.62
+
+
+def test_review_document_generation_phase_guidance_flags_missing_proof_artifacts():
+    review_phase = build_review_document_generation_phase_guidance(
+        intake_status={"next_action": {"action": "generate_formal_complaint"}},
+        intake_case_summary={
+            "claim_support_packet_summary": {
+                "proof_readiness_score": 0.9,
+                "claim_support_unresolved_temporal_issue_count": 0,
+                "claim_support_unresolved_without_review_path_count": 0,
+            },
+            "workflow_optimization_guidance": {
+                "claim_reasoning_review": {
+                    "retaliation": {
+                        "proof_artifact_status_counts": {"missing": 2},
+                    }
+                }
+            },
+        },
+    )
+
+    assert review_phase["status"] == "warning"
+    assert "Proof review still shows 2 missing decision or notice artifact(s)." in review_phase["summary"]
+    assert review_phase["signals"]["missing_proof_artifact_count"] == 2
+    assert any("denial notice" in action for action in review_phase["recommended_actions"])
 
 
 def test_resolve_prioritized_workflow_phase_normalizes_phase_context():

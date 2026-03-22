@@ -1835,6 +1835,7 @@ def test_document_review_workflow_phase_priority_surfaces_resolved_chronology_hi
         'workflow phase: Graph Analysis',
         'phase status: Warning',
         'recommended action: Resolve remaining intake graph gaps and refresh graph projections before filing.',
+        'unresolved chronology issues: 1',
         'resolved chronology issues: 1',
     ]
 
@@ -1899,6 +1900,11 @@ def test_document_package_adds_claim_temporal_gap_hints(tmp_path):
     assert 'Chronology gap: Timeline fact fact:2 only has relative ordering and still needs anchoring.' in missing_elements
     assert 'Chronology gap: Protected activity and adverse action still need tighter causation sequencing.' in missing_elements
     assert result['draft']['claims_for_relief'][0]['support_summary']['temporal_gap_hint_count'] == 2
+    assert result['drafting_readiness']['claims'][0]['temporal_gap_hint_count'] == 2
+    assert any(
+        warning.get('code') == 'chronology_gaps_present'
+        for warning in result['drafting_readiness']['claims'][0]['warnings']
+    )
 
 
 def test_document_package_uses_claim_reasoning_proof_artifact_chronology_fallback(tmp_path):
@@ -1984,6 +1990,45 @@ def test_legacy_claim_fact_collection_includes_chronology_support():
     claim_facts = builder._collect_claim_facts('retaliation', 'Jane Doe', {})
 
     assert claim_facts[0] == 'The chronology shows protected activity on January 5, 2026 before adverse action on January 20, 2026.'
+
+
+def test_score_claims_section_penalizes_temporal_and_proof_gap_pressure():
+    optimizer = document_optimization.AgenticDocumentOptimizer(mediator=_build_seeded_mediator())
+    claims = [
+        {
+            'claim_type': 'retaliation',
+            'supporting_facts': ['Plaintiff reported discrimination to HR.', 'Defendant terminated Plaintiff two days later.'],
+        }
+    ]
+
+    baseline = optimizer._score_claims_section(
+        claims,
+        support_context={
+            'claims': [
+                {
+                    'claim_type': 'retaliation',
+                    'missing_elements': [],
+                    'temporal_gap_hint_count': 0,
+                    'proof_gap_count': 0,
+                }
+            ]
+        },
+    )
+    penalized = optimizer._score_claims_section(
+        claims,
+        support_context={
+            'claims': [
+                {
+                    'claim_type': 'retaliation',
+                    'missing_elements': [],
+                    'temporal_gap_hint_count': 2,
+                    'proof_gap_count': 1,
+                }
+            ]
+        },
+    )
+
+    assert penalized < baseline
 
 
 def test_legacy_builder_exposes_anchored_chronology_summary():

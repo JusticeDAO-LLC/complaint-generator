@@ -322,6 +322,11 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
     )
     for symbols in tertiary_constraints["target_symbols"].values():
         assert symbols
+    quaternary_constraints = document_task.metadata["workflow_phase_quaternary_constraints"]
+    assert "target_symbols" in quaternary_constraints
+    assert document_task.metadata["workflow_phase_quaternary_target_files"]
+    for symbols in quaternary_constraints["target_symbols"].values():
+        assert symbols
     intake_secondary_constraints = intake_task.metadata["workflow_phase_secondary_constraints"]
     complainant_symbols = next(
         symbols
@@ -339,6 +344,10 @@ def test_build_phase_patch_tasks_emits_all_workflow_steps_by_default():
         if path.endswith("knowledge_graph.py")
     )
     assert knowledge_graph_symbols == ["build_from_text"]
+    graph_quaternary_constraints = graph_task.metadata["workflow_phase_quaternary_constraints"]
+    if graph_quaternary_constraints.get("target_symbols"):
+        for symbols in graph_quaternary_constraints["target_symbols"].values():
+            assert symbols
     assert "document_optimization" in document_task.metadata["workflow_capabilities"]
 
 

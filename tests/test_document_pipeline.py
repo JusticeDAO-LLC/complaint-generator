@@ -1878,6 +1878,9 @@ def test_review_api_registers_formal_complaint_document_route():
             "follow_up_support_kind": None,
             "review_url": "/claim-support-review?claim_type=retaliation",
         }
+        assert response.json()["review_links"]["claims"][0]["chip_labels"] == [
+            "claim status: Ready",
+        ]
         assert response.json()["review_links"]["sections"] == []
         assert response.json()["filing_checklist"][0]["review_url"] == "/claim-support-review?claim_type=retaliation"
         assert response.json()["filing_checklist"][0]["review_context"] == {
@@ -2771,6 +2774,117 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "follow_up_support_kind": "authority",
             "review_url": "/claim-support-review?claim_type=employment+discrimination&section=claims_for_relief",
         }
+    finally:
+        artifact_path.unlink(missing_ok=True)
+
+
+def test_review_api_preserves_claim_level_chronology_and_proof_gap_signals():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "score": 0.61,
+            "ready_to_advance": False,
+            "remaining_gap_count": 1,
+            "contradiction_count": 0,
+            "blockers": ["collect_missing_timeline_details"],
+        },
+        "intake_contradictions": [],
+    }
+    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    artifact_path = DEFAULT_OUTPUT_DIR / 'claim-chronology-proof-signals.docx'
+    artifact_path.write_bytes(b'test artifact')
+    try:
+        mediator.build_formal_complaint_document_package.return_value = {
+            "draft": {"title": "Jane Doe v. Acme Corporation"},
+            "filing_checklist": [
+                {"scope": "claim", "key": "retaliation", "title": "Retaliation", "status": "warning", "summary": "Review Retaliation before filing."},
+            ],
+            "drafting_readiness": {
+                "status": "warning",
+                "sections": {
+                    "claims_for_relief": {"title": "Claims for Relief", "status": "warning", "warnings": []},
+                },
+                "claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "status": "warning",
+                        "temporal_gap_hint_count": 2,
+                        "proof_gap_count": 1,
+                        "warnings": [
+                            {
+                                "code": "chronology_gaps_present",
+                                "severity": "warning",
+                                "message": "Retaliation still has 2 chronology gap(s) that should be resolved before filing.",
+                            },
+                            {
+                                "code": "proof_gaps_present",
+                                "severity": "warning",
+                                "message": "Retaliation still has proof or failed-premise gaps.",
+                            },
+                        ],
+                    },
+                ],
+                "warning_count": 1,
+            },
+            "artifacts": {"docx": {"path": str(artifact_path), "filename": artifact_path.name, "size_bytes": artifact_path.stat().st_size}},
+            "output_formats": ["docx"],
+            "generated_at": "2026-03-12T12:00:00+00:00",
+        }
+
+        app = create_review_api_app(mediator)
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/documents/formal-complaint",
+            json={
+                "district": "District of Columbia",
+                "plaintiff_names": ["Jane Doe"],
+                "defendant_names": ["Acme Corporation"],
+                "output_formats": ["docx"],
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        claim_payload = payload["drafting_readiness"]["claims"][0]
+        assert claim_payload["claim_type"] == "retaliation"
+        assert claim_payload["temporal_gap_hint_count"] == 2
+        assert claim_payload["proof_gap_count"] == 1
+        assert claim_payload["chip_labels"] == [
+            "claim status: Warning",
+            "chronology gaps: 2",
+            "proof gaps: 1",
+        ]
+        assert payload["review_links"]["claims"][0]["chip_labels"] == [
+            "claim status: Warning",
+            "chronology gaps: 2",
+            "proof gaps: 1",
+        ]
+        assert claim_payload["review_context"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+        }
+        assert claim_payload["review_intent"] == {
+            "user_id": None,
+            "claim_type": "retaliation",
+            "section": None,
+            "follow_up_support_kind": None,
+            "review_url": "/claim-support-review?claim_type=retaliation",
+        }
+        assert any(
+            warning.get("code") == "chronology_gaps_present"
+            for warning in claim_payload["warnings"]
+        )
+        assert any(
+            warning.get("code") == "proof_gaps_present"
+            for warning in claim_payload["warnings"]
+        )
+        assert any(
+            warning.get("code") == "intake_blocker"
+            and warning.get("message") == "Intake blocker: collect_missing_timeline_details"
+            for warning in claim_payload["warnings"]
+        )
     finally:
         artifact_path.unlink(missing_ok=True)
 

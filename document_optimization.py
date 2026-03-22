@@ -2197,6 +2197,10 @@ class AgenticDocumentOptimizer:
                     "claim_type": claim_type,
                     "missing_elements": missing_elements,
                     "partially_supported_elements": self._extract_element_texts(overview_claim.get("partially_supported")),
+                    "proof_gap_count": int(readiness_entry.get("proof_gap_count") or 0),
+                    "temporal_gap_hint_count": int(
+                        claim.get("support_summary", {}).get("temporal_gap_hint_count") or len(temporal_gap_hints)
+                    ),
                     "support_summary": {
                         "total_elements": int(support_summary.get("total_elements") or claim.get("support_summary", {}).get("total_elements") or 0),
                         "covered_elements": int(support_summary.get("covered_elements") or claim.get("support_summary", {}).get("covered_elements") or 0),
@@ -3555,6 +3559,8 @@ class AgenticDocumentOptimizer:
             for context in support_context.get("claims", []):
                 if isinstance(context, dict) and str(context.get("claim_type") or "").strip() == claim_type:
                     unresolved_penalty += 0.08 * len(context.get("missing_elements") or [])
+                    unresolved_penalty += 0.08 * int(context.get("temporal_gap_hint_count") or 0)
+                    unresolved_penalty += 0.1 * int(context.get("proof_gap_count") or 0)
         coverage = supported_claims / max(len(claims), 1)
         return _clamp(coverage - unresolved_penalty + 0.2)
 

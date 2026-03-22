@@ -326,14 +326,25 @@ def _build_document_review_workflow_phase_priority(
         if isinstance(intake_case_summary, dict) and isinstance(intake_case_summary.get("temporal_issue_registry_summary"), dict)
         else {}
     )
+    unresolved_registry_temporal_issue_count = int(temporal_issue_registry_summary.get("unresolved_count") or 0)
     resolved_temporal_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
     chip_labels = [
         f"workflow phase: {humanize_workflow_priority_label(prioritized_phase_name)}",
         f"phase status: {humanize_workflow_priority_label(prioritized_status)}",
         *([f"recommended action: {primary_recommended_action}"] if primary_recommended_action else []),
     ]
+    prioritized_signals = dict(prioritized_phase_context.get("signals") or {})
+    unresolved_temporal_issue_count = max(
+        int(prioritized_signals.get("unresolved_temporal_issue_count") or 0),
+        unresolved_registry_temporal_issue_count,
+    )
+    missing_proof_artifact_count = int(prioritized_signals.get("missing_proof_artifact_count") or 0)
+    if unresolved_temporal_issue_count > 0:
+        chip_labels.append(f"unresolved chronology issues: {unresolved_temporal_issue_count}")
     if resolved_temporal_issue_count > 0:
         chip_labels.append(f"resolved chronology issues: {resolved_temporal_issue_count}")
+    if missing_proof_artifact_count > 0:
+        chip_labels.append(f"missing proof artifacts: {missing_proof_artifact_count}")
 
     return {
         "phase_name": prioritized_phase_name,
@@ -944,6 +955,34 @@ def _section_claim_types(section_key: str, claim_types: List[str]) -> List[str]:
     return claim_types if section_key in claim_oriented_sections else []
 
 
+def _build_claim_review_chip_labels(claim: Dict[str, Any]) -> List[str]:
+    if not isinstance(claim, dict):
+        return []
+
+    chip_labels: List[str] = []
+    claim_status = str(claim.get("status") or "").strip().lower()
+    if claim_status:
+        chip_labels.append(f"claim status: {humanize_workflow_priority_label(claim_status)}")
+
+    temporal_gap_hint_count = int(claim.get("temporal_gap_hint_count") or 0)
+    if temporal_gap_hint_count > 0:
+        chip_labels.append(f"chronology gaps: {temporal_gap_hint_count}")
+
+    proof_gap_count = int(claim.get("proof_gap_count") or 0)
+    if proof_gap_count > 0:
+        chip_labels.append(f"proof gaps: {proof_gap_count}")
+
+    unresolved_element_count = int(claim.get("unresolved_element_count") or 0)
+    if unresolved_element_count > 0:
+        chip_labels.append(f"unresolved elements: {unresolved_element_count}")
+
+    contradiction_candidate_count = int(claim.get("contradiction_candidate_count") or 0)
+    if contradiction_candidate_count > 0:
+        chip_labels.append(f"contradiction candidates: {contradiction_candidate_count}")
+
+    return chip_labels
+
+
 def _annotate_checklist_review_links(
     payload: Dict[str, Any],
     *,
@@ -1030,6 +1069,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             "claim_type": claim_type,
         }
         claim["review_intent"] = claim_review_intent
+        claim["chip_labels"] = _build_claim_review_chip_labels(claim)
         if str(claim.get("status") or "").strip().lower() in {"warning", "blocked"}:
             claim["warnings"] = _merge_warning_entries(claim.get("warnings"), intake_warning_entries)
         claim_review_map[claim_type] = {
@@ -1042,6 +1082,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
                 "claim_type": claim_type,
                 "review_url": claim_review_url,
                 "review_intent": claim_review_intent,
+                "chip_labels": list(claim.get("chip_labels") or []),
             }
         )
 

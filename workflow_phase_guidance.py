@@ -35,6 +35,84 @@ def _safe_phase_call(phase_manager: Any, phase: ComplaintPhase, key: str) -> Any
         return None
 
 
+def _collect_temporal_issue_registry_summary(payload: Any) -> Dict[str, int]:
+    summary = {
+        "count": 0,
+        "unresolved_count": 0,
+        "resolved_count": 0,
+    }
+    if not isinstance(payload, dict):
+        return summary
+
+    registry_summary = payload.get("temporal_issue_registry_summary")
+    if isinstance(registry_summary, dict):
+        summary["count"] = _coerce_int(registry_summary.get("count"), summary["count"])
+        summary["unresolved_count"] = _coerce_int(
+            registry_summary.get("unresolved_count"), summary["unresolved_count"]
+        )
+        summary["resolved_count"] = _coerce_int(
+            registry_summary.get("resolved_count"), summary["resolved_count"]
+        )
+        return summary
+
+    registry = payload.get("temporal_issue_registry")
+    if not isinstance(registry, list):
+        return summary
+
+    summary["count"] = len(registry)
+    for item in registry:
+        if not isinstance(item, dict):
+            continue
+        status = str(
+            item.get("current_resolution_status")
+            or item.get("status")
+            or "open"
+        ).strip().lower()
+        if status == "resolved":
+            summary["resolved_count"] += 1
+        else:
+            summary["unresolved_count"] += 1
+    return summary
+
+
+def _collect_reasoning_review_summary(payload: Any) -> Dict[str, int]:
+    summary = {
+        "missing_proof_artifact_count": 0,
+        "unresolved_temporal_issue_count": 0,
+    }
+    if not isinstance(payload, dict):
+        return summary
+
+    candidate_payloads = [
+        payload,
+        payload.get("workflow_optimization_guidance") if isinstance(payload.get("workflow_optimization_guidance"), dict) else None,
+        payload.get("document_optimization") if isinstance(payload.get("document_optimization"), dict) else None,
+        payload.get("optimization_guidance") if isinstance(payload.get("optimization_guidance"), dict) else None,
+    ]
+    for candidate in candidate_payloads:
+        if not isinstance(candidate, dict):
+            continue
+        temporal_handoff = candidate.get("claim_support_temporal_handoff")
+        if isinstance(temporal_handoff, dict):
+            summary["unresolved_temporal_issue_count"] += _coerce_int(
+                temporal_handoff.get("unresolved_temporal_issue_count"),
+                0,
+            )
+        claim_reasoning_review = candidate.get("claim_reasoning_review")
+        if isinstance(claim_reasoning_review, dict):
+            for review in claim_reasoning_review.values():
+                if not isinstance(review, dict):
+                    continue
+                status_counts = dict(review.get("proof_artifact_status_counts") or {})
+                missing_count = _coerce_int(status_counts.get("missing"), 0)
+                if missing_count <= 0:
+                    total_count = _coerce_int(review.get("proof_artifact_element_count"), 0)
+                    available_count = _coerce_int(review.get("proof_artifact_available_element_count"), 0)
+                    missing_count = max(0, total_count - available_count)
+                summary["missing_proof_artifact_count"] += missing_count
+    return summary
+
+
 def build_workflow_phase_plan(
     phases: Dict[str, Dict[str, Any]],
     *,
@@ -160,10 +238,14 @@ def build_graph_analysis_phase_guidance(phase_manager: Any, *, audience: str = "
     graph_enhanced = bool(
         _safe_phase_call(phase_manager, ComplaintPhase.EVIDENCE, "knowledge_graph_enhanced")
     )
+    intake_case_file = _safe_phase_call(phase_manager, ComplaintPhase.INTAKE, "intake_case_file") or {}
+    temporal_issue_summary = _collect_temporal_issue_registry_summary(intake_case_file)
 
     knowledge_graph_available = bool(knowledge_graph)
     dependency_graph_available = bool(dependency_graph)
     current_gap_count = len(current_gaps) if isinstance(current_gaps, list) else 0
+    unresolved_temporal_issue_count = int(temporal_issue_summary.get("unresolved_count") or 0)
+    resolved_temporal_issue_count = int(temporal_issue_summary.get("resolved_count") or 0)
 
     if not knowledge_graph_available or not dependency_graph_available:
         status = "blocked"
@@ -177,7 +259,7 @@ def build_graph_analysis_phase_guidance(phase_manager: Any, *, audience: str = "
             actions = [
                 "Rebuild the intake knowledge graph and dependency graph before relying on formal drafting output.",
             ]
-    elif remaining_gaps > 0 or current_gap_count > 0 or not graph_enhanced:
+    elif remaining_gaps > 0 or current_gap_count > 0 or not graph_enhanced or unresolved_temporal_issue_count > 0:
         status = "warning"
         unresolved_gap_count = max(remaining_gaps, current_gap_count)
         if audience == "review":
@@ -196,6 +278,13 @@ def build_graph_analysis_phase_guidance(phase_manager: Any, *, audience: str = "
             ]
             if not graph_enhanced:
                 actions.append("Project newly collected evidence into the complaint knowledge graph.")
+        if unresolved_temporal_issue_count > 0:
+            summary = (
+                f"{summary} Chronology review still shows {unresolved_temporal_issue_count} unresolved temporal issue(s) that need graph alignment."
+            )
+            actions.append(
+                "Anchor protected activity, response, notice, and adverse-action events in the graph before relying on chronology-sensitive claims."
+            )
     else:
         status = "ready"
         if audience == "review":
@@ -203,6 +292,8 @@ def build_graph_analysis_phase_guidance(phase_manager: Any, *, audience: str = "
         else:
             summary = "Graph analysis is available and does not show unresolved intake graph blockers."
         actions = []
+        if resolved_temporal_issue_count > 0:
+            summary = f"{summary} Resolved chronology history should still remain anchored in the factual graph."
 
     return {
         "priority": 0,
@@ -214,6 +305,8 @@ def build_graph_analysis_phase_guidance(phase_manager: Any, *, audience: str = "
             "remaining_gap_count": remaining_gaps,
             "current_gap_count": current_gap_count,
             "knowledge_graph_enhanced": graph_enhanced,
+            "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
+            "resolved_temporal_issue_count": resolved_temporal_issue_count,
         },
         "recommended_actions": actions,
     }
@@ -234,8 +327,18 @@ def build_review_document_generation_phase_guidance(
     unresolved_temporal_issue_count = _coerce_int(packet_summary.get("claim_support_unresolved_temporal_issue_count"), 0)
     unresolved_review_path_count = _coerce_int(packet_summary.get("claim_support_unresolved_without_review_path_count"), 0)
     proof_readiness_score = float(packet_summary.get("proof_readiness_score", 0.0) or 0.0)
+    reasoning_review_summary = _collect_reasoning_review_summary(intake_case_summary)
+    unresolved_temporal_issue_count = max(
+        unresolved_temporal_issue_count,
+        int(reasoning_review_summary.get("unresolved_temporal_issue_count") or 0),
+    )
+    missing_proof_artifact_count = int(reasoning_review_summary.get("missing_proof_artifact_count") or 0)
 
-    if next_action_name in {"generate_formal_complaint", "complete_evidence"} and unresolved_temporal_issue_count <= 0:
+    if (
+        next_action_name in {"generate_formal_complaint", "complete_evidence"}
+        and unresolved_temporal_issue_count <= 0
+        and missing_proof_artifact_count <= 0
+    ):
         status = "ready"
         summary = "Review state indicates the complaint can move into formal complaint drafting."
         actions: List[str] = []
@@ -245,6 +348,20 @@ def build_review_document_generation_phase_guidance(
         actions = [
             "Reduce unresolved packet blockers and confirm the evidence packet before generating a formal complaint.",
         ]
+        if unresolved_temporal_issue_count > 0:
+            summary = (
+                f"{summary} Chronology review still shows {unresolved_temporal_issue_count} unresolved temporal issue(s)."
+            )
+            actions.append(
+                "Confirm exact date anchors and event sequencing before generating the formal complaint."
+            )
+        if missing_proof_artifact_count > 0:
+            summary = (
+                f"{summary} Proof review still shows {missing_proof_artifact_count} missing decision or notice artifact(s)."
+            )
+            actions.append(
+                "Collect or verify the denial notice, written decision, appeal notice, or related emails before formal drafting."
+            )
 
     return {
         "priority": 1,
@@ -255,6 +372,7 @@ def build_review_document_generation_phase_guidance(
             "proof_readiness_score": proof_readiness_score,
             "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
             "unresolved_without_review_path_count": unresolved_review_path_count,
+            "missing_proof_artifact_count": missing_proof_artifact_count,
         },
         "recommended_actions": actions,
     }

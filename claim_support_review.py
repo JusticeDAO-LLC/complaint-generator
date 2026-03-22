@@ -512,6 +512,12 @@ def _build_review_workflow_phase_priority(
                     f"current gap count: {current_gap_count}",
                 ]
             )
+            unresolved_temporal_issue_count = int(prioritized_signals.get("unresolved_temporal_issue_count") or 0)
+            resolved_temporal_issue_count = int(prioritized_signals.get("resolved_temporal_issue_count") or 0)
+            if unresolved_temporal_issue_count > 0:
+                chip_labels.append(f"unresolved chronology issues: {unresolved_temporal_issue_count}")
+            if resolved_temporal_issue_count > 0:
+                chip_labels.append(f"resolved chronology issues: {resolved_temporal_issue_count}")
             if "knowledge_graph_enhanced" in prioritized_signals:
                 chip_labels.append(
                     f"knowledge graph enhanced: {'yes' if bool(prioritized_signals.get('knowledge_graph_enhanced')) else 'no'}"
@@ -549,6 +555,9 @@ def _build_review_workflow_phase_priority(
             f"unresolved temporal issues: {unresolved_temporal_issue_count}",
             f"unresolved without review path: {unresolved_without_review_path_count}",
         ]
+        missing_proof_artifact_count = int(prioritized_signals.get("missing_proof_artifact_count") or 0)
+        if missing_proof_artifact_count > 0:
+            chip_labels.append(f"missing proof artifacts: {missing_proof_artifact_count}")
         if recommended_next_action:
             chip_labels.append(f"recommended action: {recommended_next_action}")
         return {

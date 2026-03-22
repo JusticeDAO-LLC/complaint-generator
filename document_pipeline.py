@@ -6572,11 +6572,17 @@ class FormalComplaintDocumentBuilder:
         claim_readiness: List[Dict[str, Any]] = []
         aggregate_warning_count = 0
         overall_status = "ready"
+        draft_claims_by_type = {
+            str(claim.get("claim_type") or "").strip(): claim
+            for claim in _coerce_list(draft.get("claims_for_relief"))
+            if isinstance(claim, dict) and str(claim.get("claim_type") or "").strip()
+        }
 
         for claim_type in claim_types:
             support_claim = support_claims.get(claim_type, {}) if isinstance(support_claims.get(claim_type), dict) else {}
             gap_claim = gap_claims.get(claim_type, {}) if isinstance(gap_claims.get(claim_type), dict) else {}
             validation_claim = validation_claims.get(claim_type, {}) if isinstance(validation_claims.get(claim_type), dict) else {}
+            draft_claim = draft_claims_by_type.get(claim_type, {}) if isinstance(draft_claims_by_type.get(claim_type), dict) else {}
             overview_payload = self._safe_mediator_dict(
                 "get_claim_overview",
                 claim_type=claim_type,
@@ -6611,6 +6617,25 @@ class FormalComplaintDocumentBuilder:
                         "code": "proof_gaps_present",
                         "severity": "warning",
                         "message": f"{claim_type.title()} still has proof or failed-premise gaps.",
+                    }
+                )
+
+            temporal_gap_hint_count = int(
+                (draft_claim.get("support_summary") or {}).get("temporal_gap_hint_count") or 0
+            )
+            if temporal_gap_hint_count <= 0:
+                temporal_gap_hint_count = sum(
+                    1
+                    for item in _coerce_list(draft_claim.get("missing_elements"))
+                    if str(item or "").strip().lower().startswith("chronology gap")
+                )
+            if temporal_gap_hint_count > 0:
+                claim_status = _merge_status(claim_status, "warning")
+                warnings.append(
+                    {
+                        "code": "chronology_gaps_present",
+                        "severity": "warning",
+                        "message": f"{claim_type.title()} still has {temporal_gap_hint_count} chronology gap(s) that should be resolved before filing.",
                     }
                 )
 
@@ -6661,6 +6686,7 @@ class FormalComplaintDocumentBuilder:
                 "total_elements": int(support_claim.get("total_elements", 0) or 0),
                 "unresolved_element_count": unresolved_elements,
                 "proof_gap_count": int(validation_claim.get("proof_gap_count", 0) or 0),
+                "temporal_gap_hint_count": temporal_gap_hint_count,
                 "contradiction_candidate_count": int(validation_claim.get("contradiction_candidate_count", 0) or 0),
                 "support_by_kind": support_claim.get("support_by_kind", {}),
                 "support_by_source": source_context["support_by_source"],
