@@ -2801,7 +2801,7 @@ class FormalComplaintDocumentBuilder:
 
         support_paragraph = self._compose_count_paragraph(
             supporting_facts,
-            lead_in="The record further shows that",
+            lead_in="These facts further show that",
             mode="sentences",
         )
         if support_paragraph:
@@ -2817,8 +2817,8 @@ class FormalComplaintDocumentBuilder:
             citation_match = re.search(r"(24\s+C\.F\.R\.\s*982\.555)", text)
             citation = citation_match.group(1) if citation_match else "24 C.F.R. 982.555"
             return (
-                f"Authority for this count includes the informal-review requirements reflected in {citation}, "
-                "which require written notice and an opportunity for informal review before a final adverse housing decision is enforced."
+                f"Federal housing regulations, including {citation}, required written notice and an opportunity "
+                "for informal review before a final adverse housing decision was enforced."
             )
         return self._compose_count_paragraph(normalized, lead_in="Authority for this count includes")
 
@@ -2860,7 +2860,10 @@ class FormalComplaintDocumentBuilder:
         if lowered.startswith("the challenged housing action was unlawful because"):
             return "That housing action was unlawful because" + text[len("the challenged housing action was unlawful because"):]
         if lowered.startswith("the requested relief addresses the resulting denial of housing opportunity"):
-            return "Plaintiff seeks relief for the resulting denial of housing opportunity" + text[len("the requested relief addresses the resulting denial of housing opportunity"):]
+            return (
+                "That unlawful housing decision caused the resulting denial of housing opportunity"
+                + text[len("the requested relief addresses the resulting denial of housing opportunity"):]
+            )
         if first:
             return self._promote_count_sentence_fragment(text)
         return self._promote_count_sentence_fragment(text)
@@ -2902,13 +2905,18 @@ class FormalComplaintDocumentBuilder:
         text = str(fragment or "").strip()
         if not text:
             return ""
+        lowered = text.lower()
+        if lowered.startswith("the requested relief addresses the deprivation of housing benefits and review rights"):
+            return (
+                "That failure of notice and process caused the deprivation of housing benefits and review rights"
+                + text[len("the requested relief addresses the deprivation of housing benefits and review rights"):]
+            )
         promotions = (
             ("plaintiff ", "Plaintiff "),
             ("defendant ", "Defendant "),
             ("the ", "The "),
             ("on ", "On "),
         )
-        lowered = text.lower()
         for prefix, replacement in promotions:
             if lowered.startswith(prefix):
                 return replacement + text[len(prefix):]
@@ -2967,6 +2975,7 @@ class FormalComplaintDocumentBuilder:
         elif index == 0 and fragment.startswith("On ") and (
             lead_in.startswith("The chronology and governing policy further show that")
             or lead_in.startswith("The record further shows that")
+            or lead_in.startswith("These facts further show that")
         ):
             fragment = "on " + fragment[len("On "):]
 
@@ -6139,7 +6148,7 @@ class FormalComplaintDocumentBuilder:
 
         merged_entry = {
             "text": (
-                "HACC's written-notice and informal-review policy support Plaintiff's claim that HACC "
+                "HACC's written-notice and informal-review requirements show that HACC "
                 "wrongfully denied or maintained the denial of housing assistance without the process "
                 f"required before enforcement of that adverse action ({self._merge_support_exhibit_labels(notice_entry, review_entry)})."
             ),

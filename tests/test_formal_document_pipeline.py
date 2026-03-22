@@ -642,6 +642,20 @@ def test_document_api_annotation_promotes_document_drafting_next_action_into_rev
             "draft": {
                 "title": "Jane Doe v. Acme Corporation",
                 "source_context": {"user_id": "Jane Doe"},
+                "factual_allegation_paragraphs": [
+                    {
+                        "number": 1,
+                        "text": "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+                        "document_focus": {
+                            "focus_source": "document_grounding_improvement_next_action",
+                            "action": "retarget_document_grounding",
+                            "target_claim_element_id": "causation",
+                            "original_claim_element_id": "protected_activity",
+                            "preferred_support_kind": "testimony",
+                        },
+                        "document_focus_priority_rank": 1,
+                    }
+                ],
                 "document_provenance_summary": {
                     "summary_fact_count": 2,
                     "claim_supporting_fact_count": 3,
@@ -708,6 +722,18 @@ def test_document_api_annotation_promotes_document_drafting_next_action_into_rev
         "summary_fact_count": 2,
         "claim_supporting_fact_count": 3,
     }
+    assert payload["review_links"]["document_focus_preview"] == [
+        {
+            "section": "factual_allegations",
+            "text": "Days after the complaint, Defendant terminated Plaintiff in retaliation.",
+            "focus_source": "document_grounding_improvement_next_action",
+            "action": "retarget_document_grounding",
+            "target_claim_element_id": "causation",
+            "original_claim_element_id": "protected_activity",
+            "preferred_support_kind": "testimony",
+            "priority_rank": 1,
+        }
+    ]
 
 
 def test_document_optimizer_report_promotes_confirmed_intake_handoff(monkeypatch):

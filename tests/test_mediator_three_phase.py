@@ -795,6 +795,43 @@ class TestMediatorThreePhaseIntegration:
         assert any(entity.attributes.get('event_date_or_range') == 'January 5, 2026' for entity in structured_facts)
         assert any(entity.attributes.get('event_date_or_range') == 'after that action' for entity in structured_facts)
 
+    def test_process_answer_splits_flattened_structured_timeline_paragraph(self):
+        denoiser = ComplaintDenoiser()
+        kg = KnowledgeGraphBuilder().build_from_text("HACC retaliated against me after I used the grievance process.")
+
+        question = {
+            'type': 'timeline',
+            'context': {
+                'gap_type': 'retaliation_missing_sequence',
+                'workflow_phase': 'graph_analysis',
+                'extraction_targets': ['exact_dates', 'event_order', 'protected_activity', 'adverse_action'],
+            },
+        }
+        answer = (
+            "I’m still very stressed by this, but here is the clearest timeline I can give right now with the best anchors I have. "
+            "- `Who:` Me (tenant) | `Action:` raised concerns and tried to use grievance process | "
+            "`Date:` exact date still unconfirmed (I can provide from my email copy) | "
+            "`Artifact:` grievance/request email or portal submission record. "
+            "- `Who:` HACC case staff (name/title still needs confirmation) | `Action:` changed how my file was handled and began adverse steps after I complained | "
+            "`Date:` shortly after my complaint (exact date unconfirmed) | `Artifact:` case notes/communications I received after filing. "
+            "- `Who:` HACC decision-maker(s) (name/title unconfirmed) | `Action:` threatened denial/termination impacts to assistance | "
+            "`Date:` after protected activity, before any fair hearing was completed | `Artifact:` notice/letter text and any warning emails. "
+            "- `Who:` Me | `Action:` requested review/hearing | `Date:` exact request date still needs confirmation | `Artifact:` hearing request email/form submission. "
+            "- `Who:` HACC | `Action:` response to hearing/review request was delayed/unclear and did not provide a meaningful process before harm | "
+            "`Date:` response date unconfirmed | `Artifact:` response email/letter (or lack of notice)."
+        )
+
+        denoiser.process_answer(question, answer, kg, None)
+        timeline_facts = [
+            entity for entity in kg.get_entities_by_type('fact')
+            if entity.attributes.get('fact_type') == 'timeline'
+            and str(entity.attributes.get('structured_timeline_group') or '').startswith('structured_timeline_')
+        ]
+
+        assert len(timeline_facts) >= 5
+        assert any(entity.attributes.get('event_date_or_range') == 'shortly after my complaint' for entity in timeline_facts)
+        assert any(entity.attributes.get('event_date_or_range') == 'after protected activity, before any fair hearing was completed' for entity in timeline_facts)
+
     def test_process_denoising_answer_syncs_temporal_relations_into_dependency_graph(self):
         from mediator.mediator import Mediator
 
@@ -1999,6 +2036,154 @@ class TestMediatorThreePhaseIntegration:
         status = mediator.get_three_phase_status()
         assert status['alignment_evidence_tasks'][0]['action'] == 'fill_temporal_chronology_gap'
         assert status['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
+
+    def test_advance_to_evidence_phase_derives_anchor_predicates_and_provenance_from_authored_issue_state(self):
+        """A missing-anchor issue should drive predicate and provenance obligations even without theorem metadata or synthesized follow-up reasons."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.start_three_phase_process(
+            'I was disciplined, but the date anchor for that event has not been pinned down yet.'
+        )
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'current_gaps', [])
+        mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_gap_types', [])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'causation',
+                                'label': 'Causal connection',
+                                'blocking': True,
+                                'evidence_classes': ['witness_testimony'],
+                            },
+                        ],
+                    }
+                ],
+                'canonical_facts': [{'fact_id': 'fact_termination'}],
+                'event_ledger': [
+                    {
+                        'event_id': 'fact_termination',
+                        'temporal_fact_id': 'fact_termination',
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['causation'],
+                        'timeline_anchor_ids': [],
+                    },
+                ],
+                'timeline_anchors': [],
+                'temporal_relation_registry': [],
+                'temporal_issue_registry': [
+                    {
+                        'issue_id': 'temporal_issue_missing_anchor_001',
+                        'issue_type': 'missing_anchor',
+                        'category': 'missing_anchor',
+                        'summary': '',
+                        'severity': 'blocking',
+                        'blocking': True,
+                        'recommended_resolution_lane': 'seek_external_record',
+                        'fact_ids': ['fact_termination'],
+                        'claim_types': ['retaliation'],
+                        'element_tags': ['causation'],
+                        'status': 'open',
+                        'current_resolution_status': 'open',
+                    }
+                ],
+                'proof_leads': [],
+                'contradiction_queue': [],
+                'open_items': [
+                    {
+                        'open_item_id': 'element:retaliation:causation',
+                        'target_claim_type': 'retaliation',
+                        'target_element_id': 'causation',
+                    }
+                ],
+                'intake_sections': {
+                    'chronology': {'status': 'complete', 'missing_items': []},
+                    'actors': {'status': 'complete', 'missing_items': []},
+                    'conduct': {'status': 'complete', 'missing_items': []},
+                    'harm': {'status': 'complete', 'missing_items': []},
+                    'remedy': {'status': 'complete', 'missing_items': []},
+                    'proof_leads': {'status': 'complete', 'missing_items': []},
+                    'claim_elements': {'status': 'complete', 'missing_items': []},
+                },
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'validation_status': 'incomplete',
+                    'elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causal connection',
+                            'validation_status': 'incomplete',
+                            'recommended_action': 'collect_missing_support_kind',
+                            'missing_support_kinds': [],
+                            'contradiction_candidate_count': 0,
+                            'proof_gaps': [{'gap_type': 'temporal_rule_partial'}],
+                            'proof_gap_count': 1,
+                            'proof_decision_trace': {
+                                'decision_source': 'temporal_rule_partial',
+                            },
+                            'reasoning_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [],
+                            },
+                        },
+                    ],
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'claim_type': 'retaliation',
+                    'unresolved_count': 1,
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'causation',
+                            'element_text': 'Causal connection',
+                            'recommended_action': 'collect_missing_support_kind',
+                            'missing_support_kinds': [],
+                        }
+                    ],
+                }
+            }
+        })
+
+        result = mediator.advance_to_evidence_phase()
+
+        assert result['alignment_evidence_tasks']
+        assert result['alignment_evidence_tasks'][0]['action'] == 'fill_temporal_chronology_gap'
+        assert result['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
+        assert result['alignment_evidence_tasks'][0]['anchor_ids'] == []
+        assert result['alignment_evidence_tasks'][0]['timeline_issue_ids'] == ['temporal_issue_missing_anchor_001']
+        assert result['alignment_evidence_tasks'][0]['missing_temporal_predicates'] == ['Anchored(fact_termination)']
+        assert result['alignment_evidence_tasks'][0]['required_provenance_kinds'] == [
+            'testimony_record',
+            'document_artifact',
+            'legal_authority',
+            'external_institutional_record',
+        ]
+        assert result['alignment_evidence_tasks'][0]['temporal_rule_follow_ups'] == []
+
+        status = mediator.get_three_phase_status()
+        assert status['alignment_evidence_tasks'][0]['missing_temporal_predicates'] == ['Anchored(fact_termination)']
 
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""

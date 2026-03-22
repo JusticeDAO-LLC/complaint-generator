@@ -664,7 +664,7 @@ def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path
     assert "Plaintiff repeats and realleges ¶" in result["draft"]["draft_text"]
     assert "and incorporates Exhibit" in result["draft"]["draft_text"]
     assert "as if fully set forth herein." in result["draft"]["draft_text"]
-    assert "In support of this count, Plaintiff alleges that" in result["draft"]["draft_text"]
+    assert "These facts further show that" in result["draft"]["draft_text"]
     assert any("terminated" in allegation.lower() for allegation in result["draft"]["factual_allegations"])
     assert all(claim.get("allegation_references") for claim in result["draft"]["claims_for_relief"])
     assert any("See Exhibit" in fact for fact in result["draft"]["summary_of_facts"])

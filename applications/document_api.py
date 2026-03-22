@@ -1005,6 +1005,50 @@ def _annotate_checklist_review_links(
     return payload
 
 
+def _build_document_focus_preview(draft: Dict[str, Any]) -> List[Dict[str, Any]]:
+    preview_rows: List[Dict[str, Any]] = []
+
+    def _append_rows(section: str, entries: Any) -> None:
+        for entry in list(entries or []):
+            if not isinstance(entry, dict):
+                continue
+            focus = entry.get("document_focus")
+            if not isinstance(focus, dict) or not focus:
+                continue
+            preview_rows.append(
+                {
+                    "section": section,
+                    "text": str(entry.get("text") or "").strip(),
+                    "focus_source": str(focus.get("focus_source") or "").strip(),
+                    "action": str(focus.get("action") or "").strip(),
+                    "target_claim_element_id": str(focus.get("target_claim_element_id") or "").strip(),
+                    "original_claim_element_id": str(focus.get("original_claim_element_id") or "").strip(),
+                    "preferred_support_kind": str(focus.get("preferred_support_kind") or "").strip(),
+                    "priority_rank": int(entry.get("document_focus_priority_rank") or 0),
+                }
+            )
+
+    _append_rows("summary_of_facts", draft.get("summary_of_fact_entries"))
+    _append_rows("factual_allegations", draft.get("factual_allegation_paragraphs"))
+    claims = draft.get("claims_for_relief") if isinstance(draft.get("claims_for_relief"), list) else []
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        _append_rows(
+            f"claims_for_relief:{str(claim.get('claim_type') or '').strip() or 'claim'}",
+            claim.get("supporting_fact_provenance"),
+        )
+
+    preview_rows.sort(
+        key=lambda row: (
+            int(row.get("priority_rank") or 0) or 9999,
+            str(row.get("section") or ""),
+            str(row.get("text") or ""),
+        )
+    )
+    return preview_rows[:8]
+
+
 def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: Optional[str]) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return payload
@@ -1232,6 +1276,7 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
             if isinstance(payload.get("document_provenance_summary") or draft.get("document_provenance_summary"), dict)
             else {}
         ),
+        "document_focus_preview": _build_document_focus_preview(draft),
         "document_drafting_next_action": (
             dict(intake_case_summary.get("document_drafting_next_action") or {})
             if isinstance(intake_case_summary.get("document_drafting_next_action"), dict)

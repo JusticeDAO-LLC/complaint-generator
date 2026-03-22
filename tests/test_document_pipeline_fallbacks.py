@@ -938,7 +938,7 @@ def test_housing_claim_support_entries_prune_preview_style_duplicates():
     assert not any("HACC denial notice and review chronology" in text for text in texts)
     assert any("On March 3, 2026, HACC sent Plaintiff a written denial notice" in text for text in texts)
     assert any(
-        "HACC's written-notice and informal-review policy support Plaintiff's claim that HACC wrongfully denied or maintained the denial of housing assistance"
+        "HACC's written-notice and informal-review requirements show that HACC wrongfully denied or maintained the denial of housing assistance"
         in text
         for text in texts
     )
@@ -996,10 +996,12 @@ def test_rendered_draft_uses_compact_count_paragraphs():
     assert "Claim-Specific Support:" not in draft_text
     assert "Before enforcing a final adverse housing decision, Defendant was required to" in claims_section
     assert "Defendant denied, limited, or otherwise interfered with Plaintiff's housing assistance or related housing rights" in claims_section
+    assert "That unlawful housing decision caused the resulting denial of housing opportunity" in claims_section
+    assert "That failure of notice and process caused the deprivation of housing benefits and review rights" in claims_section
     assert "Plaintiff alleges that Plaintiff alleges that" not in claims_section
     assert "Defendant failed to provide those required procedural protections" in claims_section
     assert " and the requested relief addresses " not in claims_section
-    assert "The requested relief addresses" in claims_section
-    assert "The record further shows that on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
-    assert "Authority for this count includes the informal-review requirements reflected in 24 C.F.R. 982.555" in claims_section
+    assert "The requested relief addresses" not in claims_section
+    assert "These facts further show that on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
+    assert "Federal housing regulations, including 24 C.F.R. 982.555, required written notice and an opportunity for informal review" in claims_section
     assert "hACC" not in claims_section
