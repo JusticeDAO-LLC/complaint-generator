@@ -168,6 +168,44 @@ class AdversarialHarness:
                 break
         return weak_labels
 
+    @staticmethod
+    def _document_theory_priority_text(tag: str) -> str:
+        normalized = str(tag or '').strip().lower()
+        if normalized == 'notice_review':
+            return 'Increase notice-review counts, chronology, and hearing or rescission relief'
+        if normalized == 'retaliation':
+            return 'Increase retaliation counts, protected-activity chronology, and retaliation-specific relief'
+        if normalized == 'accommodation':
+            return 'Increase accommodation counts, interactive-process chronology, and accommodation-specific relief'
+        if normalized == 'adverse_action':
+            return 'Increase adverse-action counts, decision chronology, and restoration or rescission relief'
+        return f"Increase theory-specific drafting support for {normalized.replace('_', ' ')}"
+
+    @staticmethod
+    def _document_theory_prompt_text(tag: str) -> str:
+        normalized = str(tag or '').strip().lower()
+        if normalized == 'notice_review':
+            return (
+                'Emphasize written notice, hearing or review chronology, due-process count language, '
+                'and relief requiring rescission, stay, or a proper hearing or review.'
+            )
+        if normalized == 'retaliation':
+            return (
+                'Emphasize protected activity, the sequence between complaint and adverse action, retaliation count language, '
+                'and relief tied to reversing retaliatory enforcement.'
+            )
+        if normalized == 'accommodation':
+            return (
+                'Emphasize the accommodation request, the interactive process, response or denial documents, '
+                'accommodation-specific count language, and relief requiring review or approval of the accommodation.'
+            )
+        if normalized == 'adverse_action':
+            return (
+                'Emphasize the denial or termination event, the decision chronology, adverse-action count language, '
+                'and relief restoring assistance or rescinding the challenged decision.'
+            )
+        return ''
+
     def _build_seed_feedback_from_results(self, results: List[SessionResult]) -> Dict[str, Any]:
         successful = [result for result in results if result.success and getattr(result, 'critic_score', None)]
         if not successful:
@@ -200,6 +238,25 @@ class AdversarialHarness:
             dict(report.evidence_modality_performance or {}),
             float(report.average_score or 0.0),
         )
+        document_theory_targets = [
+            str(name).strip()
+            for name, _count in sorted(
+                dict((report.document_theory_alignment_summary or {}).get('missing_tag_counts') or {}).items(),
+                key=lambda item: (-int(item[1] or 0), item[0]),
+            )[:3]
+            if str(name).strip()
+        ]
+        theory_priority_improvements = [
+            text
+            for text in (self._document_theory_priority_text(tag) for tag in document_theory_targets)
+            if text
+        ]
+        theory_document_guidance = [
+            text
+            for text in (self._document_theory_prompt_text(tag) for tag in document_theory_targets)
+            if text
+        ]
+        merged_batch_priorities = latest_batch_priorities + theory_priority_improvements
 
         actor_critic_optimizer = {
             'num_sessions_analyzed': int(report.num_sessions_analyzed or 0),
@@ -211,7 +268,10 @@ class AdversarialHarness:
             'weak_complaint_types': weak_complaint_types,
             'weak_evidence_modalities': weak_evidence_modalities,
             'unresolved_intake_objectives': unresolved_intake_objectives,
-            'latest_batch_priorities': latest_batch_priorities,
+            'latest_batch_priorities': merged_batch_priorities,
+            'document_theory_targets': document_theory_targets,
+            'document_theory_alignment_summary': dict(report.document_theory_alignment_summary or {}),
+            'document_generation_guidance': theory_document_guidance,
             'graph_element_targeting_summary': dict(report.graph_element_targeting_summary or {}),
             'phase_signal_context': {
                 'question_quality_avg': float(report.question_quality_avg or 0.0),
@@ -223,14 +283,16 @@ class AdversarialHarness:
                 'num_successful_sessions': int(report.num_sessions_analyzed or 0),
             },
         }
-        if latest_batch_priorities:
-            actor_critic_optimizer['priority_improvements'] = latest_batch_priorities
+        if merged_batch_priorities:
+            actor_critic_optimizer['priority_improvements'] = merged_batch_priorities
 
         return {
             'actor_critic_optimizer': actor_critic_optimizer,
             'optimization_guidance': {
-                'latest_batch_priorities': latest_batch_priorities,
-                'priority_improvements': latest_batch_priorities,
+                'latest_batch_priorities': merged_batch_priorities,
+                'priority_improvements': merged_batch_priorities,
+                'document_theory_targets': document_theory_targets,
+                'document_generation_guidance': theory_document_guidance,
             },
         }
 
@@ -264,6 +326,8 @@ class AdversarialHarness:
             'unresolved_intake_objectives',
             'latest_batch_priorities',
             'priority_improvements',
+            'document_theory_targets',
+            'document_generation_guidance',
         ):
             merged_actor[key] = _merge_unique_strings(existing_actor.get(key), feedback_actor.get(key))
         existing_phase_signal_context = dict(existing_actor.get('phase_signal_context') or {})
@@ -292,6 +356,14 @@ class AdversarialHarness:
                 existing_guidance.get('priority_improvements'),
                 feedback_guidance.get('priority_improvements'),
             ),
+            'document_theory_targets': _merge_unique_strings(
+                existing_guidance.get('document_theory_targets'),
+                feedback_guidance.get('document_theory_targets'),
+            ),
+            'document_generation_guidance': _merge_unique_strings(
+                existing_guidance.get('document_generation_guidance'),
+                feedback_guidance.get('document_generation_guidance'),
+            ),
         }
 
         key_facts = dict(merged_seed.get('key_facts') or {})
@@ -304,6 +376,31 @@ class AdversarialHarness:
                 key_facts.get('workflow_phase_priorities'),
                 merged_seed['optimization_guidance'].get('latest_batch_priorities'),
             )
+            key_facts['document_theory_targets'] = _merge_unique_strings(
+                key_facts.get('document_theory_targets'),
+                merged_seed['optimization_guidance'].get('document_theory_targets'),
+            )
+            synthetic_prompts = dict(key_facts.get('synthetic_prompts') or {})
+            existing_document_generation_prompt = " ".join(
+                str(synthetic_prompts.get('document_generation_prompt') or '').split()
+            ).strip()
+            merged_document_guidance = _merge_unique_strings(
+                None,
+                merged_seed['optimization_guidance'].get('document_generation_guidance'),
+            )
+            if merged_document_guidance:
+                missing_guidance = [
+                    text
+                    for text in merged_document_guidance
+                    if text and text.lower() not in existing_document_generation_prompt.lower()
+                ]
+                guidance_text = " ".join(missing_guidance).strip()
+                if guidance_text:
+                    synthetic_prompts['document_generation_prompt'] = " ".join(
+                        part for part in (existing_document_generation_prompt, guidance_text) if part
+                    ).strip()
+            if synthetic_prompts:
+                key_facts['synthetic_prompts'] = synthetic_prompts
             merged_seed['key_facts'] = key_facts
 
         return merged_seed

@@ -1955,6 +1955,138 @@ class TestAdversarialHarness:
         assert second_seed['optimization_guidance']['latest_batch_priorities']
         assert second_seed['key_facts']['workflow_phase_priorities'] == second_seed['optimization_guidance']['latest_batch_priorities']
 
+    def test_run_batch_enriches_later_seeds_with_theory_alignment_guidance(self, monkeypatch):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1,
+        )
+
+        seen_specs = []
+        seeds = [
+            {
+                'type': 'housing_discrimination',
+                'summary': 'First seed drifts away from due-process drafting.',
+                'key_facts': {
+                    'theory_labels': ['due_process_failure'],
+                    'anchor_sections': ['appeal_rights', 'adverse_action'],
+                    'synthetic_prompts': {
+                        'document_generation_prompt': 'Start from the strongest housing facts.',
+                    },
+                },
+            },
+            {
+                'type': 'housing_discrimination',
+                'summary': 'Second seed should inherit theory-alignment guidance.',
+                'key_facts': {
+                    'synthetic_prompts': {
+                        'document_generation_prompt': 'Start from the strongest housing facts.',
+                    },
+                },
+            },
+        ]
+
+        def fake_run_single_session(spec):
+            seen_specs.append(json.loads(json.dumps(spec)))
+            final_state = {}
+            overall_score = 0.8
+            if len(seen_specs) == 1:
+                overall_score = 0.45
+                final_state = {
+                    'workflow_phase_plan': {
+                        'phases': {
+                            'intake_questioning': {'status': 'ready'},
+                            'graph_analysis': {'status': 'ready'},
+                            'document_generation': {'status': 'warning'},
+                        }
+                    },
+                    'document_generation': {
+                        'claim_count': 1,
+                        'requested_relief_count': 1,
+                        'claim_types': ['housing_discrimination'],
+                        'count_titles': ['Count I - Housing Discrimination and Wrongful Denial of Assistance'],
+                        'requested_relief_preview': ['Compensatory damages according to proof.'],
+                    },
+                }
+            return SessionResult(
+                session_id=spec['session_id'],
+                timestamp='2024-01-01T00:00:00+00:00',
+                seed_complaint=spec['seed'],
+                initial_complaint_text='Complaint',
+                conversation_history=[],
+                num_questions=0,
+                num_turns=0,
+                final_state=final_state,
+                critic_score=CriticScore(
+                    overall_score=overall_score,
+                    question_quality=overall_score,
+                    information_extraction=overall_score,
+                    empathy=overall_score,
+                    efficiency=overall_score,
+                    coverage=overall_score,
+                    feedback='ok',
+                    strengths=[],
+                    weaknesses=[],
+                    suggestions=[],
+                ),
+                success=True,
+            )
+
+        monkeypatch.setattr(harness, '_run_single_session', fake_run_single_session)
+
+        results = harness.run_batch(
+            num_sessions=2,
+            seed_complaints=seeds,
+            max_turns_per_session=1,
+        )
+
+        assert len(results) == 2
+        second_seed = seen_specs[1]['seed']
+        assert 'notice_review' in second_seed['optimization_guidance']['document_theory_targets']
+        assert any(
+            priority.startswith('Increase notice-review counts')
+            for priority in second_seed['optimization_guidance']['latest_batch_priorities']
+        )
+        assert 'notice_review' in second_seed['key_facts']['document_theory_targets']
+        assert 'written notice' in second_seed['key_facts']['synthetic_prompts']['document_generation_prompt'].lower()
+        assert 'hearing or review chronology' in second_seed['key_facts']['synthetic_prompts']['document_generation_prompt'].lower()
+
+    def test_merge_optimizer_feedback_appends_only_missing_theory_guidance_sentences(self):
+        seed = {
+            'key_facts': {
+                'synthetic_prompts': {
+                    'document_generation_prompt': (
+                        'Start from the strongest housing facts. '
+                        'Emphasize written notice, hearing or review chronology, due-process count language, '
+                        'and relief requiring rescission, stay, or a proper hearing or review.'
+                    ),
+                },
+            },
+            'optimization_guidance': {
+                'document_theory_targets': ['notice_review'],
+                'document_generation_guidance': [
+                    'Emphasize written notice, hearing or review chronology, due-process count language, and relief requiring rescission, stay, or a proper hearing or review.',
+                    'Emphasize protected activity, the sequence between complaint and adverse action, retaliation count language, and relief tied to reversing retaliatory enforcement.',
+                ],
+            },
+        }
+        feedback = {
+            'optimization_guidance': {
+                'document_theory_targets': ['notice_review', 'retaliation'],
+                'document_generation_guidance': [
+                    'Emphasize written notice, hearing or review chronology, due-process count language, and relief requiring rescission, stay, or a proper hearing or review.',
+                    'Emphasize protected activity, the sequence between complaint and adverse action, retaliation count language, and relief tied to reversing retaliatory enforcement.',
+                ],
+            },
+        }
+
+        merged = AdversarialHarness._merge_optimizer_feedback(seed, feedback)
+        document_prompt = merged['key_facts']['synthetic_prompts']['document_generation_prompt']
+
+        assert document_prompt.lower().count('emphasize written notice, hearing or review chronology') == 1
+        assert document_prompt.lower().count('emphasize protected activity, the sequence between complaint and adverse action') == 1
+
     def test_preload_hacc_seed_evidence_submits_documents_to_mediator(self, tmp_path):
         source_path = tmp_path / 'policy.pdf'
 
