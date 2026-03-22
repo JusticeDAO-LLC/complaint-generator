@@ -358,7 +358,12 @@ def _build_grounded_intake_follow_up_worksheet(
 
 def _build_grounded_workflow_status(
     *,
+    output_root: Path,
     query: str,
+    claim_type: str,
+    hacc_preset: str,
+    hacc_search_mode: str,
+    use_hacc_vector_search: bool,
     recommended_next_action: Dict[str, Any],
     research_action_queue: Sequence[Dict[str, Any]],
     synthesis_roundtrip_artifacts: Dict[str, Any],
@@ -372,6 +377,38 @@ def _build_grounded_workflow_status(
         or recommended_next_action
         or {}
     )
+    inspect_command = f"python scripts/show_hacc_grounded_history.py --output-dir {output_root}"
+    rerun_parts = [
+        "python",
+        "scripts/run_hacc_grounded_pipeline.py",
+        "--output-dir",
+        str(output_root),
+    ]
+    if query:
+        rerun_parts.extend(["--query", query])
+    if claim_type:
+        rerun_parts.extend(["--claim-type", claim_type])
+    if hacc_preset:
+        rerun_parts.extend(["--hacc-preset", hacc_preset])
+    if hacc_search_mode:
+        rerun_parts.extend(["--hacc-search-mode", hacc_search_mode])
+    if use_hacc_vector_search:
+        rerun_parts.append("--use-hacc-vector-search")
+    rerun_command = " ".join(rerun_parts)
+    synthesize_command = f"python scripts/synthesize_hacc_complaint.py --grounded-run-dir {output_root}"
+    pipeline_resume_parts = list(rerun_parts)
+    if completed_grounded_intake_worksheet_path:
+        pipeline_resume_parts.append("--synthesize-complaint")
+        pipeline_resume_parts.extend(
+            ["--completed-grounded-intake-worksheet", completed_grounded_intake_worksheet_path]
+        )
+    pipeline_resume_command = " ".join(pipeline_resume_parts)
+    if completed_grounded_intake_worksheet_path or workflow_stage == "post_grounded_follow_up":
+        recommended_command_kind = "synthesize"
+        recommended_command = synthesize_command
+    else:
+        recommended_command_kind = "rerun"
+        recommended_command = rerun_command
     return {
         "query": query,
         "workflow_stage": workflow_stage,
@@ -383,6 +420,14 @@ def _build_grounded_workflow_status(
         "refreshed_grounding_status": str(refreshed_grounding_state.get("status") or ""),
         "has_persisted_completed_grounded_worksheet": bool(str(completed_grounded_intake_worksheet_path or "").strip()),
         "persisted_completed_grounded_worksheet_path": str(completed_grounded_intake_worksheet_path or ""),
+        "recommended_commands": {
+            "inspect_command": inspect_command,
+            "rerun_command": rerun_command,
+            "synthesize_command": synthesize_command,
+            "pipeline_resume_command": pipeline_resume_command,
+            "recommended_command": recommended_command,
+            "recommended_command_kind": recommended_command_kind,
+        },
     }
 
 
@@ -428,6 +473,32 @@ def _render_grounded_workflow_status_markdown(
                 f"- Completed grounded worksheet: {persisted_path}",
             ]
         )
+    recommended_commands = dict(status.get("recommended_commands") or {})
+    if recommended_commands:
+        recommended_command_kind = str(recommended_commands.get("recommended_command_kind") or "").strip()
+        recommended_label = "Recommended"
+        if recommended_command_kind == "rerun":
+            recommended_label = "Recommended rerun"
+        elif recommended_command_kind == "synthesize":
+            recommended_label = "Recommended synthesis"
+        lines.extend(
+            [
+                "",
+                "## Recommended Commands",
+                "",
+                f"- Inspect: {recommended_commands.get('inspect_command', '')}",
+                f"- {recommended_label}: {recommended_commands.get('recommended_command', '')}",
+            ]
+        )
+        rerun_command = str(recommended_commands.get("rerun_command") or "").strip()
+        if rerun_command:
+            lines.append(f"- Rerun: {rerun_command}")
+        synthesize_command = str(recommended_commands.get("synthesize_command") or "").strip()
+        if synthesize_command:
+            lines.append(f"- Synthesis: {synthesize_command}")
+        pipeline_resume_command = str(recommended_commands.get("pipeline_resume_command") or "").strip()
+        if pipeline_resume_command:
+            lines.append(f"- Pipeline resume: {pipeline_resume_command}")
     recent_history = [dict(item) for item in list(history or []) if isinstance(item, dict)]
     if recent_history:
         lines.extend(
@@ -752,7 +823,12 @@ def run_hacc_grounded_pipeline(
                 synthesis_roundtrip_artifacts.get("grounded_follow_up_answer_summary", {}),
             )
     grounded_workflow_status = _build_grounded_workflow_status(
+        output_root=output_root,
         query=resolved_query,
+        claim_type=resolved_claim_type,
+        hacc_preset=hacc_preset,
+        hacc_search_mode=hacc_search_mode,
+        use_hacc_vector_search=use_hacc_vector_search,
         recommended_next_action=recommended_next_action,
         research_action_queue=research_action_queue,
         synthesis_roundtrip_artifacts=synthesis_roundtrip_artifacts,

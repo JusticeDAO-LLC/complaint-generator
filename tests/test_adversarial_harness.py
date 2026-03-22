@@ -2438,6 +2438,103 @@ class TestOptimizer:
         assert any(item.startswith("Increase exhibit-backed complaint grounding") for item in report.priority_improvements)
         assert "exhibit_grounding" in report.phase_scorecards["document_generation"]["focus_areas"]
 
+    def test_optimizer_phase_scorecards_include_intake_exhibit_ready_ratio(self):
+        optimizer = Optimizer()
+        result = SessionResult(
+            session_id="session_intake_exhibit_ready",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={
+                "workflow_phase_plan": {
+                    "phases": {
+                        "intake_questioning": {"status": "warning"},
+                        "graph_analysis": {"status": "ready"},
+                        "document_generation": {"status": "ready"},
+                    }
+                },
+                "intake_question_structure_summary": {
+                    "question_count": 3,
+                    "documentary_question_count": 2,
+                    "exhibit_ready_question_count": 2,
+                    "temporal_exhibit_ready_question_count": 1,
+                    "documentary_exhibit_ready_question_count": 2,
+                    "documentary_exhibit_ready_ratio": 1.0,
+                    "needs_exhibit_grounding": True,
+                },
+            },
+            critic_score=CriticScore(
+                overall_score=0.8,
+                question_quality=0.8,
+                information_extraction=0.8,
+                empathy=0.8,
+                efficiency=0.8,
+                coverage=0.8,
+                feedback="Test",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+            ),
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert report.intake_question_structure_summary["avg_documentary_exhibit_ready_ratio"] == pytest.approx(1.0)
+        assert report.phase_scorecards["intake_questioning"]["documentary_exhibit_ready_ratio"] == pytest.approx(1.0)
+
+    def test_optimizer_recommends_stronger_exhibit_ready_intake_prompts_when_ratio_is_low(self):
+        optimizer = Optimizer()
+        result = SessionResult(
+            session_id="session_intake_exhibit_ready_gap",
+            timestamp="2024-01-01",
+            seed_complaint={},
+            initial_complaint_text="Test",
+            conversation_history=[],
+            num_questions=3,
+            num_turns=2,
+            final_state={
+                "workflow_phase_plan": {
+                    "phases": {
+                        "intake_questioning": {"status": "warning"},
+                        "graph_analysis": {"status": "ready"},
+                        "document_generation": {"status": "warning"},
+                    }
+                },
+                "intake_question_structure_summary": {
+                    "question_count": 3,
+                    "documentary_question_count": 2,
+                    "exhibit_ready_question_count": 0,
+                    "temporal_exhibit_ready_question_count": 0,
+                    "documentary_exhibit_ready_question_count": 0,
+                    "documentary_exhibit_ready_ratio": 0.0,
+                    "needs_exhibit_grounding": True,
+                },
+            },
+            critic_score=CriticScore(
+                overall_score=0.72,
+                question_quality=0.72,
+                information_extraction=0.72,
+                empathy=0.72,
+                efficiency=0.72,
+                coverage=0.72,
+                feedback="Test",
+                strengths=[],
+                weaknesses=[],
+                suggestions=[],
+            ),
+            success=True,
+        )
+
+        report = optimizer.analyze([result])
+
+        assert any("exhibit-ready" in rec for rec in report.recommendations)
+        assert any(item.startswith("Increase exhibit-ready intake prompts") for item in report.priority_improvements)
+        assert "exhibit_ready_questions" in report.phase_scorecards["intake_questioning"]["focus_areas"]
+
     def test_build_agentic_patch_task_uses_report_recommendations(self, monkeypatch):
         optimizer = Optimizer()
 

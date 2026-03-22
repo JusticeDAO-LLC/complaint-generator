@@ -181,6 +181,18 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
                 "grounded_follow_up_answer_count": 3,
                 "has_refreshed_grounding_state": True,
                 "has_persisted_completed_grounded_worksheet": True,
+                "persisted_completed_grounded_worksheet_path": str(newer / "completed_grounded_intake_follow_up_worksheet.json"),
+                "recommended_commands": {
+                    "inspect_command": f"python scripts/show_hacc_grounded_history.py --output-dir {newer.resolve()}",
+                    "recommended_command": f"python scripts/synthesize_hacc_complaint.py --grounded-run-dir {newer.resolve()}",
+                    "recommended_command_kind": "synthesize",
+                    "rerun_command": f"python scripts/run_hacc_grounded_pipeline.py --output-dir {newer.resolve()}",
+                    "synthesize_command": f"python scripts/synthesize_hacc_complaint.py --grounded-run-dir {newer.resolve()}",
+                    "pipeline_resume_command": (
+                        f"python scripts/run_hacc_grounded_pipeline.py --output-dir {newer.resolve()} "
+                        f"--synthesize-complaint --completed-grounded-intake-worksheet {newer / 'completed_grounded_intake_follow_up_worksheet.json'}"
+                    ),
+                },
             }
         ),
         encoding="utf-8",
@@ -194,6 +206,7 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
     assert runs[0]["has_persisted_completed_grounded_worksheet"] is True
     assert runs[0]["grounding_query"] == "newer query"
     assert runs[0]["use_hacc_vector_search"] is True
+    assert runs[0]["completed_grounded_intake_worksheet_path"].endswith("completed_grounded_intake_follow_up_worksheet.json")
     assert runs[1]["run_name"] == "20260322_100000"
 
 
@@ -227,6 +240,7 @@ def test_main_list_runs_prints_available_runs(tmp_path, capsys):
                 "grounded_follow_up_answer_count": 3,
                 "has_refreshed_grounding_state": True,
                 "has_persisted_completed_grounded_worksheet": True,
+                "persisted_completed_grounded_worksheet_path": str(grounded_run / "completed_grounded_intake_follow_up_worksheet.json"),
             }
         ),
         encoding="utf-8",
@@ -241,6 +255,7 @@ def test_main_list_runs_prints_available_runs(tmp_path, capsys):
     assert "Best candidate to resume:" in captured.out
     assert "Inspect command:" in captured.out
     assert "Synthesis command:" in captured.out
+    assert "Pipeline rerun command:" in captured.out
     assert "20260322_120000" in captured.out
     assert "continue_drafting" in captured.out
 
@@ -263,6 +278,7 @@ def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
                 "grounded_follow_up_answer_count": 2,
                 "has_refreshed_grounding_state": True,
                 "has_persisted_completed_grounded_worksheet": True,
+                "persisted_completed_grounded_worksheet_path": str(older / "completed_grounded_intake_follow_up_worksheet.json"),
             }
         ),
         encoding="utf-8",
@@ -297,6 +313,8 @@ def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
     assert payload["best_resume_candidate"]["resume_command"].endswith(
         str((tmp_path / "20260322_100000").resolve())
     )
+    assert "--synthesize-complaint" in payload["best_resume_candidate"]["pipeline_resume_command"]
+    assert "--completed-grounded-intake-worksheet" in payload["best_resume_candidate"]["pipeline_resume_command"]
 
 
 def test_best_resume_candidate_prefers_completed_and_refreshed_runs():
@@ -319,6 +337,7 @@ def test_best_resume_candidate_prefers_completed_and_refreshed_runs():
                 "has_refreshed_grounding_state": True,
                 "has_persisted_completed_grounded_worksheet": True,
                 "grounded_follow_up_answer_count": 3,
+                "completed_grounded_intake_worksheet_path": "/tmp/20260322_100000/completed_grounded_intake_follow_up_worksheet.json",
             },
         ]
     )
@@ -328,6 +347,41 @@ def test_best_resume_candidate_prefers_completed_and_refreshed_runs():
     assert candidate["resume_command_kind"] == "synthesize"
     assert candidate["inspect_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_100000"
     assert candidate["resume_command"] == "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/20260322_100000"
+    assert candidate["pipeline_resume_command"] == (
+        "python scripts/run_hacc_grounded_pipeline.py "
+        "--output-dir /tmp/20260322_100000 "
+        "--synthesize-complaint "
+        "--completed-grounded-intake-worksheet /tmp/20260322_100000/completed_grounded_intake_follow_up_worksheet.json"
+    )
+
+
+def test_best_resume_candidate_prefers_status_owned_recommended_commands():
+    cli = _load_cli_module()
+
+    candidate = cli._best_resume_candidate(
+        [
+            {
+                "run_name": "20260322_100000",
+                "run_dir": "/tmp/20260322_100000",
+                "workflow_stage": "post_grounded_follow_up",
+                "has_refreshed_grounding_state": True,
+                "has_persisted_completed_grounded_worksheet": True,
+                "grounded_follow_up_answer_count": 3,
+                "recommended_commands": {
+                    "inspect_command": "python scripts/show_hacc_grounded_history.py --output-dir /tmp/custom",
+                    "recommended_command": "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/custom",
+                    "recommended_command_kind": "synthesize",
+                    "rerun_command": "python scripts/run_hacc_grounded_pipeline.py --output-dir /tmp/custom",
+                    "synthesize_command": "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/custom",
+                    "pipeline_resume_command": "python scripts/run_hacc_grounded_pipeline.py --output-dir /tmp/custom --synthesize-complaint",
+                },
+            }
+        ]
+    )
+
+    assert candidate["inspect_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/custom"
+    assert candidate["resume_command"] == "python scripts/synthesize_hacc_complaint.py --grounded-run-dir /tmp/custom"
+    assert candidate["pipeline_resume_command"] == "python scripts/run_hacc_grounded_pipeline.py --output-dir /tmp/custom --synthesize-complaint"
 
 
 def test_best_resume_candidate_falls_back_to_inspection_for_pre_follow_up_runs():

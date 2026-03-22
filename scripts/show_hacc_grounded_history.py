@@ -108,6 +108,7 @@ def _list_grounded_runs(grounded_root: Path) -> list[dict[str, Any]]:
             if isinstance(loaded, dict):
                 summary = loaded
         effective_next_action = dict(status.get("effective_next_action") or {})
+        recommended_commands = dict(status.get("recommended_commands") or {})
         runs.append(
             {
                 "run_dir": str(child.resolve()),
@@ -124,6 +125,11 @@ def _list_grounded_runs(grounded_root: Path) -> list[dict[str, Any]]:
                 "hacc_preset": str(summary.get("hacc_preset") or ""),
                 "use_hacc_vector_search": bool(summary.get("use_hacc_vector_search")),
                 "hacc_search_mode": str(summary.get("hacc_search_mode") or ""),
+                "completed_grounded_intake_worksheet_path": str(
+                    status.get("persisted_completed_grounded_worksheet_path")
+                    or ((summary.get("artifacts") or {}).get("completed_grounded_intake_worksheet_json") or "")
+                ),
+                "recommended_commands": recommended_commands,
             }
         )
     return runs
@@ -172,37 +178,51 @@ def _best_resume_candidate(runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
     run_dir = str(best_run.get("run_dir") or "")
     workflow_stage = str(best_run.get("workflow_stage") or "")
     has_completed_grounded_worksheet = bool(best_run.get("has_persisted_completed_grounded_worksheet"))
-    inspect_command = (
+    completed_grounded_intake_worksheet_path = str(best_run.get("completed_grounded_intake_worksheet_path") or "").strip()
+    recommended_commands = dict(best_run.get("recommended_commands") or {})
+    inspect_command = str(recommended_commands.get("inspect_command") or "").strip() or (
         f"python scripts/show_hacc_grounded_history.py --output-dir {run_dir}"
         if run_dir
         else ""
     )
-    if has_completed_grounded_worksheet or workflow_stage == "post_grounded_follow_up":
-        resume_command = (
-            f"python scripts/synthesize_hacc_complaint.py --grounded-run-dir {run_dir}"
-            if run_dir
-            else ""
-        )
+    rerun_parts = ["python", "scripts/run_hacc_grounded_pipeline.py"]
+    if run_dir:
+        rerun_parts.extend(["--output-dir", run_dir])
+    grounding_query = str(best_run.get("grounding_query") or "").strip()
+    claim_type = str(best_run.get("claim_type") or "").strip()
+    hacc_preset = str(best_run.get("hacc_preset") or "").strip()
+    hacc_search_mode = str(best_run.get("hacc_search_mode") or "").strip()
+    if grounding_query:
+        rerun_parts.extend(["--query", grounding_query])
+    if claim_type:
+        rerun_parts.extend(["--claim-type", claim_type])
+    if hacc_preset:
+        rerun_parts.extend(["--hacc-preset", hacc_preset])
+    if hacc_search_mode:
+        rerun_parts.extend(["--hacc-search-mode", hacc_search_mode])
+    if best_run.get("use_hacc_vector_search"):
+        rerun_parts.append("--use-hacc-vector-search")
+    if has_completed_grounded_worksheet:
+        rerun_parts.append("--synthesize-complaint")
+        if completed_grounded_intake_worksheet_path:
+            rerun_parts.extend(
+                ["--completed-grounded-intake-worksheet", completed_grounded_intake_worksheet_path]
+            )
+    rerun_command = " ".join(rerun_parts) if run_dir else ""
+    pipeline_resume_command = str(recommended_commands.get("pipeline_resume_command") or "").strip() or rerun_command
+    synthesize_command = str(recommended_commands.get("synthesize_command") or "").strip() or (
+        f"python scripts/synthesize_hacc_complaint.py --grounded-run-dir {run_dir}"
+        if run_dir
+        else ""
+    )
+    if recommended_commands:
+        resume_command = str(recommended_commands.get("recommended_command") or "").strip()
+        resume_command_kind = str(recommended_commands.get("recommended_command_kind") or "").strip()
+    elif has_completed_grounded_worksheet or workflow_stage == "post_grounded_follow_up":
+        resume_command = synthesize_command
         resume_command_kind = "synthesize"
     else:
-        rerun_parts = ["python", "scripts/run_hacc_grounded_pipeline.py"]
-        if run_dir:
-            rerun_parts.extend(["--output-dir", run_dir])
-        grounding_query = str(best_run.get("grounding_query") or "").strip()
-        claim_type = str(best_run.get("claim_type") or "").strip()
-        hacc_preset = str(best_run.get("hacc_preset") or "").strip()
-        hacc_search_mode = str(best_run.get("hacc_search_mode") or "").strip()
-        if grounding_query:
-            rerun_parts.extend(["--query", grounding_query])
-        if claim_type:
-            rerun_parts.extend(["--claim-type", claim_type])
-        if hacc_preset:
-            rerun_parts.extend(["--hacc-preset", hacc_preset])
-        if hacc_search_mode:
-            rerun_parts.extend(["--hacc-search-mode", hacc_search_mode])
-        if best_run.get("use_hacc_vector_search"):
-            rerun_parts.append("--use-hacc-vector-search")
-        resume_command = " ".join(rerun_parts) if run_dir else ""
+        resume_command = rerun_command
         resume_command_kind = "rerun"
     return {
         "run_name": str(best_run.get("run_name") or ""),
@@ -211,6 +231,9 @@ def _best_resume_candidate(runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "inspect_command": inspect_command,
         "resume_command": resume_command,
         "resume_command_kind": resume_command_kind,
+        "rerun_command": rerun_command,
+        "synthesize_command": synthesize_command,
+        "pipeline_resume_command": pipeline_resume_command,
     }
 
 
@@ -252,6 +275,9 @@ def _render_grounded_run_list(
             elif resume_command_kind == "synthesize":
                 label = "Synthesis command"
             lines.append(f"{label}: {resume_command}")
+        pipeline_resume_command = str(candidate.get("pipeline_resume_command") or "").strip()
+        if pipeline_resume_command and pipeline_resume_command != resume_command:
+            lines.append(f"Pipeline rerun command: {pipeline_resume_command}")
     if not runs:
         lines.append("No grounded runs found.")
         return "\n".join(lines)

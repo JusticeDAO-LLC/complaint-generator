@@ -2058,6 +2058,7 @@ class Optimizer:
         graph_element_targeting_summary: Dict[str, Any],
         document_evidence_targeting_summary: Dict[str, Any],
         document_provenance_summary: Dict[str, Any],
+        intake_question_structure_summary: Dict[str, Any],
         document_grounding_improvement_summary: Dict[str, Any],
         document_grounding_lane_outcome_summary: Dict[str, Any],
         document_workflow_execution_summary: Dict[str, Any],
@@ -2111,6 +2112,12 @@ class Optimizer:
         first_executed_claim_element = str(
             (document_workflow_execution_summary or {}).get("first_targeted_claim_element") or ""
         ).strip()
+        intake_exhibit_ready_ratio = self._safe_float(
+            (intake_question_structure_summary or {}).get("avg_documentary_exhibit_ready_ratio")
+        ) or 0.0
+        intake_needs_exhibit_grounding = int(
+            (intake_question_structure_summary or {}).get("sessions_needing_exhibit_grounding") or 0
+        ) > 0
         document_fact_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_fact_backed_ratio")) or 0.0
         document_exhibit_backed_ratio = self._safe_float((document_provenance_summary or {}).get("avg_exhibit_backed_ratio")) or 0.0
         execution_mismatch_flag = bool(
@@ -2129,12 +2136,15 @@ class Optimizer:
                     4,
                 ),
                 "focus_areas": [
+                    *(["exhibit_ready_questions"] if intake_needs_exhibit_grounding and intake_exhibit_ready_ratio < 0.6 else []),
                     *weakest_objectives[:2],
                     *targeted_intake_objectives[:2],
                 ][:3],
                 "generalization_targets": weakest_complaint_types[:3],
                 "evidence_targets": weakest_modalities[:3],
                 "targeted_intake_objectives": targeted_intake_objectives,
+                "intake_question_structure_summary": dict(intake_question_structure_summary or {}),
+                "documentary_exhibit_ready_ratio": round(intake_exhibit_ready_ratio, 4),
             },
             "graph_analysis": {
                 "status": str((workflow_phases.get("graph_analysis") or {}).get("status") or "ready"),
@@ -3255,6 +3265,7 @@ class Optimizer:
         )
         document_evidence_targeting_summary = self._build_document_evidence_targeting_summary(successful)
         document_provenance_summary = self._build_document_provenance_summary(successful)
+        intake_question_structure_summary = self._build_intake_question_structure_summary(successful)
         document_grounding_improvement_summary = self._build_document_grounding_improvement_summary(successful)
         document_grounding_lane_outcome_summary = self._build_document_grounding_lane_outcome_summary(successful)
         document_workflow_execution_summary = self._build_document_workflow_execution_summary(successful)
@@ -3416,6 +3427,25 @@ class Optimizer:
                     + " via "
                     + ", ".join(targeted_support_kinds),
                 )
+        intake_exhibit_ready_ratio = float(
+            intake_question_structure_summary.get("avg_documentary_exhibit_ready_ratio") or 0.0
+        )
+        if (
+            int(intake_question_structure_summary.get("sessions_needing_exhibit_grounding") or 0) > 0
+            and intake_exhibit_ready_ratio < 0.6
+        ):
+            recommendations.append(
+                "Intake questioning is not consistently asking exhibit-ready document and chronology prompts when exhibit grounding is weak. Prefer questions that ask which uploads become exhibits and capture the date, sender or source, subject or label, and fact proved."
+            )
+            priority_improvements.insert(
+                0,
+                "Increase exhibit-ready intake prompts"
+                + (
+                    f": exhibit-ready ratio {intake_exhibit_ready_ratio:.2f}"
+                    if intake_question_structure_summary.get("avg_documentary_exhibit_ready_ratio") is not None
+                    else ""
+                ),
+            )
         if bool(document_provenance_summary.get("low_grounding_flag")):
             recommendations.append(
                 "Draft grounding is weak across analyzed sessions. Increase canonical-fact and artifact-backed provenance in factual allegations and claim-specific support before relying on the complaint text."
@@ -3662,6 +3692,7 @@ class Optimizer:
             graph_element_targeting_summary=graph_element_targeting_summary,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
+            intake_question_structure_summary=intake_question_structure_summary,
             document_grounding_improvement_summary=document_grounding_improvement_summary,
             document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
@@ -3680,6 +3711,7 @@ class Optimizer:
             graph_element_targeting_summary=graph_element_targeting_summary,
             document_evidence_targeting_summary=document_evidence_targeting_summary,
             document_provenance_summary=document_provenance_summary,
+            intake_question_structure_summary=intake_question_structure_summary,
             document_grounding_improvement_summary=document_grounding_improvement_summary,
             document_grounding_lane_outcome_summary=document_grounding_lane_outcome_summary,
             document_workflow_execution_summary=document_workflow_execution_summary,
