@@ -75,6 +75,18 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
                     "queries": ['site:hacc.example "termination notice chronology" policy notice hearing'],
                     "priority": "chronology_first",
                 },
+                "research_action_queue": [
+                    {
+                        "phase_name": "evidence_upload",
+                        "action": "upload_local_repository_evidence",
+                        "priority": 100,
+                    }
+                ],
+                "recommended_next_action": {
+                    "phase_name": "evidence_upload",
+                    "action": "upload_local_repository_evidence",
+                    "priority": 100,
+                },
             }
 
         def discover_seeded_commoncrawl(self, queries, **kwargs):
@@ -138,6 +150,8 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert Path(artifacts["research_package_json"]).is_file()
     assert Path(artifacts["research_grounding_summary_json"]).is_file()
     assert Path(artifacts["seeded_discovery_plan_json"]).is_file()
+    assert Path(artifacts["research_action_queue_json"]).is_file()
+    assert Path(artifacts["recommended_next_action_json"]).is_file()
     assert Path(artifacts["seeded_commoncrawl_discovery_json"]).is_file()
 
     production_steps = json.loads(Path(artifacts["production_evidence_intake_steps_json"]).read_text(encoding="utf-8"))
@@ -145,6 +159,8 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     temporal_handoff = json.loads(Path(artifacts["claim_support_temporal_handoff_json"]).read_text(encoding="utf-8"))
     form_seed = json.loads(Path(artifacts["evidence_upload_form_seed_json"]).read_text(encoding="utf-8"))
     research_grounding_summary = json.loads(Path(artifacts["research_grounding_summary_json"]).read_text(encoding="utf-8"))
+    research_action_queue = json.loads(Path(artifacts["research_action_queue_json"]).read_text(encoding="utf-8"))
+    recommended_next_action = json.loads(Path(artifacts["recommended_next_action_json"]).read_text(encoding="utf-8"))
     seeded_discovery = json.loads(Path(artifacts["seeded_commoncrawl_discovery_json"]).read_text(encoding="utf-8"))
 
     assert production_steps == ["Select the strongest dated notice first."]
@@ -152,5 +168,7 @@ def test_run_hacc_grounded_pipeline_persists_grounding_handoff_artifacts(tmp_pat
     assert temporal_handoff["timeline_anchor_count"] == 1
     assert form_seed["claim_type"] == "housing_discrimination"
     assert research_grounding_summary["upload_ready_candidate_count"] == 1
+    assert research_action_queue[0]["action"] == "upload_local_repository_evidence"
+    assert recommended_next_action["action"] == "upload_local_repository_evidence"
     assert seeded_discovery["status"] == "success"
     assert seeded_discovery["queries"][0].startswith("site:hacc.example")

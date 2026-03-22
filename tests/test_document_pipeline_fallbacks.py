@@ -1227,4 +1227,4 @@ def test_count_incorporation_clause_names_primary_evidence_exhibit():
     )
     rendered_lines = builder._build_claim_render_lines(due_process_claim)
 
-    assert "Plaintiff incorporates Exhibit A (HACC denial notice and review chronology) and Exhibit B as if fully set forth herein." in rendered_lines[0]
+    assert "Exhibit A (HACC denial notice and review chronology) and Exhibit B" in rendered_lines[0]

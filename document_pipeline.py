@@ -6058,6 +6058,7 @@ class FormalComplaintDocumentBuilder:
                         {
                             "label": exhibit.get("label"),
                             "title": exhibit.get("title"),
+                            "kind": exhibit.get("kind"),
                             "link": exhibit.get("link"),
                         }
                         for exhibit in related_exhibits[:8]

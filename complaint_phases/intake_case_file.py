@@ -645,7 +645,11 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
     ) or None
     temporal_context = _build_temporal_context(
         raw_event_date_or_range,
-        fallback_text=normalized_text if fact_type == "timeline" else "",
+        fallback_text=(
+            normalized_text
+            if fact_type == "timeline" and not _normalize_text(fact.get("structured_timeline_group") or "")
+            else ""
+        ),
     )
     if (
         not temporal_context.get("start_date")

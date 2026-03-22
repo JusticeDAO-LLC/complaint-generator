@@ -648,6 +648,36 @@ def test_build_intake_case_file_derives_sequence_relations_from_structured_timel
     )
 
 
+def test_build_intake_case_file_does_not_promote_structured_timeline_description_into_pseudo_date():
+    knowledge_graph = KnowledgeGraph()
+    knowledge_graph.add_entity(
+        Entity(
+            id="fact:response",
+            type="fact",
+            name="Response event: delayed hearing response",
+            attributes={
+                "description": "HACC response to hearing/review request was delayed and unclear. Artifact: response email.",
+                "fact_type": "timeline",
+                "predicate_family": "response_timeline",
+                "event_label": "Response event",
+                "event_id": "structured_event_response",
+                "sequence_index": 5,
+                "structured_timeline_group": "structured_timeline_demo",
+                "event_date_or_range": "",
+                "source_artifact_ids": ["response email"],
+                "event_support_refs": ["response email"],
+            },
+        )
+    )
+
+    intake_case_file = build_intake_case_file(knowledge_graph)
+    response_fact = intake_case_file["canonical_facts"][0]
+
+    assert response_fact["event_date_or_range"] is None
+    assert response_fact["temporal_context"]["raw_text"] == ""
+    assert response_fact["temporal_context"]["start_date"] is None
+
+
 def test_knowledge_graph_builder_extracts_named_staff_role_titles():
     builder = KnowledgeGraphBuilder()
     graph = builder.build_from_text(

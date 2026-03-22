@@ -232,6 +232,8 @@ def run_hacc_grounded_pipeline(
     )
     research_grounding_summary = dict(research_package.get("research_grounding_summary") or {})
     seeded_discovery_plan = dict(research_package.get("seeded_discovery_plan") or {})
+    research_action_queue = list(research_package.get("research_action_queue") or [])
+    recommended_next_action = dict(research_package.get("recommended_next_action") or {})
     seeded_discovery_payload = _run_seeded_discovery_from_plan(engine, seeded_discovery_plan)
     grounding_bundle = engine.build_grounding_bundle(
         resolved_query,
@@ -270,6 +272,8 @@ def run_hacc_grounded_pipeline(
     _write_json(output_root / "research_package.json", research_package)
     _write_json(output_root / "research_grounding_summary.json", research_grounding_summary)
     _write_json(output_root / "seeded_discovery_plan.json", seeded_discovery_plan)
+    _write_json(output_root / "research_action_queue.json", research_action_queue)
+    _write_json(output_root / "recommended_next_action.json", recommended_next_action)
     _write_json(output_root / "seeded_commoncrawl_discovery.json", seeded_discovery_payload)
     _write_json(output_root / "anchor_passages.json", dict(grounding_bundle or {}).get("anchor_passages", []))
     _write_json(output_root / "upload_candidates.json", dict(grounding_bundle or {}).get("upload_candidates", []))
@@ -336,6 +340,8 @@ def run_hacc_grounded_pipeline(
         "research_package": research_package,
         "research_grounding_summary": research_grounding_summary,
         "seeded_discovery_plan": seeded_discovery_plan,
+        "research_action_queue": research_action_queue,
+        "recommended_next_action": recommended_next_action,
         "seeded_commoncrawl_discovery": seeded_discovery_payload,
         "grounding": grounding_bundle,
         "evidence_upload": upload_report,
@@ -348,6 +354,8 @@ def run_hacc_grounded_pipeline(
             "research_package_json": str(output_root / "research_package.json"),
             "research_grounding_summary_json": str(output_root / "research_grounding_summary.json"),
             "seeded_discovery_plan_json": str(output_root / "seeded_discovery_plan.json"),
+            "research_action_queue_json": str(output_root / "research_action_queue.json"),
+            "recommended_next_action_json": str(output_root / "recommended_next_action.json"),
             "seeded_commoncrawl_discovery_json": str(output_root / "seeded_commoncrawl_discovery.json"),
             "anchor_passages_json": str(output_root / "anchor_passages.json"),
             "upload_candidates_json": str(output_root / "upload_candidates.json"),
