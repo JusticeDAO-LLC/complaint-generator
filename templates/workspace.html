@@ -443,13 +443,13 @@ session = service.get_session("demo-user")</pre>
                         </div>
                         <div class="tool-card">
                             <h3>Python CLI</h3>
-                            <pre>complaint-generator-workspace session
-complaint-generator-workspace answer --question-id protected_activity --answer-text "Reported discrimination to HR"
-complaint-generator-workspace generate --requested-relief "Back pay|Injunctive relief"</pre>
+                            <pre>complaint-workspace session --user-id workshop-user
+complaint-workspace answer --user-id workshop-user --question-id protected_activity --answer-text "Reported discrimination to HR"
+complaint-workspace generate --user-id workshop-user --requested-relief "Back pay|Injunctive relief"</pre>
                         </div>
                         <div class="tool-card">
                             <h3>MCP stdio server</h3>
-                            <pre>complaint-generator-mcp</pre>
+                            <pre>complaint-mcp-server</pre>
                         </div>
                         <div class="tool-card">
                             <h3>JavaScript MCP SDK</h3>
@@ -474,7 +474,7 @@ await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
     <script>
         const { ComplaintMcpClient } = window.ComplaintMcpSdk;
         const client = new ComplaintMcpClient();
-        const workspaceUserId = 'demo-user';
+        const workspaceUserId = new URLSearchParams(window.location.search).get('user_id') || 'demo-user';
         let workspaceSession = null;
 
         function setStatus(message) {
@@ -594,14 +594,14 @@ await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
         }
 
         async function refreshWorkspace() {
-            const sessionPayload = await client.getSession(workspaceUserId);
+            const sessionPayload = await client.startSession(workspaceUserId);
             workspaceSession = sessionPayload;
             renderIntake(sessionPayload);
             renderEvidence(sessionPayload);
             renderReview(sessionPayload);
             renderDraft(sessionPayload);
             renderSidebar(sessionPayload);
-            setStatus('Workspace synchronized from the complaint service.');
+            setStatus(`Workspace synchronized for ${workspaceUserId}.`);
         }
 
         async function saveIntake() {
