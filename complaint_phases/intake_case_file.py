@@ -912,6 +912,192 @@ def _normalize_proof_lead_record(record: Any) -> Dict[str, Any]:
     }
 
 
+def _merge_normalized_string_lists(*values: Any) -> List[str]:
+    merged: List[str] = []
+    for value in values:
+        for item in value if isinstance(value, list) else []:
+            normalized = _normalize_text(item)
+            if normalized and normalized not in merged:
+                merged.append(normalized)
+    return merged
+
+
+def _merge_temporal_context_records(base: Any, overlay: Any) -> Dict[str, Any]:
+    base_context = _coerce_dict(base)
+    overlay_context = _coerce_dict(overlay)
+    merged = {**base_context, **overlay_context}
+    for key in ("start_date", "end_date", "matched_text", "raw_text", "granularity"):
+        merged[key] = overlay_context.get(key) or base_context.get(key)
+    merged["relative_markers"] = _merge_normalized_string_lists(
+        base_context.get("relative_markers"),
+        overlay_context.get("relative_markers"),
+    )
+    return merged
+
+
+def _canonical_fact_match_keys(record: Any) -> List[tuple[Any, ...]]:
+    fact = _normalize_canonical_fact_record(record)
+    keys: List[tuple[Any, ...]] = []
+    fact_id = _normalize_text(fact.get("fact_id") or "")
+    if fact_id:
+        keys.append(("fact_id", fact_id))
+    fact_type = _normalize_text(fact.get("fact_type") or "").lower()
+    text = _normalize_text(fact.get("text") or "")
+    if fact_type and text:
+        keys.append(("fact", fact_type, text))
+    return keys
+
+
+def _merge_canonical_fact_records(base: Any, overlay: Any) -> Dict[str, Any]:
+    base_fact = _normalize_canonical_fact_record(base)
+    overlay_fact = _normalize_canonical_fact_record(overlay)
+    return {
+        **base_fact,
+        **overlay_fact,
+        "actor_ids": _merge_normalized_string_lists(base_fact.get("actor_ids"), overlay_fact.get("actor_ids")),
+        "target_ids": _merge_normalized_string_lists(base_fact.get("target_ids"), overlay_fact.get("target_ids")),
+        "claim_types": _merge_normalized_string_lists(base_fact.get("claim_types"), overlay_fact.get("claim_types")),
+        "element_tags": _merge_normalized_string_lists(base_fact.get("element_tags"), overlay_fact.get("element_tags")),
+        "timeline_anchor_ids": _merge_normalized_string_lists(
+            base_fact.get("timeline_anchor_ids"),
+            overlay_fact.get("timeline_anchor_ids"),
+        ),
+        "event_support_refs": _merge_normalized_string_lists(
+            base_fact.get("event_support_refs"),
+            overlay_fact.get("event_support_refs"),
+        ),
+        "source_artifact_ids": _merge_normalized_string_lists(
+            base_fact.get("source_artifact_ids"),
+            overlay_fact.get("source_artifact_ids"),
+        ),
+        "testimony_record_ids": _merge_normalized_string_lists(
+            base_fact.get("testimony_record_ids"),
+            overlay_fact.get("testimony_record_ids"),
+        ),
+        "source_span_refs": _coerce_provenance_refs(
+            list(base_fact.get("source_span_refs") or []) + list(overlay_fact.get("source_span_refs") or [])
+        ),
+        "fact_participants": {
+            **_coerce_dict(base_fact.get("fact_participants")),
+            **_coerce_dict(overlay_fact.get("fact_participants")),
+        },
+        "temporal_context": _merge_temporal_context_records(
+            base_fact.get("temporal_context"),
+            overlay_fact.get("temporal_context"),
+        ),
+    }
+
+
+def _merge_preserved_canonical_facts(graph_records: Any, existing_records: Any) -> List[Dict[str, Any]]:
+    merged_records = [
+        _normalize_canonical_fact_record(record)
+        for record in graph_records if isinstance(graph_records, list)
+        if isinstance(record, dict)
+    ]
+    index_by_key: Dict[tuple[Any, ...], int] = {}
+    for index, record in enumerate(merged_records):
+        for key in _canonical_fact_match_keys(record):
+            index_by_key[key] = index
+
+    for record in existing_records if isinstance(existing_records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        match_index = None
+        for key in _canonical_fact_match_keys(record):
+            if key in index_by_key:
+                match_index = index_by_key[key]
+                break
+        if match_index is None:
+            merged_records.append(_normalize_canonical_fact_record(record))
+            match_index = len(merged_records) - 1
+        else:
+            merged_records[match_index] = _merge_canonical_fact_records(merged_records[match_index], record)
+        for key in _canonical_fact_match_keys(merged_records[match_index]):
+            index_by_key[key] = match_index
+    return merged_records
+
+
+def _proof_lead_match_keys(record: Any) -> List[tuple[Any, ...]]:
+    lead = _normalize_proof_lead_record(record)
+    keys: List[tuple[Any, ...]] = []
+    lead_id = _normalize_text(lead.get("lead_id") or "")
+    if lead_id:
+        keys.append(("lead_id", lead_id))
+    lead_type = _normalize_text(lead.get("lead_type") or "").lower()
+    description = _normalize_text(lead.get("description") or "")
+    if lead_type and description:
+        keys.append(("lead", lead_type, description))
+    elif description:
+        keys.append(("lead_description", description))
+    return keys
+
+
+def _merge_proof_lead_records(base: Any, overlay: Any) -> Dict[str, Any]:
+    base_lead = _normalize_proof_lead_record(base)
+    overlay_lead = _normalize_proof_lead_record(overlay)
+    return {
+        **base_lead,
+        **overlay_lead,
+        "related_fact_ids": _merge_normalized_string_lists(
+            base_lead.get("related_fact_ids"),
+            overlay_lead.get("related_fact_ids"),
+        ),
+        "fact_targets": _merge_normalized_string_lists(base_lead.get("fact_targets"), overlay_lead.get("fact_targets")),
+        "element_targets": _merge_normalized_string_lists(
+            base_lead.get("element_targets"),
+            overlay_lead.get("element_targets"),
+        ),
+        "timeline_anchor_ids": _merge_normalized_string_lists(
+            base_lead.get("timeline_anchor_ids"),
+            overlay_lead.get("timeline_anchor_ids"),
+        ),
+        "source_artifact_ids": _merge_normalized_string_lists(
+            base_lead.get("source_artifact_ids"),
+            overlay_lead.get("source_artifact_ids"),
+        ),
+        "testimony_record_ids": _merge_normalized_string_lists(
+            base_lead.get("testimony_record_ids"),
+            overlay_lead.get("testimony_record_ids"),
+        ),
+        "source_span_refs": _coerce_provenance_refs(
+            list(base_lead.get("source_span_refs") or []) + list(overlay_lead.get("source_span_refs") or [])
+        ),
+        "temporal_context": _merge_temporal_context_records(
+            base_lead.get("temporal_context"),
+            overlay_lead.get("temporal_context"),
+        ),
+    }
+
+
+def _merge_preserved_proof_leads(graph_records: Any, existing_records: Any) -> List[Dict[str, Any]]:
+    merged_records = [
+        _normalize_proof_lead_record(record)
+        for record in graph_records if isinstance(graph_records, list)
+        if isinstance(record, dict)
+    ]
+    index_by_key: Dict[tuple[Any, ...], int] = {}
+    for index, record in enumerate(merged_records):
+        for key in _proof_lead_match_keys(record):
+            index_by_key[key] = index
+
+    for record in existing_records if isinstance(existing_records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        match_index = None
+        for key in _proof_lead_match_keys(record):
+            if key in index_by_key:
+                match_index = index_by_key[key]
+                break
+        if match_index is None:
+            merged_records.append(_normalize_proof_lead_record(record))
+            match_index = len(merged_records) - 1
+        else:
+            merged_records[match_index] = _merge_proof_lead_records(merged_records[match_index], record)
+        for key in _proof_lead_match_keys(merged_records[match_index]):
+            index_by_key[key] = match_index
+    return merged_records
+
+
 def _link_proof_leads_to_timeline_anchors(
     proof_leads: List[Dict[str, Any]],
     timeline_anchors: List[Dict[str, Any]],
@@ -2776,12 +2962,20 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
     previous_temporal_issue_registry = _coerce_list(case_file.get("temporal_issue_registry"))
+    previous_canonical_facts = _coerce_list(case_file.get("canonical_facts"))
+    previous_proof_leads = _coerce_list(case_file.get("proof_leads"))
     if knowledge_graph is not None:
         case_file["candidate_claims"] = build_candidate_claims(knowledge_graph)
         case_file["canonical_facts"] = _dedupe_structured_timeline_groups(_enrich_canonical_facts_with_relative_anchor_dates(
-            build_canonical_facts(knowledge_graph)
+            _merge_preserved_canonical_facts(
+                build_canonical_facts(knowledge_graph),
+                previous_canonical_facts,
+            )
         ))
-        case_file["proof_leads"] = build_proof_leads(knowledge_graph)
+        case_file["proof_leads"] = _merge_preserved_proof_leads(
+            build_proof_leads(knowledge_graph),
+            previous_proof_leads,
+        )
     else:
         case_file["canonical_facts"] = _dedupe_structured_timeline_groups(_enrich_canonical_facts_with_relative_anchor_dates([
             _normalize_canonical_fact_record(record)
