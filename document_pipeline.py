@@ -2775,7 +2775,7 @@ class FormalComplaintDocumentBuilder:
             rendered.append(incorporated_clause)
 
         legal_standards = self._normalize_text_lines(claim.get("legal_standards", []))
-        supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+        supporting_facts = self._render_claim_supporting_facts(claim)
         claim_type = normalize_claim_type(claim.get("claim_type") or "")
 
         standard_lead_in = "Plaintiff alleges that"
@@ -2807,6 +2807,58 @@ class FormalComplaintDocumentBuilder:
         if support_paragraph:
             rendered.append(support_paragraph)
         return rendered
+
+    def _render_claim_supporting_facts(self, claim: Dict[str, Any]) -> List[str]:
+        supporting_facts = self._normalize_text_lines(claim.get("supporting_facts", []))
+        supporting_entries = self._align_entries_to_lines(
+            claim.get("supporting_fact_entries"),
+            supporting_facts,
+        )
+        if not supporting_entries:
+            return supporting_facts
+
+        prioritized: List[str] = []
+        seen = set()
+        for entry in supporting_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            source_kind = str(entry.get("source_kind") or "").strip().lower()
+            has_fact_ids = bool(_normalize_identifier_list(entry.get("fact_ids") or []))
+            if not has_fact_ids and supporting_entries:
+                continue
+            if source_kind in {"uploaded_evidence_fact", "claim_chronology_support"} or _contains_date_anchor(text):
+                if lowered not in seen:
+                    prioritized.append(text)
+                    seen.add(lowered)
+        for entry in supporting_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            has_fact_ids = bool(_normalize_identifier_list(entry.get("fact_ids") or []))
+            if lowered in seen or not has_fact_ids:
+                continue
+            if "required before enforcement of that adverse action" in lowered or "before a final adverse housing decision was enforced" in lowered:
+                prioritized.append(text)
+                seen.add(lowered)
+        for entry in supporting_entries:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            lowered = text.lower()
+            if lowered in seen:
+                continue
+            prioritized.append(text)
+            seen.add(lowered)
+        return prioritized or supporting_facts
 
     def _compose_authority_paragraph(self, lines: List[str], *, claim_type: str) -> str:
         normalized = [str(line or "").strip().rstrip(".") for line in lines if str(line or "").strip()]
@@ -6069,9 +6121,22 @@ class FormalComplaintDocumentBuilder:
             ),
             None,
         )
+        adverse_action_entry = next(
+            (
+                entry
+                for entry in ordered_entries
+                if "denial notice" in str(entry.get("text") or "").lower()
+                or "loss of assistance" in str(entry.get("text") or "").lower()
+                or "challenged adverse housing action" in str(entry.get("text") or "").lower()
+            ),
+            None,
+        )
         if not (notice_entry and review_entry and authority_entry):
             return self._merge_housing_policy_entries(ordered_entries)
 
+        merged_source_entries = [
+            item for item in (adverse_action_entry, notice_entry, review_entry, authority_entry) if isinstance(item, dict)
+        ]
         merged_entry = {
             "text": (
                 "HACC policy required prompt written notice of a decision denying assistance and a written "
@@ -6079,29 +6144,39 @@ class FormalComplaintDocumentBuilder:
                 f"({self._merge_support_exhibit_labels(notice_entry, review_entry, authority_entry)})."
             ),
             "fact_ids": _normalize_identifier_list(
-                list(notice_entry.get("fact_ids") or [])
-                + list(review_entry.get("fact_ids") or [])
-                + list(authority_entry.get("fact_ids") or [])
+                [
+                    fact_id
+                    for source_entry in merged_source_entries
+                    for fact_id in list(source_entry.get("fact_ids") or [])
+                ]
             ),
             "source_artifact_ids": _normalize_identifier_list(
-                list(notice_entry.get("source_artifact_ids") or [])
-                + list(review_entry.get("source_artifact_ids") or [])
-                + list(authority_entry.get("source_artifact_ids") or [])
+                [
+                    artifact_id
+                    for source_entry in merged_source_entries
+                    for artifact_id in list(source_entry.get("source_artifact_ids") or [])
+                ]
             ),
             "claim_types": _normalize_identifier_list(
-                list(notice_entry.get("claim_types") or [])
-                + list(review_entry.get("claim_types") or [])
-                + list(authority_entry.get("claim_types") or [])
+                [
+                    claim_type
+                    for source_entry in merged_source_entries
+                    for claim_type in list(source_entry.get("claim_types") or [])
+                ]
             ),
             "claim_element_ids": _normalize_identifier_list(
-                list(notice_entry.get("claim_element_ids") or [])
-                + list(review_entry.get("claim_element_ids") or [])
-                + list(authority_entry.get("claim_element_ids") or [])
+                [
+                    element_id
+                    for source_entry in merged_source_entries
+                    for element_id in list(source_entry.get("claim_element_ids") or [])
+                ]
             ),
             "support_trace_ids": _normalize_identifier_list(
-                list(notice_entry.get("support_trace_ids") or [])
-                + list(review_entry.get("support_trace_ids") or [])
-                + list(authority_entry.get("support_trace_ids") or [])
+                [
+                    trace_id
+                    for source_entry in merged_source_entries
+                    for trace_id in list(source_entry.get("support_trace_ids") or [])
+                ]
             ),
             "source_kind": "claim_support_merged",
             "exhibit_label": self._merge_support_exhibit_labels(notice_entry, review_entry, authority_entry),

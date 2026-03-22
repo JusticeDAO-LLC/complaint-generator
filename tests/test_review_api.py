@@ -1033,6 +1033,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert intake_case_summary["temporal_fact_registry"] == []
         assert intake_case_summary["temporal_relation_registry"] == []
         assert intake_case_summary["temporal_issue_registry"] == []
+        assert intake_case_summary["temporal_issue_registry_summary"]["issue_ids"] == []
+        assert intake_case_summary["temporal_issue_registry_summary"]["missing_temporal_predicates"] == []
+        assert intake_case_summary["temporal_issue_registry_summary"]["required_provenance_kinds"] == []
         assert intake_case_summary["timeline_consistency_summary"] == {
             "event_count": 2,
             "anchor_count": 1,
@@ -1913,6 +1916,9 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "claim_unresolved_temporal_issue_count": 0,
         "claim_resolved_temporal_issue_count": 0,
         "claim_temporal_issue_status_counts": {},
+        "claim_temporal_issue_ids": [],
+        "claim_missing_temporal_predicates": [],
+        "claim_required_provenance_kinds": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
@@ -2052,6 +2058,9 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "claim_unresolved_temporal_issue_count": 0,
         "claim_resolved_temporal_issue_count": 0,
         "claim_temporal_issue_status_counts": {},
+        "claim_temporal_issue_ids": [],
+        "claim_missing_temporal_predicates": [],
+        "claim_required_provenance_kinds": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
@@ -5142,6 +5151,13 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
     review = summarize_claim_reasoning_review(
         {
             "claim_type": "retaliation",
+            "claim_temporal_issue_count": 1,
+            "claim_unresolved_temporal_issue_count": 1,
+            "claim_resolved_temporal_issue_count": 0,
+            "claim_temporal_issue_status_counts": {"open": 1},
+            "claim_temporal_issue_ids": ["temporal_issue_001"],
+            "claim_missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+            "claim_required_provenance_kinds": ["testimony_record", "document_artifact"],
             "elements": [
                 {
                     "element_id": "retaliation:1",
@@ -5279,6 +5295,13 @@ def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
         "pf2_abcd1234",
         "Claimant shall establish protected activity.",
     ]
+    assert review["claim_temporal_issue_count"] == 1
+    assert review["claim_unresolved_temporal_issue_count"] == 1
+    assert review["claim_resolved_temporal_issue_count"] == 0
+    assert review["claim_temporal_issue_status_counts"] == {"open": 1}
+    assert review["claim_temporal_issue_ids"] == ["temporal_issue_001"]
+    assert review["claim_missing_temporal_predicates"] == ["Before(fact_001,fact_termination)"]
+    assert review["claim_required_provenance_kinds"] == ["testimony_record", "document_artifact"]
     assert review["flagged_elements"][0]["temporal_fact_count"] == 2
     assert review["flagged_elements"][0]["temporal_relation_count"] == 1
     assert review["flagged_elements"][0]["temporal_issue_count"] == 1

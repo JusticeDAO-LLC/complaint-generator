@@ -498,6 +498,15 @@ def _merge_claim_temporal_registry_into_reasoning_review(
     merged_review["claim_temporal_issue_status_counts"] = dict(
         claim_temporal_registry_summary.get("status_counts") or {}
     )
+    merged_review["claim_temporal_issue_ids"] = list(
+        claim_temporal_registry_summary.get("issue_ids") or []
+    )
+    merged_review["claim_missing_temporal_predicates"] = list(
+        claim_temporal_registry_summary.get("missing_temporal_predicates") or []
+    )
+    merged_review["claim_required_provenance_kinds"] = list(
+        claim_temporal_registry_summary.get("required_provenance_kinds") or []
+    )
     return merged_review
 
 
@@ -1556,6 +1565,21 @@ def summarize_claim_reasoning_review(
         if isinstance(claim_validation.get("claim_temporal_issue_status_counts"), dict)
         else {}
     )
+    claim_temporal_issue_ids = [
+        str(item).strip()
+        for item in (claim_validation.get("claim_temporal_issue_ids") or [])
+        if str(item).strip()
+    ]
+    claim_missing_temporal_predicates = [
+        str(item).strip()
+        for item in (claim_validation.get("claim_missing_temporal_predicates") or [])
+        if str(item).strip()
+    ]
+    claim_required_provenance_kinds = [
+        str(item).strip()
+        for item in (claim_validation.get("claim_required_provenance_kinds") or [])
+        if str(item).strip()
+    ]
 
     flagged_elements: List[Dict[str, Any]] = []
     fallback_ontology_element_count = 0
@@ -1985,6 +2009,9 @@ def summarize_claim_reasoning_review(
         "claim_unresolved_temporal_issue_count": claim_unresolved_temporal_issue_count,
         "claim_resolved_temporal_issue_count": claim_resolved_temporal_issue_count,
         "claim_temporal_issue_status_counts": claim_temporal_issue_status_counts,
+        "claim_temporal_issue_ids": claim_temporal_issue_ids,
+        "claim_missing_temporal_predicates": claim_missing_temporal_predicates,
+        "claim_required_provenance_kinds": claim_required_provenance_kinds,
         "theorem_export_blocked_element_count": theorem_export_blocked_element_count,
         "theorem_export_chronology_task_count": theorem_export_chronology_task_count,
         "proof_artifact_element_count": proof_artifact_element_count,

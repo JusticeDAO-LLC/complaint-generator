@@ -216,6 +216,8 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "resolved_count": 1,
             "status_counts": {"open": 1, "resolved": 1},
             "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+            "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+            "required_provenance_kinds": ["testimony_record", "document_artifact"],
         },
         "harm_profile": {
             "count": 1,
@@ -1372,6 +1374,8 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "resolved_count": 1,
                     "status_counts": {"open": 1, "resolved": 1},
                     "issue_ids": ["timeline-gap-001", "timeline-gap-closed-001"],
+                    "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+                    "required_provenance_kinds": ["testimony_record", "document_artifact"],
                 },
                 "harm_profile": {"count": 1, "categories": ["economic"]},
                 "remedy_profile": {"count": 1, "categories": ["monetary"]},
@@ -1616,6 +1620,8 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Chronology history resolved: 1" in preview_text
             assert "Chronology history statuses: Open=1, Resolved=1" in preview_text
             assert "Chronology history issue ids: timeline-gap-001, timeline-gap-closed-001" in preview_text
+            assert "Chronology history predicates: Before(fact_001,fact_termination)" in preview_text
+            assert "Chronology history provenance: testimony_record, document_artifact" in preview_text
             assert "Packet chronology tasks: 1" in preview_text
             assert "Packet chronology targeted: 1" in preview_text
             assert "Packet chronology status: Partial=1" in preview_text
@@ -2672,6 +2678,10 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "proof bundles 1" in reasoning_flagged
                 assert "bundle Partial 1" in reasoning_flagged
                 assert "Before 1" in reasoning_flagged
+                assert "Claim missing predicates: Before(fact_001,fact_termination)" in reasoning_summary
+                assert "Claim required provenance: testimony_record, document_artifact" in reasoning_summary
+                assert "Registry missing temporal predicates" in reasoning_flagged
+                assert "Registry required provenance" in reasoning_flagged
                 assert "Claim-level hybrid bridge" in reasoning_flagged
                 assert "Protected activity" in reasoning_flagged
                 assert "temporal rule Partial" in reasoning_flagged

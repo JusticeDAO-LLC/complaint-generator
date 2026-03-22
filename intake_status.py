@@ -708,8 +708,15 @@ def summarize_temporal_issue_registry(temporal_issue_registry_summary: Any) -> D
     issue_type_counts: Dict[str, int] = {}
     claim_type_counts: Dict[str, int] = {}
     element_tag_counts: Dict[str, int] = {}
+    issue_ids: List[str] = []
+    missing_temporal_predicates: List[str] = []
+    required_provenance_kinds: List[str] = []
 
     for issue in normalized_issues:
+        issue_id = str(issue.get("issue_id") or "").strip()
+        if issue_id and issue_id not in issue_ids:
+            issue_ids.append(issue_id)
+
         status = str(
             issue.get("current_resolution_status") or issue.get("status") or ""
         ).strip().lower()
@@ -740,6 +747,16 @@ def summarize_temporal_issue_registry(temporal_issue_registry_summary: Any) -> D
                 continue
             element_tag_counts[normalized_element_tag] = element_tag_counts.get(normalized_element_tag, 0) + 1
 
+        for predicate in issue.get("missing_temporal_predicates") or []:
+            normalized_predicate = str(predicate or "").strip()
+            if normalized_predicate and normalized_predicate not in missing_temporal_predicates:
+                missing_temporal_predicates.append(normalized_predicate)
+
+        for provenance_kind in issue.get("required_provenance_kinds") or []:
+            normalized_provenance_kind = str(provenance_kind or "").strip()
+            if normalized_provenance_kind and normalized_provenance_kind not in required_provenance_kinds:
+                required_provenance_kinds.append(normalized_provenance_kind)
+
     count = int(summary.get("count", len(normalized_issues)) or 0)
     resolved_count = int(summary.get("resolved_count", status_counts.get("resolved", 0)) or 0)
     unresolved_count = int(
@@ -753,12 +770,15 @@ def summarize_temporal_issue_registry(temporal_issue_registry_summary: Any) -> D
     return {
         "count": count,
         "issues": normalized_issues,
+        "issue_ids": list(summary.get("issue_ids", issue_ids) or []),
         "status_counts": dict(summary.get("status_counts", status_counts) or {}),
         "severity_counts": dict(summary.get("severity_counts", severity_counts) or {}),
         "lane_counts": dict(summary.get("lane_counts", lane_counts) or {}),
         "issue_type_counts": dict(summary.get("issue_type_counts", issue_type_counts) or {}),
         "claim_type_counts": dict(summary.get("claim_type_counts", claim_type_counts) or {}),
         "element_tag_counts": dict(summary.get("element_tag_counts", element_tag_counts) or {}),
+        "missing_temporal_predicates": list(summary.get("missing_temporal_predicates", missing_temporal_predicates) or []),
+        "required_provenance_kinds": list(summary.get("required_provenance_kinds", required_provenance_kinds) or []),
         "resolved_count": resolved_count,
         "unresolved_count": unresolved_count,
     }

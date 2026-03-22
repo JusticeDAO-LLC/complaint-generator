@@ -707,7 +707,7 @@ def test_due_process_claim_support_entries_inherit_process_fact_ids():
         if "HACC policy required prompt written notice of a decision denying assistance" in entry["text"]
     )
     assert process_entry["fact_ids"]
-    assert process_entry["fact_ids"] == ["fact-303-4", "fact-303-5"]
+    assert process_entry["fact_ids"] == ["fact-303-1", "fact-303-4", "fact-303-5"]
 
 
 def test_due_process_claim_support_entries_prefer_evidence_exhibit_for_uploaded_facts():
@@ -1064,3 +1064,57 @@ def test_rendered_draft_uses_compact_count_paragraphs():
     assert "The pleaded facts further show that on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
     assert "Federal housing regulations, including 24 C.F.R. 982.555, required written notice and an opportunity for informal review" in claims_section
     assert "hACC" not in claims_section
+
+
+def test_rendered_claim_support_prefers_fact_backed_uploaded_evidence_lines():
+    builder = FormalComplaintDocumentBuilder(_HousingProcessMediator())
+
+    draft = builder.build_draft(
+        user_id="housing-process-user",
+        court_name="United States District Court",
+        district="Northern District of California",
+        county=None,
+        division=None,
+        court_header_override=None,
+        case_number=None,
+        lead_case_number=None,
+        related_case_number=None,
+        assigned_judge=None,
+        courtroom=None,
+        title_override=None,
+        plaintiff_names=["Jane Doe"],
+        defendant_names=["Housing Authority of the County of Contra Costa"],
+        requested_relief=None,
+        jury_demand=None,
+        jury_demand_text=None,
+        signer_name=None,
+        signer_title=None,
+        signer_firm=None,
+        signer_bar_number=None,
+        signer_contact=None,
+        additional_signers=None,
+        declarant_name=None,
+        service_method=None,
+        service_recipients=None,
+        service_recipient_details=None,
+        signature_date=None,
+        verification_date=None,
+        service_date=None,
+        affidavit_title=None,
+        affidavit_intro=None,
+        affidavit_facts=None,
+        affidavit_supporting_exhibits=None,
+        affidavit_include_complaint_exhibits=None,
+        affidavit_venue_lines=None,
+        affidavit_jurat=None,
+        affidavit_notary_block=None,
+    )
+
+    due_process_claim = next(
+        claim for claim in draft["claims_for_relief"] if claim.get("claim_type") == "due_process_failure"
+    )
+    rendered_lines = builder._render_claim_supporting_facts(due_process_claim)
+
+    assert "On March 3, 2026, HACC sent Plaintiff a written denial notice signed by HACC hearing officer Maria Lopez (See Exhibit A)." in rendered_lines[0]
+    assert "On March 4, 2026, Plaintiff submitted a grievance request challenging the denial notice (See Exhibit A)." in rendered_lines[1]
+    assert "On March 8, 2026, HACC hearing officer Maria Lopez issued the review decision (See Exhibit A)." in rendered_lines[2]

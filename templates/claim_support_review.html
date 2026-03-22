@@ -2267,6 +2267,9 @@
                 && typeof reviewData.claim_temporal_issue_status_counts === 'object'
                 ? reviewData.claim_temporal_issue_status_counts
                 : {};
+            const claimTemporalIssueIds = normalizeList(reviewData.claim_temporal_issue_ids);
+            const claimMissingTemporalPredicates = normalizeList(reviewData.claim_missing_temporal_predicates);
+            const claimRequiredProvenanceKinds = normalizeList(reviewData.claim_required_provenance_kinds);
 
             const summaryChips = [
                 `<span class="chip">Flagged elements: ${Number(reviewData.flagged_element_count || 0)}</span>`,
@@ -2291,6 +2294,12 @@
             Object.entries(claimTemporalIssueStatusCounts).forEach(([status, count]) => {
                 summaryChips.push(`<span class="chip">Claim chronology ${humanizeQueryValue(status)}: ${Number(count || 0)}</span>`);
             });
+            if (claimMissingTemporalPredicates.length) {
+                summaryChips.push(`<span class="chip">Claim missing predicates: ${claimMissingTemporalPredicates.join(', ')}</span>`);
+            }
+            if (claimRequiredProvenanceKinds.length) {
+                summaryChips.push(`<span class="chip">Claim required provenance: ${claimRequiredProvenanceKinds.join(', ')}</span>`);
+            }
             if (reviewData.hybrid_formalism) {
                 summaryChips.push(`<span class="chip">Formalism: ${escapeHtml(reviewData.hybrid_formalism)}</span>`);
             }
@@ -2336,11 +2345,14 @@
                         <span class="chip">registry issues ${claimTemporalIssueCount}</span>
                         <span class="chip">registry unresolved ${claimUnresolvedTemporalIssueCount}</span>
                         <span class="chip">registry resolved ${claimResolvedTemporalIssueCount}</span>
+                        ${claimTemporalIssueIds.length ? `<span class="chip">registry ids ${escapeHtml(claimTemporalIssueIds.join(', '))}</span>` : ''}
                         ${Object.entries(reviewData.temporal_relation_type_counts && typeof reviewData.temporal_relation_type_counts === 'object' ? reviewData.temporal_relation_type_counts : {}).map(([relationType, count]) => `<span class="chip">${humanizeQueryValue(relationType)} ${Number(count || 0)}</span>`).join('')}
                         ${Object.entries(reviewData.temporal_proof_bundle_status_counts && typeof reviewData.temporal_proof_bundle_status_counts === 'object' ? reviewData.temporal_proof_bundle_status_counts : {}).map(([status, count]) => `<span class="chip">bundle ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                         ${Object.entries(reviewData.proof_artifact_status_counts && typeof reviewData.proof_artifact_status_counts === 'object' ? reviewData.proof_artifact_status_counts : {}).map(([status, count]) => `<span class="chip">proof ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                         ${Object.entries(claimTemporalIssueStatusCounts).map(([status, count]) => `<span class="chip">registry ${humanizeQueryValue(status)} ${Number(count || 0)}</span>`).join('')}
                     </div>
+                    ${renderFormulaPreviewDetails('Registry missing temporal predicates', claimMissingTemporalPredicates, 'No claim-level chronology predicates surfaced from the temporal issue registry.')}
+                    ${renderFormulaPreviewDetails('Registry required provenance', claimRequiredProvenanceKinds, 'No claim-level provenance requirements surfaced from the temporal issue registry.')}
                     ${renderFormulaPreviewDetails('Temporal relation preview', reviewData.temporal_relation_preview || [], 'No temporal relation preview available.')}
                     ${renderFormulaPreviewDetails('Temporal warnings', reviewData.temporal_warning_preview || [], 'No temporal warnings surfaced.')}
                     ${renderFormulaPreviewDetails('Proof artifact preview', reviewData.proof_artifact_preview || [], 'No proof artifacts surfaced yet.')}
@@ -3734,6 +3746,18 @@
                 : [];
             if (chronologyHistoryIssueIds.length) {
                 packetChips.push(`<span class="chip">chronology history issue ids: ${chronologyHistoryIssueIds.join(', ')}</span>`);
+            }
+            const chronologyHistoryMissingPredicates = Array.isArray(temporalIssueRegistrySummary.missing_temporal_predicates)
+                ? temporalIssueRegistrySummary.missing_temporal_predicates.filter((item) => String(item || '').trim())
+                : [];
+            if (chronologyHistoryMissingPredicates.length) {
+                packetChips.push(`<span class="chip">chronology history predicates: ${chronologyHistoryMissingPredicates.join(', ')}</span>`);
+            }
+            const chronologyHistoryRequiredProvenance = Array.isArray(temporalIssueRegistrySummary.required_provenance_kinds)
+                ? temporalIssueRegistrySummary.required_provenance_kinds.filter((item) => String(item || '').trim())
+                : [];
+            if (chronologyHistoryRequiredProvenance.length) {
+                packetChips.push(`<span class="chip">chronology history provenance: ${chronologyHistoryRequiredProvenance.join(', ')}</span>`);
             }
             const packetUnresolvedTemporalIssueIds = Array.isArray(claimSupportPacketSummary.claim_support_unresolved_temporal_issue_ids)
                 ? claimSupportPacketSummary.claim_support_unresolved_temporal_issue_ids.filter((item) => String(item || '').trim())
