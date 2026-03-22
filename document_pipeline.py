@@ -2801,7 +2801,7 @@ class FormalComplaintDocumentBuilder:
 
         support_paragraph = self._compose_count_paragraph(
             supporting_facts,
-            lead_in="These facts further show that",
+            lead_in="The pleaded facts further show that",
             mode="sentences",
         )
         if support_paragraph:
@@ -2976,6 +2976,7 @@ class FormalComplaintDocumentBuilder:
             lead_in.startswith("The chronology and governing policy further show that")
             or lead_in.startswith("The record further shows that")
             or lead_in.startswith("These facts further show that")
+            or lead_in.startswith("The pleaded facts further show that")
         ):
             fragment = "on " + fragment[len("On "):]
 
@@ -6939,7 +6940,7 @@ class FormalComplaintDocumentBuilder:
         if normalized == "due_process_failure":
             return [
                 "Before enforcing a final adverse housing decision, Defendant was required to provide the written notice, review opportunity, hearing, grievance, appeal, or comparable process required by law or program rules.",
-                "Plaintiff alleges that Defendant failed to provide those required procedural protections before or while imposing the challenged denial or loss of assistance.",
+                "Plaintiff alleges that Defendant failed to provide the required written notice and meaningful review process before or while imposing the challenged denial or loss of assistance.",
                 "Plaintiff seeks relief for the deprivation of housing benefits and review rights caused by that failure of notice and process.",
             ]
         if normalized == "retaliation":

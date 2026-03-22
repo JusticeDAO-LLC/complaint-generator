@@ -999,9 +999,9 @@ def test_rendered_draft_uses_compact_count_paragraphs():
     assert "That unlawful housing decision caused the resulting denial of housing opportunity" in claims_section
     assert "That failure of notice and process caused the deprivation of housing benefits and review rights" in claims_section
     assert "Plaintiff alleges that Plaintiff alleges that" not in claims_section
-    assert "Defendant failed to provide those required procedural protections" in claims_section
+    assert "Defendant failed to provide the required written notice and meaningful review process" in claims_section
     assert " and the requested relief addresses " not in claims_section
     assert "The requested relief addresses" not in claims_section
-    assert "These facts further show that on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
+    assert "The pleaded facts further show that on March 3, 2026, HACC sent Plaintiff a written denial notice" in claims_section
     assert "Federal housing regulations, including 24 C.F.R. 982.555, required written notice and an opportunity for informal review" in claims_section
     assert "hACC" not in claims_section
