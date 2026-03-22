@@ -697,8 +697,11 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                             "event_ids": ["fact_001", "fact_termination"],
                                             "temporal_fact_ids": ["fact_001", "fact_termination"],
                                             "temporal_relation_ids": ["timeline_relation_001"],
+                                            "timeline_anchor_ids": ["anchor_001", "anchor_termination"],
                                             "timeline_issue_ids": ["temporal_issue_001"],
                                             "temporal_issue_ids": ["temporal_issue_001"],
+                                            "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+                                            "required_provenance_kinds": ["testimony_record", "document_artifact"],
                                             "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
                                             "temporal_proof_objectives": ["retaliation_temporal_frame"],
                                         },
@@ -769,8 +772,11 @@ def _build_hook_backed_browser_mediator(db_path: str):
                                         "event_ids": ["fact_001", "fact_termination"],
                                         "temporal_fact_ids": ["fact_001", "fact_termination"],
                                         "temporal_relation_ids": ["timeline_relation_001"],
+                                        "timeline_anchor_ids": ["anchor_001", "anchor_termination"],
                                         "timeline_issue_ids": ["temporal_issue_001"],
                                         "temporal_issue_ids": ["temporal_issue_001"],
+                                        "missing_temporal_predicates": ["Before(fact_001,fact_termination)"],
+                                        "required_provenance_kinds": ["testimony_record", "document_artifact"],
                                         "temporal_proof_bundle_ids": ["retaliation:retaliation_1:retaliation_temporal_profile_v1"],
                                         "temporal_proof_objectives": ["retaliation_temporal_frame"],
                                     },
@@ -2724,6 +2730,9 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                     "Theorem proof bundles: retaliation:retaliation_1:retaliation_temporal_profile_v1"
                 ).first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem objectives: retaliation_temporal_frame").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Theorem timeline anchors: anchor_001, anchor_termination").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Missing temporal predicates: Before(fact_001,fact_termination)").first.is_visible()
+                assert page.locator("#claim-reasoning-flagged-list").get_by_text("Required provenance: testimony_record, document_artifact").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Proof ID").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Copy proof ID").first.is_visible()
                 assert page.locator("#claim-reasoning-flagged-list").get_by_text("Copy proof explanation").first.is_visible()
@@ -5212,8 +5221,11 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                 "event_ids": ["event-termination", "event-hr-report"],
                 "temporal_fact_ids": ["fact-001"],
                 "temporal_relation_ids": ["rel-before-001"],
+                "timeline_anchor_ids": ["anchor-hr-report"],
                 "timeline_issue_ids": ["issue-ledger-001"],
                 "temporal_issue_ids": ["temporal-issue-001", "temporal-issue-002"],
+                "missing_temporal_predicates": ["before(event-hr-report,event-termination)"],
+                "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
                 "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
                 "temporal_proof_objectives": ["show protected activity preceded termination"],
             },
@@ -5258,6 +5270,9 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                                 "chronology_blocked": True,
                                 "chronology_task_count": 3,
                                 "unresolved_temporal_issue_ids": ["temporal-issue-001"],
+                                "timeline_anchor_ids": ["anchor-hr-report"],
+                                "missing_temporal_predicates": ["before(event-hr-report,event-termination)"],
+                                "required_provenance_kinds": ["testimony_record", "document_artifact", "legal_authority"],
                                 "temporal_proof_bundle_ids": ["retaliation:causation:bundle_001"],
                                 "temporal_proof_objectives": ["show protected activity preceded termination"],
                             },
@@ -5366,8 +5381,11 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "temporal issue refs: temporal-issue-001, temporal-issue-002" in temporal_handoff_text
             assert "event refs: event-termination, event-hr-report" in temporal_handoff_text
             assert "temporal relation refs: rel-before-001" in temporal_handoff_text
+            assert "timeline anchors: anchor-hr-report" in temporal_handoff_text
             assert "temporal proof bundles: retaliation:causation:bundle_001" in temporal_handoff_text
             assert "temporal proof objectives: show protected activity preceded termination" in temporal_handoff_text
+            assert "missing temporal predicates: before(event-hr-report,event-termination)" in temporal_handoff_text
+            assert "required provenance: testimony_record, document_artifact, legal_authority" in temporal_handoff_text
             assert "review chronology blockers" in temporal_handoff_text
             assert "claim reasoning reviews: 1" in review_snapshot_text
             assert "retaliation proof artifacts: 1 total, 1 available, explanations 1" in review_snapshot_text
@@ -5399,6 +5417,9 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
             assert "theorem chronology tasks: 3" in proof_drilldown_text
             assert "theorem proof bundles: retaliation:causation:bundle_001" in proof_drilldown_text
             assert "theorem objectives: show protected activity preceded termination" in proof_drilldown_text
+            assert "theorem timeline anchors: anchor-hr-report" in proof_drilldown_text
+            assert "missing temporal predicates: before(event-hr-report,event-termination)" in proof_drilldown_text
+            assert "required provenance: testimony_record, document_artifact, legal_authority" in proof_drilldown_text
 
             page.locator("#traceProofDrilldown .trace-proof-copy-id-button").click()
             page.wait_for_function(

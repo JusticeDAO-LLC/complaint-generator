@@ -573,7 +573,10 @@ def _build_repository_grounding_bundle(
             "snippet": str(hit.get("snippet") or ""),
             "score": float(hit.get("score") or 0.0),
             "source_type": str(hit.get("source_type") or "repository_grounding"),
-            "metadata": dict(hit.get("metadata") or {}),
+            "metadata": {
+                **dict(hit.get("metadata") or {}),
+                "anchor_terms": [str(item) for item in list(anchor_terms or []) if str(item).strip()],
+            },
         }
         for hit in selected_hits[: max(1, int(top_k))]
     ]
@@ -1395,6 +1398,28 @@ def _build_seed_packet_text(candidate: Dict[str, Any], resolved_text: str, *, ma
     grounding_mode = str(metadata.get("grounding_mode") or "").strip().lower()
     relevant_excerpt = _condense_evidence_snippet(str(candidate.get("snippet") or ""), max_chars=1200)
     if source_type == "repository_grounding" or grounding_mode == "repository_fallback":
+        anchor_terms = [str(item).strip() for item in list(metadata.get("anchor_terms") or []) if str(item).strip()]
+        if resolved_text and anchor_terms:
+            excerpt_candidates: List[str] = []
+            for term in anchor_terms[:4]:
+                excerpt = _extract_source_window(
+                    source_path=str(candidate.get("source_path") or ""),
+                    anchor_terms=[term],
+                    fallback_snippet="",
+                )
+                cleaned_excerpt = _clean_extracted_excerpt(excerpt)
+                if (
+                    cleaned_excerpt
+                    and not _looks_like_code_text(cleaned_excerpt)
+                    and not _looks_like_meta_grounding_text(cleaned_excerpt)
+                    and not _looks_like_question_prompt_text(cleaned_excerpt)
+                    and not _looks_like_serialized_prompt_text(cleaned_excerpt)
+                ):
+                    excerpt_candidates.append(cleaned_excerpt)
+            combined_excerpt = " ".join(_unique_strings(excerpt_candidates))
+            combined_excerpt = _condense_evidence_snippet(combined_excerpt, max_chars=1400)
+            if combined_excerpt:
+                return combined_excerpt
         if relevant_excerpt:
             return relevant_excerpt
     cleaned = _normalize_match_text(resolved_text)

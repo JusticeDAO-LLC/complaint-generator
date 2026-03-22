@@ -306,6 +306,7 @@ def _build_claim_support_temporal_handoff_metadata(
         int(claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_count", 0) or 0),
         int(temporal_issue_registry_summary.get("unresolved_count") or 0),
     )
+    chronology_task_count = int(claim_support_packet_summary.get("temporal_gap_task_count", 0) or 0)
 
     temporal_handoff: Dict[str, Any] = {
         "unresolved_temporal_issue_count": unresolved_temporal_issue_count,
@@ -313,6 +314,8 @@ def _build_claim_support_temporal_handoff_metadata(
             claim_support_packet_summary.get("claim_support_unresolved_temporal_issue_ids")
         ),
     }
+    if chronology_task_count > 0:
+        temporal_handoff["chronology_task_count"] = chronology_task_count
     resolved_temporal_issue_count = int(temporal_issue_registry_summary.get("resolved_count") or 0)
     if resolved_temporal_issue_count > 0:
         temporal_handoff["resolved_temporal_issue_count"] = resolved_temporal_issue_count
@@ -336,12 +339,36 @@ def _build_claim_support_temporal_handoff_metadata(
         "temporal_relation_ids",
         "timeline_issue_ids",
         "temporal_issue_ids",
+        "missing_temporal_predicates",
+        "required_provenance_kinds",
     ):
         values: List[str] = []
         for task in matching_tasks:
             values.extend(_dedupe_handoff_ids(task.get(field_name)))
         if values:
             temporal_handoff[field_name] = _dedupe_handoff_ids(values)
+
+    timeline_anchor_values: List[str] = []
+    for task in matching_tasks:
+        timeline_anchor_values.extend(
+            _dedupe_handoff_ids(task.get("anchor_ids") or task.get("timeline_anchor_ids"))
+        )
+    if timeline_anchor_values:
+        temporal_handoff["timeline_anchor_ids"] = _dedupe_handoff_ids(timeline_anchor_values)
+
+    temporal_proof_bundle_ids: List[str] = []
+    temporal_proof_objectives: List[str] = []
+    for task in matching_tasks:
+        proof_bundle_id = str(task.get("temporal_proof_bundle_id") or "").strip()
+        if proof_bundle_id:
+            temporal_proof_bundle_ids.append(proof_bundle_id)
+        proof_objective = str(task.get("temporal_proof_objective") or "").strip()
+        if proof_objective:
+            temporal_proof_objectives.append(proof_objective)
+    if temporal_proof_bundle_ids:
+        temporal_handoff["temporal_proof_bundle_ids"] = _dedupe_handoff_ids(temporal_proof_bundle_ids)
+    if temporal_proof_objectives:
+        temporal_handoff["temporal_proof_objectives"] = _dedupe_handoff_ids(temporal_proof_objectives)
 
     for field_name in ("temporal_proof_bundle_id", "temporal_proof_objective"):
         for task in matching_tasks:
@@ -543,6 +570,8 @@ def _build_review_workflow_phase_priority(
 
     if prioritized_phase_name == "document_generation":
         proof_readiness_score = float(prioritized_signals.get("proof_readiness_score") or 0.0)
+        chronology_blocked = bool(prioritized_signals.get("chronology_blocked"))
+        temporal_gap_task_count = int(prioritized_signals.get("temporal_gap_task_count") or 0)
         unresolved_temporal_issue_count = int(prioritized_signals.get("unresolved_temporal_issue_count") or 0)
         unresolved_without_review_path_count = int(
             prioritized_signals.get("unresolved_without_review_path_count") or 0
@@ -558,6 +587,10 @@ def _build_review_workflow_phase_priority(
         missing_proof_artifact_count = int(prioritized_signals.get("missing_proof_artifact_count") or 0)
         if missing_proof_artifact_count > 0:
             chip_labels.append(f"missing proof artifacts: {missing_proof_artifact_count}")
+        if chronology_blocked:
+            chip_labels.append("chronology blocked: Yes")
+        if temporal_gap_task_count > 0:
+            chip_labels.append(f"chronology gap tasks: {temporal_gap_task_count}")
         if recommended_next_action:
             chip_labels.append(f"recommended action: {recommended_next_action}")
         return {
@@ -606,6 +639,22 @@ def _build_review_workflow_priority_from_phase(
     button_id = str(workflow_phase_priority.get("button_id") or "").strip()
     action_label = str(workflow_phase_priority.get("action_label") or "Review workflow priority").strip()
     notes = [str(workflow_phase_priority.get("summary") or "").strip()]
+    signals = dict(workflow_phase_priority.get("signals") or {})
+    chronology_blocked = bool(signals.get("chronology_blocked"))
+    unresolved_temporal_issue_count = int(signals.get("unresolved_temporal_issue_count") or 0)
+    temporal_gap_task_count = int(signals.get("temporal_gap_task_count") or 0)
+    if chronology_blocked or unresolved_temporal_issue_count > 0 or temporal_gap_task_count > 0:
+        chronology_note_parts: List[str] = []
+        if temporal_gap_task_count > 0:
+            task_label = "task" if temporal_gap_task_count == 1 else "tasks"
+            chronology_note_parts.append(f"{temporal_gap_task_count} pending chronology gap {task_label}")
+        if unresolved_temporal_issue_count > 0:
+            issue_label = "issue ID" if unresolved_temporal_issue_count == 1 else "issue IDs"
+            chronology_note_parts.append(
+                f"{unresolved_temporal_issue_count} unresolved temporal {issue_label}"
+            )
+        if chronology_note_parts:
+            notes.append(f"Chronology blockers: {'; '.join(chronology_note_parts)}.")
     recommended_actions = [
         str(item).strip()
         for item in (workflow_phase_priority.get("recommended_actions") or [])
@@ -649,8 +698,10 @@ def _build_review_workflow_priority(
         if isinstance(intake_case_summary.get("document_grounding_improvement_next_action"), dict)
         else {}
     )
-    if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
+    grounding_action = str(document_grounding_improvement_next_action.get("action") or "").strip().lower()
+    if grounding_action in {"refine_document_grounding_strategy", "retarget_document_grounding"}:
         claim_element_id = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
+        suggested_claim_element_id = str(document_grounding_improvement_next_action.get("suggested_claim_element_id") or "").strip()
         preferred_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
         suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
         focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "").strip()
@@ -660,6 +711,8 @@ def _build_review_workflow_priority(
         chip_labels = [f"grounding status: {humanize_workflow_priority_label(status)}"]
         if claim_element_id:
             chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
+        if suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
+            chip_labels.append(f"next target element: {humanize_workflow_priority_label(suggested_claim_element_id)}")
         if focus_section:
             chip_labels.append(f"focus section: {humanize_workflow_priority_label(focus_section)}")
         if preferred_support_kind:
@@ -681,10 +734,18 @@ def _build_review_workflow_priority(
             notes.append(
                 f"Recent grounding cycles suggest {humanize_workflow_priority_label(learned_support_kind)} is the stronger lane for the next recovery pass."
             )
+        if grounding_action == "retarget_document_grounding" and suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
+            notes.append(
+                f"Shift the next grounding pass from {humanize_workflow_priority_label(claim_element_id)} to {humanize_workflow_priority_label(suggested_claim_element_id)}."
+            )
         return {
             "status": "warning",
-            "status_id": "refine_document_grounding_strategy",
-            "title": "Refine document grounding strategy",
+            "status_id": grounding_action,
+            "title": (
+                "Retarget document grounding"
+                if grounding_action == "retarget_document_grounding"
+                else "Refine document grounding strategy"
+            ),
             "chip_labels": chip_labels,
             "notes": notes,
             "buttons": [
@@ -693,8 +754,12 @@ def _build_review_workflow_priority(
                     "Review grounding strategy",
                 )
             ],
-            "action_id": "refine_document_grounding_strategy",
-            "status_message": "Reviewing document grounding strategy and support-lane targeting.",
+            "action_id": grounding_action,
+            "status_message": (
+                "Reviewing document grounding strategy, support-lane targeting, and next claim-element focus."
+                if grounding_action == "retarget_document_grounding"
+                else "Reviewing document grounding strategy and support-lane targeting."
+            ),
         }
 
     document_drafting_next_action = (

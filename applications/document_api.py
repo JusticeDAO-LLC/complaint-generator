@@ -383,11 +383,13 @@ def _build_document_review_workflow_priority(
         if isinstance(intake_case_summary.get("document_grounding_improvement_next_action"), dict)
         else {}
     )
-    if str(document_grounding_improvement_next_action.get("action") or "").strip().lower() == "refine_document_grounding_strategy":
+    grounding_action = str(document_grounding_improvement_next_action.get("action") or "").strip().lower()
+    if grounding_action in {"refine_document_grounding_strategy", "retarget_document_grounding"}:
         focus_section = str(document_grounding_improvement_next_action.get("focus_section") or "factual_allegations").strip() or "factual_allegations"
         claim_type = str(document_grounding_improvement_next_action.get("claim_type") or default_claim_type or "").strip()
         preferred_support_kind = str(document_grounding_improvement_next_action.get("preferred_support_kind") or "").strip()
         suggested_support_kind = str(document_grounding_improvement_next_action.get("suggested_support_kind") or "").strip()
+        suggested_claim_element_id = str(document_grounding_improvement_next_action.get("suggested_claim_element_id") or "").strip()
         attempted_support_kind = str(document_grounding_lane_outcome_summary.get("attempted_support_kind") or "").strip()
         learned_support_kind = str(document_grounding_lane_outcome_summary.get("recommended_future_support_kind") or "").strip()
         action_url = _append_review_query_params(
@@ -431,6 +433,8 @@ def _build_document_review_workflow_priority(
         claim_element_id = str(document_grounding_improvement_next_action.get("claim_element_id") or "").strip()
         if claim_element_id:
             chip_labels.append(f"target element: {humanize_workflow_priority_label(claim_element_id)}")
+        if suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
+            chip_labels.append(f"next target element: {humanize_workflow_priority_label(suggested_claim_element_id)}")
         if preferred_support_kind:
             chip_labels.append(f"current support lane: {humanize_workflow_priority_label(preferred_support_kind)}")
         if attempted_support_kind and attempted_support_kind != preferred_support_kind:
@@ -451,11 +455,24 @@ def _build_document_review_workflow_priority(
                 f"{description} Learned lane preference now favors "
                 f"{humanize_workflow_priority_label(learned_support_kind)}."
             )
+        if grounding_action == "retarget_document_grounding" and suggested_claim_element_id and suggested_claim_element_id != claim_element_id:
+            description = (
+                f"{description} Retarget the next grounding pass toward "
+                f"{humanize_workflow_priority_label(suggested_claim_element_id)}."
+            )
         return {
             "status": "warning",
-            "title": "Refine document grounding strategy",
+            "title": (
+                "Retarget document grounding"
+                if grounding_action == "retarget_document_grounding"
+                else "Refine document grounding strategy"
+            ),
             "description": description,
-            "action_label": "Review grounding strategy",
+            "action_label": (
+                "Review grounding retargeting"
+                if grounding_action == "retarget_document_grounding"
+                else "Review grounding strategy"
+            ),
             "action_url": action_url,
             "action_kind": "link",
             "dashboard_url": dashboard_url,

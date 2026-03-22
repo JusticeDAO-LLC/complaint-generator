@@ -178,6 +178,35 @@ def test_build_seed_packet_text_uses_snippet_for_repository_grounding():
     assert "import argparse" not in document_text
 
 
+def test_build_seed_packet_text_combines_multiple_anchor_excerpts_for_repository_grounding(tmp_path):
+    source = tmp_path / "policy.txt"
+    source.write_text(
+        (
+            "Notice to the Applicant requires prompt written notice of a decision denying assistance. "
+            "Scheduling an Informal Review requires a written request for review."
+        ),
+        encoding="utf-8",
+    )
+    candidate = {
+        "title": "ADMINISTRATIVE PLAN",
+        "source_type": "repository_grounding",
+        "source_path": str(source),
+        "snippet": "Notice to the Applicant requires prompt written notice of a decision denying assistance.",
+        "metadata": {
+            "grounding_mode": "repository_fallback",
+            "anchor_terms": ["Notice to the Applicant", "Scheduling an Informal Review"],
+        },
+    }
+
+    document_text = hacc_evidence_module._build_seed_packet_text(
+        candidate,
+        source.read_text(encoding="utf-8"),
+    )
+
+    assert "Notice to the Applicant requires prompt written notice" in document_text
+    assert "Scheduling an Informal Review requires a written request for review." in document_text
+
+
 def test_repository_grounding_scoring_prefers_curated_hacc_excerpt_sources(tmp_path, monkeypatch):
     synth = tmp_path / "scripts" / "synthesize_hacc_complaint.py"
     synth.parent.mkdir(parents=True)

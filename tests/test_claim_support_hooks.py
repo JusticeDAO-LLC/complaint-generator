@@ -2160,6 +2160,7 @@ class TestClaimSupportHook:
                         'fact_type': 'timeline',
                         'claim_types': ['retaliation'],
                         'element_tags': ['protected_activity'],
+                        'timeline_anchor_ids': ['anchor_hr_complaint'],
                         'temporal_context': {
                             'start_date': '2025-03-01',
                             'end_date': '2025-03-01',
@@ -2175,6 +2176,7 @@ class TestClaimSupportHook:
                         'fact_type': 'timeline',
                         'claim_types': ['retaliation'],
                         'element_tags': ['adverse_action'],
+                        'timeline_anchor_ids': ['anchor_termination_notice'],
                         'temporal_context': {
                             'start_date': '2025-04-15',
                             'end_date': '2025-04-15',
@@ -2416,9 +2418,12 @@ class TestClaimSupportHook:
                 'matched_relation_ids': [],
                 'temporal_fact_ids': ['fact_1', 'fact_2'],
                 'temporal_relation_ids': ['timeline_relation_001'],
+                'timeline_anchor_ids': ['anchor_hr_complaint', 'anchor_termination_notice'],
                 'temporal_issue_ids': ['temporal_reverse_before_001'],
                 'source_artifact_ids': [],
                 'testimony_record_ids': [],
+                'missing_temporal_predicates': ['Before(fact_1,fact_2)'],
+                'required_provenance_kinds': ['document_artifact'],
                 'blocking_reasons': [],
                 'warnings': [],
                 'recommended_follow_ups': [],
@@ -2437,8 +2442,11 @@ class TestClaimSupportHook:
                         'event_ids': ['fact_1', 'fact_2'],
                         'temporal_fact_ids': ['fact_1', 'fact_2'],
                         'temporal_relation_ids': ['timeline_relation_001'],
+                        'timeline_anchor_ids': ['anchor_hr_complaint', 'anchor_termination_notice'],
                         'timeline_issue_ids': ['temporal_reverse_before_001'],
                         'temporal_issue_ids': ['temporal_reverse_before_001'],
+                        'missing_temporal_predicates': ['Before(fact_1,fact_2)'],
+                        'required_provenance_kinds': ['document_artifact'],
                         'temporal_proof_bundle_ids': ['retaliation:retaliation_1:retaliation_temporal_profile_v1'],
                         'temporal_proof_objectives': ['retaliation_temporal_frame'],
                     },
@@ -2457,8 +2465,11 @@ class TestClaimSupportHook:
                 'event_ids': ['fact_1', 'fact_2'],
                 'temporal_fact_ids': ['fact_1', 'fact_2'],
                 'temporal_relation_ids': ['timeline_relation_001'],
+                'timeline_anchor_ids': ['anchor_hr_complaint', 'anchor_termination_notice'],
                 'timeline_issue_ids': ['temporal_reverse_before_001'],
                 'temporal_issue_ids': ['temporal_reverse_before_001'],
+                'missing_temporal_predicates': ['Before(fact_1,fact_2)'],
+                'required_provenance_kinds': ['document_artifact'],
                 'temporal_proof_bundle_ids': ['retaliation:retaliation_1:retaliation_temporal_profile_v1'],
                 'temporal_proof_objectives': ['retaliation_temporal_frame'],
             }
@@ -2469,6 +2480,7 @@ class TestClaimSupportHook:
             )
             assert temporal_fact_predicate['event_label'] == 'Employee complained to HR.'
             assert temporal_fact_predicate['predicate_family'] == 'timeline'
+            assert temporal_fact_predicate['timeline_anchor_ids'] == ['anchor_hr_complaint']
             assert temporal_fact_predicate['source_artifact_ids'] == []
             assert temporal_fact_predicate['testimony_record_ids'] == []
             assert temporal_fact_predicate['source_span_refs'] == []
@@ -2485,6 +2497,13 @@ class TestClaimSupportHook:
             )
             assert temporal_issue_predicate['source_kind'] == 'contradiction_queue'
             assert temporal_issue_predicate['inference_mode'] == 'imported_temporal_contradiction'
+            temporal_consistency_predicate = next(
+                predicate for predicate in captured['predicates']
+                if isinstance(predicate, dict) and predicate.get('predicate_type') == 'temporal_consistency'
+            )
+            assert temporal_consistency_predicate['timeline_anchor_ids'] == ['anchor_hr_complaint', 'anchor_termination_notice']
+            assert temporal_consistency_predicate['missing_temporal_predicates'] == ['Before(fact_1,fact_2)']
+            assert temporal_consistency_predicate['required_provenance_kinds'] == ['document_artifact']
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

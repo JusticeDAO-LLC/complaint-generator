@@ -1546,8 +1546,11 @@ class Optimizer:
     @staticmethod
     def _build_document_grounding_lane_outcome_summary(successful_results: List[Any]) -> Dict[str, Any]:
         support_kind_stats: Dict[str, Dict[str, Any]] = {}
+        claim_element_stats: Dict[str, Dict[str, Any]] = {}
         recommended_future_support_kind = ""
+        recommended_future_claim_element = ""
         recommended_score = -999
+        recommended_claim_element_score = -999
 
         for result in successful_results:
             final_state = result.final_state if isinstance(getattr(result, "final_state", None), dict) else {}
@@ -1585,13 +1588,37 @@ class Optimizer:
                 stats["regressed_count"] += 1
             else:
                 stats["stalled_count"] += 1
-            for item in lane_summary.get("targeted_claim_elements") or []:
+            recommended_claim_element = str(lane_summary.get("recommended_future_claim_element") or "").strip()
+            claim_elements_to_count = (
+                [recommended_claim_element]
+                if recommended_claim_element
+                else list(lane_summary.get("targeted_claim_elements") or [])
+            )
+            for item in claim_elements_to_count:
                 normalized = str(item or "").strip()
                 if not normalized:
                     continue
                 stats["targeted_claim_element_counts"][normalized] = (
                     stats["targeted_claim_element_counts"].get(normalized, 0) + 1
                 )
+                claim_stats = claim_element_stats.setdefault(
+                    normalized,
+                    {
+                        "count": 0,
+                        "improved_count": 0,
+                        "regressed_count": 0,
+                        "stalled_count": 0,
+                        "avg_fact_backed_ratio_delta": 0.0,
+                    },
+                )
+                claim_stats["count"] += 1
+                claim_stats["avg_fact_backed_ratio_delta"] += float(lane_summary.get("fact_backed_ratio_delta") or 0.0)
+                if bool(lane_summary.get("improved_flag")):
+                    claim_stats["improved_count"] += 1
+                elif bool(lane_summary.get("regressed_flag")):
+                    claim_stats["regressed_count"] += 1
+                else:
+                    claim_stats["stalled_count"] += 1
 
         for support_kind, stats in support_kind_stats.items():
             count = int(stats.get("count") or 0)
@@ -1602,9 +1629,20 @@ class Optimizer:
                 recommended_score = score
                 recommended_future_support_kind = support_kind
 
+        for claim_element_id, stats in claim_element_stats.items():
+            count = int(stats.get("count") or 0)
+            if count:
+                stats["avg_fact_backed_ratio_delta"] = round(float(stats["avg_fact_backed_ratio_delta"]) / count, 4)
+            score = int(stats.get("improved_count") or 0) - int(stats.get("regressed_count") or 0)
+            if score > recommended_claim_element_score:
+                recommended_claim_element_score = score
+                recommended_future_claim_element = claim_element_id
+
         return {
             "support_kind_stats": support_kind_stats,
+            "claim_element_stats": claim_element_stats,
             "recommended_future_support_kind": recommended_future_support_kind,
+            "recommended_future_claim_element": recommended_future_claim_element,
         }
 
     @staticmethod

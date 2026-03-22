@@ -431,7 +431,7 @@ def test_build_document_grounding_lane_outcome_summary_tracks_attempted_lane():
             "fact_backed_ratio_delta": 0.35,
             "preferred_support_kinds": ["testimony"],
             "learned_support_kind": "testimony",
-            "targeted_claim_elements": ["protected_activity"],
+            "targeted_claim_elements": ["protected_activity", "causation"],
             "improved_flag": True,
             "regressed_flag": False,
             "stalled_flag": False,
@@ -447,7 +447,8 @@ def test_build_document_grounding_lane_outcome_summary_tracks_attempted_lane():
     assert summary["learned_support_lane_attempted_flag"] is True
     assert summary["learned_support_lane_effective_flag"] is True
     assert summary["recommended_future_support_kind"] == "testimony"
-    assert summary["targeted_claim_elements"] == ["protected_activity"]
+    assert summary["recommended_future_claim_element"] == "causation"
+    assert summary["targeted_claim_elements"] == ["protected_activity", "causation"]
 
 
 def test_select_support_context_includes_document_grounding_improvement_action():

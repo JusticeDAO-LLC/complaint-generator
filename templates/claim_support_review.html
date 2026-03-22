@@ -2030,18 +2030,18 @@
 
         function normalizeTheoremExportMetadata(value) {
             const metadata = value && typeof value === 'object' ? value : {};
+            const normalizeList = (items) => Array.isArray(items)
+                ? items.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
             const unresolvedIssueIds = Array.isArray(metadata.unresolved_temporal_issue_ids)
                 ? metadata.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
                 : [];
-            const issueIds = Array.isArray(metadata.temporal_issue_ids)
-                ? metadata.temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
-            const proofBundleIds = Array.isArray(metadata.temporal_proof_bundle_ids)
-                ? metadata.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
-            const proofObjectives = Array.isArray(metadata.temporal_proof_objectives)
-                ? metadata.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
+            const issueIds = normalizeList(metadata.temporal_issue_ids);
+            const proofBundleIds = normalizeList(metadata.temporal_proof_bundle_ids);
+            const proofObjectives = normalizeList(metadata.temporal_proof_objectives);
+            const timelineAnchorIds = normalizeList(metadata.timeline_anchor_ids);
+            const missingTemporalPredicates = normalizeList(metadata.missing_temporal_predicates);
+            const requiredProvenanceKinds = normalizeList(metadata.required_provenance_kinds);
             const unresolvedCount = Number.isFinite(Number(metadata.unresolved_temporal_issue_count))
                 ? Number(metadata.unresolved_temporal_issue_count || 0)
                 : unresolvedIssueIds.length;
@@ -2065,7 +2065,16 @@
                 unresolvedIssueIds,
                 proofBundleIds,
                 proofObjectives,
-                hasSignal: blocked || issueCount > 0 || proofBundleIds.length > 0 || proofObjectives.length > 0,
+                timelineAnchorIds,
+                missingTemporalPredicates,
+                requiredProvenanceKinds,
+                hasSignal: blocked
+                    || issueCount > 0
+                    || proofBundleIds.length > 0
+                    || proofObjectives.length > 0
+                    || timelineAnchorIds.length > 0
+                    || missingTemporalPredicates.length > 0
+                    || requiredProvenanceKinds.length > 0,
             };
         }
 
@@ -2096,6 +2105,15 @@
             }
             if (normalized.proofObjectives.length) {
                 lines.push(`Theorem objectives: ${normalized.proofObjectives.join(', ')}`);
+            }
+            if (normalized.timelineAnchorIds.length) {
+                lines.push(`Theorem timeline anchors: ${normalized.timelineAnchorIds.join(', ')}`);
+            }
+            if (normalized.missingTemporalPredicates.length) {
+                lines.push(`Missing temporal predicates: ${normalized.missingTemporalPredicates.join(', ')}`);
+            }
+            if (normalized.requiredProvenanceKinds.length) {
+                lines.push(`Required provenance: ${normalized.requiredProvenanceKinds.join(', ')}`);
             }
             return lines;
         }
@@ -2403,6 +2421,9 @@
                         ${element.temporal_rule_frame_id ? `<span class="chip">rule frame ${escapeHtml(element.temporal_rule_frame_id)}</span>` : ''}
                         ${element.temporal_proof_bundle_status ? `<span class="chip">proof bundle ${humanizeQueryValue(element.temporal_proof_bundle_status)}</span>` : ''}
                         ${element.temporal_proof_bundle_id ? `<span class="chip">bundle id ${escapeHtml(element.temporal_proof_bundle_id)}</span>` : ''}
+                        ${theoremExportSummary.timelineAnchorIds.length ? `<span class="chip">anchors ${theoremExportSummary.timelineAnchorIds.length}</span>` : ''}
+                        ${theoremExportSummary.missingTemporalPredicates.length ? `<span class="chip">missing predicates ${theoremExportSummary.missingTemporalPredicates.length}</span>` : ''}
+                        ${theoremExportSummary.requiredProvenanceKinds.length ? `<span class="chip">required provenance ${theoremExportSummary.requiredProvenanceKinds.length}</span>` : ''}
                         ${theoremExportSummary.hasSignal ? `<span class="chip">theorem ${theoremExportSummary.blocked ? 'blocked' : 'aligned'}</span>` : ''}
                         ${theoremExportSummary.chronologyTaskCount ? `<span class="chip">theorem tasks ${theoremExportSummary.chronologyTaskCount}</span>` : ''}
                         ${theoremExportSummary.unresolvedCount ? `<span class="chip">theorem unresolved ${theoremExportSummary.unresolvedCount}</span>` : ''}

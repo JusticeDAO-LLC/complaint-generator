@@ -1268,6 +1268,12 @@ class ClaimSupportHook:
             for fact in facts
             if str(fact.get('fact_id') or '').strip()
         ]
+        timeline_anchor_ids: List[str] = []
+        for fact in facts:
+            for anchor_id in fact.get('timeline_anchor_ids', []) or []:
+                normalized_anchor_id = str(anchor_id or '').strip()
+                if normalized_anchor_id and normalized_anchor_id not in timeline_anchor_ids:
+                    timeline_anchor_ids.append(normalized_anchor_id)
         relation_ids = [
             str(relation.get('relation_id') or '').strip()
             for relation in relations
@@ -1288,6 +1294,21 @@ class ClaimSupportHook:
             str(relation_id).strip()
             for relation_id in (profile.get('matched_relation_ids', []) or [])
             if str(relation_id).strip()
+        ]
+        temporal_consistency_summary = (
+            context.get('consistency_summary', {})
+            if isinstance(context.get('consistency_summary'), dict)
+            else {}
+        )
+        missing_temporal_predicates = [
+            str(predicate).strip()
+            for predicate in (temporal_consistency_summary.get('missing_temporal_predicates', []) or [])
+            if str(predicate).strip()
+        ]
+        required_provenance_kinds = [
+            str(kind).strip()
+            for kind in (temporal_consistency_summary.get('required_provenance_kinds', []) or [])
+            if str(kind).strip()
         ]
 
         source_artifact_ids: List[str] = []
@@ -1375,8 +1396,11 @@ class ClaimSupportHook:
             'event_ids': list(fact_ids),
             'temporal_fact_ids': list(fact_ids),
             'temporal_relation_ids': list(relation_ids),
+            'timeline_anchor_ids': list(timeline_anchor_ids),
             'timeline_issue_ids': list(issue_ids),
             'temporal_issue_ids': list(issue_ids),
+            'missing_temporal_predicates': list(missing_temporal_predicates),
+            'required_provenance_kinds': list(required_provenance_kinds),
             'temporal_proof_bundle_ids': [proof_bundle_id] if proof_bundle_id else [],
             'temporal_proof_objectives': [str(profile.get('rule_frame_id') or '').strip()] if str(profile.get('rule_frame_id') or '').strip() else [],
         }
@@ -1395,9 +1419,12 @@ class ClaimSupportHook:
             'matched_relation_ids': matched_relation_ids,
             'temporal_fact_ids': fact_ids,
             'temporal_relation_ids': relation_ids,
+            'timeline_anchor_ids': timeline_anchor_ids,
             'temporal_issue_ids': issue_ids,
             'source_artifact_ids': source_artifact_ids,
             'testimony_record_ids': testimony_record_ids,
+            'missing_temporal_predicates': missing_temporal_predicates,
+            'required_provenance_kinds': required_provenance_kinds,
             'blocking_reasons': [
                 str(reason).strip()
                 for reason in (profile.get('blocking_reasons', []) or [])
@@ -1454,11 +1481,28 @@ class ClaimSupportHook:
             for relation in (context.get('temporal_relations', []) or [])
             if isinstance(relation, dict)
         ])
+        timeline_anchor_ids = _dedupe_text_values([
+            anchor_id
+            for fact in (context.get('temporal_facts', []) or [])
+            if isinstance(fact, dict)
+            for anchor_id in (fact.get('timeline_anchor_ids', []) or [])
+        ])
         issue_ids = _dedupe_text_values([
             issue.get('issue_id') or issue.get('contradiction_id') or issue.get('dependency_id')
             for issue in (context.get('temporal_issues', []) or [])
             if isinstance(issue, dict)
         ])
+        temporal_consistency_summary = (
+            context.get('consistency_summary', {})
+            if isinstance(context.get('consistency_summary'), dict)
+            else {}
+        )
+        missing_temporal_predicates = _dedupe_text_values(
+            temporal_consistency_summary.get('missing_temporal_predicates')
+        )
+        required_provenance_kinds = _dedupe_text_values(
+            temporal_consistency_summary.get('required_provenance_kinds')
+        )
         proof_bundle_id = str(proof_bundle.get('proof_bundle_id') or '').strip()
         proof_objective = str(profile.get('rule_frame_id') or '').strip()
         blocking_reasons = _dedupe_text_values(proof_bundle.get('blocking_reasons'))
@@ -1478,8 +1522,11 @@ class ClaimSupportHook:
             'event_ids': list(fact_ids),
             'temporal_fact_ids': list(fact_ids),
             'temporal_relation_ids': relation_ids,
+            'timeline_anchor_ids': timeline_anchor_ids,
             'timeline_issue_ids': list(issue_ids),
             'temporal_issue_ids': list(issue_ids),
+            'missing_temporal_predicates': missing_temporal_predicates,
+            'required_provenance_kinds': required_provenance_kinds,
             'temporal_proof_bundle_ids': [proof_bundle_id] if proof_bundle_id else [],
             'temporal_proof_objectives': [proof_objective] if proof_objective else [],
         }
@@ -1494,8 +1541,11 @@ class ClaimSupportHook:
                 'event_ids',
                 'temporal_fact_ids',
                 'temporal_relation_ids',
+                'timeline_anchor_ids',
                 'timeline_issue_ids',
                 'temporal_issue_ids',
+                'missing_temporal_predicates',
+                'required_provenance_kinds',
                 'temporal_proof_bundle_ids',
                 'temporal_proof_objectives',
             )
@@ -1956,7 +2006,54 @@ class ClaimSupportHook:
             if relation_type:
                 relation_type_counts[relation_type] = relation_type_counts.get(relation_type, 0) + 1
 
+        timeline_anchor_ids: List[str] = []
+        for fact in selected_temporal_facts:
+            if not isinstance(fact, dict):
+                continue
+            for anchor_id in fact.get('timeline_anchor_ids', []) or []:
+                normalized_anchor_id = str(anchor_id or '').strip()
+                if normalized_anchor_id and normalized_anchor_id not in timeline_anchor_ids:
+                    timeline_anchor_ids.append(normalized_anchor_id)
+
+        relation_formula_map = {
+            'before': 'Before',
+            'after': 'After',
+            'same_time': 'SameTime',
+            'overlaps': 'Overlaps',
+            'during': 'During',
+            'meets': 'Meets',
+        }
+        derived_missing_temporal_predicates: List[str] = []
+        for relation in selected_temporal_relations:
+            if not isinstance(relation, dict):
+                continue
+            source_fact_id = str(relation.get('source_fact_id') or '').strip()
+            target_fact_id = str(relation.get('target_fact_id') or '').strip()
+            relation_type = relation_formula_map.get(self._normalize_reasoning_key(relation.get('relation_type')))
+            if not source_fact_id or not target_fact_id or not relation_type:
+                continue
+            formula = f'{relation_type}({source_fact_id},{target_fact_id})'
+            if formula not in derived_missing_temporal_predicates:
+                derived_missing_temporal_predicates.append(formula)
+
         consistency_payload = timeline_consistency_summary if isinstance(timeline_consistency_summary, dict) else {}
+        missing_temporal_predicates = [
+            str(predicate).strip()
+            for predicate in (consistency_payload.get('missing_temporal_predicates', []) or [])
+            if str(predicate).strip()
+        ]
+        if not missing_temporal_predicates:
+            missing_temporal_predicates = list(derived_missing_temporal_predicates)
+        required_provenance_kinds = [
+            str(kind).strip()
+            for kind in (consistency_payload.get('required_provenance_kinds', []) or [])
+            if str(kind).strip()
+        ]
+        if not required_provenance_kinds:
+            for issue in selected_temporal_issues:
+                if str((issue or {}).get('recommended_resolution_lane') or '').strip().lower() == 'request_document':
+                    required_provenance_kinds.append('document_artifact')
+                    break
         consistency_summary = {
             'event_count': len(selected_temporal_facts),
             'proof_lead_count': len(selected_temporal_leads),
@@ -1965,6 +2062,9 @@ class ClaimSupportHook:
             'partial_order_ready': bool(consistency_payload.get('partial_order_ready', not selected_temporal_issues)),
             'warnings': list(consistency_payload.get('warnings', []) if isinstance(consistency_payload.get('warnings'), list) else []),
             'relation_type_counts': relation_type_counts,
+            'timeline_anchor_ids': timeline_anchor_ids,
+            'missing_temporal_predicates': missing_temporal_predicates,
+            'required_provenance_kinds': required_provenance_kinds,
         }
         consistency_summary['warning_count'] = len(consistency_summary['warnings'])
 
@@ -2041,6 +2141,7 @@ class ClaimSupportHook:
                     'is_approximate': bool(temporal_details.get('is_approximate', False)),
                     'is_range': bool(temporal_details.get('is_range', False)),
                     'relative_markers': list(temporal_details.get('relative_markers', []) or []),
+                    'timeline_anchor_ids': list(fact.get('timeline_anchor_ids', []) or []),
                     'source_artifact_ids': list(fact.get('source_artifact_ids', []) or []),
                     'testimony_record_ids': list(fact.get('testimony_record_ids', []) or []),
                     'source_span_refs': list(fact.get('source_span_refs', []) or []),
@@ -2119,6 +2220,9 @@ class ClaimSupportHook:
                     'warning_count': consistency_summary.get('warning_count', 0),
                     'warnings': list(consistency_summary.get('warnings', []) or []),
                     'relation_type_counts': dict(consistency_summary.get('relation_type_counts', {}) or {}),
+                    'timeline_anchor_ids': list(consistency_summary.get('timeline_anchor_ids', []) or []),
+                    'missing_temporal_predicates': list(consistency_summary.get('missing_temporal_predicates', []) or []),
+                    'required_provenance_kinds': list(consistency_summary.get('required_provenance_kinds', []) or []),
                 }
             )
 

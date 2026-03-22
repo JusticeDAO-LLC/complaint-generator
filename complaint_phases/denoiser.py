@@ -493,6 +493,132 @@ class ComplaintDenoiser:
         ]
         return any(token in lowered for token in signals)
 
+    def _strip_markdown_formatting(self, text: str) -> str:
+        cleaned = str(text or "")
+        cleaned = re.sub(r"[*_`]+", "", cleaned)
+        cleaned = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", cleaned)
+        return " ".join(cleaned.strip().split())
+
+    def _normalize_structured_timeline_field(self, value: str) -> str:
+        cleaned = self._strip_markdown_formatting(value)
+        cleaned = re.sub(r"^\s*[-*]+\s*", "", cleaned)
+        return " ".join(cleaned.strip(" -:").split())
+
+    def _normalize_structured_timeline_date(self, value: str) -> str:
+        cleaned = self._normalize_structured_timeline_field(value)
+        cleaned = re.sub(r"^(?:exact/estimated\s+)?date(?:\s+range)?\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"^days since prior event\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+        lowered = cleaned.lower()
+        placeholder_tokens = {"", "needs exact confirmation", "unknown", "n/a", "na", "tbd"}
+        extracted_dates = self._extract_date_strings(cleaned)
+        if extracted_dates:
+            return extracted_dates[0]
+        if lowered in placeholder_tokens:
+            return ""
+        parenthetical = re.findall(r"\(([^()]+)\)", cleaned)
+        for item in parenthetical:
+            normalized_item = self._normalize_structured_timeline_field(item)
+            normalized_item = re.sub(r"^best estimate\s*:\s*", "", normalized_item, flags=re.IGNORECASE)
+            if normalized_item and normalized_item.lower() not in placeholder_tokens:
+                return normalized_item
+        if "ongoing" in lowered:
+            return "ongoing"
+        if "before " in lowered or "after " in lowered:
+            return cleaned
+        return ""
+
+    def _infer_structured_timeline_predicate_family(
+        self,
+        actor_text: str,
+        action_text: str,
+        artifact_text: str,
+    ) -> str:
+        combined = " ".join(
+            item for item in [actor_text, action_text, artifact_text] if str(item or "").strip()
+        ).lower()
+        if any(token in combined for token in ("responded", "response", "appeal-right", "appeal right", "no response")):
+            return "response_timeline"
+        if any(token in combined for token in ("hearing", "appeal", "review")) and any(
+            token in combined for token in ("requested", "request", "asked", "submitted", "sought")
+        ):
+            return "hearing_process"
+        if self._contains_adverse_action_signal(combined) or any(
+            token in combined for token in ("status-change", "status change", "housing status", "adverse notice", "voucher status")
+        ):
+            return "adverse_action"
+        if any(
+            token in combined for token in ("raised concerns", "grievance process", "grievance", "complained", "reported", "protected activity")
+        ):
+            return "protected_activity"
+        if self._contains_causation_signal(combined):
+            return "causation"
+        return "timeline"
+
+    def _structured_timeline_event_label(self, predicate_family: str) -> str:
+        labels = {
+            "protected_activity": "Protected activity",
+            "adverse_action": "Adverse action",
+            "hearing_process": "Hearing request event",
+            "response_timeline": "Response event",
+            "notice_chain": "Notice communication",
+            "causation": "Causation sequence",
+        }
+        return labels.get(predicate_family, "Timeline event")
+
+    def _extract_structured_timeline_events(self, text: str) -> List[Dict[str, Any]]:
+        if not text or "|" not in text:
+            return []
+        group_hash = hashlib.md5(self._strip_markdown_formatting(text).encode("utf-8")).hexdigest()[:10]
+        events: List[Dict[str, Any]] = []
+        for raw_line in str(text).splitlines():
+            line = str(raw_line or "").strip()
+            if "|" not in line or not re.match(r"^\s*[-*]", line):
+                continue
+            cleaned_line = self._normalize_structured_timeline_field(line)
+            parts = []
+            for part in cleaned_line.split("|"):
+                normalized = self._normalize_structured_timeline_field(part)
+                if normalized:
+                    parts.append(normalized)
+            if len(parts) < 2:
+                continue
+            actor_text = parts[0]
+            action_text = parts[1]
+            trailing_parts = parts[2:]
+            date_text = ""
+            artifact_text = ""
+            for part in trailing_parts:
+                lowered = part.lower()
+                if not date_text and ("date" in lowered or "ongoing" in lowered or "before " in lowered or "after " in lowered):
+                    date_text = part
+                    continue
+                if not artifact_text and lowered.startswith("artifact"):
+                    artifact_text = re.sub(r"^artifact\s*:\s*", "", part, flags=re.IGNORECASE).strip()
+            normalized_date = self._normalize_structured_timeline_date(date_text)
+            predicate_family = self._infer_structured_timeline_predicate_family(actor_text, action_text, artifact_text)
+            event_label = self._structured_timeline_event_label(predicate_family)
+            description = f"{actor_text} {action_text}".strip()
+            if normalized_date:
+                description = f"{description} ({normalized_date})"
+            if artifact_text:
+                description = f"{description}. Artifact: {artifact_text}"
+            events.append(
+                {
+                    "event_id": f"structured_event_{group_hash}_{len(events) + 1:02d}",
+                    "structured_timeline_group": f"structured_timeline_{group_hash}",
+                    "sequence_index": len(events) + 1,
+                    "actor_text": actor_text,
+                    "action_text": action_text,
+                    "artifact_text": artifact_text,
+                    "event_date_or_range": normalized_date,
+                    "predicate_family": predicate_family,
+                    "event_label": event_label,
+                    "description": description,
+                    "source_line": cleaned_line,
+                }
+            )
+        return events
+
     def _contains_document_precision_signal(self, text: str) -> bool:
         if not text:
             return False
@@ -3818,6 +3944,49 @@ class ComplaintDenoiser:
             if not claim_entity or not _answer_is_substantive(answer_text):
                 return
             claim_id = claim_entity.id
+            structured_timeline_events = self._extract_structured_timeline_events(answer_text)
+
+            for event in structured_timeline_events[:10]:
+                fact_entity, created = self._add_entity_if_missing(
+                    knowledge_graph,
+                    'fact',
+                    f"{event['event_label']}: {self._short_description(event['description'], 72)}",
+                    {
+                        'fact_type': 'timeline',
+                        'predicate_family': event['predicate_family'],
+                        'event_label': event['event_label'],
+                        'event_id': event['event_id'],
+                        'sequence_index': event['sequence_index'],
+                        'structured_timeline_group': event['structured_timeline_group'],
+                        'description': event['description'],
+                        'event_date_or_range': event['event_date_or_range'],
+                        'fact_participants': {'actor_label': event['actor_text']},
+                        'event_support_refs': [event['artifact_text']] if event['artifact_text'] else [],
+                        'source_artifact_ids': [event['artifact_text']] if event['artifact_text'] else [],
+                        'source_span_refs': [{'kind': 'structured_answer_line', 'text': event['source_line']}],
+                        'source': 'structured_timeline_answer',
+                    },
+                    0.77,
+                )
+                if created:
+                    updates['entities_updated'] += 1
+                _link_claim_to_entity(claim_entity, fact_entity, 'has_timeline_detail', 0.68)
+                if event['artifact_text']:
+                    _append_claim_signal(claim_entity, 'documentary_artifact_refs', event['artifact_text'])
+                if event['predicate_family'] == 'protected_activity':
+                    _append_claim_signal(claim_entity, 'protected_activity', event['description'])
+                    if event['event_date_or_range']:
+                        _append_claim_signal(claim_entity, 'protected_activity_dates', event['event_date_or_range'])
+                elif event['predicate_family'] == 'adverse_action':
+                    _append_claim_signal(claim_entity, 'adverse_action', event['description'])
+                    if event['event_date_or_range']:
+                        _append_claim_signal(claim_entity, 'adverse_action_dates', event['event_date_or_range'])
+                elif event['predicate_family'] == 'hearing_process':
+                    _append_claim_signal(claim_entity, 'hearing_request_timing', event['description'])
+                elif event['predicate_family'] == 'response_timeline':
+                    _append_claim_signal(claim_entity, 'response_dates', event['description'])
+                elif event['predicate_family'] == 'causation':
+                    _append_claim_signal(claim_entity, 'causation_sequences', event['description'])
 
             if extracted_dates:
                 for date_str in extracted_dates[:5]:

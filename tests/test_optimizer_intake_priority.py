@@ -665,7 +665,8 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
                     "learned_support_lane_attempted_flag": True,
                     "learned_support_lane_effective_flag": True,
                     "fact_backed_ratio_delta": 0.2444,
-                    "targeted_claim_elements": ["protected_activity"],
+                    "targeted_claim_elements": ["protected_activity", "causation"],
+                    "recommended_future_claim_element": "causation",
                     "recommended_future_support_kind": "testimony",
                     "improved_flag": True,
                     "regressed_flag": False,
@@ -704,7 +705,9 @@ def test_analyze_and_phase_tasks_carry_document_evidence_targeting_summary():
     assert report.document_grounding_improvement_summary["improved_session_count"] == 1
     assert report.document_grounding_improvement_summary["avg_fact_backed_ratio_delta"] == 0.2444
     assert report.document_grounding_lane_outcome_summary["recommended_future_support_kind"] == "testimony"
+    assert report.document_grounding_lane_outcome_summary["recommended_future_claim_element"] == "causation"
     assert report.document_grounding_lane_outcome_summary["support_kind_stats"]["testimony"]["improved_count"] == 1
+    assert report.document_grounding_lane_outcome_summary["claim_element_stats"]["causation"]["improved_count"] == 1
     assert report.document_chronology_reasoning_summary["unresolved_temporal_issue_count"] == 2
     assert report.document_chronology_reasoning_summary["chronology_task_count"] == 1
     assert report.document_chronology_reasoning_summary["proof_artifact_element_count"] == 2

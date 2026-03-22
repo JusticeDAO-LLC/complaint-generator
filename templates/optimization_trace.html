@@ -514,18 +514,18 @@
 
         function normalizeTheoremExportMetadata(value) {
             const metadata = value && typeof value === 'object' ? value : {};
+            const normalizeList = (items) => Array.isArray(items)
+                ? items.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
+                : [];
             const unresolvedIssueIds = Array.isArray(metadata.unresolved_temporal_issue_ids)
                 ? metadata.unresolved_temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
                 : [];
-            const issueIds = Array.isArray(metadata.temporal_issue_ids)
-                ? metadata.temporal_issue_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
-            const proofBundleIds = Array.isArray(metadata.temporal_proof_bundle_ids)
-                ? metadata.temporal_proof_bundle_ids.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
-            const proofObjectives = Array.isArray(metadata.temporal_proof_objectives)
-                ? metadata.temporal_proof_objectives.filter(Boolean).map((item) => String(item).trim()).filter(Boolean)
-                : [];
+            const issueIds = normalizeList(metadata.temporal_issue_ids);
+            const proofBundleIds = normalizeList(metadata.temporal_proof_bundle_ids);
+            const proofObjectives = normalizeList(metadata.temporal_proof_objectives);
+            const timelineAnchorIds = normalizeList(metadata.timeline_anchor_ids);
+            const missingTemporalPredicates = normalizeList(metadata.missing_temporal_predicates);
+            const requiredProvenanceKinds = normalizeList(metadata.required_provenance_kinds);
             const unresolvedCount = Number.isFinite(Number(metadata.unresolved_temporal_issue_count))
                 ? Number(metadata.unresolved_temporal_issue_count || 0)
                 : unresolvedIssueIds.length;
@@ -549,7 +549,16 @@
                 unresolvedIssueIds,
                 proofBundleIds,
                 proofObjectives,
-                hasSignal: blocked || issueCount > 0 || proofBundleIds.length > 0 || proofObjectives.length > 0,
+                timelineAnchorIds,
+                missingTemporalPredicates,
+                requiredProvenanceKinds,
+                hasSignal: blocked
+                    || issueCount > 0
+                    || proofBundleIds.length > 0
+                    || proofObjectives.length > 0
+                    || timelineAnchorIds.length > 0
+                    || missingTemporalPredicates.length > 0
+                    || requiredProvenanceKinds.length > 0,
             };
         }
 
@@ -580,6 +589,15 @@
             }
             if (normalized.proofObjectives.length) {
                 lines.push(`Theorem objectives: ${normalized.proofObjectives.join(', ')}`);
+            }
+            if (normalized.timelineAnchorIds.length) {
+                lines.push(`Theorem timeline anchors: ${normalized.timelineAnchorIds.join(', ')}`);
+            }
+            if (normalized.missingTemporalPredicates.length) {
+                lines.push(`Missing temporal predicates: ${normalized.missingTemporalPredicates.join(', ')}`);
+            }
+            if (normalized.requiredProvenanceKinds.length) {
+                lines.push(`Required provenance: ${normalized.requiredProvenanceKinds.join(', ')}`);
             }
             return lines;
         }
@@ -1051,8 +1069,11 @@
                 event_ids: normalizeIdList(value.event_ids),
                 temporal_fact_ids: normalizeIdList(value.temporal_fact_ids),
                 temporal_relation_ids: normalizeIdList(value.temporal_relation_ids),
+                timeline_anchor_ids: normalizeIdList(value.timeline_anchor_ids),
                 timeline_issue_ids: normalizeIdList(value.timeline_issue_ids),
                 temporal_issue_ids: normalizeIdList(value.temporal_issue_ids),
+                missing_temporal_predicates: normalizeIdList(value.missing_temporal_predicates),
+                required_provenance_kinds: normalizeIdList(value.required_provenance_kinds),
                 temporal_proof_bundle_ids: normalizeIdList(value.temporal_proof_bundle_ids),
                 temporal_proof_objectives: normalizeIdList(value.temporal_proof_objectives),
             };
@@ -1061,8 +1082,11 @@
                 || normalized.event_ids.length
                 || normalized.temporal_fact_ids.length
                 || normalized.temporal_relation_ids.length
+                || normalized.timeline_anchor_ids.length
                 || normalized.timeline_issue_ids.length
                 || normalized.temporal_issue_ids.length
+                || normalized.missing_temporal_predicates.length
+                || normalized.required_provenance_kinds.length
                 || normalized.temporal_proof_bundle_ids.length
                 || normalized.temporal_proof_objectives.length
             )) {
@@ -1137,11 +1161,20 @@
                 normalized.temporal_relation_ids.length
                     ? `Temporal relation refs: ${normalized.temporal_relation_ids.join(', ')}`
                     : '',
+                normalized.timeline_anchor_ids.length
+                    ? `Timeline anchors: ${normalized.timeline_anchor_ids.join(', ')}`
+                    : '',
                 normalized.temporal_proof_bundle_ids.length
                     ? `Temporal proof bundles: ${normalized.temporal_proof_bundle_ids.join(', ')}`
                     : '',
                 normalized.temporal_proof_objectives.length
                     ? `Temporal proof objectives: ${normalized.temporal_proof_objectives.join(', ')}`
+                    : '',
+                normalized.missing_temporal_predicates.length
+                    ? `Missing temporal predicates: ${normalized.missing_temporal_predicates.join(', ')}`
+                    : '',
+                normalized.required_provenance_kinds.length
+                    ? `Required provenance: ${normalized.required_provenance_kinds.join(', ')}`
                     : '',
             ].filter(Boolean);
             const dashboardLink = String(dashboardUrl || '').trim();
