@@ -5607,8 +5607,8 @@ def test_document_preview_smoke_renders_claim_reasoning_chronology_rollups():
             assert "retaliation chronology statuses: open=1, resolved=1" in preview_text
             assert "retaliation chronology predicates: before(event-hr-report,event-termination)" in preview_text
             assert "retaliation chronology provenance: testimony_record, document_artifact, legal_authority" in preview_text
-            assert "missing temporal predicates: before(event-hr-report,event-termination)" in preview_text
-            assert "required provenance: testimony_record, document_artifact, legal_authority" in preview_text
+            assert "claim support missing predicates: before(event-hr-report,event-termination)" in preview_text
+            assert "claim support required provenance: testimony_record, document_artifact, legal_authority" in preview_text
 
             browser.close()
 

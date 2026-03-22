@@ -906,6 +906,33 @@ def test_merge_completed_grounded_intake_worksheet_preserves_grounded_source_and
     assert summary["objective_question_counts"]["documents"] == 1
 
 
+def test_grounded_follow_up_answer_summary_counts_chronology_and_evidence_answers():
+    session = {
+        "conversation_history": [
+            {
+                "role": "complainant",
+                "content": "The denial notice was dated January 15, 2026 and the review request was submitted January 18, 2026.",
+                "question": "What exact dates, notice timing, and event order are still missing before drafting?",
+                "source": "completed_grounded_intake_follow_up_worksheet",
+            },
+            {
+                "role": "complainant",
+                "content": "Upload the termination notice first because it proves the adverse action date and stated reason.",
+                "question": "Which repository-backed file should be uploaded first, and what exact fact does it prove?",
+                "source": "completed_grounded_intake_follow_up_worksheet",
+            },
+        ]
+    }
+
+    summary = MODULE._grounded_follow_up_answer_summary(session)
+
+    assert summary["answered_item_count"] == 2
+    assert summary["chronology_answer_count"] == 1
+    assert summary["evidence_answer_count"] == 1
+    assert summary["objective_counts"]["exact_dates"] == 1
+    assert summary["objective_counts"]["documents"] == 1
+
+
 def test_render_intake_follow_up_worksheet_markdown_includes_fillable_items():
     worksheet = {
         "generated_at": "2026-03-17T00:00:00+00:00",

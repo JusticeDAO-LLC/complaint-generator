@@ -20,6 +20,10 @@ DEFAULT_RELIEF = [
     "Compensatory damages or other available monetary relief according to proof.",
     "Costs, fees, and any other relief authorized by law.",
 ]
+WORKSHEET_ANSWER_SOURCES = {
+    "completed_intake_follow_up_worksheet",
+    "completed_grounded_intake_follow_up_worksheet",
+}
 
 DEFAULT_PARTIES = {
     "plaintiff": "Complainant / tenant or program participant (name to be inserted).",
@@ -3279,7 +3283,7 @@ def _blocker_closing_intake_answers(session: Dict[str, Any], limit: int = 4) -> 
             continue
         if str(entry.get("role") or "").strip().lower() != "complainant":
             continue
-        if str(entry.get("source") or "").strip().lower() != "completed_intake_follow_up_worksheet":
+        if str(entry.get("source") or "").strip().lower() not in WORKSHEET_ANSWER_SOURCES:
             continue
         answer = " ".join(str(entry.get("content") or "").split()).strip()
         question = " ".join(str(entry.get("question") or "").split()).strip()
@@ -3298,6 +3302,60 @@ def _blocker_closing_intake_answers(session: Dict[str, Any], limit: int = 4) -> 
         if len(answers) >= limit:
             break
     return answers
+
+
+def _grounded_follow_up_answer_summary(session: Dict[str, Any], limit: int = 6) -> Dict[str, Any]:
+    answered_items: List[Dict[str, str]] = []
+    for entry in list(session.get("conversation_history") or []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("role") or "").strip().lower() != "complainant":
+            continue
+        if str(entry.get("source") or "").strip().lower() != "completed_grounded_intake_follow_up_worksheet":
+            continue
+        answer = " ".join(str(entry.get("content") or "").split()).strip()
+        question = " ".join(str(entry.get("question") or "").split()).strip()
+        if not answer:
+            continue
+        objective = _normalize_intake_objective(_classify_intake_question_objective(question or answer))
+        answered_items.append(
+            {
+                "question": question,
+                "answer": answer,
+                "objective": objective or "intake_follow_up",
+            }
+        )
+        if len(answered_items) >= limit:
+            break
+
+    objective_counts: Dict[str, int] = {}
+    chronology_answer_count = 0
+    evidence_answer_count = 0
+    for item in answered_items:
+        objective = str(item.get("objective") or "").strip()
+        if objective:
+            objective_counts[objective] = int(objective_counts.get(objective, 0) or 0) + 1
+        combined_text = " ".join(
+            [
+                str(item.get("question") or "").strip().lower(),
+                str(item.get("answer") or "").strip().lower(),
+            ]
+        )
+        if objective in {"exact_dates", "timeline", "response_dates", "hearing_request_timing"}:
+            chronology_answer_count += 1
+        if objective in {"documents", "staff_names_titles", "actors"} or any(
+            token in combined_text
+            for token in ("upload", "file", "document", "notice", "email", "record", "evidence")
+        ):
+            evidence_answer_count += 1
+
+    return {
+        "answered_item_count": len(answered_items),
+        "objective_counts": objective_counts,
+        "chronology_answer_count": chronology_answer_count,
+        "evidence_answer_count": evidence_answer_count,
+        "answers": answered_items,
+    }
 
 
 def _drafting_readiness_for_formalization(seed: Dict[str, Any], session: Dict[str, Any]) -> Dict[str, Any]:
@@ -5650,6 +5708,7 @@ def main(argv: List[str] | None = None) -> int:
         "search_summary": search_summary,
         "grounded_recommended_next_action": grounded_recommended_next_action,
         "grounded_research_action_queue": grounded_research_action_queue,
+        "grounded_follow_up_answer_summary": _grounded_follow_up_answer_summary(best_session),
         "actor_critic_optimizer": {
             "optimization_method": "actor_critic",
             "phase_focus_order": list(phase_focus_order),
