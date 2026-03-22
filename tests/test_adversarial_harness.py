@@ -226,9 +226,11 @@ class TestComplainant:
         assert context.blocker_objectives == [
             'exact_dates',
             'staff_names_titles',
+            'adverse_action_specificity',
             'hearing_request_timing',
             'response_dates',
             'causation_sequence',
+            'evidence_identifiers',
         ]
         assert context.extraction_targets == [
             'timeline_anchors',
@@ -236,11 +238,13 @@ class TestComplainant:
             'hearing_process',
             'response_timeline',
             'retaliation_sequence',
+            'adverse_action_definition',
+            'document_identifier_mapping',
         ]
         assert context.workflow_phase_priorities == [
             'graph_analysis',
-            'intake_questioning',
             'document_generation',
+            'intake_questioning',
         ]
 
     def test_prompt_includes_hacc_evidence(self):
@@ -578,8 +582,8 @@ SUGGESTIONS:
         assert score.intake_priority_expected == ['timeline', 'documents', 'harm_remedy']
         assert score.intake_priority_covered == ['timeline']
         assert score.intake_priority_missing == ['documents', 'harm_remedy']
-        assert score.information_extraction > 0.6
-        assert score.coverage > 0.6
+        assert score.information_extraction < 0.6
+        assert score.coverage < 0.6
         assert any('Missed intake objectives: documents, harm_remedy' == item for item in score.weaknesses)
         assert any('Add questions covering intake objectives: documents, harm_remedy' == item for item in score.suggestions)
         assert 'Intake-priority coverage was incomplete' in score.feedback

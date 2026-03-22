@@ -46,6 +46,24 @@ _EVIDENCE_RESOLVED_STATUSES = {
 }
 
 
+def _coerce_ratio(value: Any, default: float = 1.0) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return default
+        try:
+            return float(text)
+        except ValueError:
+            return default
+    return default
+
+
 def _utc_now_isoformat() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -572,15 +590,15 @@ class PhaseManager:
                 chronology_snapshot_present = True
                 chronology_anchor_coverage_ratio = min(
                     chronology_anchor_coverage_ratio,
-                    float(intake_chronology_readiness.get('anchor_coverage_ratio', 1.0) or 1.0),
+                    _coerce_ratio(intake_chronology_readiness.get('anchor_coverage_ratio'), 1.0),
                 )
                 chronology_predicate_coverage_ratio = min(
                     chronology_predicate_coverage_ratio,
-                    float(intake_chronology_readiness.get('predicate_coverage_ratio', 1.0) or 1.0),
+                    _coerce_ratio(intake_chronology_readiness.get('predicate_coverage_ratio'), 1.0),
                 )
                 chronology_provenance_coverage_ratio = min(
                     chronology_provenance_coverage_ratio,
-                    float(intake_chronology_readiness.get('provenance_coverage_ratio', 1.0) or 1.0),
+                    _coerce_ratio(intake_chronology_readiness.get('provenance_coverage_ratio'), 1.0),
                 )
                 chronology_ready_for_formalization = bool(
                     chronology_ready_for_formalization
@@ -693,7 +711,7 @@ class PhaseManager:
                     + (draft_ready_element_ratio * 0.4)
                     + (high_quality_parse_ratio * 0.15)
                     - contradiction_penalty
-                    - chronology_penalty,
+                    - chronology_penalty
                     - chronology_coverage_penalty,
                 ),
             ),

@@ -23,6 +23,24 @@ def _coerce_int(value: Any, default: int = 0) -> int:
     return default
 
 
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return default
+        try:
+            return float(text)
+        except ValueError:
+            return default
+    return default
+
+
 def _safe_phase_call(phase_manager: Any, phase: ComplaintPhase, key: str) -> Any:
     if phase_manager is None:
         return None
@@ -435,9 +453,9 @@ def build_review_document_generation_phase_guidance(
     if intake_chronology_readiness:
         signals.update(
             {
-                "chronology_anchor_coverage_ratio": float(intake_chronology_readiness.get("anchor_coverage_ratio", 1.0) or 1.0),
-                "chronology_predicate_coverage_ratio": float(intake_chronology_readiness.get("predicate_coverage_ratio", 1.0) or 1.0),
-                "chronology_provenance_coverage_ratio": float(intake_chronology_readiness.get("provenance_coverage_ratio", 1.0) or 1.0),
+                "chronology_anchor_coverage_ratio": _coerce_float(intake_chronology_readiness.get("anchor_coverage_ratio"), 1.0),
+                "chronology_predicate_coverage_ratio": _coerce_float(intake_chronology_readiness.get("predicate_coverage_ratio"), 1.0),
+                "chronology_provenance_coverage_ratio": _coerce_float(intake_chronology_readiness.get("provenance_coverage_ratio"), 1.0),
                 "chronology_ready_for_formalization": bool(intake_chronology_readiness.get("ready_for_temporal_formalization", False)),
             }
         )

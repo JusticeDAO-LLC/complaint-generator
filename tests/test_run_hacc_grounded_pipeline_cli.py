@@ -229,6 +229,104 @@ def test_main_prints_recommended_commands_for_fresh_grounded_run(tmp_path, monke
     assert "python scripts/run_hacc_grounded_pipeline.py --output-dir" in captured.out
 
 
+def test_main_prints_recommended_commands_for_synthesis_ready_grounded_run(tmp_path, monkeypatch, capsys):
+    cli = _load_cli_module()
+
+    class FakeEngine:
+        def __init__(self, repo_root):
+            self.repo_root = repo_root
+
+        def research(self, query, **kwargs):
+            return {
+                "status": "success",
+                "local_search_summary": {"status": "success"},
+                "research_grounding_summary": {},
+                "seeded_discovery_plan": {},
+                "research_action_queue": [],
+                "recommended_next_action": {
+                    "phase_name": "document_generation",
+                    "action": "continue_drafting",
+                },
+            }
+
+        def build_grounding_bundle(self, query, **kwargs):
+            return {
+                "status": "success",
+                "search_summary": {"status": "success"},
+                "synthetic_prompts": {},
+                "anchor_passages": [],
+                "upload_candidates": [],
+                "mediator_evidence_packets": [],
+                "claim_support_temporal_handoff": {},
+                "document_generation_handoff": {},
+                "drafting_readiness": {},
+                "graph_completeness_signals": {},
+            }
+
+        def simulate_evidence_upload(self, query, **kwargs):
+            return {"status": "success", "upload_count": 1, "search_summary": {"status": "success"}}
+
+    def fake_run_complaint_synthesis(**kwargs):
+        output_dir = tmp_path / "synthesized_complaint"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        draft_path = output_dir / "draft_complaint_package.json"
+        draft_path.write_text(
+            json.dumps(
+                {
+                    "refreshed_grounding_state": {"status": "chronology_supported"},
+                    "grounded_follow_up_answer_summary": {"answered_item_count": 1},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "output_dir": str(output_dir),
+            "draft_complaint_package_json": str(draft_path),
+            "draft_complaint_package_md": str(output_dir / "draft_complaint_package.md"),
+            "intake_follow_up_worksheet_json": str(output_dir / "intake_follow_up_worksheet.json"),
+            "intake_follow_up_worksheet_md": str(output_dir / "intake_follow_up_worksheet.md"),
+        }
+
+    completed_grounded_path = tmp_path / "grounded_answers.json"
+    completed_grounded_path.write_text(
+        json.dumps({"follow_up_items": [{"id": "grounded_priority_01", "answer": "Answered"}]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(cli, "_load_hacc_engine", lambda: FakeEngine)
+    monkeypatch.setattr(
+        cli,
+        "_run_adversarial_report",
+        lambda **kwargs: {"status": "success", "search_summary": {"status": "success"}},
+    )
+    monkeypatch.setattr(cli, "_run_complaint_synthesis", fake_run_complaint_synthesis)
+
+    result = cli.main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--query",
+            "termination notice chronology",
+            "--claim-type",
+            "housing_discrimination",
+            "--hacc-preset",
+            "core_hacc_policies",
+            "--hacc-search-mode",
+            "package",
+            "--synthesize-complaint",
+            "--completed-grounded-intake-worksheet",
+            str(completed_grounded_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert "Inspect command:" in captured.out
+    assert "Recommended synthesis:" in captured.out
+    assert "Pipeline resume command:" in captured.out
+    assert "python scripts/synthesize_hacc_complaint.py --grounded-run-dir" in captured.out
+
+
 def test_default_grounding_request_uses_first_query_spec(monkeypatch):
     cli = _load_cli_module()
     monkeypatch.setattr(

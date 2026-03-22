@@ -309,6 +309,13 @@ class Optimizer:
             "optimizer_classes": {},
         }
 
+    def _resolve_agentic_optimizer_components(self) -> Dict[str, Any]:
+        try:
+            return self._load_agentic_optimizer_components()
+        except Exception as exc:
+            logger.warning("Falling back to local optimizer components: %s", exc)
+            return self._fallback_agentic_optimizer_components()
+
     def _build_agentic_patch_description(
         self,
         report: OptimizationReport,
@@ -2306,7 +2313,7 @@ class Optimizer:
         report: Optional[OptimizationReport] = None,
         components: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Any, OptimizationReport]:
-        components = components or self._load_agentic_optimizer_components()
+        components = components or self._resolve_agentic_optimizer_components()
         task_cls = components["OptimizationTask"]
         method_enum = components["OptimizationMethod"]
 
@@ -2364,7 +2371,7 @@ class Optimizer:
         components: Optional[Dict[str, Any]] = None,
         include_ready_phases: bool = True,
     ) -> Tuple[List[Any], OptimizationReport]:
-        components = components or self._load_agentic_optimizer_components()
+        components = components or self._resolve_agentic_optimizer_components()
         task_cls = components["OptimizationTask"]
         method_enum = components["OptimizationMethod"]
 
@@ -2689,7 +2696,7 @@ class Optimizer:
         report: Optional[OptimizationReport] = None,
         components: Optional[Dict[str, Any]] = None,
     ) -> Tuple[WorkflowOptimizationBundle, OptimizationReport]:
-        components = components or self._load_agentic_optimizer_components()
+        components = components or self._resolve_agentic_optimizer_components()
         tasks, report = self.build_phase_patch_tasks(
             results,
             method=method,

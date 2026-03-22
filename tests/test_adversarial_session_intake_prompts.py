@@ -661,6 +661,56 @@ def test_extract_intake_prompt_candidates_uses_evidence_upload_questions():
     ) in candidates
 
 
+def test_extract_intake_prompt_candidates_synthesizes_exhibit_ready_prompt_when_batch_ratio_is_low():
+    seed = {
+        "workflow_optimization_guidance": {
+            "document_provenance_summary": {
+                "avg_exhibit_backed_ratio": 0.1,
+            }
+        },
+        "key_facts": {
+            "anchor_sections": ["adverse_action"],
+            "synthetic_prompts": {
+                "intake_questions": [],
+            }
+        },
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+
+    assert any(
+        objective == "documents"
+        and "treated as exhibits" in question
+        and "date, sender or source, label or subject line, and the fact the document proves" in question
+        for question, objective in candidates
+    )
+
+
+def test_extract_intake_prompt_candidates_dedupes_explicit_exhibit_ready_prompt():
+    prompt_text = (
+        "Which uploaded or uploadable documents should be treated as exhibits for each notice, denial, hearing request, "
+        "or review decision, and for each one what are the date, sender or source, label or subject line, and the fact the document proves?"
+    )
+    seed = {
+        "workflow_optimization_guidance": {
+            "document_provenance_summary": {
+                "avg_exhibit_backed_ratio": 0.1,
+            }
+        },
+        "key_facts": {
+            "anchor_sections": ["adverse_action"],
+            "synthetic_prompts": {
+                "intake_questions": [prompt_text],
+            }
+        },
+    }
+
+    candidates = AdversarialSession._extract_intake_prompt_candidates(seed)
+    matching = [item for item in candidates if item[0] == prompt_text and item[1] == "documents"]
+
+    assert len(matching) == 1
+
+
 def test_inject_intake_prompt_questions_prioritizes_claim_temporal_gap_prompts():
     seed = {
         "document_optimization": {

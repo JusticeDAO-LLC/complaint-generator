@@ -71,6 +71,7 @@ def test_build_hacc_evidence_seeds_falls_back_to_repository_grounding(tmp_path, 
     synthetic_prompts = dict(key_facts.get("synthetic_prompts") or {})
     assert search_summary["effective_search_mode"] == "repository_fallback"
     assert "Upload the strongest case-specific files first" in synthetic_prompts["evidence_upload_prompt"]
+    assert "treated as exhibits" in synthetic_prompts["evidence_upload_prompt"]
     assert key_facts["repository_evidence_candidates"]
     assert key_facts["mediator_evidence_packets"]
 
@@ -108,9 +109,81 @@ def test_merge_synthetic_prompts_adds_upload_and_document_workflow_guidance():
         "graph_analysis",
         "document_generation",
     ]
+    assert "exhibit-ready uploads" in prompts["intake_questionnaire_prompt"]
     assert any("Please upload ADMINISTRATIVE PLAN" in item for item in prompts["evidence_upload_questions"])
+    assert any("should become exhibits" in item for item in prompts["mediator_questions"])
     assert "timeline_anchors" in prompts["extraction_targets"]
     assert "claim_support_mapping" in prompts["extraction_targets"]
+
+
+def test_merge_synthetic_prompts_adds_exhibit_ready_intake_language_for_adverse_action_grounding():
+    prompts = hacc_evidence_module._merge_synthetic_prompts(
+        complaint_type="housing_discrimination",
+        description="Adverse action complaint grounded in HACC process documents",
+        query="denial notice grievance hearing review decision adverse action",
+        evidence_summary="Administrative plan language discusses denial notices and reviews.",
+        anchor_sections=["adverse_action", "grievance_hearing", "appeal_rights"],
+        anchor_passages=[
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "snippet": "HACC policy requires written notice and an opportunity for an informal hearing.",
+                "section_labels": ["grievance_hearing", "appeal_rights", "adverse_action"],
+            }
+        ],
+        repository_candidates=[
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "relative_path": "hacc_website/admin-plan.txt",
+                "snippet": "Written notice is required before an informal hearing.",
+            }
+        ],
+        existing_prompts={},
+    )
+
+    assert any("should be treated as exhibits" in item for item in prompts["intake_questions"])
+    assert "label or subject line" in prompts["evidence_upload_prompt"]
+
+
+def test_merge_synthetic_prompts_uses_notice_review_examples_for_due_process_theory():
+    prompts = hacc_evidence_module._merge_synthetic_prompts(
+        complaint_type="housing_discrimination",
+        description="Retaliation and due-process complaint grounded in HACC process documents",
+        query="retaliation grievance hearing appeal due process notice of adverse action",
+        evidence_summary="Administrative plan language discusses denial notices and reviews.",
+        anchor_sections=["grievance_hearing", "appeal_rights", "adverse_action"],
+        anchor_passages=[],
+        repository_candidates=[],
+        theory_labels=["retaliation", "due_process_failure"],
+        protected_bases=[],
+        anchor_terms=["grievance hearing", "review decision", "notice of adverse action"],
+        existing_prompts={},
+    )
+
+    joined_questions = " ".join(prompts["intake_questions"])
+    assert "denial notice" in prompts["evidence_upload_prompt"]
+    assert "hearing or review request" in prompts["evidence_upload_prompt"]
+    assert "review decision" in joined_questions
+
+
+def test_merge_synthetic_prompts_uses_accommodation_examples_for_disability_theory():
+    prompts = hacc_evidence_module._merge_synthetic_prompts(
+        complaint_type="housing_discrimination",
+        description="Accommodation complaint grounded in HACC process documents",
+        query="reasonable accommodation disability denial informal hearing housing authority",
+        evidence_summary="Administrative plan language discusses accommodation requests and decisions.",
+        anchor_sections=["reasonable_accommodation", "appeal_rights"],
+        anchor_passages=[],
+        repository_candidates=[],
+        theory_labels=["reasonable_accommodation", "disability_discrimination"],
+        protected_bases=["disability"],
+        anchor_terms=["reasonable accommodation", "disability", "right to appeal"],
+        existing_prompts={},
+    )
+
+    joined_questions = " ".join(prompts["intake_questions"])
+    assert "accommodation request" in prompts["evidence_upload_prompt"]
+    assert "medical or disability-support record" in prompts["evidence_upload_prompt"]
+    assert "accommodation request" in joined_questions
 
 
 def test_merge_synthetic_prompts_adds_non_accommodation_guardrail_when_seed_is_not_accommodation():

@@ -75,6 +75,68 @@ ANCHOR_SECTION_OBJECTIVE_HINTS: Dict[str, Sequence[str]] = {
 }
 
 
+def _normalized_label_set(values: Optional[Sequence[str]]) -> set[str]:
+    return {str(value or "").strip().lower() for value in list(values or []) if str(value or "").strip()}
+
+
+def _is_notice_review_focused(
+    *,
+    theory_labels: Optional[Sequence[str]],
+    anchor_sections: Optional[Sequence[str]],
+    anchor_terms: Optional[Sequence[str]],
+) -> bool:
+    label_set = _normalized_label_set(theory_labels)
+    section_set = _normalized_label_set(anchor_sections)
+    term_set = _normalized_label_set(anchor_terms)
+    return bool(
+        {"retaliation", "due_process_failure", "adverse_action"} & label_set
+        or {"grievance_hearing", "appeal_rights", "adverse_action"} & section_set
+        or any(
+            token in term
+            for term in term_set
+            for token in ("grievance", "hearing", "appeal", "review", "notice", "adverse action")
+        )
+    )
+
+
+def _prompt_examples_for_theory(
+    *,
+    theory_labels: Optional[Sequence[str]],
+    protected_bases: Optional[Sequence[str]],
+    anchor_sections: Optional[Sequence[str]],
+    anchor_terms: Optional[Sequence[str]],
+) -> List[str]:
+    if _supports_reasonable_accommodation_path(
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
+    ):
+        return [
+            "accommodation request",
+            "response or denial letter",
+            "medical or disability-support record",
+            "hearing or review decision",
+        ]
+    if _is_notice_review_focused(
+        theory_labels=theory_labels,
+        anchor_sections=anchor_sections,
+        anchor_terms=anchor_terms,
+    ):
+        return [
+            "denial notice",
+            "hearing or review request",
+            "review decision",
+            "appeal-rights notice",
+        ]
+    return [
+        "denial notice",
+        "email",
+        "policy excerpt",
+        "supporting record",
+    ]
+
+
 def _repo_root() -> Path:
     complaint_generator_root = Path(__file__).resolve().parents[1]
     candidates = [
@@ -584,6 +646,14 @@ def _build_repository_grounding_bundle(
     lead_titles = [str(hit.get("title") or "") for hit in selected_hits[:2] if str(hit.get("title") or "").strip()]
     prompt_focus = ", ".join(anchor_sections[:3]) or ", ".join(list(theory_labels or [])[:3]) or complaint_type
     upload_focus = ", ".join(lead_titles) or "the strongest repository evidence files"
+    theory_examples = ", ".join(
+        _prompt_examples_for_theory(
+            theory_labels=theory_labels,
+            protected_bases=protected_bases,
+            anchor_sections=anchor_sections,
+            anchor_terms=anchor_terms,
+        )[:4]
+    )
     synthetic_prompts = {
         "complaint_chatbot_prompt": (
             "Ground each answer in uploaded evidence when available, and distinguish repository-grounded policy/procedure "
@@ -591,14 +661,14 @@ def _build_repository_grounding_bundle(
         ),
         "intake_questionnaire_prompt": (
             "Prioritize unresolved dates, actors, decision notices, hearing/review timing, response timing, and remedy. "
-            "For each answer, request the strongest upload-ready evidence anchor: filename or source title, date, sender/author, "
-            "and the fact the item proves."
+            "For each answer, request the strongest exhibit-ready upload anchor: filename or source title, date, sender/author, "
+            "label or subject line, and the fact the item proves."
         ),
         "intake_questions": [
-            f"What happened, in chronological order, and what are the strongest evidence anchors from {upload_focus} plus any case-specific notices, emails, texts, or grievance records?",
+            f"What happened, in chronological order, and which uploaded or uploadable records from {upload_focus}, such as {theory_examples}, should be treated as exhibits for each key event?",
             f"Who made or communicated each key decision, what were their titles or roles, and which uploaded or repository documents identify them?",
             f"What grievance, hearing, appeal, accommodation, notice, or adverse-action procedures from {prompt_focus} were provided, requested, denied, ignored, or applied to you?",
-            "What files should be uploaded first to support this complaint, and for each file what date, sender/source, and factual proposition does it prove?",
+            "What files should be uploaded first to support this complaint, and for each file what date, sender/source, label or subject line, and factual proposition does it prove?",
             "What harm did this cause and what remedy or court relief are you requesting?",
         ],
         "blocker_objectives": [
@@ -624,9 +694,9 @@ def _build_repository_grounding_bundle(
             "document_generation",
         ],
         "evidence_upload_prompt": (
-            "Upload the strongest case-specific files first: notice letters, grievance/hearing requests, review decisions, "
-            "emails, text messages, PDFs, images, and accommodation records. Preserve filename, source, date, sender, and a short "
-            "statement of what each item proves."
+            f"Upload the strongest case-specific files first, such as {theory_examples}, notice letters, emails, text messages, PDFs, images, and supporting records. "
+            "Treat the strongest uploads as exhibits or documents that should be treated as exhibits, and preserve "
+            "filename, source, date, sender, label or subject line, and a short statement of what each item proves."
         ),
         "mediated_evidence_evaluation_prompt": (
             "The mediator should evaluate uploaded evidence for chronology, actor identity, policy/procedure anchors, "
@@ -1511,13 +1581,24 @@ def _build_fallback_synthetic_prompts(
     anchor_sections: Sequence[str],
     anchor_passages: Sequence[Dict[str, Any]],
     repository_candidates: Sequence[Dict[str, Any]],
+    theory_labels: Optional[Sequence[str]] = None,
+    protected_bases: Optional[Sequence[str]] = None,
+    anchor_terms: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     rendered_anchor_sections = _render_anchor_sections(anchor_sections)
     supports_reasonable_accommodation = _supports_reasonable_accommodation_path(
-        theory_labels=None,
-        protected_bases=None,
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
         anchor_sections=anchor_sections,
-        anchor_terms=None,
+        anchor_terms=anchor_terms,
+    )
+    theory_examples = ", ".join(
+        _prompt_examples_for_theory(
+            theory_labels=theory_labels,
+            protected_bases=protected_bases,
+            anchor_sections=anchor_sections,
+            anchor_terms=anchor_terms,
+        )[:4]
     )
     upload_questions = [
         _build_upload_question_for_candidate(candidate, claim_type=complaint_type, query=query)
@@ -1533,7 +1614,7 @@ def _build_fallback_synthetic_prompts(
 
     intake_questions = [
         "What happened, and what adverse action did HACC take or threaten to take?",
-        "When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision?",
+        f"When did the key events happen, including the complaint, notice, hearing or review request, and any denial or termination decision, and which uploaded records such as {theory_examples} should become exhibits for those events?",
         "Who at HACC made, communicated, or carried out each decision, and what were their names or titles if known?",
     ]
     if "grievance_hearing" in anchor_sections:
@@ -1554,7 +1635,7 @@ def _build_fallback_synthetic_prompts(
         )
     if upload_questions:
         intake_questions.append(
-            "Which of the supporting records can you upload now, and which ones still need to be requested from HACC or another source?"
+            "Which of the supporting records can you upload now, which ones should be treated as exhibits, and which ones still need to be requested from HACC or another source?"
         )
 
     blocker_objectives = ["exact_dates", "staff_names_titles", "documents"]
@@ -1599,7 +1680,12 @@ def _build_fallback_synthetic_prompts(
         "complaint_chatbot_prompt": complaint_chatbot_prompt,
         "intake_questionnaire_prompt": (
             f"Ask targeted intake questions that turn repository-grounded evidence about {rendered_anchor_sections} "
-            "into case-specific facts, dates, actors, and exhibits."
+            "into case-specific facts, dates, actors, and exhibit-ready uploads with date, sender/source, label, and fact-proved detail."
+        ),
+        "evidence_upload_prompt": (
+            f"Ask the user to upload the strongest records first, such as {theory_examples}, plus emails, texts, PDFs, images, and policy excerpts. "
+            "For each upload, preserve the filename, date, sender or source, label or subject line, "
+            "and the fact it proves, and identify which records should be treated as exhibits."
         ),
         "mediator_evidence_review_prompt": mediator_prompt,
         "document_generation_prompt": document_generation_prompt,
@@ -1609,7 +1695,7 @@ def _build_fallback_synthetic_prompts(
             [
                 "Which uploaded records directly support each claim element, and which elements remain weak or unsupported?",
                 "What dates, decision-makers, or response events can be extracted from the uploaded evidence into the chronology?",
-                "Which uploaded records should become exhibits in the complaint, and what fact does each exhibit support?",
+                "Which uploaded records should become exhibits in the complaint, and for each exhibit what are the date, sender or source, label or subject line, and fact it supports?",
             ]
         ),
         "blocker_objectives": _unique_strings(blocker_objectives),
@@ -1627,6 +1713,9 @@ def _merge_synthetic_prompts(
     anchor_sections: Sequence[str],
     anchor_passages: Sequence[Dict[str, Any]],
     repository_candidates: Sequence[Dict[str, Any]],
+    theory_labels: Optional[Sequence[str]] = None,
+    protected_bases: Optional[Sequence[str]] = None,
+    anchor_terms: Optional[Sequence[str]] = None,
     existing_prompts: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     merged = dict(existing_prompts or {})
@@ -1669,6 +1758,9 @@ def _merge_synthetic_prompts(
         anchor_sections=anchor_sections,
         anchor_passages=anchor_passages,
         repository_candidates=repository_candidates,
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_terms=anchor_terms,
     )
     for key in (
         "complaint_chatbot_prompt",
@@ -1871,6 +1963,9 @@ def build_hacc_evidence_seed(
         anchor_sections=anchor_sections,
         anchor_passages=anchor_passages,
         repository_candidates=repository_candidates,
+        theory_labels=theory_labels,
+        protected_bases=protected_bases,
+        anchor_terms=anchor_terms,
         existing_prompts=dict((grounding_bundle or {}).get("synthetic_prompts") or {}),
     )
     mediator_evidence_packets = list((grounding_bundle or {}).get("mediator_evidence_packets") or [])

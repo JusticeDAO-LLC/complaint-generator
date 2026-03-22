@@ -450,7 +450,8 @@ def run_demo_autopatch_batch(
 
     optimizer = Optimizer()
     report = optimizer.analyze(results)
-    workflow_bundle = optimizer.build_workflow_optimization_bundle(results, report=report).to_dict()
+    workflow_bundle, _ = optimizer.build_workflow_optimization_bundle(results, report=report)
+    workflow_bundle = workflow_bundle.to_dict()
     normalized_phase_mode = str(phase_mode or "single").strip().lower().replace("-", "_")
     if normalized_phase_mode not in {"single", "workflow"}:
         raise ValueError(f"Unsupported phase mode: {phase_mode}")
@@ -558,7 +559,8 @@ def run_adversarial_autopatch_batch(
 
     optimizer = Optimizer()
     report = optimizer.analyze(results)
-    workflow_bundle = optimizer.build_workflow_optimization_bundle(results, report=report).to_dict()
+    workflow_bundle, _ = optimizer.build_workflow_optimization_bundle(results, report=report)
+    workflow_bundle = workflow_bundle.to_dict()
     normalized_phase_mode = str(phase_mode or "single").strip().lower().replace("-", "_")
     if normalized_phase_mode not in {"single", "workflow"}:
         raise ValueError(f"Unsupported phase mode: {phase_mode}")

@@ -1477,6 +1477,10 @@ class AdversarialSession:
                         candidates.append((question_text, objective))
 
         candidates.extend(AdversarialSession._claim_temporal_gap_prompts(seed_complaint))
+        if AdversarialSession._extract_latest_batch_priority_flags(seed_complaint).get('needs_exhibit_grounding'):
+            exhibit_ready_prompt = AdversarialSession._synthesize_exhibit_ready_intake_prompt(seed_complaint)
+            if exhibit_ready_prompt:
+                candidates.append((exhibit_ready_prompt, 'documents'))
 
         expected_anchor_sections = [
             str(value) for value in list(key_facts.get('anchor_sections') or []) if str(value)
@@ -1528,6 +1532,31 @@ class AdversarialSession:
                 seen.add(key)
                 deduped.append(item)
         return deduped
+
+    @staticmethod
+    def _synthesize_exhibit_ready_intake_prompt(seed_complaint: Dict[str, Any]) -> str:
+        chronology_hints = AdversarialSession._extract_document_chronology_priority_hints(seed_complaint)
+        key_facts = seed_complaint.get('key_facts') if isinstance(seed_complaint.get('key_facts'), dict) else {}
+        anchor_sections = {
+            str(value or '').strip().lower()
+            for value in list(key_facts.get('anchor_sections') or [])
+            if str(value or '').strip()
+        }
+        if bool(chronology_hints.get('needs_decision_document_precision')) or 'adverse_action' in anchor_sections:
+            return (
+                "Which uploaded or uploadable documents should be treated as exhibits for each notice, denial, "
+                "hearing request, or review decision, and for each one what are the date, sender or source, "
+                "label or subject line, and the fact the document proves?"
+            )
+        if bool(chronology_hints.get('needs_chronology_closure')):
+            return (
+                "Which uploaded or uploadable documents should be treated as exhibits for each key event in the timeline, "
+                "and for each one what are the date, sender or source, label or subject line, and the fact the document proves?"
+            )
+        return (
+            "Which uploaded or uploadable documents should be treated as exhibits, and for each one what are the date, "
+            "sender or source, label or subject line, and the fact the document proves?"
+        )
 
     @staticmethod
     def _seed_requires_causation_probe(seed_complaint: Dict[str, Any]) -> bool:
@@ -3646,25 +3675,30 @@ class AdversarialSession:
 
     def _build_fallback_probe(
         self,
-        seed_complaint: Dict[str, Any],
-        asked_question_counts: Dict[str, int],
-        asked_intent_counts: Dict[str, int],
-        need_timeline: bool,
-        need_harm_remedy: bool,
-        need_actor_decisionmaker: bool,
-        need_causation: bool,
-        need_documentary_evidence: bool,
-        need_witness: bool,
-        need_exact_dates: bool,
-        need_staff_names_titles: bool,
-        need_hearing_request_timing: bool,
-        need_response_dates: bool,
-        need_causation_sequence: bool,
-        last_question_key: str | None,
-        last_question_intent_key: str | None,
-        recent_intent_keys: Set[str],
-        missing_anchor_sections: Set[str],
+        seed_complaint: Dict[str, Any] | None = None,
+        asked_question_counts: Dict[str, int] | None = None,
+        asked_intent_counts: Dict[str, int] | None = None,
+        need_timeline: bool = False,
+        need_harm_remedy: bool = False,
+        need_actor_decisionmaker: bool = False,
+        need_causation: bool = False,
+        need_documentary_evidence: bool = False,
+        need_witness: bool = False,
+        need_exact_dates: bool = False,
+        need_staff_names_titles: bool = False,
+        need_hearing_request_timing: bool = False,
+        need_response_dates: bool = False,
+        need_causation_sequence: bool = False,
+        last_question_key: str | None = None,
+        last_question_intent_key: str | None = None,
+        recent_intent_keys: Set[str] | None = None,
+        missing_anchor_sections: Set[str] | None = None,
     ) -> Dict[str, Any] | None:
+        seed_complaint = seed_complaint or {}
+        asked_question_counts = dict(asked_question_counts or {})
+        asked_intent_counts = dict(asked_intent_counts or {})
+        recent_intent_keys = set(recent_intent_keys or set())
+        missing_anchor_sections = set(missing_anchor_sections or set())
         probe_candidates: List[tuple[str, str]] = []
         intake_prompt_candidates = self._extract_intake_prompt_candidates(seed_complaint)
         for probe_text, probe_type in intake_prompt_candidates:
@@ -3850,26 +3884,31 @@ class AdversarialSession:
     def _select_next_question(
         self,
         questions: List[Any],
-        asked_question_counts: Dict[str, int],
-        asked_intent_counts: Dict[str, int],
-        need_timeline: bool,
-        need_harm_remedy: bool,
-        need_actor_decisionmaker: bool,
-        need_causation: bool,
-        need_documentary_evidence: bool,
-        need_witness: bool,
-        need_exact_dates: bool,
-        need_staff_names_titles: bool,
-        need_hearing_request_timing: bool,
-        need_response_dates: bool,
-        need_causation_sequence: bool,
-        last_question_key: str | None,
-        last_question_intent_key: str | None,
-        recent_intent_keys: Set[str],
-        missing_anchor_sections: Set[str],
+        asked_question_counts: Dict[str, int] | None = None,
+        asked_intent_counts: Dict[str, int] | None = None,
+        need_timeline: bool = False,
+        need_harm_remedy: bool = False,
+        need_actor_decisionmaker: bool = False,
+        need_causation: bool = False,
+        need_documentary_evidence: bool = False,
+        need_witness: bool = False,
+        need_exact_dates: bool = False,
+        need_staff_names_titles: bool = False,
+        need_hearing_request_timing: bool = False,
+        need_response_dates: bool = False,
+        need_causation_sequence: bool = False,
+        last_question_key: str | None = None,
+        last_question_intent_key: str | None = None,
+        recent_intent_keys: Set[str] | None = None,
+        missing_anchor_sections: Set[str] | None = None,
     ) -> Any:
         if not questions:
             return None
+
+        asked_question_counts = dict(asked_question_counts or {})
+        asked_intent_counts = dict(asked_intent_counts or {})
+        recent_intent_keys = set(recent_intent_keys or set())
+        missing_anchor_sections = set(missing_anchor_sections or set())
 
         seen_question_keys = [k for k, count in asked_question_counts.items() if count > 0]
         candidate_keys_in_turn: Set[str] = set()
