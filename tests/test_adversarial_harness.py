@@ -2038,6 +2038,26 @@ class TestAdversarialHarness:
         assert session_progress['stage'] == 'completed'
         assert session_progress['status'] == 'completed'
 
+    def test_write_session_progress_sanitizes_set_metadata(self, tmp_path):
+        harness = AdversarialHarness(
+            MockLLMBackend(),
+            MockLLMBackend(),
+            MockMediator,
+            max_parallel=1,
+            session_state_dir=str(tmp_path / "sessions"),
+        )
+
+        harness._write_session_progress(
+            "session_set_progress",
+            stage="awaiting_complainant_answer",
+            status="running",
+            metadata={"weak_evidence_modalities": {"policy_document", "file_evidence"}},
+        )
+
+        progress_path = tmp_path / "sessions" / "session_set_progress" / "progress.json"
+        payload = json.loads(progress_path.read_text(encoding="utf-8"))
+        assert payload["metadata"]["weak_evidence_modalities"] == ["file_evidence", "policy_document"]
+
     def test_ensure_session_db_paths_rebinds_shared_storage_hooks(self):
         harness = AdversarialHarness(
             MockLLMBackend(),

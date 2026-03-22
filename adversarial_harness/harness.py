@@ -34,6 +34,26 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, set):
         return [_json_safe(item) for item in sorted(value, key=lambda item: str(item))]
     return value
+def _sanitize_for_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _sanitize_for_json(item) for key, item in value.items()}
+    if isinstance(value, set):
+        return [_sanitize_for_json(item) for item in sorted(value, key=lambda item: str(item))]
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if hasattr(value, "isoformat") and callable(getattr(value, "isoformat")):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    if hasattr(value, "__dict__"):
+        try:
+            return _sanitize_for_json(vars(value))
+        except Exception:
+            pass
+    return str(value)
 
 
 def _seed_search_summary(seed: Dict[str, Any], requested_search_mode: str) -> Dict[str, Any]:
@@ -497,7 +517,7 @@ class AdversarialHarness:
             'stage': str(stage or ''),
             'status': str(status or ''),
             'timestamp': datetime.now(UTC).isoformat(),
-            'metadata': metadata or {},
+            'metadata': _sanitize_for_json(metadata or {}),
         }
         with open(os.path.join(resolved_session_dir, 'progress.json'), 'w', encoding='utf-8') as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
@@ -524,7 +544,7 @@ class AdversarialHarness:
             'successful_sessions': int(successful_sessions or 0),
             'failed_sessions': int(failed_sessions or 0),
             'active_session_ids': [str(value) for value in list(active_session_ids or []) if str(value)],
-            'latest_session': dict(latest_session or {}),
+            'latest_session': _sanitize_for_json(dict(latest_session or {})),
         })
 
     def run_batch(self,
