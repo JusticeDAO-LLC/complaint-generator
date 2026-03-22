@@ -851,6 +851,16 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
         "anchor_sections": [],
         "anchor_passages": [],
         "supporting_evidence": [],
+        "evidence_attachments": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "relative_path": "hacc_website/admin-plan.txt",
+                "prepared_for_mediator": True,
+                "uploaded_to_mediator": True,
+                "claim_types": ["housing_discrimination"],
+                "anchor_sections": ["grievance_hearing", "appeal_rights"],
+            }
+        ],
         "requested_relief": [],
         "grounded_evidence_summary": [],
         "grounding_overview": {
@@ -883,6 +893,8 @@ def test_render_markdown_includes_outstanding_intake_gaps_section():
     assert "## Grounding Overview" in markdown
     assert "- Anchor sections: grievance_hearing, appeal_rights" in markdown
     assert "- Top documents: ADMINISTRATIVE PLAN, ADMISSIONS AND CONTINUED OCCUPANCY POLICY" in markdown
+    assert "## Evidence Attachments" in markdown
+    assert "- ADMINISTRATIVE PLAN (hacc_website/admin-plan.txt): prepared for mediator; uploaded to mediator evidence store for housing_discrimination; anchors: grievance_hearing, appeal_rights" in markdown
     assert "## Search Summary" in markdown
     assert "- Requested search mode: hybrid" in markdown
     assert "- Effective search mode: lexical_only" in markdown
@@ -1479,3 +1491,52 @@ def test_anchor_passage_lines_keep_due_process_excerpt():
     assert len(lines) == 1
     assert "defines a grievance as a tenant dispute" in lines[0]
     assert "Elements of due process" in lines[0]
+
+
+def test_grounded_evidence_attachments_promote_mediator_packets_and_uploads():
+    grounding_bundle = {
+        "mediator_evidence_packets": [
+            {
+                "document_label": "ADMINISTRATIVE PLAN",
+                "relative_path": "hacc_website/admin-plan.txt",
+                "source_path": "/tmp/admin-plan.txt",
+                "filename": "admin-plan.txt",
+                "mime_type": "text/plain",
+                "metadata": {
+                    "source_type": "knowledge_graph",
+                    "upload_strategy": "extracted_text_fallback",
+                    "anchor_sections": ["grievance_hearing", "appeal_rights"],
+                },
+            }
+        ]
+    }
+    upload_report = {
+        "uploads": [
+            {
+                "title": "ADMINISTRATIVE PLAN",
+                "relative_path": "hacc_website/admin-plan.txt",
+                "source_path": "/tmp/admin-plan.txt",
+                "result": {
+                    "claim_type": "housing_discrimination",
+                },
+            }
+        ]
+    }
+
+    attachments = MODULE._grounded_evidence_attachments(grounding_bundle, upload_report)
+
+    assert attachments == [
+        {
+            "title": "ADMINISTRATIVE PLAN",
+            "relative_path": "hacc_website/admin-plan.txt",
+            "source_path": "/tmp/admin-plan.txt",
+            "filename": "admin-plan.txt",
+            "mime_type": "text/plain",
+            "source_type": "knowledge_graph",
+            "upload_strategy": "extracted_text_fallback",
+            "anchor_sections": ["grievance_hearing", "appeal_rights"],
+            "prepared_for_mediator": True,
+            "uploaded_to_mediator": True,
+            "claim_types": ["housing_discrimination"],
+        }
+    ]

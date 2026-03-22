@@ -1899,6 +1899,98 @@ def _grounded_supporting_evidence(
     return deduped
 
 
+def _grounded_evidence_attachments(
+    grounding_bundle: Dict[str, Any],
+    upload_report: Dict[str, Any],
+    *,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    grouped: Dict[tuple[str, str], Dict[str, Any]] = {}
+
+    def _ensure_entry(label: str, relative_path: str, source_path: str) -> Dict[str, Any]:
+        location = relative_path or source_path
+        key = (label, location)
+        return grouped.setdefault(
+            key,
+            {
+                "title": label,
+                "relative_path": relative_path,
+                "source_path": source_path,
+                "filename": "",
+                "mime_type": "",
+                "source_type": "",
+                "upload_strategy": "",
+                "anchor_sections": [],
+                "prepared_for_mediator": False,
+                "uploaded_to_mediator": False,
+                "claim_types": [],
+            },
+        )
+
+    for packet in list(grounding_bundle.get("mediator_evidence_packets") or [])[:limit]:
+        metadata = dict(packet.get("metadata") or {})
+        label = str(packet.get("document_label") or packet.get("filename") or "Mediator evidence packet")
+        relative_path = str(packet.get("relative_path") or metadata.get("relative_path") or "").strip()
+        source_path = str(packet.get("source_path") or "").strip()
+        entry = _ensure_entry(label, relative_path, source_path)
+        entry["prepared_for_mediator"] = True
+        entry["filename"] = str(packet.get("filename") or entry.get("filename") or "").strip()
+        entry["mime_type"] = str(packet.get("mime_type") or entry.get("mime_type") or "").strip()
+        entry["source_type"] = str(metadata.get("source_type") or entry.get("source_type") or "").strip()
+        entry["upload_strategy"] = str(metadata.get("upload_strategy") or entry.get("upload_strategy") or "").strip()
+        for section in list(metadata.get("anchor_sections") or []):
+            section_text = str(section).strip()
+            if section_text and section_text not in entry["anchor_sections"]:
+                entry["anchor_sections"].append(section_text)
+
+    for upload in list(upload_report.get("uploads") or [])[:limit]:
+        result = dict(upload.get("result") or {})
+        label = str(upload.get("title") or upload.get("relative_path") or upload.get("source_path") or "Uploaded evidence")
+        relative_path = str(upload.get("relative_path") or result.get("relative_path") or "").strip()
+        source_path = str(upload.get("source_path") or result.get("source_path") or "").strip()
+        entry = _ensure_entry(label, relative_path, source_path)
+        entry["uploaded_to_mediator"] = True
+        claim_type = str(result.get("claim_type") or upload.get("claim_type") or "").strip()
+        if claim_type and claim_type not in entry["claim_types"]:
+            entry["claim_types"].append(claim_type)
+
+    attachments = list(grouped.values())
+    attachments.sort(
+        key=lambda item: (
+            0 if item.get("uploaded_to_mediator") else 1,
+            0 if item.get("prepared_for_mediator") else 1,
+            str(item.get("title") or ""),
+        )
+    )
+    return attachments[:limit]
+
+
+def _render_attachment_lines(attachments: List[Dict[str, Any]]) -> List[str]:
+    lines: List[str] = []
+    for attachment in attachments:
+        title = str(attachment.get("title") or "Evidence attachment").strip()
+        location = str(attachment.get("relative_path") or attachment.get("source_path") or "").strip()
+        status_parts: List[str] = []
+        if attachment.get("prepared_for_mediator"):
+            status_parts.append("prepared for mediator")
+        if attachment.get("uploaded_to_mediator"):
+            claim_types = [str(item) for item in list(attachment.get("claim_types") or []) if str(item)]
+            upload_text = "uploaded to mediator evidence store"
+            if claim_types:
+                upload_text += f" for {', '.join(claim_types)}"
+            status_parts.append(upload_text)
+        anchor_sections = [str(item) for item in list(attachment.get("anchor_sections") or []) if str(item)]
+        if anchor_sections:
+            status_parts.append(f"anchors: {', '.join(anchor_sections)}")
+        line = f"- {title}"
+        if location:
+            line += f" ({location})"
+        if status_parts:
+            line += f": {'; '.join(status_parts)}"
+        lines.append(line)
+    return lines
+
+
 def _grounded_summary_lines(
     grounding_bundle: Dict[str, Any],
     upload_report: Dict[str, Any],
@@ -5641,6 +5733,14 @@ def _render_markdown(package: Dict[str, Any]) -> str:
         "",
     ])
     lines.extend(_render_grouped_lines(list(package["supporting_evidence"]), "supporting", exhibit_index))
+    evidence_attachments = [dict(item) for item in list(package.get("evidence_attachments") or []) if isinstance(item, dict)]
+    if evidence_attachments:
+        lines.extend([
+            "",
+            "## Evidence Attachments",
+            "",
+        ])
+        lines.extend(_render_attachment_lines(evidence_attachments))
     lines.extend([
         f"## {section_labels['relief']}",
         "",
@@ -5887,6 +5987,7 @@ def main(argv: List[str] | None = None) -> int:
         key_facts.get("evidence_summary") or seed.get("summary") or "No summary available."
     )
     cleaned_summary = _summary_with_selection_rationale(cleaned_summary, selection_rationale)
+    evidence_attachments = _grounded_evidence_attachments(grounding_bundle, evidence_upload_report)
 
     package = {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -5909,6 +6010,8 @@ def main(argv: List[str] | None = None) -> int:
             _evidence_lines(seed) + _grounded_supporting_evidence(grounding_bundle, evidence_upload_report),
             limit=8,
         ),
+        "evidence_attachments": evidence_attachments,
+        "attachments": list(evidence_attachments),
         "proposed_allegations": _proposed_allegations(seed, best_session, args.filing_forum),
         "anchored_chronology_summary": _anchored_chronology_lines(best_session, limit=3),
         "graph_readiness_summary": _graph_readiness_summary(best_session),
