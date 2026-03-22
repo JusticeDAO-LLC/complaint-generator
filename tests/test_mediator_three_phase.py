@@ -3876,6 +3876,52 @@ class TestMediatorThreePhaseIntegration:
         assert document_candidates[0]['question'].startswith('Which uploaded or uploadable documents')
         assert 'treated as exhibits' in document_candidates[0]['question']
         assert 'fact the document proves' in document_candidates[0]['question']
+
+    def test_denoiser_generates_exhibit_ready_temporal_candidate_when_grounding_is_weak(self):
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'workflow_optimization_guidance',
+            {
+                'document_provenance_summary': {
+                    'avg_exhibit_backed_ratio': 0.1,
+                }
+            },
+        )
+        intake_case_file = {
+            'candidate_claims': [
+                {
+                    'claim_type': 'housing_discrimination',
+                    'label': 'Housing Discrimination',
+                    'required_elements': [],
+                }
+            ],
+            'temporal_issue_registry': [
+                {
+                    'issue_id': 'temporal_issue:missing_response_dates',
+                    'issue_type': 'missing_response_dates',
+                    'summary': 'The response timeline still needs dated support.',
+                    'severity': 'blocking',
+                    'blocking': True,
+                    'claim_types': ['housing_discrimination'],
+                    'element_tags': ['notice_review_process'],
+                    'status': 'open',
+                }
+            ],
+        }
+
+        candidates = mediator.denoiser._build_claim_temporal_gap_questions(intake_case_file, 5)
+
+        assert candidates
+        assert candidates[0]['question'].startswith('What exhibit-ready documents')
+        assert 'fix the response timeline' in candidates[0]['question']
+        assert 'date, sender or source, label or subject line, and the fact the document proves' in candidates[0]['question']
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

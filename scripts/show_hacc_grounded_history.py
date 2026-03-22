@@ -155,10 +155,16 @@ def _best_resume_candidate(runs: Sequence[dict[str, Any]]) -> dict[str, Any]:
         reason_parts.append(f"{answer_count} grounded follow-up answers")
     if str(best_run.get("workflow_stage") or "") == "post_grounded_follow_up":
         reason_parts.append("already reached post-grounded follow-up")
+    run_dir = str(best_run.get("run_dir") or "")
     return {
         "run_name": str(best_run.get("run_name") or ""),
-        "run_dir": str(best_run.get("run_dir") or ""),
+        "run_dir": run_dir,
         "reason": ", ".join(reason_parts) or "most recent grounded run",
+        "resume_command": (
+            f"python scripts/show_hacc_grounded_history.py --output-dir {run_dir}"
+            if run_dir
+            else ""
+        ),
     }
 
 
@@ -186,6 +192,9 @@ def _render_grounded_run_list(
             f"Best candidate to resume: {candidate.get('run_name', '') or '-'}"
             f" ({candidate.get('reason', '') or 'recommended resume target'})"
         )
+        resume_command = str(candidate.get("resume_command") or "").strip()
+        if resume_command:
+            lines.append(f"Resume command: {resume_command}")
     if not runs:
         lines.append("No grounded runs found.")
         return "\n".join(lines)

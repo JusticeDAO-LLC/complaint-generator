@@ -176,6 +176,7 @@ def pytest_collection_modifyitems(config, items):
             or "test_batch_264_api_type_contracts" in path
             or "test_batch_265_path_validation_security" in path
             or "test_document_pipeline" in path
+            or "test_run_hacc_grounded_pipeline_cli" in path
         ):
             file_cache[path] = (False, False, False)
             return file_cache[path]

@@ -263,7 +263,7 @@ That read-only inspection summarizes:
 - `refreshed_grounding_state.json`
 - `grounded_follow_up_answer_summary.json`
 
-Use it when you want to list the available grounded runs and current alias targets first, then confirm whether a grounded worksheet has already been completed, whether refreshed grounding exists yet, and what the last few workflow transitions were. The helper accepts `latest`, `previous`, and `last-successful` aliases in addition to an explicit run directory.
+Use it when you want to list the available grounded runs, current alias targets, the best candidate to resume, and a ready-to-run resume command first, then confirm whether a grounded worksheet has already been completed, whether refreshed grounding exists yet, and what the last few workflow transitions were. The helper accepts `latest`, `previous`, and `last-successful` aliases in addition to an explicit run directory.
 
 Example output:
 

@@ -144,6 +144,7 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
                 "effective_next_action": {"action": "upload_local_repository_evidence"},
                 "grounded_follow_up_answer_count": 0,
                 "has_refreshed_grounding_state": False,
+                "has_persisted_completed_grounded_worksheet": False,
             }
         ),
         encoding="utf-8",
@@ -155,6 +156,7 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
                 "effective_next_action": {"action": "continue_drafting"},
                 "grounded_follow_up_answer_count": 3,
                 "has_refreshed_grounding_state": True,
+                "has_persisted_completed_grounded_worksheet": True,
             }
         ),
         encoding="utf-8",
@@ -165,6 +167,7 @@ def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
     assert runs[0]["run_name"] == "20260322_120000"
     assert runs[0]["workflow_stage"] == "post_grounded_follow_up"
     assert runs[0]["next_action"] == "continue_drafting"
+    assert runs[0]["has_persisted_completed_grounded_worksheet"] is True
     assert runs[1]["run_name"] == "20260322_100000"
 
 
@@ -197,6 +200,7 @@ def test_main_list_runs_prints_available_runs(tmp_path, capsys):
                 "effective_next_action": {"action": "continue_drafting"},
                 "grounded_follow_up_answer_count": 3,
                 "has_refreshed_grounding_state": True,
+                "has_persisted_completed_grounded_worksheet": True,
             }
         ),
         encoding="utf-8",
@@ -208,6 +212,8 @@ def test_main_list_runs_prints_available_runs(tmp_path, capsys):
     assert result == 0
     assert "Available runs: 1" in captured.out
     assert "Alias targets:" in captured.out
+    assert "Best candidate to resume:" in captured.out
+    assert "Resume command:" in captured.out
     assert "20260322_120000" in captured.out
     assert "continue_drafting" in captured.out
 
@@ -222,6 +228,30 @@ def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
         json.dumps({"status": "chronology_supported"}),
         encoding="utf-8",
     )
+    (older / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {"action": "continue_drafting"},
+                "grounded_follow_up_answer_count": 2,
+                "has_refreshed_grounding_state": True,
+                "has_persisted_completed_grounded_worksheet": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (newer / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "pre_grounded_follow_up",
+                "effective_next_action": {"action": "upload_local_repository_evidence"},
+                "grounded_follow_up_answer_count": 0,
+                "has_refreshed_grounding_state": False,
+                "has_persisted_completed_grounded_worksheet": False,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     result = cli.main(["--grounded-root", str(tmp_path), "--list-runs", "--json"])
     captured = capsys.readouterr()
@@ -231,3 +261,37 @@ def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
     assert payload["recommended_aliases"]["latest"] == "20260322_120000"
     assert payload["recommended_aliases"]["previous"] == "20260322_100000"
     assert payload["recommended_aliases"]["last-successful"] == "20260322_100000"
+    assert payload["best_resume_candidate"]["run_name"] == "20260322_100000"
+    assert "completed grounded worksheet" in payload["best_resume_candidate"]["reason"]
+    assert payload["best_resume_candidate"]["resume_command"].endswith(
+        str((tmp_path / "20260322_100000").resolve())
+    )
+
+
+def test_best_resume_candidate_prefers_completed_and_refreshed_runs():
+    cli = _load_cli_module()
+
+    candidate = cli._best_resume_candidate(
+        [
+            {
+                "run_name": "20260322_120000",
+                "run_dir": "/tmp/20260322_120000",
+                "workflow_stage": "pre_grounded_follow_up",
+                "has_refreshed_grounding_state": False,
+                "has_persisted_completed_grounded_worksheet": False,
+                "grounded_follow_up_answer_count": 0,
+            },
+            {
+                "run_name": "20260322_100000",
+                "run_dir": "/tmp/20260322_100000",
+                "workflow_stage": "post_grounded_follow_up",
+                "has_refreshed_grounding_state": True,
+                "has_persisted_completed_grounded_worksheet": True,
+                "grounded_follow_up_answer_count": 3,
+            },
+        ]
+    )
+
+    assert candidate["run_name"] == "20260322_100000"
+    assert "refreshed grounding state" in candidate["reason"]
+    assert candidate["resume_command"] == "python scripts/show_hacc_grounded_history.py --output-dir /tmp/20260322_100000"

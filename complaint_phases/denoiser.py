@@ -764,6 +764,40 @@ class ComplaintDenoiser:
         )
 
 
+    def _build_exhibit_ready_temporal_prompt(
+        self,
+        issue_type: str,
+        *,
+        claim_label: str = "",
+        base_question: str = "",
+    ) -> str:
+        normalized_issue_type = str(issue_type or "").strip().lower()
+        claim_phrase = f" for {claim_label.strip()}" if str(claim_label or "").strip() else ""
+        if normalized_issue_type in {"missing_hearing_request_date", "missing_hearing_timing"}:
+            return (
+                f"What exhibit-ready documents, such as a hearing request, review request, confirmation email, or portal message, "
+                f"fix the request date{claim_phrase}, and for each one what are the date, sender or source, label or subject line, "
+                "and the fact the document proves?"
+            )
+        if normalized_issue_type in {"missing_response_dates", "missing_decision_timeline"}:
+            return (
+                f"What exhibit-ready documents, such as a denial notice, decision letter, response email, or review decision, "
+                f"fix the response timeline{claim_phrase}, and for each one what are the date, sender or source, label or subject line, "
+                "and the fact the document proves?"
+            )
+        if normalized_issue_type == "missing_written_notice":
+            return (
+                f"Which uploaded or uploadable notice documents should be treated as exhibits{claim_phrase}, "
+                "and for each one what are the date, sender or source, label or subject line, and the fact the document proves?"
+            )
+        return self._build_exhibit_ready_document_prompt(
+            claim_label=claim_label,
+            include_policy_document="policy" in str(base_question or "").lower(),
+            include_file_evidence=True,
+            base_question=base_question,
+        )
+
+
     def _append_unique_text_item(self, values: Any, text_value: str) -> List[str]:
         normalized_value = str(text_value or "").strip()
         if not normalized_value:
@@ -2027,6 +2061,7 @@ class ComplaintDenoiser:
 
         questions: List[Dict[str, Any]] = []
         seen_keys: Set[str] = set()
+        exhibit_ready_documents = self._needs_exhibit_ready_document_questions()
         for issue in temporal_issue_registry:
             if len(questions) >= max_questions:
                 break
@@ -2061,6 +2096,18 @@ class ComplaintDenoiser:
                 right_node_name=str(issue.get('right_node_name') or '').strip(),
                 relative_markers=relative_markers,
             )
+            if exhibit_ready_documents and issue_type in {
+                'missing_hearing_request_date',
+                'missing_hearing_timing',
+                'missing_response_dates',
+                'missing_decision_timeline',
+                'missing_written_notice',
+            }:
+                question_text = self._build_exhibit_ready_temporal_prompt(
+                    issue_type,
+                    claim_label=claim_label,
+                    base_question=question_text,
+                )
             if self._already_asked(question_text):
                 continue
             extraction_targets = self._temporal_issue_extraction_targets(
