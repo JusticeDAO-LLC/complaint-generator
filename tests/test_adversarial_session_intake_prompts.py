@@ -7,6 +7,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from adversarial_harness.session import AdversarialSession
+from adversarial_harness.optimizer import Optimizer
 
 
 class _DummyMediator:
@@ -37,9 +38,27 @@ class _DummyComplainant:
 class _DummyCritic:
     class _Score:
         overall_score = 1.0
+        question_quality = 1.0
+        information_extraction = 1.0
+        empathy = 1.0
+        efficiency = 1.0
+        coverage = 1.0
+        strengths = []
+        weaknesses = []
+        suggestions = []
 
         def to_dict(self):
-            return {"overall_score": 1.0}
+            return {
+                "overall_score": 1.0,
+                "question_quality": 1.0,
+                "information_extraction": 1.0,
+                "empathy": 1.0,
+                "efficiency": 1.0,
+                "coverage": 1.0,
+                "strengths": [],
+                "weaknesses": [],
+                "suggestions": [],
+            }
 
     def evaluate_session(self, *args, **kwargs):
         return self._Score()
@@ -167,6 +186,50 @@ class _DocumentMediator(_ConvergingMediator):
 class _FallbackDocumentMediator(_ConvergingMediator):
     def confirm_intake_summary(self, confirmation_note="", confirmation_source="complainant"):
         return {}
+
+
+class _OptimizerStatusMediator(_ConvergingMediator):
+    def __init__(self):
+        super().__init__()
+        self.phase_manager = type(
+            "_PhaseManager",
+            (),
+            {"get_phase_data": staticmethod(lambda phase, key: None)},
+        )()
+
+    def get_three_phase_status(self):
+        history = [
+            {"metrics": {"entities": 1, "relationships": 0, "gaps": 4}},
+            {"metrics": {"entities": 3, "relationships": 2, "gaps": 1}},
+        ]
+        return {
+            "alignment_evidence_tasks": [
+                {
+                    "action": "fill_temporal_chronology_gap",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "fallback_lanes": ["authority", "testimony"],
+                }
+            ],
+            "evidence_workflow_action_queue": [
+                {
+                    "phase_name": "graph_analysis",
+                    "claim_type": "retaliation",
+                    "claim_element_id": "causation",
+                    "focus_areas": ["timeline", "chronology"],
+                    "action": "Resolve chronology support for causation.",
+                }
+            ],
+            "intake_legal_targeting_summary": {
+                "claims": {
+                    "retaliation": {
+                        "missing_requirement_element_ids": ["protected_activity"],
+                    }
+                }
+            },
+            "loss_history": list(history),
+            "convergence_history": list(history),
+        }
 
 
 def _make_session() -> AdversarialSession:
@@ -927,3 +990,35 @@ def test_session_builds_fallback_document_packet_when_builder_is_unavailable():
     assert result.final_state["document_generation"]["factual_allegation_count"] >= 1
     assert result.final_state["document_generation"]["requested_relief_count"] >= 1
     assert result.final_state["document_generation"]["draft_text_available"] is True
+
+
+def test_session_result_preserves_optimizer_graph_targets_and_kg_dynamics():
+    mediator = _OptimizerStatusMediator()
+    session = _make_converging_session(mediator)
+    seed = {
+        "summary": "Retaliation timeline needs better chronology support.",
+        "key_facts": {
+            "synthetic_prompts": {
+                "intake_questions": [],
+            }
+        },
+    }
+
+    result = session.run(seed)
+
+    assert result.success is True
+    assert result.final_state["evidence_workflow_action_queue"][0]["claim_element_id"] == "causation"
+    assert result.final_state["alignment_evidence_tasks"][0]["claim_element_id"] == "causation"
+    assert result.final_state["loss_history"][0]["metrics"]["entities"] == 1
+
+    report = Optimizer().analyze([result])
+
+    assert report.graph_element_targeting_summary["count"] == 3
+    assert report.graph_element_targeting_summary["claim_element_counts"] == {
+        "causation": 2,
+        "protected_activity": 1,
+    }
+    assert report.kg_avg_entities_delta_per_iter == 2.0
+    assert report.kg_avg_relationships_delta_per_iter == 2.0
+    assert report.kg_avg_gaps_delta_per_iter == -3.0
+    assert report.kg_sessions_gaps_not_reducing == 0
