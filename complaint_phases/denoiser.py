@@ -1444,6 +1444,8 @@ class ComplaintDenoiser:
             question_intent=question_intent,
             source=source,
         )
+        if str(question_text or '').strip():
+            question_payload['question'] = str(question_text).strip()
         question_payload['candidate_source'] = source
         follow_up_tags = self._question_follow_up_tags(
             question_type=question_type,

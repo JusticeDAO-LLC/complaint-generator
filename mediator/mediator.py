@@ -7651,6 +7651,7 @@ class Mediator:
 		}
 		intake_case = intake_case_file if isinstance(intake_case_file, dict) else {}
 		packets = claim_support_packets if isinstance(claim_support_packets, dict) else {}
+		intake_chronology_readiness = self._build_intake_chronology_readiness(intake_case)
 		candidate_claims = intake_case.get('candidate_claims', []) if isinstance(intake_case.get('candidate_claims'), list) else []
 		proof_leads = intake_case.get('proof_leads', []) if isinstance(intake_case.get('proof_leads'), list) else []
 		open_items = intake_case.get('open_items', []) if isinstance(intake_case.get('open_items'), list) else []
@@ -7780,6 +7781,7 @@ class Mediator:
 					for item in (temporal_proof_bundle.get('temporal_fact_ids') or [])
 					if str(item).strip()
 				]
+				proof_temporal_fact_ids = list(temporal_fact_ids)
 				if not temporal_fact_ids:
 					temporal_fact_ids = list(event_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), []))
 				temporal_relation_ids = [
@@ -7787,17 +7789,20 @@ class Mediator:
 					for item in (temporal_proof_bundle.get('temporal_relation_ids') or [])
 					if str(item).strip()
 				]
+				proof_temporal_relation_ids = list(temporal_relation_ids)
 				if not temporal_relation_ids:
 					temporal_relation_ids = list(
 						relation_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), [])
 					)
-				temporal_issue_ids = [
+				proof_temporal_issue_ids = [
 					str(item).strip()
 					for item in (temporal_proof_bundle.get('temporal_issue_ids') or [])
 					if str(item).strip()
 				]
-				if not temporal_issue_ids:
-					temporal_issue_ids = list(issue_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), []))
+				authored_temporal_issue_ids = list(
+					issue_ids_by_claim_element.get((str(claim_type).strip().lower(), element_id.lower()), [])
+				)
+				temporal_issue_ids = list(dict.fromkeys(authored_temporal_issue_ids + proof_temporal_issue_ids))
 				timeline_anchor_ids: List[str] = []
 				for fact_id in temporal_fact_ids:
 					for anchor_id in timeline_anchor_ids_by_fact_id.get(str(fact_id).strip(), []):
@@ -7856,6 +7861,28 @@ class Mediator:
 				temporal_rule_follow_ups = list(packet_element.get('temporal_rule_follow_ups', []) or [])
 				if not temporal_rule_follow_ups:
 					temporal_rule_follow_ups = fallback_temporal_rule_follow_ups
+				has_authored_chronology = bool(
+					authored_temporal_issue_ids
+					or (not proof_temporal_fact_ids and temporal_fact_ids)
+					or (not proof_temporal_relation_ids and temporal_relation_ids)
+				)
+				has_proof_chronology = bool(
+					proof_temporal_issue_ids
+					or proof_temporal_fact_ids
+					or proof_temporal_relation_ids
+					or temporal_theorem_formulas
+					or str(packet_element.get('temporal_rule_profile_id') or '').strip()
+					or str(packet_element.get('temporal_rule_status') or '').strip()
+					or list(packet_element.get('temporal_rule_blocking_reasons', []) or [])
+					or list(packet_element.get('temporal_rule_follow_ups', []) or [])
+				)
+				chronology_source = ''
+				if has_authored_chronology and has_proof_chronology:
+					chronology_source = 'authored_intake_registry+proof_diagnostics'
+				elif has_authored_chronology:
+					chronology_source = 'authored_intake_registry'
+				elif has_proof_chronology:
+					chronology_source = 'proof_diagnostics'
 				matching_open_item_ids = [
 					str(item.get('open_item_id') or '')
 					for item in open_items
@@ -7902,13 +7929,27 @@ class Mediator:
 						'missing_support_kinds': list(packet_element.get('missing_support_kinds', []) or []),
 						'temporal_proof_bundle_id': str(temporal_proof_bundle.get('proof_bundle_id') or '').strip(),
 						'temporal_fact_ids': temporal_fact_ids,
+						'proof_temporal_fact_ids': proof_temporal_fact_ids,
 						'timeline_anchor_ids': timeline_anchor_ids,
 						'temporal_relation_ids': temporal_relation_ids,
+						'proof_temporal_relation_ids': proof_temporal_relation_ids,
 						'temporal_relation_formulas': temporal_relation_formulas,
 						'temporal_issue_ids': temporal_issue_ids,
+						'authored_temporal_issue_ids': authored_temporal_issue_ids,
+						'proof_temporal_issue_ids': proof_temporal_issue_ids,
 						'temporal_issue_records': matching_issue_records,
 						'temporal_theorem_formulas': temporal_theorem_formulas,
 						'temporal_proof_objectives': temporal_proof_objectives,
+						'chronology_source': chronology_source,
+						'intake_chronology_readiness': {
+							'contract_version': str(intake_chronology_readiness.get('contract_version') or ''),
+							'ready_for_temporal_formalization': bool(intake_chronology_readiness.get('ready_for_temporal_formalization', False)),
+							'anchor_coverage_ratio': float(intake_chronology_readiness.get('anchor_coverage_ratio', 0.0) or 0.0),
+							'predicate_coverage_ratio': float(intake_chronology_readiness.get('predicate_coverage_ratio', 0.0) or 0.0),
+							'provenance_coverage_ratio': float(intake_chronology_readiness.get('provenance_coverage_ratio', 0.0) or 0.0),
+							'open_issue_count': int(intake_chronology_readiness.get('open_issue_count', 0) or 0),
+							'blocking_issue_count': int(intake_chronology_readiness.get('blocking_issue_count', 0) or 0),
+						},
 						'temporal_rule_profile_id': str(packet_element.get('temporal_rule_profile_id') or ''),
 						'temporal_rule_status': temporal_rule_status,
 						'temporal_rule_blocking_reasons': temporal_rule_blocking_reasons,
@@ -8194,6 +8235,43 @@ class Mediator:
 					temporal_follow_ups=temporal_follow_ups,
 					temporal_issue_records=element.get('temporal_issue_records', []),
 				)
+				authored_temporal_issue_ids = [
+					str(issue_id).strip()
+					for issue_id in (element.get('authored_temporal_issue_ids', []) or [])
+					if str(issue_id).strip()
+				]
+				proof_temporal_issue_ids = [
+					str(issue_id).strip()
+					for issue_id in (element.get('proof_temporal_issue_ids', []) or [])
+					if str(issue_id).strip()
+				]
+				closure_issue_ids = authored_temporal_issue_ids or [
+					str(issue_id).strip()
+					for issue_id in (element.get('temporal_issue_ids', []) or [])
+					if str(issue_id).strip()
+				]
+				required_anchor_ids = [
+					str(anchor_id).strip()
+					for anchor_id in (element.get('timeline_anchor_ids', []) or [])
+					if str(anchor_id).strip()
+				]
+				chronology_source = str(element.get('chronology_source') or '').strip()
+				intake_chronology_readiness = (
+					dict(element.get('intake_chronology_readiness'))
+					if isinstance(element.get('intake_chronology_readiness'), dict)
+					else {}
+				)
+				closure_ready_when: List[str] = []
+				if closure_issue_ids:
+					closure_ready_when.append('Closure issue ids are resolved in authored chronology readiness')
+				if required_anchor_ids:
+					closure_ready_when.append('Required anchor ids remain attached to the chronology facts')
+				if missing_temporal_predicates:
+					closure_ready_when.append('Required temporal predicates are no longer missing')
+				if required_provenance_kinds:
+					closure_ready_when.append('Required provenance kinds are attached to the supporting record')
+				if chronology_source.startswith('authored_intake_registry'):
+					closure_ready_when.append('Authored intake chronology readiness clears the remaining open chronology blockers for this element')
 				task_priority = 'high' if support_status == 'contradicted' or bool(element.get('blocking', False)) else 'medium'
 				if temporal_gap_targeted:
 					task_priority = 'high'
@@ -8247,11 +8325,19 @@ class Mediator:
 						'event_ids': list(element.get('temporal_fact_ids', []) or []),
 						'temporal_fact_ids': list(element.get('temporal_fact_ids', []) or []),
 						'anchor_ids': list(element.get('timeline_anchor_ids', []) or []),
+						'required_anchor_ids': required_anchor_ids,
 						'temporal_relation_ids': list(element.get('temporal_relation_ids', []) or []),
 						'timeline_issue_ids': list(element.get('temporal_issue_ids', []) or []),
 						'temporal_issue_ids': list(element.get('temporal_issue_ids', []) or []),
+						'authored_temporal_issue_ids': authored_temporal_issue_ids,
+						'proof_temporal_issue_ids': proof_temporal_issue_ids,
+						'closure_issue_ids': closure_issue_ids,
+						'chronology_source': chronology_source,
 						'missing_temporal_predicates': missing_temporal_predicates,
+						'required_temporal_predicates': list(missing_temporal_predicates),
 						'required_provenance_kinds': required_provenance_kinds,
+						'closure_ready_when': closure_ready_when,
+						'intake_chronology_readiness': intake_chronology_readiness,
 						'temporal_proof_bundle_id': str(element.get('temporal_proof_bundle_id') or '').strip(),
 						'temporal_rule_profile_id': str(element.get('temporal_rule_profile_id') or ''),
 						'temporal_rule_status': temporal_rule_status,

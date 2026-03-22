@@ -2031,12 +2031,18 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['temporal_relation_ids'] == ['timeline_relation_001']
         assert result['alignment_evidence_tasks'][0]['timeline_issue_ids'] == ['temporal_issue_001']
         assert result['alignment_evidence_tasks'][0]['temporal_issue_ids'] == ['temporal_issue_001']
+        assert result['alignment_evidence_tasks'][0]['authored_temporal_issue_ids'] == ['temporal_issue_001']
+        assert result['alignment_evidence_tasks'][0]['proof_temporal_issue_ids'] == []
+        assert result['alignment_evidence_tasks'][0]['closure_issue_ids'] == ['temporal_issue_001']
+        assert result['alignment_evidence_tasks'][0]['chronology_source'] == 'authored_intake_registry'
         assert result['alignment_evidence_tasks'][0]['missing_temporal_predicates'] == ['Before(fact_001,fact_termination)']
+        assert result['alignment_evidence_tasks'][0]['required_temporal_predicates'] == ['Before(fact_001,fact_termination)']
         assert result['alignment_evidence_tasks'][0]['required_provenance_kinds'] == [
             'testimony_record',
             'document_artifact',
             'legal_authority',
         ]
+        assert result['alignment_evidence_tasks'][0]['required_anchor_ids'] == ['anchor_001', 'anchor_termination']
         assert result['alignment_evidence_tasks'][0]['temporal_rule_blocking_reasons'] == [
             'Retaliation causation still needs explicit chronology confirmation from protected activity to adverse action.',
         ]
@@ -2047,10 +2053,19 @@ class TestMediatorThreePhaseIntegration:
             }
         ]
         assert result['alignment_evidence_tasks'][0]['temporal_proof_objective'] == 'resolve_relative_only_ordering'
+        assert 'Closure issue ids are resolved in authored chronology readiness' in result['alignment_evidence_tasks'][0]['closure_ready_when']
+        assert 'Required temporal predicates are no longer missing' in result['alignment_evidence_tasks'][0]['closure_ready_when']
+        assert 'Required provenance kinds are attached to the supporting record' in result['alignment_evidence_tasks'][0]['closure_ready_when']
+        assert (
+            result['alignment_evidence_tasks'][0]['intake_chronology_readiness']['contract_version']
+            == 'intake_chronology_readiness.v1'
+        )
+        assert result['alignment_evidence_tasks'][0]['intake_chronology_readiness']['open_issue_count'] == 1
 
         status = mediator.get_three_phase_status()
         assert status['alignment_evidence_tasks'][0]['action'] == 'fill_temporal_chronology_gap'
         assert status['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
+        assert status['alignment_evidence_tasks'][0]['chronology_source'] == 'authored_intake_registry'
 
     def test_advance_to_evidence_phase_derives_anchor_predicates_and_provenance_from_authored_issue_state(self):
         """A missing-anchor issue should drive predicate and provenance obligations even without theorem metadata or synthesized follow-up reasons."""
@@ -2188,17 +2203,25 @@ class TestMediatorThreePhaseIntegration:
         assert result['alignment_evidence_tasks'][0]['temporal_rule_status'] == 'partial'
         assert result['alignment_evidence_tasks'][0]['anchor_ids'] == []
         assert result['alignment_evidence_tasks'][0]['timeline_issue_ids'] == ['temporal_issue_missing_anchor_001']
+        assert result['alignment_evidence_tasks'][0]['authored_temporal_issue_ids'] == ['temporal_issue_missing_anchor_001']
+        assert result['alignment_evidence_tasks'][0]['proof_temporal_issue_ids'] == []
+        assert result['alignment_evidence_tasks'][0]['closure_issue_ids'] == ['temporal_issue_missing_anchor_001']
+        assert result['alignment_evidence_tasks'][0]['chronology_source'] == 'authored_intake_registry'
         assert result['alignment_evidence_tasks'][0]['missing_temporal_predicates'] == ['Anchored(fact_termination)']
+        assert result['alignment_evidence_tasks'][0]['required_temporal_predicates'] == ['Anchored(fact_termination)']
         assert result['alignment_evidence_tasks'][0]['required_provenance_kinds'] == [
             'testimony_record',
             'document_artifact',
             'legal_authority',
             'external_institutional_record',
         ]
+        assert result['alignment_evidence_tasks'][0]['required_anchor_ids'] == []
         assert result['alignment_evidence_tasks'][0]['temporal_rule_follow_ups'] == []
+        assert 'Authored intake chronology readiness clears the remaining open chronology blockers for this element' in result['alignment_evidence_tasks'][0]['closure_ready_when']
 
         status = mediator.get_three_phase_status()
         assert status['alignment_evidence_tasks'][0]['missing_temporal_predicates'] == ['Anchored(fact_termination)']
+        assert status['alignment_evidence_tasks'][0]['chronology_source'] == 'authored_intake_registry'
 
     def test_build_claim_support_packets_tracks_partial_fact_bundle_coverage(self):
         """Packet construction should only clear the bundle prompts actually covered by support facts."""
@@ -3807,6 +3830,52 @@ class TestMediatorThreePhaseIntegration:
         assert 'date, sender or source, label or subject line, and the fact the document proves' in selected[0]['question']
         assert selected[0]['selector_signals']['needs_exhibit_grounding'] is True
         assert selected[0]['selector_signals']['exhibit_ready_document_match'] is True
+
+    def test_denoiser_generates_exhibit_ready_document_candidate_when_grounding_is_weak(self):
+        from mediator.mediator import Mediator
+        from complaint_phases.knowledge_graph import KnowledgeGraph
+        from complaint_phases.dependency_graph import DependencyGraph
+
+        class MockBackend:
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'workflow_optimization_guidance',
+            {
+                'document_provenance_summary': {
+                    'avg_exhibit_backed_ratio': 0.1,
+                }
+            },
+        )
+        intake_case_file = {
+            'candidate_claims': [
+                {
+                    'claim_type': 'housing_discrimination',
+                    'label': 'Housing Discrimination',
+                    'required_elements': [],
+                }
+            ],
+            'proof_leads': [],
+        }
+
+        candidates = mediator.denoiser.collect_question_candidates(
+            KnowledgeGraph(),
+            DependencyGraph(),
+            max_questions=5,
+            intake_case_file=intake_case_file,
+        )
+        document_candidates = [
+            candidate for candidate in candidates
+            if candidate.get('candidate_source') == 'intake_proof_gap'
+        ]
+
+        assert document_candidates
+        assert document_candidates[0]['question'].startswith('Which uploaded or uploadable documents')
+        assert 'treated as exhibits' in document_candidates[0]['question']
+        assert 'fact the document proves' in document_candidates[0]['question']
     
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""

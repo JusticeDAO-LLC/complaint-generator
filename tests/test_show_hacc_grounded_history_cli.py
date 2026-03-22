@@ -16,9 +16,13 @@ def test_create_parser_supports_output_root_and_json():
     cli = _load_cli_module()
     parser = cli.create_parser()
 
-    args = parser.parse_args(["--grounded-root", "output/hacc_grounded", "--json"])
+    args = parser.parse_args(
+        ["--grounded-root", "output/hacc_grounded", "--output-dir", "previous", "--list-runs", "--json"]
+    )
 
     assert args.grounded_root == "output/hacc_grounded"
+    assert args.output_dir == "previous"
+    assert args.list_runs is True
     assert args.json is True
 
 
@@ -34,6 +38,41 @@ def test_resolve_grounded_run_dir_prefers_latest_child(tmp_path):
     resolved = cli.resolve_grounded_run_dir(output_dir=None, grounded_root=str(tmp_path))
 
     assert resolved == newer.resolve()
+
+
+def test_resolve_grounded_run_dir_supports_previous_alias(tmp_path):
+    cli = _load_cli_module()
+    oldest = tmp_path / "20260322_090000"
+    older = tmp_path / "20260322_100000"
+    newer = tmp_path / "20260322_120000"
+    oldest.mkdir()
+    older.mkdir()
+    newer.mkdir()
+    oldest.touch()
+    older.touch()
+    newer.touch()
+
+    resolved = cli.resolve_grounded_run_dir(output_dir="previous", grounded_root=str(tmp_path))
+
+    assert resolved == older.resolve()
+
+
+def test_resolve_grounded_run_dir_supports_last_successful_alias(tmp_path):
+    cli = _load_cli_module()
+    older = tmp_path / "20260322_100000"
+    newer = tmp_path / "20260322_120000"
+    older.mkdir()
+    newer.mkdir()
+    older.touch()
+    newer.touch()
+    (older / "refreshed_grounding_state.json").write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+
+    resolved = cli.resolve_grounded_run_dir(output_dir="last-successful", grounded_root=str(tmp_path))
+
+    assert resolved == older.resolve()
 
 
 def test_main_prints_inspection_for_latest_run(tmp_path, capsys):
@@ -90,3 +129,105 @@ def test_main_prints_json_for_explicit_output_dir(tmp_path, capsys):
     assert result == 0
     assert payload["output_dir"] == str(grounded_run.resolve())
     assert payload["workflow_status"]["workflow_stage"] == "pre_grounded_follow_up"
+
+
+def test_list_grounded_runs_summarizes_available_run_dirs(tmp_path):
+    cli = _load_cli_module()
+    older = tmp_path / "20260322_100000"
+    newer = tmp_path / "20260322_120000"
+    older.mkdir()
+    newer.mkdir()
+    (older / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "pre_grounded_follow_up",
+                "effective_next_action": {"action": "upload_local_repository_evidence"},
+                "grounded_follow_up_answer_count": 0,
+                "has_refreshed_grounding_state": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (newer / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {"action": "continue_drafting"},
+                "grounded_follow_up_answer_count": 3,
+                "has_refreshed_grounding_state": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runs = cli._list_grounded_runs(tmp_path)
+
+    assert runs[0]["run_name"] == "20260322_120000"
+    assert runs[0]["workflow_stage"] == "post_grounded_follow_up"
+    assert runs[0]["next_action"] == "continue_drafting"
+    assert runs[1]["run_name"] == "20260322_100000"
+
+
+def test_resolve_grounded_run_aliases_summarizes_current_targets(tmp_path):
+    cli = _load_cli_module()
+    older = tmp_path / "20260322_100000"
+    newer = tmp_path / "20260322_120000"
+    older.mkdir()
+    newer.mkdir()
+    (older / "refreshed_grounding_state.json").write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+
+    aliases = cli._resolve_grounded_run_aliases(tmp_path)
+
+    assert aliases["latest"] == "20260322_120000"
+    assert aliases["previous"] == "20260322_100000"
+    assert aliases["last-successful"] == "20260322_100000"
+
+
+def test_main_list_runs_prints_available_runs(tmp_path, capsys):
+    cli = _load_cli_module()
+    grounded_run = tmp_path / "20260322_120000"
+    grounded_run.mkdir()
+    (grounded_run / "grounded_workflow_status.json").write_text(
+        json.dumps(
+            {
+                "workflow_stage": "post_grounded_follow_up",
+                "effective_next_action": {"action": "continue_drafting"},
+                "grounded_follow_up_answer_count": 3,
+                "has_refreshed_grounding_state": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = cli.main(["--grounded-root", str(tmp_path), "--list-runs"])
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert "Available runs: 1" in captured.out
+    assert "Alias targets:" in captured.out
+    assert "20260322_120000" in captured.out
+    assert "continue_drafting" in captured.out
+
+
+def test_main_list_runs_json_includes_recommended_aliases(tmp_path, capsys):
+    cli = _load_cli_module()
+    older = tmp_path / "20260322_100000"
+    newer = tmp_path / "20260322_120000"
+    older.mkdir()
+    newer.mkdir()
+    (older / "refreshed_grounding_state.json").write_text(
+        json.dumps({"status": "chronology_supported"}),
+        encoding="utf-8",
+    )
+
+    result = cli.main(["--grounded-root", str(tmp_path), "--list-runs", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert result == 0
+    assert payload["recommended_aliases"]["latest"] == "20260322_120000"
+    assert payload["recommended_aliases"]["previous"] == "20260322_100000"
+    assert payload["recommended_aliases"]["last-successful"] == "20260322_100000"

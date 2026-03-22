@@ -248,8 +248,11 @@ For an existing grounded run directory, you can inspect the current workflow sta
 
 ```bash
 python scripts/show_hacc_grounded_history.py
+python scripts/show_hacc_grounded_history.py --list-runs
 python scripts/show_hacc_grounded_history.py --json
 python scripts/show_hacc_grounded_history.py --output-dir output/hacc_grounded/<run_id>
+python scripts/show_hacc_grounded_history.py --output-dir previous
+python scripts/show_hacc_grounded_history.py --output-dir last-successful
 ```
 
 That read-only inspection summarizes:
@@ -260,7 +263,7 @@ That read-only inspection summarizes:
 - `refreshed_grounding_state.json`
 - `grounded_follow_up_answer_summary.json`
 
-Use it when you want to confirm whether a grounded worksheet has already been completed, whether refreshed grounding exists yet, and what the last few workflow transitions were.
+Use it when you want to list the available grounded runs and current alias targets first, then confirm whether a grounded worksheet has already been completed, whether refreshed grounding exists yet, and what the last few workflow transitions were. The helper accepts `latest`, `previous`, and `last-successful` aliases in addition to an explicit run directory.
 
 Example output:
 

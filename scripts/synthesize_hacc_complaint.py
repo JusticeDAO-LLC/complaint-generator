@@ -3640,7 +3640,11 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
     handoff_blocker_lines = [str(item) for item in list(handoff.get("blocker_closing_handoff_lines") or []) if str(item)]
     handoff_blocker_answers = [str(item) for item in list(handoff.get("blocker_closing_answers") or []) if str(item)]
     handoff_factual_gaps = [str(item) for item in list(handoff.get("unresolved_factual_gaps") or []) if str(item)]
-    handoff_legal_gaps = [str(item) for item in list(handoff.get("unresolved_legal_gaps") or []) if str(item)]
+    handoff_legal_gaps = [
+        str(item)
+        for item in list(handoff.get("unresolved_legal_gaps") or [])
+        if str(item) and not _anchor_mapping_gap_is_satisfied(seed, item)
+    ]
     handoff_follow_up = [str(item) for item in list(handoff.get("follow_up_questioning") or []) if str(item)]
     canonical_fact_ids = [str(item) for item in list(handoff.get("canonical_fact_ids") or key_facts.get("canonical_fact_ids") or []) if str(item)]
     support_trace_rows = [dict(item) for item in list(handoff.get("support_trace_rows") or key_facts.get("support_trace_rows") or []) if isinstance(item, dict)]
@@ -3650,6 +3654,7 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         for item in list(readiness.get("unresolved_objectives") or []) + stored_unresolved_objectives + list(handoff.get("unresolved_objectives") or [])
         if _normalize_intake_objective(item)
     ]
+    unresolved_objectives = [item for item in unresolved_objectives if not _intake_objective_is_satisfied(session, item)]
     if readiness["phase_status"] != "ready":
         blockers = ", ".join(readiness.get("blockers") or [])
         allegations.append(
@@ -3709,12 +3714,12 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
             "Unresolved factual gaps still require confirmation before formalization, including "
             + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:3])
         )
-    elif handoff_factual_gaps:
+    elif handoff_factual_gaps and readiness["phase_status"] != "ready":
         allegations.append(
             "Document handoff still reports unresolved factual gaps, including "
             + ", ".join(handoff_factual_gaps[:3])
         )
-    elif stored_factual_gaps:
+    elif stored_factual_gaps and readiness["phase_status"] != "ready":
         allegations.append(
             "Drafting readiness still reports unresolved factual gaps, including "
             + ", ".join(stored_factual_gaps[:3])
@@ -3724,12 +3729,12 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
             "Unresolved legal gaps are still open at drafting handoff, including "
             + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:2])
         )
-    elif handoff_legal_gaps:
+    elif handoff_legal_gaps and readiness["phase_status"] != "ready":
         allegations.append(
             "Document handoff still reports unresolved legal gaps, including "
             + ", ".join(handoff_legal_gaps[:2])
         )
-    elif stored_legal_gaps:
+    elif stored_legal_gaps and readiness["phase_status"] != "ready":
         allegations.append(
             "Drafting readiness still reports unresolved legal gaps, including "
             + ", ".join(stored_legal_gaps[:2])
@@ -3738,13 +3743,13 @@ def _factual_allegations(seed: Dict[str, Any], session: Dict[str, Any], limit: i
         allegations.append(
             "Factual framing should remain generalized across housing_discrimination and hacc_research_engine until chronology anchors, policy support, and file exhibits are complete."
         )
-    if unresolved_objectives:
+    if unresolved_objectives and readiness["phase_status"] != "ready":
         allegations.append(
             "Uncovered intake objectives remain at drafting handoff ("
             + ", ".join(_intake_objective_label(item) for item in list(dict.fromkeys(unresolved_objectives))[:3])
             + "); allegations should stay provisional until these objectives are closed."
         )
-    if "anchor_appeal_rights" in unresolved_objectives:
+    if "anchor_appeal_rights" in unresolved_objectives and readiness["phase_status"] != "ready":
         allegations.append(
             "Follow-up questioning remains explicit for grievance_hearing and appeal_rights: confirm hearing request timing, written notice language, appeal deadline, and review outcome before formalization."
         )
@@ -3895,7 +3900,11 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
     support_trace_rows = [dict(item) for item in list(handoff.get("support_trace_rows") or key_facts.get("support_trace_rows") or []) if isinstance(item, dict)]
     artifact_support_rows = [dict(item) for item in list(handoff.get("artifact_support_rows") or key_facts.get("artifact_support_rows") or []) if isinstance(item, dict)]
     handoff_factual_gaps = [str(item) for item in list(handoff.get("unresolved_factual_gaps") or []) if str(item)]
-    handoff_legal_gaps = [str(item) for item in list(handoff.get("unresolved_legal_gaps") or []) if str(item)]
+    handoff_legal_gaps = [
+        str(item)
+        for item in list(handoff.get("unresolved_legal_gaps") or [])
+        if str(item) and not _anchor_mapping_gap_is_satisfied(seed, item)
+    ]
     handoff_follow_up = [str(item) for item in list(handoff.get("follow_up_questioning") or []) if str(item)]
     claims: List[str] = []
     if readiness["phase_status"] != "ready":
@@ -3910,7 +3919,7 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
             "Unresolved legal gaps still need closure before final formalization, including "
             + ", ".join(list(readiness.get("unresolved_legal_gaps") or [])[:3])
         )
-    elif handoff_legal_gaps:
+    elif handoff_legal_gaps and readiness["phase_status"] != "ready":
         claims.append(
             "Document handoff still reports unresolved legal gaps, including "
             + ", ".join(handoff_legal_gaps[:3])
@@ -3920,7 +3929,7 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
             "Unresolved factual gaps are still blocking final legal framing, including "
             + ", ".join(list(readiness.get("unresolved_factual_gaps") or [])[:2])
         )
-    elif handoff_factual_gaps:
+    elif handoff_factual_gaps and readiness["phase_status"] != "ready":
         claims.append(
             "Document handoff still reports unresolved factual gaps, including "
             + ", ".join(handoff_factual_gaps[:2])
@@ -3932,13 +3941,14 @@ def _claims_theory(seed: Dict[str, Any], session: Dict[str, Any], filing_forum: 
         + list(handoff.get("unresolved_objectives") or [])
         if _normalize_intake_objective(item)
     ]
-    if unresolved_objectives:
+    unresolved_objectives = [item for item in unresolved_objectives if not _intake_objective_is_satisfied(session, item)]
+    if unresolved_objectives and readiness["phase_status"] != "ready":
         claims.append(
             "Claim formalization is still gated by uncovered intake objectives ("
             + ", ".join(_intake_objective_label(item) for item in list(dict.fromkeys(unresolved_objectives))[:3])
             + "); each claim element should remain provisional until those objectives are closed."
         )
-    if "anchor_appeal_rights" in unresolved_objectives:
+    if "anchor_appeal_rights" in unresolved_objectives and readiness["phase_status"] != "ready":
         claims.append(
             "Appeal-rights claim elements remain provisional until grievance_hearing and appeal_rights follow-up confirms hearing request timing, notice language, and review outcome."
         )

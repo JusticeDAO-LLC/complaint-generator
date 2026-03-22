@@ -222,13 +222,18 @@ To inspect an existing grounded HACC run without rerunning research, upload, or 
 ```bash
 .venv/bin/python scripts/show_hacc_grounded_history.py
 
+.venv/bin/python scripts/show_hacc_grounded_history.py --list-runs
+
 .venv/bin/python scripts/show_hacc_grounded_history.py --json
 
 .venv/bin/python scripts/show_hacc_grounded_history.py \
     --output-dir output/hacc_grounded/<run_id>
+
+.venv/bin/python scripts/show_hacc_grounded_history.py --output-dir previous
+.venv/bin/python scripts/show_hacc_grounded_history.py --output-dir last-successful
 ```
 
-That read-only view summarizes the current grounded workflow status, recent transitions, completed grounded worksheet state, refreshed grounding state, and grounded follow-up answer summary for the selected run directory.
+That helper can first list the available grounded runs and the current alias targets, then summarize the current grounded workflow status, recent transitions, completed grounded worksheet state, refreshed grounding state, and grounded follow-up answer summary for the selected run directory. It accepts `latest`, `previous`, and `last-successful` aliases in addition to an explicit run directory.
 
 Example output:
 
