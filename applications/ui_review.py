@@ -8,6 +8,9 @@ from typing import Any, Dict, Iterable, List, Optional
 from backends import LLMRouterBackend, MultimodalRouterBackend
 
 
+DEFAULT_COMPLAINT_OUTPUT_REVIEW_TIMEOUT_S = 8
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -114,6 +117,21 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
     ]
     return {
         "export_artifact_count": len(exports),
+        "claim_types": [
+            str(item.get("claim_type") or "").strip()
+            for item in exports
+            if str(item.get("claim_type") or "").strip()
+        ],
+        "draft_strategies": [
+            str(item.get("draft_strategy") or "").strip()
+            for item in exports
+            if str(item.get("draft_strategy") or "").strip()
+        ],
+        "filing_shape_scores": [
+            int(item.get("filing_shape_score") or 0)
+            for item in exports
+            if item.get("filing_shape_score") is not None
+        ],
         "markdown_filenames": [
             str(item.get("markdown_filename") or "").strip()
             for item in exports
@@ -128,11 +146,93 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
     }
 
 
+def review_complaint_export_artifacts(
+    artifact_metadata: Iterable[Dict[str, Any]],
+    *,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> Dict[str, Any]:
+    exports = [
+        dict(item)
+        for item in list(artifact_metadata or [])
+        if isinstance(item, dict) and str(item.get("artifact_type") or "") == "complaint_export"
+    ]
+    if not exports:
+        raise ValueError("No complaint_export artifacts were provided for complaint-output review.")
+
+    reviews: List[Dict[str, Any]] = []
+    filing_shape_scores: List[int] = []
+    alignment_scores: List[int] = []
+    aggregate_issue_findings: List[str] = []
+    aggregate_ui_suggestions: List[Dict[str, Any]] = []
+
+    for export in exports:
+        markdown_text = str(export.get("markdown_excerpt") or export.get("text_excerpt") or "").strip()
+        if not markdown_text:
+            continue
+        review_payload = review_complaint_output_with_llm_router(
+            markdown_text,
+            claim_type=str(export.get("claim_type") or "").strip() or None,
+            claim_guidance=None,
+            synopsis=str(export.get("case_synopsis") or "").strip() or None,
+            provider=provider,
+            model=model,
+            config_path=config_path,
+            backend_id=backend_id,
+            notes=notes,
+        )
+        review = dict(review_payload.get("review") or {})
+        filing_shape_scores.append(int(review.get("filing_shape_score") or 0))
+        alignment_scores.append(int(review.get("claim_type_alignment_score") or 0))
+        aggregate_issue_findings.extend(
+            str(item.get("finding") or "").strip()
+            for item in list(review.get("issues") or [])
+            if isinstance(item, dict) and str(item.get("finding") or "").strip()
+        )
+        aggregate_ui_suggestions.extend(
+            [dict(item) for item in list(review.get("ui_suggestions") or []) if isinstance(item, dict)]
+        )
+        reviews.append(
+            {
+                "artifact": {
+                    "claim_type": export.get("claim_type"),
+                    "draft_strategy": export.get("draft_strategy"),
+                    "markdown_filename": export.get("markdown_filename"),
+                    "pdf_filename": export.get("pdf_filename"),
+                },
+                "backend": dict(review_payload.get("backend") or {}),
+                "review": review,
+            }
+        )
+
+    return {
+        "generated_at": _utc_now(),
+        "artifact_count": len(exports),
+        "artifact_metadata": exports,
+        "complaint_output_feedback": _summarize_complaint_output_feedback(exports),
+        "reviews": reviews,
+        "aggregate": {
+            "average_filing_shape_score": round(sum(filing_shape_scores) / len(filing_shape_scores))
+            if filing_shape_scores
+            else 0,
+            "average_claim_type_alignment_score": round(sum(alignment_scores) / len(alignment_scores))
+            if alignment_scores
+            else 0,
+            "issue_findings": aggregate_issue_findings,
+            "ui_suggestions": aggregate_ui_suggestions,
+        },
+    }
+
+
 def _parse_complaint_output_json_response(text: str) -> Dict[str, Any]:
     parsed = _parse_json_response(text)
     return {
         "summary": str(parsed.get("summary") or "No router summary returned."),
         "filing_shape_score": int(parsed.get("filing_shape_score") or 0),
+        "claim_type_alignment_score": int(parsed.get("claim_type_alignment_score") or 0),
         "strengths": [str(item) for item in list(parsed.get("strengths") or []) if str(item).strip()],
         "issues": [dict(item) for item in list(parsed.get("issues") or []) if isinstance(item, dict)],
         "ui_suggestions": [dict(item) for item in list(parsed.get("ui_suggestions") or []) if isinstance(item, dict)],
@@ -143,6 +243,9 @@ def _parse_complaint_output_json_response(text: str) -> Dict[str, Any]:
 def build_complaint_output_review_prompt(
     markdown_text: str,
     *,
+    claim_type: Optional[str] = None,
+    claim_guidance: Optional[str] = None,
+    synopsis: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> str:
     excerpt = str(markdown_text or "").strip()
@@ -152,12 +255,17 @@ def build_complaint_output_review_prompt(
         "You are reviewing a generated lawsuit complaint draft and must decide whether it actually reads like a formal legal complaint.\n"
         "Use the complaint text as the primary artifact.\n"
         "Focus on formal complaint structure, caption quality, jurisdiction and venue allegations, party allegations, factual chronology, claim counts, prayer for relief, jury demand, signature posture, and exhibit grounding.\n"
+        "Also decide whether the complaint actually reads like the selected claim type, instead of a generic complaint template.\n"
+        f"Selected claim type:\n{claim_type or 'Not provided.'}\n\n"
+        f"Claim-type filing guidance:\n{claim_guidance or 'No claim-specific guidance was provided.'}\n\n"
+        f"Shared case synopsis:\n{synopsis or 'No case synopsis was provided.'}\n\n"
         "Then turn those filing-shape defects into concrete UI/UX repair suggestions for the complaint generator.\n\n"
         f"Additional notes:\n{notes or 'No additional notes were provided.'}\n\n"
         "Return strict JSON with this shape:\n"
         "{\n"
         '  "summary": "short paragraph",\n'
         '  "filing_shape_score": 0,\n'
+        '  "claim_type_alignment_score": 0,\n'
         '  "strengths": ["what already feels filing-shaped"],\n'
         '  "issues": [\n'
         "    {\n"
@@ -184,18 +292,30 @@ def build_complaint_output_review_prompt(
 def review_complaint_output_with_llm_router(
     markdown_text: str,
     *,
+    claim_type: Optional[str] = None,
+    claim_guidance: Optional[str] = None,
+    synopsis: Optional[str] = None,
     provider: Optional[str] = None,
     model: Optional[str] = None,
     config_path: Optional[str] = None,
     backend_id: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> Dict[str, Any]:
-    prompt = build_complaint_output_review_prompt(markdown_text, notes=notes)
+    prompt = build_complaint_output_review_prompt(
+        markdown_text,
+        claim_type=claim_type,
+        claim_guidance=claim_guidance,
+        synopsis=synopsis,
+        notes=notes,
+    )
     backend_kwargs = _load_backend_kwargs(config_path, backend_id)
     if provider:
         backend_kwargs["provider"] = provider
     if model:
         backend_kwargs["model"] = model
+    backend_kwargs.setdefault("timeout", DEFAULT_COMPLAINT_OUTPUT_REVIEW_TIMEOUT_S)
+    backend_kwargs.setdefault("allow_local_fallback", False)
+    backend_kwargs.setdefault("retry_max_attempts", 1)
     backend = LLMRouterBackend(**backend_kwargs)
     raw_response = backend(prompt)
     return {

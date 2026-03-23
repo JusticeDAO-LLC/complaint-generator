@@ -233,6 +233,10 @@
             });
         }
 
+        reviewGeneratedExports(payload) {
+            return this.callTool('complaint.review_generated_exports', payload || {});
+        }
+
         updateClaimType(userId, claimType) {
             return this.callTool('complaint.update_claim_type', {
                 user_id: userId,

@@ -56,6 +56,14 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
                 "viewport": {"width": 1440, "height": 1200},
                 "text_excerpt": "Complaint packet exported",
                 "artifact_type": "complaint_export",
+                "claim_type": "retaliation",
+                "draft_strategy": "llm_router",
+                "filing_shape_score": 86,
+                "claim_type_alignment_score": 35,
+                "claim_type_alignment": {
+                    "complaint_heading_matches": False,
+                    "count_heading_matches": False,
+                },
                 "markdown_filename": "jordan-example-complaint.md",
                 "pdf_filename": "jordan-example-complaint.pdf",
                 "markdown_excerpt": "Jordan Example brings this retaliation complaint against Acme Corporation.",
@@ -91,6 +99,10 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`" in prompt
     assert "save a shared synopsis for the mediator path" in prompt
     assert "Complaint-output-informed UI suggestions:" in prompt
+    assert "Claim type: retaliation" in prompt
+    assert "Draft strategy: llm_router" in prompt
+    assert "Filing shape score: 86" in prompt
+    assert "claim-type alignment data" in prompt
     assert "Add stronger export warnings when support gaps remain." in prompt
     assert "complaint_generator.analyze_complaint_output" in prompt
     assert "complaint-workspace export-markdown" in prompt
@@ -101,6 +113,7 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "exportComplaintPdf()" in prompt
     assert "analyzeComplaintOutput()" in prompt
     assert "Use the screenshot evidence together with any complaint-output analysis excerpts" in prompt
+    assert "claim type, draft strategy, and exported complaint filing quality remain aligned" in prompt
 
 
 def test_build_ui_ux_review_prompt_uses_default_goals_and_notes_when_not_supplied(tmp_path):

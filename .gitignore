@@ -9,6 +9,7 @@ statefiles/*.json
 statefiles/
 statefiles_*
 htmlcov/
+artifacts/demo*
 *.pyc
 *.pyo
 *.pyd

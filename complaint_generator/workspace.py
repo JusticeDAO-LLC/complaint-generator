@@ -219,6 +219,31 @@ def analyze_complaint_output(
     return _resolve_service(service, root_dir=root_dir).analyze_complaint_output(user_id)
 
 
+def review_generated_exports(
+    user_id: Optional[str] = None,
+    *,
+    artifact_path: Optional[str | Path] = None,
+    artifact_dir: Optional[str | Path] = None,
+    notes: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).review_generated_exports(
+        user_id,
+        artifact_path=str(artifact_path) if artifact_path is not None else None,
+        artifact_dir=str(artifact_dir) if artifact_dir is not None else None,
+        notes=notes,
+        provider=provider,
+        model=model,
+        config_path=config_path,
+        backend_id=backend_id,
+    )
+
+
 def update_claim_type(
     user_id: Optional[str],
     claim_type: str,
@@ -357,6 +382,7 @@ __all__ = [
     "export_complaint_markdown",
     "export_complaint_pdf",
     "analyze_complaint_output",
+    "review_generated_exports",
     "update_claim_type",
     "generate_decentralized_id",
     "generate_complaint",

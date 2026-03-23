@@ -602,6 +602,8 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
   const packetPayload = exportComplaintPacketPayload(userId);
   const packetSummary = packetPayload.packet_summary || {};
   const artifactAnalysis = packetPayload.artifact_analysis || {};
+  const claimType = String((((packetPayload.packet || {}).claim_type) || 'retaliation'));
+  const draftStrategy = String(((((packetPayload.packet || {}).draft || {}).draft_strategy) || 'template'));
   const complaintBody = String((((packetPayload.packet || {}).draft || {}).body || ''));
   const formalSectionsPresent = {
     caption: complaintBody.includes('IN THE UNITED STATES DISTRICT COURT'),
@@ -626,6 +628,43 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
       + (Number(artifactAnalysis.draft_word_count || 0) >= 180 ? 10 : 0)
     ,
   );
+  const expectedComplaintHeading = claimType === 'retaliation'
+    ? 'COMPLAINT FOR RETALIATION'
+    : `COMPLAINT FOR ${claimType.replace(/_/g, ' ').toUpperCase()}`;
+  const expectedCountHeading = claimType === 'retaliation'
+    ? 'COUNT I - RETALIATION'
+    : `COUNT I - ${claimType.replace(/_/g, ' ').toUpperCase()}`;
+  const claimTypeAlignment = {
+    complaint_heading_matches: complaintBody.includes(expectedComplaintHeading),
+    count_heading_matches: complaintBody.includes(expectedCountHeading),
+  };
+  const claimTypeAlignmentScore = claimTypeAlignment.complaint_heading_matches && claimTypeAlignment.count_heading_matches
+    ? 100
+    : (claimTypeAlignment.complaint_heading_matches || claimTypeAlignment.count_heading_matches ? 50 : 0);
+  let releaseGate = {
+    verdict: 'blocked',
+    reason: 'The exported complaint is not yet formal or well-aligned enough to treat the current UI flow as safe for real legal clients.',
+    claim_type: claimType,
+    claim_type_label: claimType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    draft_strategy: draftStrategy,
+    filing_shape_score: filingShapeScore,
+    claim_type_alignment_score: claimTypeAlignmentScore,
+    missing_elements: Number(artifactAnalysis.missing_elements || 0),
+    evidence_item_count: Number(artifactAnalysis.evidence_item_count || 0),
+  };
+  if (filingShapeScore >= 85 && claimTypeAlignmentScore >= 85 && Number(artifactAnalysis.missing_elements || 0) === 0 && Number(artifactAnalysis.evidence_item_count || 0) > 0) {
+    releaseGate = {
+      ...releaseGate,
+      verdict: 'pass',
+      reason: `The exported complaint currently reads like a filing-ready ${releaseGate.claim_type_label.toLowerCase()} complaint and the record is materially supported.`,
+    };
+  } else if (filingShapeScore >= 75 && claimTypeAlignmentScore >= 75 && Number(artifactAnalysis.evidence_item_count || 0) > 0) {
+    releaseGate = {
+      ...releaseGate,
+      verdict: 'warning',
+      reason: 'The exported complaint is moving in the right direction, but it still needs tighter proof posture, claim alignment, or filing polish before it should be treated as client-safe.',
+    };
+  }
   return {
     user_id: userId,
     packet_summary: packetSummary,
@@ -634,6 +673,9 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
       summary: 'The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.',
       filing_shape_score: filingShapeScore,
       formal_sections_present: formalSectionsPresent,
+      claim_type_alignment: claimTypeAlignment,
+      claim_type_alignment_score: claimTypeAlignmentScore,
+      release_gate: releaseGate,
       issues: Number(packetSummary.missing_elements || 0) > 0
         ? [
             {
@@ -651,6 +693,7 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
           target_surface: 'review,draft,integrations',
         },
       ],
+      release_gate: releaseGate,
       draft_excerpt: String((((packetPayload.packet || {}).draft || {}).body || '')).slice(0, 600),
       complaint_strengths: [
         `Supported elements: ${Number(packetSummary.supported_elements || 0)}`,
@@ -1161,6 +1204,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
+        { name: 'complaint.review_generated_exports', description: 'Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
@@ -1201,6 +1245,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
+            { name: 'complaint.review_generated_exports', description: 'Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
@@ -1303,6 +1348,39 @@ const server = http.createServer(async (request, response) => {
         };
       } else if (toolName === 'complaint.analyze_complaint_output') {
         structuredContent = buildComplaintOutputAnalysis(userId);
+      } else if (toolName === 'complaint.review_generated_exports') {
+        const analysis = buildComplaintOutputAnalysis(userId);
+        structuredContent = {
+          artifact_count: 1,
+          complaint_output_feedback: {
+            export_artifact_count: 1,
+            claim_types: [workspaceState.claim_type || 'retaliation'],
+            draft_strategies: [workspaceState.draft && workspaceState.draft.draft_strategy ? workspaceState.draft.draft_strategy : 'template'],
+            filing_shape_scores: [analysis.ui_feedback.filing_shape_score || 0],
+            ui_suggestions: (analysis.ui_feedback.ui_suggestions || []).map((item) => item.title || item.recommendation).filter(Boolean),
+          },
+          aggregate: {
+            average_filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
+            average_claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+            issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean),
+            ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+          },
+          reviews: [
+            {
+              artifact: {
+                claim_type: workspaceState.claim_type || 'retaliation',
+                draft_strategy: workspaceState.draft && workspaceState.draft.draft_strategy ? workspaceState.draft.draft_strategy : 'template',
+              },
+              review: {
+                summary: analysis.ui_feedback.summary,
+                filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
+                claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+                issues: analysis.ui_feedback.issues || [],
+                ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+              },
+            },
+          ],
+        };
       } else if (toolName === 'complaint.update_claim_type') {
         workspaceState.claim_type = typeof args.claim_type === 'string' && args.claim_type.trim() ? args.claim_type.trim() : 'retaliation';
         structuredContent = workspaceSessionPayload(userId);
@@ -1479,6 +1557,40 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.analyze_complaint_output') {
       return sendJson(response, buildComplaintOutputAnalysis(userId));
+    }
+    if (toolName === 'complaint.review_generated_exports') {
+      const analysis = buildComplaintOutputAnalysis(userId);
+      return sendJson(response, {
+        artifact_count: 1,
+        complaint_output_feedback: {
+          export_artifact_count: 1,
+          claim_types: [workspaceState.claim_type || 'retaliation'],
+          draft_strategies: [workspaceState.draft && workspaceState.draft.draft_strategy ? workspaceState.draft.draft_strategy : 'template'],
+          filing_shape_scores: [analysis.ui_feedback.filing_shape_score || 0],
+          ui_suggestions: (analysis.ui_feedback.ui_suggestions || []).map((item) => item.title || item.recommendation).filter(Boolean),
+        },
+        aggregate: {
+          average_filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
+          average_claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+          issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean),
+          ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+        },
+        reviews: [
+          {
+            artifact: {
+              claim_type: workspaceState.claim_type || 'retaliation',
+              draft_strategy: workspaceState.draft && workspaceState.draft.draft_strategy ? workspaceState.draft.draft_strategy : 'template',
+            },
+            review: {
+              summary: analysis.ui_feedback.summary,
+              filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
+              claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+              issues: analysis.ui_feedback.issues || [],
+              ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+            },
+          },
+        ],
+      });
     }
     if (toolName === 'complaint.update_claim_type') {
       workspaceState.claim_type = typeof args.claim_type === 'string' && args.claim_type.trim() ? args.claim_type.trim() : 'retaliation';

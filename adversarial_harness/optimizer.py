@@ -2719,6 +2719,9 @@ class Optimizer:
                 ],
                 "actor_critic_review": self._extract_actor_critic_review_summary(latest_review_payload, latest_review_excerpt),
                 "complaint_output_feedback": self._extract_complaint_output_feedback(latest_review_payload),
+                "complaint_output_release_gate": self._build_complaint_output_release_gate(
+                    self._extract_complaint_output_feedback(latest_review_payload)
+                ),
                 **dict(metadata or {}),
             },
         )
@@ -2782,6 +2785,59 @@ class Optimizer:
                 return dict(nested_feedback)
         return {}
 
+    @staticmethod
+    def _build_complaint_output_release_gate(feedback: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        payload = dict(feedback or {})
+        filing_scores = [
+            int(score)
+            for score in list(payload.get("filing_shape_scores") or [])
+            if str(score).strip()
+        ]
+        if not filing_scores and payload.get("filing_shape_score") is not None:
+            try:
+                filing_scores = [int(payload.get("filing_shape_score") or 0)]
+            except Exception:
+                filing_scores = []
+        claim_types = [
+            str(item).strip()
+            for item in list(payload.get("claim_types") or [])
+            if str(item).strip()
+        ]
+        draft_strategies = [
+            str(item).strip()
+            for item in list(payload.get("draft_strategies") or [])
+            if str(item).strip()
+        ]
+        suggestions = [
+            str(item).strip()
+            for item in list(payload.get("ui_suggestions") or [])
+            if str(item).strip()
+        ]
+        average_score = round(sum(filing_scores) / len(filing_scores)) if filing_scores else 0
+        has_router_path = any(item == "llm_router" for item in draft_strategies)
+        has_exports = int(payload.get("export_artifact_count") or 0) > 0
+        if not has_exports:
+            verdict = "blocked"
+            reason = "No exported complaint artifacts were available for release-gate review."
+        elif average_score < 75:
+            verdict = "blocked"
+            reason = "The exported complaint artifacts still do not read like filing-ready legal complaints."
+        elif not has_router_path:
+            verdict = "warning"
+            reason = "The latest complaint artifacts rely on the deterministic fallback rather than the llm_router formal drafting path."
+        else:
+            verdict = "pass"
+            reason = "The exported complaint artifacts appear formal enough and were generated through the llm_router drafting path."
+        return {
+            "verdict": verdict,
+            "average_filing_shape_score": average_score,
+            "claim_types": claim_types,
+            "draft_strategies": draft_strategies,
+            "export_artifact_count": int(payload.get("export_artifact_count") or 0),
+            "reason": reason,
+            "top_ui_suggestion": suggestions[0] if suggestions else "",
+        }
+
     def build_ui_ux_optimization_bundle(
         self,
         *,
@@ -2825,6 +2881,7 @@ class Optimizer:
             target_files=self._default_ui_ux_target_files(),
         )
 
+        complaint_output_feedback = self._extract_complaint_output_feedback(latest_review_payload)
         return UIUXOptimizationBundle(
             timestamp=datetime.now(UTC).isoformat(),
             screenshot_dir=str(screenshot_dir),
@@ -2833,7 +2890,10 @@ class Optimizer:
             pytest_target=str(pytest_target),
             target_files=[str(path) for path in self._default_ui_ux_target_files()],
             review_runs=review_runs,
-            complaint_output_feedback=self._extract_complaint_output_feedback(latest_review_payload),
+            complaint_output_feedback={
+                **complaint_output_feedback,
+                "release_gate": self._build_complaint_output_release_gate(complaint_output_feedback),
+            },
             latest_review_markdown_path=str((review_runs[-1] or {}).get("review_markdown_path") or "") or None,
             latest_review_json_path=latest_review_json_path or None,
             task={
@@ -3092,8 +3152,18 @@ class Optimizer:
                     "generation_diagnostics": list(self._last_agentic_generation_diagnostics or []),
                     "actor_critic_pre_review": pre_review_summary,
                     "actor_critic_validation_review": validation_review_summary,
-                    "complaint_output_pre_review": self._extract_complaint_output_feedback(pre_review_payload),
-                    "complaint_output_validation_review": self._extract_complaint_output_feedback(validation_review_payload),
+                    "complaint_output_pre_review": {
+                        **self._extract_complaint_output_feedback(pre_review_payload),
+                        "release_gate": self._build_complaint_output_release_gate(
+                            self._extract_complaint_output_feedback(pre_review_payload)
+                        ),
+                    },
+                    "complaint_output_validation_review": {
+                        **self._extract_complaint_output_feedback(validation_review_payload),
+                        "release_gate": self._build_complaint_output_release_gate(
+                            self._extract_complaint_output_feedback(validation_review_payload)
+                        ),
+                    },
                     "pre_review": pre_workflow,
                     "validation_review": validation_workflow,
                 }
@@ -3115,6 +3185,9 @@ class Optimizer:
             "cycles": cycles,
             "actor_critic_summary": cycles[-1]["actor_critic_validation_review"] if cycles else {},
             "complaint_output_feedback": cycles[-1]["complaint_output_validation_review"] if cycles else {},
+            "complaint_output_release_gate": (
+                cycles[-1]["complaint_output_validation_review"].get("release_gate") if cycles else {}
+            ),
             "latest_validation_review": previous_validation_review or (
                 cycles[-1]["validation_review"].get("latest_review") if cycles else ""
             ),
@@ -3550,6 +3623,18 @@ class Optimizer:
                     "sdk_considerations": "Preserve the shared ComplaintMcpClient export, analysis, and optimizer path while improving filing guidance.",
                 }
             )
+        alignment_score = int(complaint_output_feedback.get("claim_type_alignment_score") or 0)
+        if 0 <= alignment_score < 80:
+            recommended_changes.append(
+                {
+                    "title": "Claim type alignment warning",
+                    "implementation_notes": (
+                        "Keep the selected claim type, complaint heading, and count heading visible through draft and export so the complaint does not drift into the wrong legal theory."
+                    ),
+                    "shared_code_path": "templates/workspace.html",
+                    "sdk_considerations": "Preserve MCP SDK draft generation while exposing claim-type alignment warnings before export.",
+                }
+            )
         return UIOptimizationBundle(
             timestamp=datetime.now(UTC).isoformat(),
             screenshot_dir=str(report.get("screenshot_dir") or ""),
@@ -3622,6 +3707,7 @@ class Optimizer:
                     "playwright_followups": list(bundle.playwright_followups or []),
                     "complaint_output_feedback": dict(bundle.complaint_output_feedback or {}),
                     "complaint_output_suggestions": list((bundle.complaint_output_feedback or {}).get("ui_suggestions") or []),
+                    "claim_type_alignment_score": int((bundle.complaint_output_feedback or {}).get("claim_type_alignment_score") or 0),
                     "recommended_target_files": list(bundle.target_files or []),
                 },
                 "ui_review_report": dict(ui_review_report or {}),

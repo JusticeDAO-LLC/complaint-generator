@@ -223,6 +223,10 @@ class ComplaintMcpClient {
         });
     }
 
+    reviewGeneratedExports(payload) {
+        return this.callTool('complaint.review_generated_exports', payload || {});
+    }
+
     downloadComplaintPacketUrl(userId, outputFormat) {
         const url = new URL(`${this.baseUrl}/export/download`, this.origin);
         if (userId) {

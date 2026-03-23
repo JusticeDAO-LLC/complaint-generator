@@ -16,6 +16,9 @@ def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path
     artifact_metadata = [
         {
             "artifact_type": "complaint_export",
+            "claim_type": "retaliation",
+            "draft_strategy": "llm_router",
+            "filing_shape_score": 83,
             "markdown_filename": "complaint.md",
             "pdf_filename": "complaint.pdf",
             "ui_suggestions_excerpt": "Add a clearer export warning when support gaps remain.",
@@ -51,6 +54,9 @@ def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path
     assert report["backend"]["strategy"] == "multimodal_router"
     assert report["review"]["summary"] == "Use calmer next-step guidance."
     assert report["complaint_output_feedback"]["export_artifact_count"] == 1
+    assert report["complaint_output_feedback"]["claim_types"] == ["retaliation"]
+    assert report["complaint_output_feedback"]["draft_strategies"] == ["llm_router"]
+    assert report["complaint_output_feedback"]["filing_shape_scores"] == [83]
     assert report["complaint_output_feedback"]["ui_suggestions"] == ["Add a clearer export warning when support gaps remain."]
 
 
@@ -94,6 +100,9 @@ def test_run_ui_review_workflow_loads_complaint_export_artifacts_from_screenshot
         (
             '{'
             '"artifact_type":"complaint_export",'
+            '"claim_type":"retaliation",'
+            '"draft_strategy":"template",'
+            '"filing_shape_score":61,'
             '"markdown_filename":"complaint.md",'
             '"pdf_filename":"complaint.pdf",'
             '"ui_suggestions_excerpt":"Add clearer draft-readiness warnings before download."'
@@ -118,15 +127,37 @@ def test_run_ui_review_workflow_loads_complaint_export_artifacts_from_screenshot
 
     assert report["backend"]["strategy"] == "multimodal_router"
     assert report["complaint_output_feedback"]["export_artifact_count"] == 1
+    assert report["complaint_output_feedback"]["claim_types"] == ["retaliation"]
+    assert report["complaint_output_feedback"]["draft_strategies"] == ["template"]
+    assert report["complaint_output_feedback"]["filing_shape_scores"] == [61]
     assert report["complaint_output_feedback"]["markdown_filenames"] == ["complaint.md"]
     assert report["complaint_output_feedback"]["ui_suggestions"] == [
         "Add clearer draft-readiness warnings before download."
     ]
 
 
+def test_build_complaint_output_review_prompt_includes_claim_type_context():
+    prompt = ui_review_module.build_complaint_output_review_prompt(
+        "# Complaint\n\nCOMPLAINT FOR HOUSING DISCRIMINATION",
+        claim_type="Housing Discrimination",
+        claim_guidance="Emphasize housing rights, discriminatory denial, and housing-related harm.",
+        synopsis="Jordan Example alleges that housing rights were denied after a protected accommodation request.",
+        notes="Use this to diagnose claim-shape drift.",
+    )
+
+    assert "Selected claim type:" in prompt
+    assert "Housing Discrimination" in prompt
+    assert "Claim-type filing guidance:" in prompt
+    assert "Shared case synopsis:" in prompt
+    assert '"claim_type_alignment_score": 0' in prompt
+
+
 def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback(monkeypatch):
     class FakeTextBackend:
         def __init__(self, **kwargs):
+            assert kwargs["timeout"] == ui_review_module.DEFAULT_COMPLAINT_OUTPUT_REVIEW_TIMEOUT_S
+            assert kwargs["allow_local_fallback"] is False
+            assert kwargs["retry_max_attempts"] == 1
             self.id = kwargs.get("id", "complaint-output-review")
             self.provider = kwargs.get("provider", "fake")
             self.model = kwargs.get("model", "fake-model")
@@ -134,9 +165,11 @@ def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback
         def __call__(self, prompt):
             assert "formal legal complaint" in prompt
             assert "PRAYER FOR RELIEF" in prompt
+            assert "Selected claim type:" in prompt
             return (
                 '{"summary":"The complaint is closer to a filing than a memo, but still needs stronger venue and exhibit posture.",'
                 '"filing_shape_score":82,'
+                '"claim_type_alignment_score":91,'
                 '"strengths":["Caption is present","Prayer for relief is present"],'
                 '"issues":[{"severity":"medium","finding":"Exhibit grounding is thin","complaint_impact":"The filing reads under-supported","ui_implication":"Evidence and draft surfaces are not tying exhibits into the pleading clearly enough"}],'
                 '"ui_suggestions":[{"title":"Expose exhibit references in the draft builder","target_surface":"evidence,draft","recommendation":"Show saved exhibits beside the pleading sections they support","why_it_matters":"The final complaint will read more like a supported court filing"}]}'
@@ -145,10 +178,51 @@ def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback
     monkeypatch.setattr(ui_review_module, "LLMRouterBackend", FakeTextBackend)
 
     report = ui_review_module.review_complaint_output_with_llm_router(
-        "IN THE UNITED STATES DISTRICT COURT\n\nPRAYER FOR RELIEF\nPlaintiff requests relief."
+        "IN THE UNITED STATES DISTRICT COURT\n\nPRAYER FOR RELIEF\nPlaintiff requests relief.",
+        claim_type="Retaliation",
+        claim_guidance="Emphasize protected activity, causation, and adverse action.",
+        synopsis="Jordan Example alleges retaliation after reporting discrimination to HR.",
     )
 
     assert report["backend"]["strategy"] == "llm_router"
     assert report["review"]["filing_shape_score"] == 82
+    assert report["review"]["claim_type_alignment_score"] == 91
     assert report["review"]["issues"][0]["finding"] == "Exhibit grounding is thin"
     assert report["review"]["ui_suggestions"][0]["target_surface"] == "evidence,draft"
+
+
+def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatch):
+    artifact_metadata = [
+        {
+            "artifact_type": "complaint_export",
+            "claim_type": "retaliation",
+            "draft_strategy": "llm_router",
+            "markdown_filename": "complaint.md",
+            "pdf_filename": "complaint.pdf",
+            "markdown_excerpt": "IN THE UNITED STATES DISTRICT COURT\n\nCOMPLAINT FOR RETALIATION\n\nPRAYER FOR RELIEF",
+        }
+    ]
+
+    def fake_review(markdown_text, **kwargs):
+        assert "COMPLAINT FOR RETALIATION" in markdown_text
+        assert kwargs["claim_type"] == "retaliation"
+        return {
+            "backend": {"strategy": "llm_router"},
+            "review": {
+                "summary": "Looks closer to a filing.",
+                "filing_shape_score": 88,
+                "claim_type_alignment_score": 93,
+                "issues": [{"finding": "Exhibit grounding is thin"}],
+                "ui_suggestions": [{"title": "Expose exhibit references"}],
+            },
+        }
+
+    monkeypatch.setattr(ui_review_module, "review_complaint_output_with_llm_router", fake_review)
+
+    report = ui_review_module.review_complaint_export_artifacts(artifact_metadata)
+
+    assert report["artifact_count"] == 1
+    assert report["aggregate"]["average_filing_shape_score"] == 88
+    assert report["aggregate"]["average_claim_type_alignment_score"] == 93
+    assert report["aggregate"]["issue_findings"] == ["Exhibit grounding is thin"]
+    assert report["aggregate"]["ui_suggestions"][0]["title"] == "Expose exhibit references"

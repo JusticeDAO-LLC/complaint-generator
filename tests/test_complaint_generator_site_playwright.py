@@ -527,12 +527,13 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
             )
 
             page.get_by_role('button', name='Draft', exact=True).click()
+            page.locator('#draft-mode').select_option('template')
             page.locator('#generate-draft-button').click()
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').textContent.includes('Complaint draft generated')"
             )
             page.wait_for_function(
-                "() => document.getElementById('draft-preview').textContent.includes('Jane Doe brings this retaliation complaint against Acme Corporation.')"
+                "() => { const text = document.getElementById('draft-preview').textContent || ''; return text.includes('COMPLAINT FOR RETALIATION') && text.includes('Jane Doe') && text.includes('Acme Corporation') && text.includes('PRAYER FOR RELIEF'); }"
             )
 
             tool_names = page.locator('#tool-list .item strong')

@@ -168,6 +168,31 @@ def analyze_output(user_id: str = "demo-user") -> None:
     _print(service.analyze_complaint_output(user_id))
 
 
+@app.command("review-exports")
+def review_exports(
+    user_id: str = "demo-user",
+    artifact_path: Optional[str] = None,
+    artifact_dir: Optional[str] = None,
+    notes: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
+) -> None:
+    _print(
+        service.review_generated_exports(
+            user_id,
+            artifact_path=artifact_path,
+            artifact_dir=artifact_dir,
+            notes=notes,
+            provider=provider,
+            model=model,
+            config_path=config_path,
+            backend_id=backend_id,
+        )
+    )
+
+
 @app.command("set-claim-type")
 def set_claim_type(user_id: str = "demo-user", claim_type: str = "retaliation") -> None:
     _print(service.update_claim_type(user_id, claim_type))

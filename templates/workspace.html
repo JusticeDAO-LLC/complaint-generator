@@ -1565,6 +1565,7 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
                                 <button class="secondary" id="analyze-complaint-output-button" type="button">Analyze Exported Complaint</button>
+                                <button class="secondary" id="review-generated-exports-button" type="button">Run Export Critic</button>
                                 <button class="secondary" id="download-packet-tool-markdown-button" type="button" data-output-format="markdown" disabled>Download Markdown</button>
                                 <button class="secondary" id="download-packet-tool-pdf-button" type="button" data-output-format="pdf" disabled>Download PDF</button>
                             </div>
@@ -1593,6 +1594,10 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>Complaint Output UI Suggestions</label>
                                 <div class="status draft-preview-shell"><pre id="complaint-output-analysis-preview">No complaint-output analysis run yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Claim Alignment Readout</label>
+                                <div class="status draft-preview-shell"><pre id="claim-alignment-preview">No claim-alignment review run yet.</pre></div>
                             </div>
                         </div>
                         <div class="tool-card">
@@ -2130,8 +2135,9 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const backend = draft.draft_backend || {};
             const strategyLabel = draft.draft_strategy || 'none';
             const backendParts = [backend.provider, backend.model].filter(Boolean).join(' / ');
+            const fallbackReason = String(draft.draft_fallback_reason || '').trim();
             document.getElementById('draft-generation-meta').textContent = draft.body
-                ? `Draft strategy: ${strategyLabel}${backendParts ? ` (${backendParts})` : ''}. Claim type: ${claimType.replace(/_/g, ' ')}.`
+                ? `Draft strategy: ${strategyLabel}${backendParts ? ` (${backendParts})` : ''}. Claim type: ${claimType.replace(/_/g, ' ')}.${fallbackReason ? ` Fallback reason: ${fallbackReason}.` : ''}`
                 : 'Draft generation strategy details will appear here once a complaint is generated.';
             syncSynopsisMirrors(document.getElementById('case-synopsis').value);
         }
@@ -2415,6 +2421,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
             const outputAnalysisNode = document.getElementById('complaint-output-analysis-preview');
+            const claimAlignmentNode = document.getElementById('claim-alignment-preview');
 
             if (workspaceMediatorPrompt && workspaceMediatorPrompt.prefill_message) {
                 mediatorNode.textContent = workspaceMediatorPrompt.prefill_message;
@@ -2454,9 +2461,36 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
 
             const outputAnalysis = latestComplaintOutputAnalysis || (latestPacketExport && latestPacketExport.ui_feedback);
             if (outputAnalysis) {
-                outputAnalysisNode.textContent = JSON.stringify(outputAnalysis, null, 2);
+                const uiFeedback = outputAnalysis.ui_feedback || outputAnalysis;
+                const releaseGate = uiFeedback.release_gate || {};
+                const releaseGateSummary = releaseGate.verdict
+                    ? [
+                        `Release gate: ${String(releaseGate.verdict || '').toUpperCase()}`,
+                        releaseGate.reason ? `Reason: ${releaseGate.reason}` : '',
+                        releaseGate.claim_type_label ? `Claim type: ${releaseGate.claim_type_label}` : '',
+                        releaseGate.draft_strategy ? `Draft strategy: ${releaseGate.draft_strategy}` : '',
+                        Number.isFinite(Number(releaseGate.filing_shape_score)) ? `Filing shape score: ${releaseGate.filing_shape_score}` : '',
+                        Number.isFinite(Number(releaseGate.claim_type_alignment_score)) ? `Claim-type alignment score: ${releaseGate.claim_type_alignment_score}` : '',
+                        '',
+                    ].filter(Boolean).join('\n')
+                    : '';
+                outputAnalysisNode.textContent = `${releaseGateSummary}${JSON.stringify(outputAnalysis, null, 2)}`.trim();
+                const alignmentScore = Number(uiFeedback.claim_type_alignment_score || 0);
+                const alignment = uiFeedback.claim_type_alignment || {};
+                const releaseVerdict = String(releaseGate.verdict || '').trim();
+                const claimAlignmentSummary = {
+                    claim_type_alignment_score: alignmentScore,
+                    complaint_heading_matches: Boolean(alignment.complaint_heading_matches),
+                    count_heading_matches: Boolean(alignment.count_heading_matches),
+                    release_gate_verdict: releaseVerdict || 'unknown',
+                    verdict: alignmentScore >= 80
+                        ? 'Claim type appears aligned.'
+                        : 'Complaint may be drifting into the wrong legal theory.',
+                };
+                claimAlignmentNode.textContent = JSON.stringify(claimAlignmentSummary, null, 2);
             } else {
                 outputAnalysisNode.textContent = 'No complaint-output analysis run yet.';
+                claimAlignmentNode.textContent = 'No claim-alignment review run yet.';
             }
         }
 
@@ -3402,9 +3436,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             activateTab('draft');
-            setStatus(draftMode === 'llm_router'
+            const actualDraftStrategy = String((((workspaceSession || {}).draft) || {}).draft_strategy || 'template');
+            const fallbackReason = String((((workspaceSession || {}).draft) || {}).draft_fallback_reason || '').trim();
+            setStatus(actualDraftStrategy === 'llm_router'
                 ? 'Complaint draft generated through the llm_router formal complaint path.'
-                : 'Complaint draft generated from the deterministic template fallback.');
+                : fallbackReason
+                    ? `Complaint draft generated from the deterministic template fallback. Reason: ${fallbackReason}`
+                    : 'Complaint draft generated from the deterministic template fallback.');
         }
 
         async function saveDraft() {
@@ -3452,6 +3490,18 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             latestComplaintOutputAnalysis = await client.analyzeComplaintOutput(workspaceUserId);
             renderWorkflowOperations();
             setStatus('Complaint output analysis refreshed.');
+        }
+
+        async function reviewGeneratedExportsPanel() {
+            setBusyStatus('Running the export critic through the shared MCP SDK path…');
+            const criticResult = await client.reviewGeneratedExports({
+                user_id: workspaceUserId,
+            });
+            latestComplaintOutputAnalysis = Object.assign({}, latestComplaintOutputAnalysis || {}, {
+                export_critic: criticResult,
+            });
+            renderWorkflowOperations();
+            setStatus('Generated complaint exports reviewed through the export critic.');
         }
 
         function downloadPacket(event) {
@@ -3620,6 +3670,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('analyze-complaint-output-button').addEventListener('click', analyzeComplaintOutputPanel);
+        document.getElementById('review-generated-exports-button').addEventListener('click', reviewGeneratedExportsPanel);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
         document.getElementById('download-packet-tool-markdown-button').addEventListener('click', downloadPacket);
         document.getElementById('download-packet-tool-pdf-button').addEventListener('click', downloadPacket);

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import signal
+import threading
 import uuid
 from base64 import b64encode
 from copy import deepcopy
@@ -13,6 +15,7 @@ from typing import Any, Dict, List, Optional
 DEFAULT_USER_ID = "did:key:anonymous"
 DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
+DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS = 20
 DEFAULT_UI_UX_SCREENSHOT_TARGET = (
     "tests/test_website_cohesion_playwright.py::"
     "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
@@ -226,6 +229,47 @@ def _required_formal_complaint_markers() -> List[str]:
     ]
 
 
+def _build_complaint_output_release_gate(
+    *,
+    claim_type: str,
+    draft_strategy: str,
+    filing_shape_score: int,
+    claim_type_alignment_score: int,
+    missing_elements: int,
+    evidence_item_count: int,
+) -> Dict[str, Any]:
+    normalized_claim_type = _normalize_claim_type(claim_type)
+    normalized_strategy = str(draft_strategy or "template").strip() or "template"
+    if filing_shape_score >= 85 and claim_type_alignment_score >= 85 and missing_elements == 0 and evidence_item_count > 0:
+        verdict = "pass"
+        reason = (
+            "The exported complaint currently reads like a filing-ready "
+            f"{_claim_type_display_name(normalized_claim_type).lower()} complaint and the record is materially supported."
+        )
+    elif filing_shape_score >= 75 and claim_type_alignment_score >= 75 and evidence_item_count > 0:
+        verdict = "warning"
+        reason = (
+            "The exported complaint is moving in the right direction, but it still needs tighter proof posture, "
+            "claim alignment, or filing polish before it should be treated as client-safe."
+        )
+    else:
+        verdict = "blocked"
+        reason = (
+            "The exported complaint is not yet formal or well-aligned enough to treat the current UI flow as safe for real legal clients."
+        )
+    return {
+        "verdict": verdict,
+        "reason": reason,
+        "claim_type": normalized_claim_type,
+        "claim_type_label": _claim_type_display_name(normalized_claim_type),
+        "draft_strategy": normalized_strategy,
+        "filing_shape_score": int(filing_shape_score or 0),
+        "claim_type_alignment_score": int(claim_type_alignment_score or 0),
+        "missing_elements": int(missing_elements or 0),
+        "evidence_item_count": int(evidence_item_count or 0),
+    }
+
+
 def _has_required_formal_complaint_markers(body: str) -> bool:
     complaint_body = str(body or "")
     return all(marker in complaint_body for marker in _required_formal_complaint_markers())
@@ -279,6 +323,7 @@ class ComplaintWorkspaceService:
         base_dir = Path(root_dir) if root_dir is not None else _SESSION_DIR
         self._session_dir = base_dir
         self._session_dir.mkdir(parents=True, exist_ok=True)
+        self._last_draft_refinement_error: Optional[str] = None
 
     def _session_path(self, user_id: str) -> Path:
         return self._session_dir / f"{_slugify_user_id(user_id)}.json"
@@ -613,6 +658,7 @@ class ComplaintWorkspaceService:
             "draft_strategy": "template",
         }
         if use_llm:
+            self._last_draft_refinement_error = None
             refined_draft = self._refine_draft_with_llm_router(
                 state,
                 draft,
@@ -623,6 +669,8 @@ class ComplaintWorkspaceService:
             )
             if refined_draft:
                 return refined_draft
+            if self._last_draft_refinement_error:
+                draft["draft_fallback_reason"] = self._last_draft_refinement_error
         return draft
 
     def _build_case_synopsis(self, state: Dict[str, Any]) -> str:
@@ -745,8 +793,10 @@ class ComplaintWorkspaceService:
             if model:
                 backend_kwargs["model"] = model
             backend = LLMRouterBackend(**backend_kwargs)
-            raw_response = backend(self._build_formal_complaint_generation_prompt(state, base_draft))
-        except Exception:
+            prompt = self._build_formal_complaint_generation_prompt(state, base_draft)
+            raw_response = self._invoke_llm_draft_backend_with_timeout(backend, prompt)
+        except Exception as exc:
+            self._last_draft_refinement_error = str(exc) or "llm_router refinement failed"
             return None
 
         parsed = _parse_json_object(raw_response)
@@ -775,6 +825,23 @@ class ComplaintWorkspaceService:
                 "model": getattr(backend, "model", model),
             },
         }
+
+    def _invoke_llm_draft_backend_with_timeout(self, backend: Any, prompt: str) -> str:
+        timeout_seconds = int(DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS)
+        if threading.current_thread() is threading.main_thread():
+            previous_handler = signal.getsignal(signal.SIGALRM)
+
+            def _raise_timeout(_signum, _frame):
+                raise TimeoutError(f"llm_router draft refinement timed out after {timeout_seconds}s")
+
+            try:
+                signal.signal(signal.SIGALRM, _raise_timeout)
+                signal.alarm(timeout_seconds)
+                return backend(prompt)
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, previous_handler)
+        return backend(prompt)
 
     def _build_packet_markdown(self, packet: Dict[str, Any]) -> str:
         draft = dict(packet.get("draft") or {})
@@ -1243,6 +1310,14 @@ class ComplaintWorkspaceService:
             "signature_block": "SIGNATURE BLOCK" in body,
             "working_case_synopsis": "WORKING CASE SYNOPSIS" in body,
         }
+        claim_type = _normalize_claim_type(packet.get("claim_type"))
+        claim_label = _claim_type_display_name(claim_type)
+        expected_complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
+        expected_count_heading = _claim_type_count_heading(claim_type)
+        claim_type_alignment = {
+            "complaint_heading_matches": expected_complaint_heading in body,
+            "count_heading_matches": expected_count_heading in body,
+        }
 
         if artifact_analysis.get("missing_elements", 0) > 0:
             missing_count = int(artifact_analysis.get("missing_elements") or 0)
@@ -1348,6 +1423,23 @@ class ComplaintWorkspaceService:
                     "ui_implication": "The drafting UI is letting users export something that does not read like a formal legal complaint.",
                 }
             )
+
+        if not claim_type_alignment["complaint_heading_matches"] or not claim_type_alignment["count_heading_matches"]:
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": f"The exported complaint does not clearly read like a {claim_label.lower()} complaint for the selected claim type.",
+                    "ui_implication": "The drafting flow is letting the complaint drift into a generic or mismatched claim shape before export.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Keep the selected claim theory visible through drafting",
+                    "recommendation": "Show the selected claim type, count heading, and claim-specific allegation checklist throughout the draft flow so the complaint stays aligned to the chosen legal theory.",
+                    "target_surface": "draft,review,integrations",
+                }
+            )
             suggestions.append(
                 {
                     "title": "Enforce formal pleading structure",
@@ -1394,9 +1486,12 @@ class ComplaintWorkspaceService:
         try:
             router_review = review_complaint_output_with_llm_router(
                 self._build_packet_markdown(packet),
+                claim_type=claim_label,
+                claim_guidance=_claim_type_filing_guidance(claim_type),
+                synopsis=case_synopsis,
                 notes=(
-                    "Assess whether this output looks like a formal legal complaint and turn any filing-shape defects "
-                    "into UI/UX repairs for intake, evidence, review, draft, and export surfaces."
+                    "Assess whether this output looks like a formal legal complaint, whether it matches the selected claim type, "
+                    "and turn any filing-shape or claim-alignment defects into UI/UX repairs for intake, evidence, review, draft, and export surfaces."
                 ),
             )
         except Exception:
@@ -1440,10 +1535,34 @@ class ComplaintWorkspaceService:
         support_score = 5 if int(artifact_analysis.get("supported_elements") or 0) > 0 else 0
         heuristic_score = min(100, 35 + section_score + body_length_score + evidence_score + relief_score + support_score)
         router_score = int(router_payload.get("filing_shape_score") or 0) if router_payload else 0
+        claim_type_alignment_score = (
+            100
+            if claim_type_alignment["complaint_heading_matches"] and claim_type_alignment["count_heading_matches"]
+            else 50
+            if claim_type_alignment["complaint_heading_matches"] or claim_type_alignment["count_heading_matches"]
+            else 0
+        )
+        router_alignment_score = int(router_payload.get("claim_type_alignment_score") or 0) if router_payload else 0
         filing_shape_score = (
             round((heuristic_score + router_score) / 2)
             if router_score
             else heuristic_score
+        )
+        if claim_type_alignment_score == 0:
+            resolved_claim_type_alignment_score = 0
+        else:
+            resolved_claim_type_alignment_score = (
+                round((claim_type_alignment_score + router_alignment_score) / 2)
+                if router_alignment_score
+                else claim_type_alignment_score
+            )
+        release_gate = _build_complaint_output_release_gate(
+            claim_type=claim_type,
+            draft_strategy=str(draft.get("draft_strategy") or "template"),
+            filing_shape_score=filing_shape_score,
+            claim_type_alignment_score=resolved_claim_type_alignment_score,
+            missing_elements=int(artifact_analysis.get("missing_elements") or 0),
+            evidence_item_count=int(artifact_analysis.get("evidence_item_count") or 0),
         )
 
         if filing_shape_score < 75:
@@ -1479,6 +1598,9 @@ class ComplaintWorkspaceService:
             ),
             "filing_shape_score": filing_shape_score,
             "formal_sections_present": formal_sections_present,
+            "claim_type_alignment": claim_type_alignment,
+            "claim_type_alignment_score": resolved_claim_type_alignment_score,
+            "release_gate": release_gate,
             "issues": issues,
             "ui_suggestions": suggestions,
             "draft_excerpt": body[:600],
@@ -1487,6 +1609,7 @@ class ComplaintWorkspaceService:
                 f"Evidence items: {int(overview.get('testimony_items') or 0) + int(overview.get('document_items') or 0)}",
                 f"Requested relief items: {int(artifact_analysis.get('requested_relief_count') or 0)}",
                 f"Formal sections present: {sum(1 for value in formal_sections_present.values() if value)}/{len(formal_sections_present)}",
+                f"Claim type alignment: {expected_complaint_heading} / {expected_count_heading}",
             ],
             "router_review": router_review,
         }
@@ -1498,6 +1621,56 @@ class ComplaintWorkspaceService:
             "packet_summary": deepcopy(payload.get("packet_summary") or {}),
             "artifact_analysis": deepcopy(payload.get("artifact_analysis") or {}),
             "ui_feedback": deepcopy(payload.get("ui_feedback") or {}),
+        }
+
+    def review_generated_exports(
+        self,
+        user_id: Optional[str],
+        *,
+        artifact_path: Optional[str] = None,
+        artifact_dir: Optional[str] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        config_path: Optional[str] = None,
+        backend_id: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        from .ui_review import review_complaint_export_artifacts
+
+        artifact_metadata: List[Dict[str, Any]] = []
+        if artifact_path:
+            path = Path(str(artifact_path)).expanduser().resolve()
+            if not path.exists():
+                raise ValueError(f"Artifact path does not exist: {path}")
+            payload = json.loads(path.read_text())
+            if not isinstance(payload, dict):
+                raise ValueError("Artifact path must point to a JSON object.")
+            artifact_metadata.append(payload)
+        elif artifact_dir:
+            root = Path(str(artifact_dir)).expanduser().resolve()
+            if not root.exists():
+                raise ValueError(f"Artifact directory does not exist: {root}")
+            for candidate in sorted(root.glob("*.json")):
+                try:
+                    payload = json.loads(candidate.read_text())
+                except Exception:
+                    continue
+                if isinstance(payload, dict):
+                    artifact_metadata.append(payload)
+        else:
+            artifact_metadata = self._build_complaint_output_review_artifacts(user_id)
+
+        report = review_complaint_export_artifacts(
+            artifact_metadata,
+            provider=provider,
+            model=model,
+            config_path=config_path,
+            backend_id=backend_id,
+            notes=notes,
+        )
+        return {
+            "user_id": str(user_id or DEFAULT_USER_ID),
+            **report,
         }
 
     def update_claim_type(self, user_id: Optional[str], claim_type: Optional[str]) -> Dict[str, Any]:
@@ -1549,6 +1722,9 @@ class ComplaintWorkspaceService:
                 "markdown_excerpt": str(markdown_artifact.get("excerpt") or markdown_artifact.get("content") or "").strip()[:2000],
                 "pdf_header": str(pdf_artifact.get("content_type") or "application/pdf"),
                 "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
+                "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+                "claim_type_alignment": dict(ui_feedback.get("claim_type_alignment") or {}),
+                "release_gate": dict(ui_feedback.get("release_gate") or {}),
                 "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),
             }
         ]
@@ -1754,6 +1930,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.export_complaint_markdown", "description": "Export the generated complaint as a downloadable Markdown artifact."},
                 {"name": "complaint.export_complaint_pdf", "description": "Export the generated complaint as a downloadable PDF artifact."},
                 {"name": "complaint.analyze_complaint_output", "description": "Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions."},
+                {"name": "complaint.review_generated_exports", "description": "Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions."},
                 {"name": "complaint.update_claim_type", "description": "Set the current complaint type so drafting and review stay aligned to the right legal claim shape."},
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
@@ -1833,6 +2010,17 @@ class ComplaintWorkspaceService:
             return self.export_complaint_pdf(args.get("user_id"))
         if tool_name == "complaint.analyze_complaint_output":
             return self.analyze_complaint_output(args.get("user_id"))
+        if tool_name == "complaint.review_generated_exports":
+            return self.review_generated_exports(
+                args.get("user_id"),
+                artifact_path=args.get("artifact_path"),
+                artifact_dir=args.get("artifact_dir"),
+                provider=args.get("provider"),
+                model=args.get("model"),
+                config_path=args.get("config_path"),
+                backend_id=args.get("backend_id"),
+                notes=args.get("notes"),
+            )
         if tool_name == "complaint.update_claim_type":
             return self.update_claim_type(args.get("user_id"), args.get("claim_type"))
         if tool_name == "complaint.update_case_synopsis":

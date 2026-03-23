@@ -133,6 +133,7 @@ def _fake_ui_review_report(tmp_path: Path) -> dict:
             "export_artifact_count": 1,
             "markdown_filenames": ["jordan-example-complaint.md"],
             "pdf_filenames": ["jordan-example-complaint.pdf"],
+            "claim_type_alignment_score": 35,
             "ui_suggestions": ["Add stronger export warnings when support gaps remain."],
         },
         "review": {
@@ -3272,6 +3273,10 @@ SUGGESTIONS:
             item.get("implementation_notes") == "Add stronger export warnings when support gaps remain."
             for item in bundle.recommended_changes
         )
+        assert any(
+            item.get("title") == "Claim type alignment warning"
+            for item in bundle.recommended_changes
+        )
 
     def test_ui_patch_task_metadata_includes_complaint_output_suggestions(self, tmp_path):
         optimizer = Optimizer()
@@ -3283,6 +3288,7 @@ SUGGESTIONS:
         task = tasks[0]
         summary = dict(task.metadata.get("report_summary") or {})
         assert "Add stronger export warnings when support gaps remain." in summary.get("complaint_output_suggestions", [])
+        assert summary.get("claim_type_alignment_score") == 35
         assert any(
             recommendation == "Complaint output feedback"
             for recommendation in summary.get("recommendations", [])

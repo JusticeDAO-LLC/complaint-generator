@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from applications import complaint_cli as complaint_cli_impl
 from applications.complaint_workspace_api import attach_complaint_workspace_routes
 from applications.complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, optimize_ui, review_ui, run_browser_audit
+from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, optimize_ui, review_generated_exports, review_ui, run_browser_audit
 
 
 pytestmark = [pytest.mark.no_auto_network]
@@ -66,6 +66,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.export_complaint_markdown",
         "complaint.export_complaint_pdf",
         "complaint.analyze_complaint_output",
+        "complaint.review_generated_exports",
         "complaint.update_claim_type",
         "complaint.update_case_synopsis",
         "complaint.reset_session",
@@ -101,6 +102,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert any(tool["name"] == "complaint.export_complaint_markdown" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.export_complaint_pdf" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.review_generated_exports" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.update_claim_type" for tool in tools_payload["tools"])
 
     answer_payload = _invoke_cli(
@@ -521,6 +523,37 @@ def test_cli_and_mcp_can_request_llm_backed_complaint_generation(monkeypatch, tm
     assert observed_calls[1]["model"] == "stub-model-2"
 
 
+def test_llm_draft_timeout_falls_back_to_template_with_reason(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-timeout-sessions")
+    service.submit_intake_answers(
+        "timeout-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+
+    def fake_refine(self, state, base_draft, **kwargs):
+        self._last_draft_refinement_error = "llm_router draft refinement timed out after 20s"
+        return None
+
+    monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
+
+    payload = service.generate_complaint(
+        "timeout-user",
+        requested_relief=["Back pay"],
+        use_llm=True,
+    )
+
+    assert payload["draft"]["draft_strategy"] == "template"
+    assert payload["draft"]["draft_fallback_reason"] == "llm_router draft refinement timed out after 20s"
+    assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
+
+
 def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "prompt-sessions")
     service.submit_intake_answers(
@@ -547,6 +580,53 @@ def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(t
     assert "Allege the housing-related denial, interference, limitation, or retaliation with specificity." in prompt
     assert "Allege the property, housing benefit, tenancy, or housing opportunity context clearly enough to read like a real housing pleading." in prompt
     assert "Return strict JSON with this shape:" in prompt
+
+
+def test_complaint_output_analysis_flags_claim_type_mismatch(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "claim-mismatch-sessions")
+    service.submit_intake_answers(
+        "mismatch-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Housing Group",
+            "protected_activity": "Requested a reasonable accommodation and reported discriminatory housing treatment",
+            "adverse_action": "Was denied a lease renewal and housing assistance",
+            "timeline": "Requested accommodation in April and lost the housing opportunity in May.",
+            "harm": "Lost stable housing and incurred relocation costs.",
+        },
+    )
+    service.update_claim_type("mismatch-user", "housing_discrimination")
+    service.update_draft(
+        "mismatch-user",
+        title="Mismatched complaint",
+        body=(
+            "IN THE UNITED STATES DISTRICT COURT\n\n"
+            "Civil Action No. ________________\n"
+            "COMPLAINT FOR RETALIATION\n\n"
+            "JURISDICTION AND VENUE\n"
+            "FACTUAL ALLEGATIONS\n"
+            "EVIDENTIARY SUPPORT AND NOTICE\n"
+            "COUNT I - RETALIATION\n"
+            "PRAYER FOR RELIEF\n"
+            "JURY DEMAND\n"
+            "SIGNATURE BLOCK\n"
+        ),
+        requested_relief=["Injunctive relief"],
+    )
+
+    payload = service.analyze_complaint_output("mismatch-user")
+
+    assert payload["ui_feedback"]["claim_type_alignment"]["complaint_heading_matches"] is False
+    assert payload["ui_feedback"]["claim_type_alignment"]["count_heading_matches"] is False
+    assert payload["ui_feedback"]["claim_type_alignment_score"] == 0
+    assert any(
+        "selected claim type" in issue["finding"]
+        for issue in payload["ui_feedback"]["issues"]
+    )
+    assert any(
+        suggestion["title"] == "Keep the selected claim theory visible through drafting"
+        for suggestion in payload["ui_feedback"]["ui_suggestions"]
+    )
 
 
 def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path):
@@ -709,6 +789,43 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
     assert mcp_payload["cycles"][0]["optimizer_result"]["changed_files"] == ["templates/workspace.html"]
     cached_mcp_ui_payload = _call_mcp_tool(service, 14, "complaint.get_ui_readiness", {"user_id": "mcp-user"})
     assert cached_mcp_ui_payload["status"] == "cached"
+
+
+def test_review_generated_exports_tool_supports_cli_mcp_and_package(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "review-export-sessions")
+
+    def fake_review_generated_exports(self, user_id, **kwargs):
+        assert user_id == "artifact-user"
+        return {
+            "generated_at": "2026-03-23T00:00:00+00:00",
+            "artifact_count": 1,
+            "aggregate": {
+                "average_filing_shape_score": 87,
+                "average_claim_type_alignment_score": 91,
+                "issue_findings": ["Venue allegations still read generic."],
+                "ui_suggestions": [{"title": "Strengthen venue guidance in the draft UI"}],
+            },
+        }
+
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+    monkeypatch.setattr(ComplaintWorkspaceService, "review_generated_exports", fake_review_generated_exports)
+
+    cli_payload = _invoke_cli(runner, "review-exports", "--user-id", "artifact-user")
+    assert cli_payload["artifact_count"] == 1
+    assert cli_payload["aggregate"]["average_filing_shape_score"] == 87
+
+    mcp_payload = _call_mcp_tool(
+        service,
+        41,
+        "complaint.review_generated_exports",
+        {"user_id": "artifact-user"},
+    )
+    assert mcp_payload["artifact_count"] == 1
+    assert mcp_payload["aggregate"]["average_claim_type_alignment_score"] == 91
+
+    package_payload = review_generated_exports("artifact-user", service=service)
+    assert package_payload["artifact_count"] == 1
 
 
 def test_optimize_ui_defaults_to_feature_complete_audit_and_actor_critic_method(monkeypatch, tmp_path):

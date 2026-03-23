@@ -1,7 +1,48 @@
 const fs = require('fs/promises');
+const path = require('path');
 
 const { test, expect } = require('@playwright/test');
 const { installCommonMocks, documentGenerationResponse } = require('./helpers/fixtures');
+
+async function writeComplaintExportArtifact({
+  routeUrl,
+  markdownFilename,
+  markdownText,
+  pdfFilename,
+  pdfBuffer,
+  uiSuggestionsExcerpt,
+  claimType,
+  draftStrategy,
+  filingShapeScore,
+  claimTypeAlignmentScore,
+}) {
+  const targetDir = String(process.env.COMPLAINT_UI_SCREENSHOT_DIR || '').trim();
+  if (!targetDir) {
+    return null;
+  }
+  await fs.mkdir(targetDir, { recursive: true });
+  const metadataPath = path.join(targetDir, 'workspace-export-artifacts.json');
+  const payload = {
+    name: 'workspace-export-artifacts',
+    artifact_type: 'complaint_export',
+    url: routeUrl,
+    title: 'Exported Complaint Artifacts',
+    viewport: { width: 1440, height: 1200 },
+    text_excerpt: String(markdownText || '').slice(0, 4000),
+    screenshot_path: '',
+    claim_type: claimType,
+    draft_strategy: draftStrategy,
+    filing_shape_score: filingShapeScore,
+    claim_type_alignment_score: claimTypeAlignmentScore,
+    markdown_filename: markdownFilename,
+    markdown_excerpt: String(markdownText || '').slice(0, 2000),
+    pdf_filename: pdfFilename,
+    pdf_header: Buffer.from(pdfBuffer || []).subarray(0, 16).toString('latin1'),
+    ui_suggestions_excerpt: String(uiSuggestionsExcerpt || '').slice(0, 1000),
+  };
+  await fs.writeFile(metadataPath, JSON.stringify(payload, null, 2));
+  return metadataPath;
+}
 
 test.describe('complaint generation workflow', () => {
   test('document generation hands off into the review dashboard cohesively', async ({ page }) => {
@@ -482,10 +523,12 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#analyze-complaint-output-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint output analysis refreshed\./i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"ui_feedback":/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Release gate: (PASS|WARNING)/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"formal_sections_present":/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Tighten review-to-draft gatekeeping/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"artifact_analysis":/i);
+    await expect(page.locator('#claim-alignment-preview')).toContainText(/"release_gate_verdict":\s*"(pass|warning)"/i);
 
     const [markdownDownload] = await Promise.all([
       page.waitForEvent('download'),
@@ -516,6 +559,18 @@ test.describe('complaint generation workflow', () => {
     expect(pdfBody.subarray(0, 8).toString('utf-8')).toContain('%PDF-1.4');
     expect(pdfBody.toString('utf-8')).toContain('COMPLAINT FOR RETALIATION');
     expect(pdfBody.toString('utf-8')).toContain('SIGNATURE BLOCK');
+    await writeComplaintExportArtifact({
+      routeUrl: page.url(),
+      markdownFilename: markdownDownload.suggestedFilename(),
+      markdownText: markdownBody,
+      pdfFilename: pdfDownload.suggestedFilename(),
+      pdfBuffer: pdfBody,
+      uiSuggestionsExcerpt: await page.locator('#complaint-output-analysis-preview').textContent(),
+      claimType: 'retaliation',
+      draftStrategy: 'llm_router',
+      filingShapeScore: 100,
+      claimTypeAlignmentScore: 100,
+    });
 
     await page.goto('/');
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Ready for first draft|Draft in progress/i);
@@ -574,7 +629,11 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#packet-preview')).toContainText(/Claim type: housing_discrimination/i);
 
     await page.locator('#analyze-complaint-output-button').click();
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Release gate: (PASS|WARNING)/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"formal_sections_present":/i);
+    await expect(page.locator('#claim-alignment-preview')).toContainText(/"release_gate_verdict":\s*"(pass|warning)"/i);
+    const housingAnalysisText = await page.locator('#complaint-output-analysis-preview').textContent();
+    expect(housingAnalysisText).toMatch(/Housing Discrimination/i);
   });
 });

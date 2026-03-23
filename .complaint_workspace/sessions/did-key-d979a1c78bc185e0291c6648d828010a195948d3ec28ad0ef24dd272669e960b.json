@@ -1,7 +1,7 @@
 {
   "case_synopsis": "",
   "claim_type": "retaliation",
-  "created_at": "2026-03-22T23:57:09.832801+00:00",
+  "created_at": "2026-03-23T08:52:42.726769+00:00",
   "draft": null,
   "evidence": {
     "documents": [],
@@ -10,6 +10,6 @@
   "intake_answers": {},
   "intake_history": [],
   "ui_readiness": null,
-  "updated_at": "2026-03-23T08:58:16.604852+00:00",
-  "user_id": "template-user"
+  "updated_at": "2026-03-23T08:52:43.136073+00:00",
+  "user_id": "did:key:d979a1c78bc185e0291c6648d828010a195948d3ec28ad0ef24dd272669e960b"
 }

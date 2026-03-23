@@ -349,6 +349,7 @@ const workspaceToolList = [
   { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.' },
   { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.' },
   { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.' },
+  { name: 'complaint.review_generated_exports', description: 'Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions.' },
   { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.' },
   { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.' },
   { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique.' },
@@ -1159,6 +1160,40 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     }
     if (name === 'complaint.analyze_complaint_output') {
       return buildWorkspaceComplaintOutputAnalysis(state);
+    }
+    if (name === 'complaint.review_generated_exports') {
+      const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+      return {
+        artifact_count: 1,
+        complaint_output_feedback: {
+          export_artifact_count: 1,
+          claim_types: [state.claim_type],
+          draft_strategies: [state.draft && state.draft.draft_strategy ? state.draft.draft_strategy : 'template'],
+          filing_shape_scores: [analysis.ui_feedback.filing_shape_score || 0],
+          ui_suggestions: (analysis.ui_feedback.ui_suggestions || []).map((item) => item.title || item.recommendation).filter(Boolean),
+        },
+        aggregate: {
+          average_filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
+          average_claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+          issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean),
+          ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+        },
+        reviews: [
+          {
+            artifact: {
+              claim_type: state.claim_type,
+              draft_strategy: state.draft && state.draft.draft_strategy ? state.draft.draft_strategy : 'template',
+            },
+            review: {
+              summary: analysis.ui_feedback.summary,
+              filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
+              claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+              issues: analysis.ui_feedback.issues || [],
+              ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+            },
+          },
+        ],
+      };
     }
     if (name === 'complaint.update_case_synopsis') {
       state.case_synopsis = String(toolArgs.synopsis || '').trim();

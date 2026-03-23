@@ -113,6 +113,19 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.review_generated_exports": {
+        "type": "object",
+        "properties": {
+            "user_id": {"type": "string"},
+            "artifact_path": {"type": "string"},
+            "artifact_dir": {"type": "string"},
+            "notes": {"type": "string"},
+            "provider": {"type": "string"},
+            "model": {"type": "string"},
+            "config_path": {"type": "string"},
+            "backend_id": {"type": "string"},
+        },
+    },
     "complaint.update_claim_type": {
         "type": "object",
         "properties": {

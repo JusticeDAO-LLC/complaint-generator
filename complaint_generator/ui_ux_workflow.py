@@ -165,6 +165,9 @@ def build_ui_ux_review_prompt(
             lines.extend(
                 [
                     f"Export artifact type: {artifact.get('artifact_type')}",
+                    f"Claim type: {artifact.get('claim_type', '')}",
+                    f"Draft strategy: {artifact.get('draft_strategy', '')}",
+                    f"Filing shape score: {artifact.get('filing_shape_score', '')}",
                     f"Markdown filename: {artifact.get('markdown_filename', '')}",
                     f"PDF filename: {artifact.get('pdf_filename', '')}",
                     "Exported complaint markdown excerpt:",
@@ -222,6 +225,7 @@ def build_ui_ux_review_prompt(
                 "complaint_generator.export_complaint_markdown, "
                 "complaint_generator.export_complaint_pdf, "
                 "complaint_generator.analyze_complaint_output, "
+                "complaint_generator.review_generated_exports, "
                 "complaint_generator.update_case_synopsis, "
                 "complaint_generator.review_ui, "
                 "complaint_generator.optimize_ui, "
@@ -232,8 +236,8 @@ def build_ui_ux_review_prompt(
                 "complaint_generator.run_end_to_end_complaint_browser_audit, "
                 "complaint_generator.create_ui_review_report\n"
                 "CLI tools: complaint-generator, complaint-workspace, complaint-generator-workspace, complaint-mcp-server, complaint-workspace export-packet, complaint-workspace export-markdown, complaint-workspace export-pdf, complaint-workspace analyze-output, complaint-workspace review-ui, complaint-workspace optimize-ui, complaint-workspace browser-audit\n"
-                "MCP server tools: complaint.create_identity, complaint.list_intake_questions, complaint.list_claim_elements, complaint.start_session, complaint.submit_intake, complaint.save_evidence, complaint.review_case, complaint.build_mediator_prompt, complaint.get_workflow_capabilities, complaint.generate_complaint, complaint.update_draft, complaint.export_complaint_packet, complaint.export_complaint_markdown, complaint.export_complaint_pdf, complaint.analyze_complaint_output, complaint.update_case_synopsis, complaint.reset_session, complaint.review_ui, complaint.optimize_ui, complaint.run_browser_audit\n"
-                "Browser SDK: window.ComplaintMcpSdk.ComplaintMcpClient with bootstrapWorkspace(), getOrCreateDid(), callTool(), exportComplaintPacket(), exportComplaintMarkdown(), exportComplaintPdf(), analyzeComplaintOutput(), reviewUiArtifacts(), optimizeUiArtifacts(), and runBrowserAudit()"
+                "MCP server tools: complaint.create_identity, complaint.list_intake_questions, complaint.list_claim_elements, complaint.start_session, complaint.submit_intake, complaint.save_evidence, complaint.review_case, complaint.build_mediator_prompt, complaint.get_workflow_capabilities, complaint.generate_complaint, complaint.update_draft, complaint.export_complaint_packet, complaint.export_complaint_markdown, complaint.export_complaint_pdf, complaint.analyze_complaint_output, complaint.review_generated_exports, complaint.update_case_synopsis, complaint.reset_session, complaint.review_ui, complaint.optimize_ui, complaint.run_browser_audit\n"
+                "Browser SDK: window.ComplaintMcpSdk.ComplaintMcpClient with bootstrapWorkspace(), getOrCreateDid(), callTool(), exportComplaintPacket(), exportComplaintMarkdown(), exportComplaintPdf(), analyzeComplaintOutput(), reviewGeneratedExports(), reviewUiArtifacts(), optimizeUiArtifacts(), and runBrowserAudit()"
             ),
             "Current workspace HTML:",
             workspace_html,
@@ -253,6 +257,10 @@ def build_ui_ux_review_prompt(
                 "Under `Actor Journey Findings`, explicitly state whether a user can complete intake, save a shared synopsis for the mediator path, add testimony, upload or attach evidence, review claim support, generate a complaint, and revise the final draft from the shared MCP SDK-driven workspace."
             ),
             (
+                "Under `Actor Journey Findings`, explicitly say whether the visible claim type, draft strategy, and exported complaint filing quality remain aligned, "
+                "or whether the UI is allowing users to generate the wrong complaint shape without realizing it."
+            ),
+            (
                 "Under `Actor Journey Findings`, explicitly flag any button, tab, link, or MCP invocation path that appears broken, misleading, duplicated, or disconnected from the actual complaint-generation workflow."
             ),
             (
@@ -263,6 +271,9 @@ def build_ui_ux_review_prompt(
             ),
             (
                 "If exported complaint markdown or PDF artifacts are present, critique whether the final complaint output is coherent, filing-shaped, and consistent with what the UI promised the user during intake, review, and draft generation."
+            ),
+            (
+                "If complaint-output artifacts include claim-type alignment data, explicitly judge whether the UI let the selected claim type drift into the wrong complaint heading, wrong count heading, or a generic pleading shape."
             ),
             (
                 "If complaint-output-informed UI suggestions are present, use them to propose concrete changes to buttons, validation, warnings, panel hierarchy, and handoff copy that would make the generated complaint stronger before export."

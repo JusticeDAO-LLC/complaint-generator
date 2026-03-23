@@ -394,7 +394,7 @@ test.describe('website surface navigation', () => {
     await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
     await page.locator('#generate-draft-button').click();
 
-    await expect(page.locator('#workspace-status')).toContainText(/Complaint draft generated from intake and evidence/i);
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint draft generated through the llm_router formal complaint path/i);
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint against Acme Corporation/i);
     await expect(page.locator('#feature-walkthrough-list')).toContainText(/A complaint draft exists and can be revised directly/i);
     await page.locator('#export-packet-button').click();

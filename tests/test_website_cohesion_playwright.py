@@ -1027,6 +1027,16 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('packet-export-summary').innerText.includes('true')"
             )
+            page.click("#analyze-complaint-output-button")
+            page.wait_for_function(
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('claim_type_alignment_score')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('claim-alignment-preview').innerText.includes('claim_type_alignment_score')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('claim-alignment-preview').innerText.toLowerCase().includes('verdict')"
+            )
 
             page.goto(f"{base_url}/claim-support-review?claim_type=retaliation&workspace_user_id={workspace_user_id}")
             page.wait_for_function(
@@ -1397,10 +1407,10 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.fill("#requested-relief", "Back pay\nCompensatory damages\nInjunctive relief")
             page.click("#generate-draft-button")
             page.wait_for_function(
-                "() => document.getElementById('draft-preview').innerText.trim().length > 80"
+                "() => document.getElementById('draft-body').value.trim().length > 80"
             )
             page.wait_for_function(
-                "() => document.getElementById('draft-body').value.trim().length > 80"
+                "() => document.getElementById('draft-generation-meta').innerText.toLowerCase().includes('draft strategy:')"
             )
             page.wait_for_function(
                 "() => document.getElementById('draft-preview').innerText.includes('PRAYER FOR RELIEF')"
