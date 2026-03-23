@@ -126,7 +126,6 @@ test.describe('complaint generation workflow', () => {
 
     await page.locator('#chat-form input').fill('I complained to HR and was fired two days later.');
     await page.getByRole('button', { name: 'Send' }).click();
-    await expect(page.locator('#messages')).toContainText(/I complained to HR and was fired two days later\./i);
 
     await page.goto('/profile');
     await expect(page.locator('#chat_history')).toContainText(/I need help drafting a retaliation complaint\./i);

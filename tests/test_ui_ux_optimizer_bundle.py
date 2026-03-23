@@ -188,3 +188,4 @@ def test_run_agentic_ui_ux_feedback_loop_revalidates_and_stops_when_reviews_stab
     assert result["rounds_executed"] == 2
     assert result["stop_reason"] == "validation_review_stable"
     assert result["cycles"][0]["optimizer_result"]["changed_files"]
+    assert "actor_critic_summary" in result

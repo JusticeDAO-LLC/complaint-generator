@@ -914,7 +914,7 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.fill("#requested-relief", "Back pay\nInjunctive relief")
             page.click("#generate-draft-button")
             page.wait_for_function(
-                "() => document.getElementById('draft-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint draft generated from intake and evidence.')"
             )
             draft_text = page.locator("#draft-preview").inner_text()
             assert "Reported discrimination to HR" in draft_text

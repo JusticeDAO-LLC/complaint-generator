@@ -2443,7 +2443,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 });
             }
 
-            container.innerHTML = actions.slice(0, 6).map((action) => `
+            container.innerHTML = actions.slice(0, 7).map((action) => `
                 <div class="quick-action-card">
                     <strong>${escapeHtml(action.label)}</strong>
                     <span>${escapeHtml(action.detail)}</span>
@@ -2835,7 +2835,12 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
 
         async function generateDraft() {
             const requiredQuestions = ['party_name', 'opposing_party', 'protected_activity', 'adverse_action', 'timeline', 'harm'];
+            const savedAnswers = ((workspaceSession || {}).session || {}).intake_answers || {};
             const missingQuestionIds = requiredQuestions.filter((questionId) => {
+                const savedValue = String(savedAnswers[questionId] || '').trim();
+                if (savedValue) {
+                    return false;
+                }
                 const field = document.getElementById(`intake-${questionId}`);
                 return !(field && field.value.trim());
             });

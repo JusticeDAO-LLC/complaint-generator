@@ -105,9 +105,12 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
         "Termination followed immediately after the report.",
         "--source",
         "Inbox export",
+        "--attachment-names",
+        "termination-email.txt|timeline-notes.txt",
     )
     assert evidence_payload["saved"]["kind"] == "document"
     assert evidence_payload["saved"]["title"] == "Termination email"
+    assert evidence_payload["saved"]["attachment_names"] == ["termination-email.txt", "timeline-notes.txt"]
 
     review_payload = _invoke_cli(runner, "review", "--user-id", "cli-user")
     assert review_payload["review"]["claim_type"] == "retaliation"
@@ -201,10 +204,12 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
             "title": "Witness statement",
             "content": "A witness saw the termination happen immediately after the report.",
             "source": "Witness interview",
+            "attachment_names": ["witness-notes.txt"],
         },
     )
     assert evidence_payload["saved"]["title"] == "Witness statement"
     assert evidence_payload["saved"]["kind"] == "testimony"
+    assert evidence_payload["saved"]["attachment_names"] == ["witness-notes.txt"]
 
     review_payload = _call_mcp_tool(service, 4, "complaint.review_case", {"user_id": "mcp-user"})
     assert review_payload["review"]["overview"]["testimony_items"] == 1

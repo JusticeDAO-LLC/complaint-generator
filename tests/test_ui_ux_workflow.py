@@ -64,9 +64,12 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "Required capability audit:" in prompt
     assert "Hidden Or Missing Feature Paths" in prompt
     assert "Stage Findings" in prompt
+    assert "Actor Journey Findings" in prompt
+    assert "Critic Test Obligations" in prompt
     assert "Actor Plan" in prompt
     assert "Critic Verdict" in prompt
     assert "Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`" in prompt
+    assert "save a shared synopsis for the mediator path" in prompt
 
 
 def test_build_ui_ux_review_prompt_uses_default_goals_and_notes_when_not_supplied(tmp_path):

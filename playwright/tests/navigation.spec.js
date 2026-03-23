@@ -233,9 +233,11 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#feature-coverage-list')).toContainText(/Actor\/Critic UI optimizer/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/available/i);
     await expect(page.locator('#feature-walkthrough-list')).toContainText(/1\. Finish intake/i);
-    await expect(page.locator('#feature-walkthrough-list')).toContainText(/4\. Coach testimony with the mediator/i);
-    await expect(page.locator('#feature-walkthrough-list')).toContainText(/6\. Improve the UI with the optimizer/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/2\. Save the mediator brief/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/5\. Coach testimony with the mediator/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/7\. Improve the UI with the optimizer/i);
     await expect(page.locator('#quick-action-grid')).toContainText(/Finish intake/i);
+    await expect(page.locator('#quick-action-grid')).toContainText(/Update the mediator brief/i);
     await expect(page.locator('#quick-action-grid')).toContainText(/Run the actor\/critic optimizer/i);
     await page.locator('#shortcut-optimizer-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Opened UX Audit/i);
@@ -283,10 +285,16 @@ test.describe('website surface navigation', () => {
     await page.locator('#evidence-title').fill('Termination email');
     await page.locator('#evidence-source').fill('Inbox export');
     await page.locator('#evidence-content').fill('The termination followed the HR complaint within two days.');
+    await page.locator('#evidence-attachment').setInputFiles({
+      name: 'termination-email.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Termination email attachment'),
+    });
     await page.locator('#save-evidence-button').click();
 
     await expect(page.locator('#workspace-status')).toContainText(/Evidence saved and support review refreshed/i);
     await expect(page.locator('#evidence-list')).toContainText(/Termination email/i);
+    await expect(page.locator('#evidence-list')).toContainText(/termination-email\.txt/i);
 
     await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#draft-title').fill('Jane Doe v. Acme Corporation Complaint');
@@ -320,6 +328,8 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed/i);
     await expect(page.locator('#ux-review-summary')).toContainText(/Top Risks/i);
+    await expect(page.locator('#ux-review-actor-critic')).toContainText(/Actor journey/i);
+    await expect(page.locator('#ux-review-actor-critic')).toContainText(/Critic obligations/i);
     await expect(page.locator('#ux-review-runs')).toContainText(/Iteration 1/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof/i);
@@ -330,6 +340,7 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/Closed-loop UI\/UX optimization completed/i);
     await expect(page.locator('#ux-review-metadata')).toContainText(/rounds:/i);
+    await expect(page.locator('#ux-review-actor-critic')).toContainText(/Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/Intake/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/The evidence panel still needs stronger claim-element guidance after optimization/i);
     await expect(page.locator('#ux-review-metadata')).toContainText(/stop:/i);
