@@ -1,0 +1,75 @@
+{
+  "case_synopsis": "Jordan Example alleges retaliation after reporting discrimination to HR, with rapid temporal proximity and documentary support.",
+  "claim_type": "retaliation",
+  "created_at": "2026-03-23T22:25:32.505402+00:00",
+  "draft": null,
+  "evidence": {
+    "documents": [
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "The termination email followed within two days of the HR complaint.",
+        "id": "documents-1",
+        "kind": "document",
+        "saved_at": "2026-03-23T22:25:32.516275+00:00",
+        "source": "Inbox export",
+        "title": "Termination email"
+      }
+    ],
+    "testimony": [
+      {
+        "attachment_names": [],
+        "claim_element_id": "protected_activity",
+        "content": "I reported discrimination to HR before my supervisor threatened to fire me.",
+        "id": "testimony-1",
+        "kind": "testimony",
+        "saved_at": "2026-03-23T22:25:32.516577+00:00",
+        "source": "Claimant declaration",
+        "title": "Jordan declaration"
+      }
+    ]
+  },
+  "intake_answers": {
+    "adverse_action": "Was sidelined, threatened with termination, and then terminated",
+    "harm": "Lost wages, benefits, professional standing, and suffered emotional distress",
+    "opposing_party": "Acme Corporation",
+    "party_name": "Jordan Example",
+    "protected_activity": "Reported discrimination to HR and requested corrective action",
+    "timeline": "Reported discrimination on March 8, was threatened on March 9, and terminated on March 10"
+  },
+  "intake_history": [
+    {
+      "answer": "Jordan Example",
+      "captured_at": "2026-03-23T22:25:32.505742+00:00",
+      "question_id": "party_name"
+    },
+    {
+      "answer": "Acme Corporation",
+      "captured_at": "2026-03-23T22:25:32.505745+00:00",
+      "question_id": "opposing_party"
+    },
+    {
+      "answer": "Reported discrimination to HR and requested corrective action",
+      "captured_at": "2026-03-23T22:25:32.505746+00:00",
+      "question_id": "protected_activity"
+    },
+    {
+      "answer": "Was sidelined, threatened with termination, and then terminated",
+      "captured_at": "2026-03-23T22:25:32.505747+00:00",
+      "question_id": "adverse_action"
+    },
+    {
+      "answer": "Reported discrimination on March 8, was threatened on March 9, and terminated on March 10",
+      "captured_at": "2026-03-23T22:25:32.505748+00:00",
+      "question_id": "timeline"
+    },
+    {
+      "answer": "Lost wages, benefits, professional standing, and suffered emotional distress",
+      "captured_at": "2026-03-23T22:25:32.505749+00:00",
+      "question_id": "harm"
+    }
+  ],
+  "ui_readiness": null,
+  "updated_at": "2026-03-23T22:25:32.522626+00:00",
+  "user_id": "demo-output-user"
+}

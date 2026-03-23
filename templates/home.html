@@ -521,6 +521,29 @@
         return false;
     }
 
+    function buildIntakeChatRedirectUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const redirectParams = new URLSearchParams();
+        const userId = String(params.get("user_id") || window.localStorage.getItem('complaintGenerator.did') || '').trim();
+        const caseSynopsis = String(params.get("case_synopsis") || '').trim();
+        const claimType = String(params.get("claim_type") || '').trim();
+        const returnTo = String(params.get("return_to") || '').trim();
+        if (userId) {
+            redirectParams.set('user_id', userId);
+        }
+        if (caseSynopsis) {
+            redirectParams.set('case_synopsis', caseSynopsis);
+        }
+        if (claimType) {
+            redirectParams.set('claim_type', claimType);
+        }
+        if (returnTo) {
+            redirectParams.set('return_to', returnTo);
+        }
+        const query = redirectParams.toString();
+        return query ? `/chat?${query}` : '/chat';
+    }
+
     $(document).ready(function() {
 
 
@@ -530,7 +553,7 @@
             return;
         } else {
             if ("hashed_username" in cookies && "hashed_password" in cookies && "token" in cookies && cookies["hashed_username"] != "None" && cookies["hashed_password"] != "None" && cookies["token"] != "None") {
-                window.location = "/chat";
+                window.location = buildIntakeChatRedirectUrl();
             }
 
         }
@@ -597,7 +620,7 @@
                     return results["results"]["Err"];
                 }
                 if ((results["results"]["hashed_password"].length != 0) && (results["results"]["hashed_username"].length != 0) && (results["results"]["data"].length != 0)) {
-                    window.location.href = "/chat";
+                    window.location.href = buildIntakeChatRedirectUrl();
                     return results["results"];
                 }
             }
@@ -605,7 +628,7 @@
                 show_error(results["Err"]);
                 return results["Err"];
             } else {
-                window.location.href = "/chat";
+                window.location.href = buildIntakeChatRedirectUrl();
             }
         }
 
@@ -652,7 +675,7 @@
                         show_error(response["Err"]);
                         return response;
                     } else {
-                        window.location.href = "/chat";
+                        window.location.href = buildIntakeChatRedirectUrl();
                         return response
                     }
                 }

@@ -157,6 +157,88 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
     }
 
 
+def _fallback_complaint_output_review(export: Dict[str, Any], error: Exception) -> Dict[str, Any]:
+    router_review = dict(export.get("router_export_critic") or {}) if isinstance(export.get("router_export_critic"), dict) else {}
+    missing_formal_sections = [
+        str(item).strip()
+        for item in list(export.get("formal_section_gaps") or [])
+        if str(item).strip()
+    ]
+    issue_findings = [
+        {
+            "severity": "high" if int(export.get("filing_shape_score") or 0) < 75 else "medium",
+            "finding": str(router_review.get("summary") or "Router-backed complaint-output review was unavailable, so the export metadata is being used as the fallback critic.").strip(),
+            "complaint_impact": str(((export.get("release_gate") or {}) if isinstance(export.get("release_gate"), dict) else {}).get("blocking_reason") or "The complaint export may still have filing-shape defects that should remain visible in the UI.").strip(),
+            "ui_implication": "Draft and export surfaces should keep filing-shape warnings visible when router review is unavailable.",
+        }
+    ]
+    ui_suggestions = [
+        dict(item)
+        for item in list(router_review.get("ui_suggestions") or [])
+        if isinstance(item, dict)
+    ]
+    if not ui_suggestions:
+        ui_suggestions = [
+            {
+                "title": "Keep complaint-output warnings visible before download",
+                "target_surface": "draft",
+                "recommendation": str(export.get("ui_suggestions_excerpt") or "Preserve filing-shape warnings, release-gate status, and export guidance whenever router review is unavailable.").strip(),
+                "why_it_matters": "The generated complaint should not look filing-ready if the export metadata already shows unresolved structural gaps.",
+            }
+        ]
+    ui_priority_repairs = [
+        dict(item)
+        for item in list(router_review.get("ui_priority_repairs") or [])
+        if isinstance(item, dict)
+    ]
+    if not ui_priority_repairs and missing_formal_sections:
+        ui_priority_repairs = [
+            {
+                "priority": "high",
+                "target_surface": "draft",
+                "repair": f"Keep {missing_formal_sections[0]} guidance visible before export.",
+                "filing_benefit": "The complaint stays closer to a formal filing even when router critique is temporarily unavailable.",
+            }
+        ]
+    release_gate = dict(export.get("release_gate") or {}) if isinstance(export.get("release_gate"), dict) else {}
+    critic_gate = dict(router_review.get("critic_gate") or {}) if isinstance(router_review.get("critic_gate"), dict) else {}
+    if not critic_gate:
+        critic_gate = {
+            "verdict": str(release_gate.get("verdict") or ("warning" if missing_formal_sections else "pass")).strip() or "warning",
+            "blocking_reason": str(release_gate.get("blocking_reason") or str(error) or "Router-backed complaint review was unavailable.").strip(),
+            "required_repairs": list(release_gate.get("required_repairs") or []) if isinstance(release_gate.get("required_repairs"), list) else [],
+        }
+    summary = str(router_review.get("summary") or "Complaint export review used artifact metadata fallback because router-backed critique was unavailable.").strip()
+    actor_risk_summary = str(router_review.get("actor_risk_summary") or critic_gate.get("blocking_reason") or "A complainant could mistake the export for a filing-ready complaint while router-backed QA is offline.").strip()
+    return {
+        "backend": {
+            "id": "complaint-output-review-fallback",
+            "provider": "artifact_metadata",
+            "model": "deterministic-fallback",
+            "strategy": "artifact_metadata_fallback",
+            "fallback_from": "llm_router",
+            "error": str(error),
+        },
+        "review": {
+            "summary": summary,
+            "filing_shape_score": int(export.get("filing_shape_score") or 0),
+            "claim_type_alignment_score": int(export.get("claim_type_alignment_score") or 0),
+            "strengths": [
+                str(item).strip()
+                for item in list(router_review.get("strengths") or [])
+                if str(item).strip()
+            ],
+            "missing_formal_sections": missing_formal_sections,
+            "issues": issue_findings,
+            "ui_suggestions": ui_suggestions,
+            "ui_priority_repairs": ui_priority_repairs,
+            "actor_risk_summary": actor_risk_summary,
+            "critic_gate": critic_gate,
+            "raw_response": str(error),
+        },
+    }
+
+
 def review_complaint_export_artifacts(
     artifact_metadata: Iterable[Dict[str, Any]],
     *,
@@ -188,17 +270,20 @@ def review_complaint_export_artifacts(
         markdown_text = str(export.get("markdown_excerpt") or export.get("text_excerpt") or "").strip()
         if not markdown_text:
             continue
-        review_payload = review_complaint_output_with_llm_router(
-            markdown_text,
-            claim_type=str(export.get("claim_type") or "").strip() or None,
-            claim_guidance=None,
-            synopsis=str(export.get("case_synopsis") or "").strip() or None,
-            provider=provider,
-            model=model,
-            config_path=config_path,
-            backend_id=backend_id,
-            notes=notes,
-        )
+        try:
+            review_payload = review_complaint_output_with_llm_router(
+                markdown_text,
+                claim_type=str(export.get("claim_type") or "").strip() or None,
+                claim_guidance=None,
+                synopsis=str(export.get("case_synopsis") or "").strip() or None,
+                provider=provider,
+                model=model,
+                config_path=config_path,
+                backend_id=backend_id,
+                notes=notes,
+            )
+        except Exception as error:
+            review_payload = _fallback_complaint_output_review(export, error)
         review = dict(review_payload.get("review") or {})
         filing_shape_scores.append(int(review.get("filing_shape_score") or 0))
         alignment_scores.append(int(review.get("claim_type_alignment_score") or 0))

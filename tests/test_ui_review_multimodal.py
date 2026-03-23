@@ -7,7 +7,7 @@ import pytest
 from applications import ui_review as ui_review_module
 
 
-pytestmark = [pytest.mark.no_auto_network]
+pytestmark = [pytest.mark.no_auto_network, pytest.mark.no_auto_heavy]
 
 
 def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path: Path):
@@ -247,3 +247,42 @@ def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatc
     assert report["aggregate"]["critic_gates"][0]["verdict"] == "warning"
     assert report["aggregate"]["optimizer_repair_brief"]["top_formal_section_gaps"] == ["signature_block"]
     assert report["aggregate"]["optimizer_repair_brief"]["recommended_surface_targets"] == ["draft"]
+
+
+def test_review_complaint_export_artifacts_falls_back_to_artifact_metadata_when_router_review_fails(monkeypatch):
+    artifact_metadata = [
+        {
+            "artifact_type": "complaint_export",
+            "claim_type": "retaliation",
+            "draft_strategy": "llm_router",
+            "markdown_filename": "complaint.md",
+            "pdf_filename": "complaint.pdf",
+            "markdown_excerpt": "IN THE UNITED STATES DISTRICT COURT\n\nCOMPLAINT FOR RETALIATION",
+            "filing_shape_score": 71,
+            "claim_type_alignment_score": 86,
+            "formal_section_gaps": ["signature_block", "claim_count"],
+            "release_gate": {
+                "verdict": "warning",
+                "blocking_reason": "Signature posture remains incomplete.",
+                "required_repairs": ["Preserve signature guidance before export."],
+            },
+            "ui_suggestions_excerpt": "Keep filing-shape warnings visible before export.",
+        }
+    ]
+
+    def failing_review(markdown_text, **kwargs):
+        assert "COMPLAINT FOR RETALIATION" in markdown_text
+        raise Exception("llm_router_error: Accelerate not available, using local fallback")
+
+    monkeypatch.setattr(ui_review_module, "review_complaint_output_with_llm_router", failing_review)
+
+    report = ui_review_module.review_complaint_export_artifacts(artifact_metadata)
+
+    assert report["artifact_count"] == 1
+    assert report["reviews"][0]["backend"]["strategy"] == "artifact_metadata_fallback"
+    assert report["reviews"][0]["backend"]["fallback_from"] == "llm_router"
+    assert report["aggregate"]["average_filing_shape_score"] == 71
+    assert report["aggregate"]["average_claim_type_alignment_score"] == 86
+    assert report["aggregate"]["missing_formal_sections"] == ["claim_count", "signature_block"]
+    assert report["aggregate"]["critic_gates"][0]["verdict"] == "warning"
+    assert report["aggregate"]["ui_priority_repairs"][0]["target_surface"] == "draft"

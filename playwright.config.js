@@ -15,7 +15,7 @@ module.exports = defineConfig({
   webServer: {
     command: 'node ./playwright/server.js',
     url: 'http://localhost:19000/health',
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });

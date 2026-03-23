@@ -2571,6 +2571,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             if (outputAnalysis) {
                 const uiFeedback = outputAnalysis.ui_feedback || outputAnalysis;
                 const releaseGate = uiFeedback.release_gate || {};
+                const formalDiagnostics = uiFeedback.formal_diagnostics || {};
                 const releaseGateSummary = releaseGate.verdict
                     ? [
                         `Release gate: ${String(releaseGate.verdict || '').toUpperCase()}`,
@@ -2615,8 +2616,19 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                         finding: String(item.finding || '').trim(),
                         ui_implication: String(item.ui_implication || '').trim(),
                     }));
-                formalDefectsNode.textContent = formalDefects.length
-                    ? JSON.stringify(formalDefects.slice(0, 6), null, 2)
+                const formalDefectPayload = (formalDefects.length || Object.keys(formalDiagnostics).length)
+                    ? {
+                        summary: {
+                            formal_defect_count: Number(formalDiagnostics.formal_defect_count || formalDefects.length || 0),
+                            high_severity_issue_count: Number(formalDiagnostics.high_severity_issue_count || 0),
+                            release_gate_verdict: String(formalDiagnostics.release_gate_verdict || releaseVerdict || 'unknown'),
+                            top_ui_suggestions: Array.isArray(formalDiagnostics.top_ui_suggestions) ? formalDiagnostics.top_ui_suggestions.slice(0, 4) : [],
+                        },
+                        issues: formalDefects.slice(0, 6),
+                    }
+                    : null;
+                formalDefectsNode.textContent = formalDefectPayload
+                    ? JSON.stringify(formalDefectPayload, null, 2)
                     : 'No complaint-output defects recorded yet.';
                 claimAlignmentNode.textContent = JSON.stringify(claimAlignmentSummary, null, 2);
             } else {
@@ -2646,6 +2658,42 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const surfaceTargets = Array.isArray(brief.recommended_surface_targets) ? brief.recommended_surface_targets : [];
             const actorRiskSummary = String(brief.actor_risk_summary || '').trim();
             const criticGateVerdict = String(brief.critic_gate_verdict || '').trim();
+            const repairActions = surfaceTargets.map((target) => {
+                const normalized = String(target || '').toLowerCase();
+                if (normalized.includes('draft')) {
+                    return {
+                        label: 'Open Draft',
+                        tab: 'draft',
+                        focusSelector: '#draft-title',
+                        statusMessage: 'Opened Draft from the optimizer repair brief so filing-shape issues can be corrected.',
+                    };
+                }
+                if (normalized.includes('review')) {
+                    return {
+                        label: 'Open Review',
+                        tab: 'review',
+                        focusSelector: '#support-grid',
+                        statusMessage: 'Opened Review from the optimizer repair brief so support gaps can be checked.',
+                    };
+                }
+                if (normalized.includes('evidence')) {
+                    return {
+                        label: 'Open Evidence',
+                        tab: 'evidence',
+                        focusSelector: '#evidence-title',
+                        statusMessage: 'Opened Evidence from the optimizer repair brief so record support can be strengthened.',
+                    };
+                }
+                if (normalized.includes('integrations')) {
+                    return {
+                        label: 'Open CLI + MCP',
+                        tab: 'integrations',
+                        focusSelector: '#tool-list',
+                        statusMessage: 'Opened CLI + MCP from the optimizer repair brief so the export and tool contract can be inspected.',
+                    };
+                }
+                return null;
+            }).filter(Boolean);
             container.innerHTML = `
                 <div class="item">
                     <strong>Complaint-output optimizer repair brief</strong>
@@ -2658,8 +2706,26 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                     ${formalGaps.length ? `<p><strong>Top formal section gaps:</strong> ${escapeHtml(formalGaps.join(', '))}</p>` : ''}
                     ${surfaceTargets.length ? `<p><strong>Recommended UI surfaces:</strong> ${escapeHtml(surfaceTargets.join(', '))}</p>` : ''}
                     ${issueFindings.length ? `<p><strong>Top filing defects:</strong> ${escapeHtml(issueFindings.join(' | '))}</p>` : ''}
+                    ${repairActions.length ? `<div class="button-row">${repairActions.map((action) => `
+                        <button
+                            class="secondary repair-brief-action"
+                            type="button"
+                            data-target-tab="${escapeHtml(action.tab)}"
+                            data-focus-selector="${escapeHtml(action.focusSelector)}"
+                            data-status-message="${escapeHtml(action.statusMessage)}"
+                        >${escapeHtml(action.label)}</button>
+                    `).join('')}</div>` : ''}
                 </div>
             `;
+            container.querySelectorAll('.repair-brief-action').forEach((button) => {
+                button.addEventListener('click', () => {
+                    jumpToStage(
+                        button.dataset.targetTab || 'ux-review',
+                        button.dataset.focusSelector || '',
+                        button.dataset.statusMessage || 'Opened the requested optimizer repair surface.',
+                    );
+                });
+            });
         }
 
         function syncPacketDownloadState() {

@@ -135,6 +135,19 @@ def _fake_ui_review_report(tmp_path: Path) -> dict:
             "pdf_filenames": ["jordan-example-complaint.pdf"],
             "claim_type_alignment_score": 35,
             "draft_normalizations": ["trimmed_workspace_appendices", "normalized_count_heading"],
+            "formal_diagnostics": {
+                "formal_defect_count": 2,
+                "high_severity_issue_count": 1,
+                "top_formal_findings": [
+                    "The exported complaint still contains internal product or workflow language instead of clean pleading language.",
+                    "The exported complaint does not clearly read like a housing discrimination complaint for the selected claim type.",
+                ],
+                "top_ui_suggestions": [
+                    "Keep the selected claim theory visible through drafting",
+                    "Enforce formal pleading structure",
+                ],
+                "release_gate_verdict": "warning",
+            },
             "ui_suggestions": ["Add stronger export warnings when support gaps remain."],
         },
         "review": {
@@ -3282,6 +3295,10 @@ SUGGESTIONS:
             item.get("title") == "LLM draft cleanup warning"
             for item in bundle.recommended_changes
         )
+        assert any(
+            item.get("title") == "Formal complaint diagnostics warning"
+            for item in bundle.recommended_changes
+        )
 
     def test_ui_patch_task_metadata_includes_complaint_output_suggestions(self, tmp_path):
         optimizer = Optimizer()
@@ -3293,6 +3310,7 @@ SUGGESTIONS:
         task = tasks[0]
         summary = dict(task.metadata.get("report_summary") or {})
         assert "Add stronger export warnings when support gaps remain." in summary.get("complaint_output_suggestions", [])
+        assert summary.get("formal_diagnostics", {}).get("release_gate_verdict") == "warning"
         assert summary.get("claim_type_alignment_score") == 35
         assert "trimmed_workspace_appendices" in summary.get("draft_normalizations", [])
         assert any(

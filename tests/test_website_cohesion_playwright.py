@@ -439,13 +439,14 @@ def _launch_fixture_site():
 
 def _create_account_and_open_chat(page, base_url: str) -> None:
     page.goto(f"{base_url}/home")
-    page.click("#create-form button")
+    if not page.locator("#create-form .username_input").is_visible():
+        page.click("#create-form button")
     page.fill("#create-form .username_input", "ExampleUser1")
     page.fill("#create-form .password_input", "StrongPass1!")
     page.fill("#create-form .password_verify_input", "StrongPass1!")
     page.fill("#create-form .email_input", "jordan@example.com")
     page.click("#create-form button")
-    page.wait_for_url(f"{base_url}/chat")
+    page.wait_for_url(f"{base_url}/chat**")
     page.wait_for_function(
         "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
     )
@@ -454,7 +455,8 @@ def _create_account_and_open_chat(page, base_url: str) -> None:
 def _create_account_from_root_iframe(page) -> None:
     page.click("#homepage-open-intake")
     page.wait_for_url("**/home")
-    page.click("#create-form button")
+    if not page.locator("#create-form .username_input").is_visible():
+        page.click("#create-form button")
     page.fill("#create-form .username_input", "ExampleUser1")
     page.fill("#create-form .password_input", "StrongPass1!")
     page.fill("#create-form .password_verify_input", "StrongPass1!")
@@ -1010,7 +1012,7 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             assert "COMPLAINT FOR RETALIATION" in draft_text
             assert "FACTUAL ALLEGATIONS" in draft_text
             assert "PRAYER FOR RELIEF" in draft_text
-            assert "reported discrimination to hr" in draft_text.lower()
+            assert "reporting discrimination to hr" in draft_text.lower()
             assert "JURY DEMAND" in draft_text
 
             page.fill("#draft-title", "Custom retaliation complaint")
@@ -1610,6 +1612,12 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             )
             page.wait_for_function(
                 "() => document.getElementById('formal-complaint-defects').innerText.trim().length > 10"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-defects').innerText.includes('formal_defect_count')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-defects').innerText.includes('release_gate_verdict')"
             )
             const_workspace_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             page.wait_for_function(

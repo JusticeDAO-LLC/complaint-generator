@@ -128,6 +128,40 @@ def _event_fragment(value: Optional[str], fallback: str) -> str:
     return text
 
 
+def _pleading_activity_fragment(value: Optional[str], fallback: str) -> str:
+    text = _sentence_fragment(value, fallback)
+    replacements = {
+        "reported ": "reporting ",
+        "requested ": "requesting ",
+        "complained about ": "complaining about ",
+        "complained to ": "complaining to ",
+        "opposed ": "opposing ",
+        "filed ": "filing ",
+        "disclosed ": "disclosing ",
+        "asked for ": "asking for ",
+        "sought ": "seeking ",
+    }
+    lowered = text.lower()
+    for old, new in replacements.items():
+        if lowered.startswith(old):
+            text = new + text[len(old):]
+            break
+    clause_replacements = {
+        " and reported ": " and reporting ",
+        " and requested ": " and requesting ",
+        " and complained about ": " and complaining about ",
+        " and complained to ": " and complaining to ",
+        " and opposed ": " and opposing ",
+        " and filed ": " and filing ",
+        " and disclosed ": " and disclosing ",
+        " and asked for ": " and asking for ",
+        " and sought ": " and seeking ",
+    }
+    for old, new in clause_replacements.items():
+        text = re.sub(re.escape(old), new, text, flags=re.IGNORECASE)
+    return text
+
+
 def _pleading_sentence(value: Optional[str], fallback: str) -> str:
     text = _normalize_fragment(value, fallback)
     if not text:
@@ -135,6 +169,72 @@ def _pleading_sentence(value: Optional[str], fallback: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = text[0].upper() + text[1:] if text[:1].isalpha() else text
     return f"{text}."
+
+
+def _timeline_clause_fragment(value: str) -> str:
+    text = _normalize_fragment(value, "the relevant event occurred")
+    lowered = text.lower()
+    replacements = {
+        "report on ": "Plaintiff made the report on ",
+        "complaint on ": "Plaintiff made the complaint on ",
+        "accommodation request on ": "Plaintiff made the accommodation request on ",
+        "requested accommodation in ": "Plaintiff requested an accommodation in ",
+        "reported discrimination on ": "Plaintiff reported discrimination on ",
+        "reported retaliation on ": "Plaintiff reported retaliation on ",
+        "reported wage-and-hour violations on ": "Plaintiff reported wage-and-hour violations on ",
+        "termination on ": "the termination occurred on ",
+        "terminated on ": "Plaintiff was terminated on ",
+        "was terminated on ": "Plaintiff was terminated on ",
+        "threatened on ": "Plaintiff was threatened on ",
+        "was threatened on ": "Plaintiff was threatened on ",
+        "denial notice on ": "the denial notice issued on ",
+        "eviction threat on ": "the eviction threat followed on ",
+        "lost the housing opportunity in ": "the housing opportunity was lost in ",
+    }
+    for old, new in replacements.items():
+        if lowered.startswith(old):
+            return new + text[len(old):]
+    return text
+
+
+def _pleading_timeline_sentence(value: Optional[str], fallback: str) -> str:
+    text = _normalize_fragment(value, fallback)
+    if not text:
+        return _pleading_sentence(fallback, fallback)
+    parts = [part.strip() for part in re.split(r",|\band\b", text) if part.strip()]
+    if not parts:
+        return _pleading_sentence(text, fallback)
+    fragments = [_timeline_clause_fragment(part) for part in parts]
+    if len(fragments) == 1:
+        sentence = fragments[0]
+    elif len(fragments) == 2:
+        sentence = f"{fragments[0]}, and {fragments[1]}"
+    else:
+        sentence = f"{', '.join(fragments[:-1])}, and {fragments[-1]}"
+    sentence = re.sub(r"\s+", " ", sentence).strip()
+    if sentence[:1].isalpha():
+        sentence = sentence[0].upper() + sentence[1:]
+    if not sentence.endswith("."):
+        sentence = f"{sentence}."
+    return sentence
+
+
+def _formalize_relief_item(value: Optional[str]) -> str:
+    text = _normalize_fragment(value, "Other appropriate relief")
+    lowered = text.lower()
+    replacements = {
+        "back pay": "Back pay and lost benefits",
+        "front pay": "Front pay in lieu of reinstatement",
+        "injunctive relief": "Appropriate injunctive and equitable relief",
+        "reinstatement": "Reinstatement to Plaintiff's former position or a comparable position",
+        "attorney fees": "Reasonable attorney's fees and costs",
+        "attorney's fees": "Reasonable attorney's fees and costs",
+        "fees": "Reasonable fees and costs",
+        "declaratory relief": "Declaratory relief as authorized by law",
+        "compensatory damages": "Compensatory damages according to proof",
+        "damages": "Damages according to proof",
+    }
+    return replacements.get(lowered, text)
 
 
 def _slugify_filename(value: str) -> str:
@@ -150,6 +250,14 @@ def _normalize_claim_type(value: Optional[str]) -> str:
 def _claim_type_display_name(value: Optional[str]) -> str:
     normalized = _normalize_claim_type(value)
     return _CLAIM_TYPE_LABELS.get(normalized, normalized.replace("_", " ").title())
+
+
+def _claim_element_label(value: Optional[str]) -> str:
+    normalized = str(value or "").strip()
+    for element in _CLAIM_ELEMENTS:
+        if str(element.get("id") or "").strip() == normalized:
+            return str(element.get("label") or normalized).strip()
+    return normalized.replace("_", " ").strip() or "an identified claim element"
 
 
 def _claim_type_filing_guidance(value: Optional[str]) -> str:
@@ -649,6 +757,10 @@ class ComplaintWorkspaceService:
             answers.get("protected_activity"),
             "engaged in protected activity",
         )
+        pleading_activity = _pleading_activity_fragment(
+            answers.get("protected_activity"),
+            "engaging in protected activity",
+        )
         adverse_action = _event_fragment(
             answers.get("adverse_action"),
             "suffered an adverse action",
@@ -667,31 +779,31 @@ class ComplaintWorkspaceService:
             "Injunctive relief",
         ]
         case_synopsis = self._build_case_synopsis(state)
-        relief_lines = [f"{index}. {item}." for index, item in enumerate(relief, start=1)]
+        relief_lines = [f"{index}. {_formalize_relief_item(item)}." for index, item in enumerate(relief, start=1)]
         support_count = int(overview.get("supported_elements") or 0)
         missing_count = int(overview.get("missing_elements") or 0)
         evidence_count = len(testimony_items) + len(document_items)
         testimony_reference_lines = _unique_preserve_order([
-            f"Plaintiff testimony or witness account titled '{item.get('title') or 'Untitled testimony'}' supports {item.get('claim_element_id') or 'an identified claim element'}."
+            f"Plaintiff expects to present testimony identified as '{item.get('title') or 'Untitled testimony'},' which is presently offered in support of the {_claim_element_label(item.get('claim_element_id')).lower()} element."
             for item in testimony_items[:3]
         ])
         document_reference_lines = _unique_preserve_order([
-            f"Documentary exhibit '{item.get('title') or 'Untitled document'}' is presently tied to {item.get('claim_element_id') or 'an identified claim element'}."
+            f"Plaintiff identifies documentary exhibit '{item.get('title') or 'Untitled document'}' as presently supporting the {_claim_element_label(item.get('claim_element_id')).lower()} element."
             for item in document_items[:3]
         ])
         testimony_summary = "; ".join(_unique_preserve_order([
-            f"{item.get('title') or 'Untitled testimony'} ({item.get('claim_element_id') or 'unmapped'})"
+            f"{item.get('title') or 'Untitled testimony'} ({_claim_element_label(item.get('claim_element_id'))})"
             for item in testimony_items[:3]
         ])) or "No witness or complainant testimony is presently identified"
         document_summary = "; ".join(_unique_preserve_order([
-            f"{item.get('title') or 'Untitled document'} ({item.get('claim_element_id') or 'unmapped'})"
+            f"{item.get('title') or 'Untitled document'} ({_claim_element_label(item.get('claim_element_id'))})"
             for item in document_items[:3]
         ])) or "No documentary exhibits are presently identified"
         complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
         nature_of_action = {
             "retaliation": (
                 f"1. {plaintiff} brings this retaliation complaint against {defendant}. "
-                f"This civil action arises from {defendant}'s retaliatory response after {plaintiff} engaged in protected activity by {_sentence_fragment(answers.get('protected_activity'), 'reporting unlawful conduct')}."
+                f"This civil action arises from {defendant}'s retaliatory response after {plaintiff} engaged in protected activity, including {pleading_activity}."
             ),
             "employment_discrimination": (
                 f"1. {plaintiff} brings this employment discrimination complaint against {defendant}. "
@@ -742,7 +854,7 @@ class ComplaintWorkspaceService:
         jurisdiction_paragraph = {
             "retaliation": (
                 "3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges retaliation for protected conduct "
-                "and seeks relief available for materially adverse acts taken in response to that protected conduct."
+                "and seeks relief for materially adverse acts taken in response to that protected conduct."
             ),
             "employment_discrimination": (
                 "3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges discriminatory employment practices, "
@@ -808,46 +920,46 @@ class ComplaintWorkspaceService:
         )
         factual_allegation_lines = {
             "retaliation": [
-                f"7. Plaintiff engaged in protected activity by {_sentence_fragment(answers.get('protected_activity'), 'reporting unlawful conduct')}.",
-                "8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.",
+                f"7. Plaintiff engaged in protected activity by {pleading_activity}.",
+                "8. That protected activity constituted opposition, reporting, or participation activity that should not have triggered reprisal.",
                 f"9. After that protected activity, Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a materially adverse action')}.",
-                f"10. The relevant chronology is as follows: {_pleading_sentence(answers.get('timeline'), 'The events occurred in close temporal proximity')}",
+                f"10. The relevant chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The events occurred in close temporal proximity')}",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
             "employment_discrimination": [
-                f"7. Plaintiff alleges facts showing discriminatory employment treatment, including protected conduct or circumstances described as {_sentence_fragment(answers.get('protected_activity'), 'protected conduct')}.",
+                f"7. Plaintiff alleges facts showing discriminatory employment treatment, including protected conduct or circumstances such as {pleading_activity}.",
                 f"8. Defendant thereafter took or maintained adverse employment action by which Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered an adverse employment action')}.",
-                f"9. The employment chronology is as follows: {_pleading_sentence(answers.get('timeline'), 'The relevant employment events occurred in close succession')}",
+                f"9. The employment chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The relevant employment events occurred in close succession')}",
                 "10. The present record supports an inference of discriminatory motive, disparate treatment, prohibited bias, retaliation, or other unlawful employment decision-making.",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
             "housing_discrimination": [
-                f"7. Plaintiff alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including conduct described as {_sentence_fragment(answers.get('protected_activity'), 'protected housing activity')}.",
+                f"7. Plaintiff alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including {pleading_activity}.",
                 f"8. Defendant thereafter denied, burdened, interfered with, or threatened housing-related rights or benefits when Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a housing-related deprivation')}.",
-                f"9. The housing-related chronology is as follows: {_pleading_sentence(answers.get('timeline'), 'The housing-related events occurred in close succession')}",
+                f"9. The housing-related chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The housing-related events occurred in close succession')}",
                 "10. The present record supports an inference that Defendant acted in a discriminatory manner, interfered with protected housing rights, or retaliated in connection with protected housing activity.",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
             "due_process_failure": [
                 "7. Plaintiff alleges that Defendant imposed or maintained a deprivation affecting protected rights, interests, status, benefits, or property.",
                 f"8. The challenged action is that Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a deprivation without adequate process')}.",
-                f"9. The chronology is as follows: {_pleading_sentence(answers.get('timeline'), 'The challenged events occurred in close succession')}",
+                f"9. The chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The challenged events occurred in close succession')}",
                 "10. Plaintiff alleges that the deprivation occurred without adequate notice, hearing, review, appeal, or other required procedural protection.",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
             "consumer_protection": [
                 "7. Plaintiff alleges that Defendant engaged in deceptive, misleading, unfair, or otherwise unlawful consumer-facing conduct.",
                 f"8. That conduct included or resulted in adverse action or consequences when Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a consumer-facing injury')}.",
-                f"9. The chronology is as follows: {_pleading_sentence(answers.get('timeline'), 'The relevant consumer-facing events occurred in close succession')}",
+                f"9. The chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The relevant consumer-facing events occurred in close succession')}",
                 "10. Plaintiff alleges that the challenged conduct caused consumer harm, financial loss, or other compensable injury in a transactional or service context.",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
         }.get(
             claim_type,
             [
-                f"7. Plaintiff alleges conduct or circumstances described as {_sentence_fragment(answers.get('protected_activity'), 'protected conduct')}.",
+                f"7. Plaintiff alleges conduct or circumstances including {pleading_activity}.",
                 f"8. Defendant engaged in conduct through which Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered an adverse action')}.",
-                f"9. The chronology is as follows: {_pleading_sentence(answers.get('timeline'), 'The relevant events occurred in close succession')}",
+                f"9. The chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The relevant events occurred in close succession')}",
                 "10. Plaintiff alleges facts supporting a plausible claim for relief.",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
@@ -861,9 +973,9 @@ class ComplaintWorkspaceService:
         }.get(claim_type, f"COUNT I - {claim_label.upper()}")
         claim_paragraphs = {
             "retaliation": [
-                f"Plaintiff engaged in protected activity by {_sentence_fragment(answers.get('protected_activity'), 'reporting unlawful conduct')}, and Defendant knew or should have known of that protected conduct.",
-                f"Defendant thereafter subjected Plaintiff to materially adverse action when Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a materially adverse action')}, under circumstances supporting retaliatory motive and causation.",
-                "The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.",
+                f"Plaintiff engaged in protected activity by {pleading_activity}, and Defendant knew or should have known of that protected conduct.",
+                f"Soon thereafter, Defendant subjected Plaintiff to materially adverse action when Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a materially adverse action')}, under circumstances supporting a causal inference of retaliation.",
+                "The close temporal sequence, evidentiary record, and resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.",
             ],
             "employment_discrimination": [
                 f"Plaintiff was subjected to adverse employment treatment described as {adverse_action}, in a manner that was discriminatory, disparate, or otherwise unlawful.",
@@ -895,9 +1007,9 @@ class ComplaintWorkspaceService:
         )
         evidentiary_lines: List[str] = [
             (
-                f"12. Plaintiff presently relies on {evidence_count} identified evidentiary items. Witness testimony presently identified includes: {testimony_summary}."
+                f"12. Plaintiff presently relies on {evidence_count} identified evidentiary items. The witness proof currently identified includes: {testimony_summary}."
                 if testimony_items
-                else "12. Plaintiff presently relies on the evidentiary materials identified below and anticipates that witness testimony may be supplemented through discovery, amendment, or sworn declarations."
+                else "12. Plaintiff presently relies on the evidentiary materials identified below and anticipates that testimonial proof may be supplemented through discovery, amendment, or sworn declarations."
             ),
             (
                 f"13. Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: {document_summary}."
@@ -905,12 +1017,12 @@ class ComplaintWorkspaceService:
                 else "13. Plaintiff has not yet attached documentary exhibits to this export, but preserves the right to supplement the pleading with records, correspondence, or other supporting materials."
             ),
             (
-                f"14. Based on the information presently available, Plaintiff contends that {support_count} core claim elements are already supported "
+                f"14. Based on the information presently available, Plaintiff contends that the evidentiary record presently supports {support_count} core claim elements "
                 f"and that {missing_count} areas, if any, may be further corroborated through discovery, amendment, or additional evidentiary development."
             ),
             (
                 "15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials form part of the evidentiary basis for this pleading "
-                "and may be supplemented as discovery proceeds."
+                "and may be supplemented, authenticated, or amended as discovery proceeds."
             ),
         ]
         extra_evidence_lines = (testimony_reference_lines + document_reference_lines)[:2]
@@ -923,7 +1035,7 @@ class ComplaintWorkspaceService:
         body = "\n\n".join(
             [
                 "IN THE UNITED STATES DISTRICT COURT",
-                "FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED",
+                "FOR THE APPROPRIATE JUDICIAL DISTRICT",
                 "",
                 f"{plaintiff}, Plaintiff,",
                 "v.",
@@ -934,8 +1046,8 @@ class ComplaintWorkspaceService:
                 "JURY TRIAL DEMANDED",
                 "",
                 (
-                    f"Plaintiff {plaintiff}, by and through this Complaint, alleges upon personal knowledge as to "
-                    "their own acts and upon information and belief as to all other matters, as follows:"
+                    f"Plaintiff {plaintiff}, proceeding pro se, alleges upon personal knowledge as to "
+                    "their own acts and upon information and belief as to all other matters as follows:"
                 ),
                 "",
                 "NATURE OF THE ACTION",
@@ -960,11 +1072,20 @@ class ComplaintWorkspaceService:
                 count_heading,
                 f"{claim_intro_paragraph}. {plaintiff} repeats and realleges the preceding paragraphs as if fully set forth herein.",
                 *[f"{claim_detail_start + index}. {line}" for index, line in enumerate(claim_paragraphs)],
-                f"{claim_detail_start + 3}. Plaintiff has suffered damages and other losses including {_sentence_fragment(answers.get('harm'), 'compensable harm')}.",
-                f"{claim_detail_start + 4}. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.",
+                f"{claim_detail_start + 3}. Plaintiff has sustained damages and other losses including {_sentence_fragment(answers.get('harm'), 'compensable harm')}.",
+                (
+                    f"{claim_detail_start + 4}. By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, "
+                    "equitable relief, and such other relief as the Court deems just and proper."
+                    if claim_type == "retaliation"
+                    else f"{claim_detail_start + 4}. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory."
+                ),
                 "",
                 "PRAYER FOR RELIEF",
-                "Wherefore, Plaintiff requests judgment against Defendant and the following relief:",
+                (
+                    "Wherefore, Plaintiff requests judgment against Defendant for the retaliation alleged herein and respectfully seeks the following relief:"
+                    if claim_type == "retaliation"
+                    else "Wherefore, Plaintiff requests judgment against Defendant and the following relief:"
+                ),
                 "\n".join(relief_lines),
                 "",
                 "JURY DEMAND",
@@ -1086,7 +1207,7 @@ class ComplaintWorkspaceService:
             f"{markers}\n\n"
             "Follow this pleading skeleton and keep the headings exactly as written:\n"
             "IN THE UNITED STATES DISTRICT COURT\n"
-            "FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED\n\n"
+            "FOR THE APPROPRIATE JUDICIAL DISTRICT\n\n"
             "[Plaintiff caption]\n"
             "Civil Action No. ________________\n"
             f"{preferred_heading}\n"
@@ -1713,6 +1834,7 @@ class ComplaintWorkspaceService:
                     [item for item in complaint_issues if str((item or {}).get("severity") or "").lower() == "high"]
                 ),
                 "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
+                "formal_diagnostics": deepcopy(ui_feedback.get("formal_diagnostics") or {}),
                 "artifact_formats": sorted(artifacts.keys()),
             },
         }
@@ -2058,6 +2180,37 @@ class ComplaintWorkspaceService:
                 }
             )
 
+        complaint_output_issue_items = [
+            dict(item)
+            for item in issues
+            if str((item or {}).get("source") or "").startswith("complaint_output")
+        ]
+        high_severity_complaint_items = [
+            dict(item)
+            for item in complaint_output_issue_items
+            if str((item or {}).get("severity") or "").lower() == "high"
+        ]
+        formal_diagnostics = {
+            "formal_defect_count": len(complaint_output_issue_items),
+            "high_severity_issue_count": len(high_severity_complaint_items),
+            "top_formal_findings": [
+                str((item or {}).get("finding") or "").strip()
+                for item in complaint_output_issue_items[:5]
+                if str((item or {}).get("finding") or "").strip()
+            ],
+            "top_ui_implications": [
+                str((item or {}).get("ui_implication") or "").strip()
+                for item in complaint_output_issue_items[:5]
+                if str((item or {}).get("ui_implication") or "").strip()
+            ],
+            "top_ui_suggestions": [
+                str((item or {}).get("title") or "").strip()
+                for item in suggestions[:5]
+                if str((item or {}).get("title") or "").strip()
+            ],
+            "release_gate_verdict": str((release_gate or {}).get("verdict") or "").strip() or "unknown",
+        }
+
         return {
             "summary": (
                 "The exported complaint artifact was analyzed to infer which UI steps may still be too weak, "
@@ -2070,6 +2223,7 @@ class ComplaintWorkspaceService:
             "release_gate": release_gate,
             "issues": issues,
             "ui_suggestions": suggestions,
+            "formal_diagnostics": formal_diagnostics,
             "draft_excerpt": body[:600],
             "complaint_strengths": [
                 f"Supported elements: {int(overview.get('supported_elements') or 0)}",
@@ -2205,6 +2359,7 @@ class ComplaintWorkspaceService:
                 ),
                 "claim_type_alignment": dict(ui_feedback.get("claim_type_alignment") or {}),
                 "release_gate": dict(ui_feedback.get("release_gate") or {}),
+                "formal_diagnostics": dict(ui_feedback.get("formal_diagnostics") or {}),
                 "router_export_critic": dict(((ui_feedback.get("router_review") or {}).get("review") or {})),
                 "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),
             }

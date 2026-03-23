@@ -61,9 +61,9 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('body')).toContainText(/Resume an existing complaint/i);
     await expect(page.locator('body')).toContainText(/Three Simple Steps/i);
     await expect(page.locator('body')).toContainText(/Choose Your Next Step/i);
-    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+    await expect(page.locator('#homepage-nav-workspace')).toBeVisible();
+    await expect(page.locator('#homepage-nav-review')).toBeVisible();
+    await expect(page.locator('#homepage-nav-builder')).toBeVisible();
     await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:|Unavailable/i);
     await expect(page.locator('#cg-app-shell')).toHaveCount(0);
@@ -90,8 +90,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#resume-panel')).toBeVisible();
     await expect(page.locator('#homepage-session-status')).toContainText(/Connecting to the complaint workspace|Shared complaint session loaded/i);
     await expect(page.locator('#homepage-next-step')).toBeVisible();
-    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+    await expect(page.locator('#homepage-nav-workspace')).toBeVisible();
+    await expect(page.locator('#homepage-nav-review')).toBeVisible();
 
     const screenshotPath = testInfo.outputPath('homepage-mobile-overview.png');
     await page.locator('#resume-panel').screenshot({ path: screenshotPath });
@@ -130,32 +130,32 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
     await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:/i);
-    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+    await expect(page.locator('#homepage-nav-workspace')).toBeVisible();
+    await expect(page.locator('#homepage-nav-review')).toBeVisible();
+    await expect(page.locator('#homepage-nav-builder')).toBeVisible();
     await expect(page.locator('body')).toContainText(/Three Simple Steps/i);
     await expect(page.locator('body')).toContainText(/Choose Your Next Step/i);
     await expect(page.locator('#homepage-next-step')).toBeVisible();
     await expect(page.locator('#cg-app-shell')).toHaveCount(0);
 
     await page.goto('/chat');
-    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+    await expect(page.locator('#chat-nav-builder')).toBeVisible();
+    await expect(page.locator('#chat-nav-review')).toBeVisible();
 
     await page.goto('/results');
-    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+    await expect(page.locator('#results-nav-builder')).toBeVisible();
+    await expect(page.locator('#results-nav-review')).toBeVisible();
 
     await page.goto('/document');
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/mlwysiwyg"]').first()).toBeVisible();
+    await expect(page.locator('#builder-nav-review')).toBeVisible();
+    await expect(page.locator('#builder-nav-workspace')).toBeVisible();
+    await expect(page.locator('#cg-app-shell a[href*="/mlwysiwyg"]').first()).toBeVisible();
     await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
 
     await page.goto('/claim-support-review');
-    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/mlwysiwyg"]').first()).toBeVisible();
+    await expect(page.locator('#review-nav-builder')).toBeVisible();
+    await expect(page.locator('#review-nav-workspace')).toBeVisible();
+    await expect(page.locator('#cg-app-shell a[href*="/mlwysiwyg"]').first()).toBeVisible();
     await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
     await expect(page.locator('a[href="/dashboards"]').first()).toBeVisible();
   });
@@ -360,7 +360,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#builder-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
     await expect(page.locator('#builder-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
     await expect(page.locator('#builder-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
-    await page.locator('a[href="/claim-support-review"]').first().click();
+    await page.locator('#builder-nav-review').click();
     await expect(page).toHaveURL(/\/claim-support-review/);
     await expect(page.locator('body')).toContainText(/Operator Review Surface/i);
 
@@ -724,9 +724,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Still building the record|Ready for first draft|Draft in progress/i);
 
     await page.goto(`/home?user_id=${encodeURIComponent(cachedDid)}&case_synopsis=${encodeURIComponent('Jordan Rivera reported patient safety violations before termination.')}`);
-    await expect(page.locator('#intake-nav-chat')).toHaveAttribute('href', new RegExp(`/chat\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
-    await expect(page.locator('#intake-open-review')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
-    await expect(page.locator('#intake-nav-trace')).toHaveAttribute('href', new RegExp(`/document/optimization-trace\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page).toHaveURL(new RegExp(`/chat\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#chat-nav-review')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
 
     await page.goto(`/document/optimization-trace?user_id=${encodeURIComponent(cachedDid)}&claim_type=retaliation&cid=trace-demo-cid`);
     await expect(page.locator('#trace-nav-review')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));

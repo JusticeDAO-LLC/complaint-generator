@@ -237,7 +237,7 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     export_review_payload = review_generated_exports("package-wrapper-user", service=service)
     tools_payload = list_mcp_tools(service=service)
     assert export_payload["packet_summary"]["has_draft"] is True
-    assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
+    assert export_payload["packet_summary"]["artifact_formats"] == ["docx", "json", "markdown", "pdf"]
     assert export_payload["packet_summary"]["draft_strategy"] == "template"
     assert isinstance(export_payload["packet_summary"]["release_gate"], dict)
     assert "verdict" in export_payload["packet_summary"]["release_gate"]

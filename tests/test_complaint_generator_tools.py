@@ -192,7 +192,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert "Address: ____________________" in generate_payload["draft"]["body"]
     assert "Email: ____________________" in generate_payload["draft"]["body"]
     assert "WORKING CASE SYNOPSIS" not in generate_payload["draft"]["body"]
-    assert "by and through this Complaint" in generate_payload["draft"]["body"]
+    assert "proceeding pro se" in generate_payload["draft"]["body"]
     assert "Reported discrimination to HR" in generate_payload["draft"]["case_synopsis"]
 
     update_payload = _invoke_cli(
@@ -392,7 +392,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert "COUNT I - HOUSING DISCRIMINATION" in generate_payload["draft"]["body"]
     assert "PRAYER FOR RELIEF" in generate_payload["draft"]["body"]
     assert "JURY DEMAND" in generate_payload["draft"]["body"]
-    assert "by and through this Complaint" in generate_payload["draft"]["body"]
+    assert "proceeding pro se" in generate_payload["draft"]["body"]
     assert (
         "discriminatory denial, limitation, interference, or retaliation affecting housing rights or benefits"
         in generate_payload["draft"]["body"]
@@ -663,6 +663,7 @@ def test_llm_draft_can_salvage_near_miss_formal_complaint_output(monkeypatch, tm
     assert export_payload["packet_summary"]["draft_strategy"] == "llm_router"
     assert export_payload["packet_summary"]["draft_normalization_count"] >= 1
     assert "trimmed_workspace_appendices" in export_payload["packet_summary"]["draft_normalizations"]
+    assert isinstance(export_payload["packet_summary"]["formal_diagnostics"], dict)
 
 
 def test_llm_draft_normalizes_claim_specific_headings_for_housing_output(monkeypatch, tmp_path):
@@ -777,10 +778,16 @@ def test_template_draft_deduplicates_repeated_evidence_references(tmp_path):
     )
     body = payload["draft"]["body"]
 
-    assert body.count("Termination email (causation)") == 1
-    assert body.count("Documentary exhibit 'Termination email'") == 1
-    assert "16. Documentary exhibit 'Termination email'" in body
+    assert body.count("Termination email (Causal link)") == 1
+    assert body.count("Plaintiff identifies documentary exhibit 'Termination email' as presently supporting the causal link element.") == 1
+    assert "16. Plaintiff identifies documentary exhibit 'Termination email' as presently supporting the causal link element." in body
     assert "17. Jordan Example repeats and realleges" in body
+    assert "including reporting discrimination to HR and requesting corrective action" in body
+
+    export_payload = service.export_complaint_packet("dedupe-user")
+    diagnostics = export_payload["packet_summary"]["formal_diagnostics"]
+    assert diagnostics["formal_defect_count"] >= 0
+    assert diagnostics["release_gate_verdict"] in {"pass", "warning", "blocked"}
 
 
 def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(tmp_path):
@@ -905,6 +912,33 @@ def test_complaint_output_analysis_flags_meta_summary_language_and_missing_numbe
     assert "Keep numbered complaint paragraphs visible in the draft" in suggestion_titles
     assert "Strip workflow language out of the complaint draft" in suggestion_titles
     assert payload["packet_summary"]["formal_defect_count"] >= 2
+
+
+def test_deterministic_retaliation_draft_normalizes_activity_into_pleading_style(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "pleading-style-sessions")
+    service.submit_intake_answers(
+        "pleading-style-user",
+        {
+            "party_name": "Taylor Smith",
+            "opposing_party": "Acme Logistics",
+            "protected_activity": "Reported wage-and-hour violations to HR",
+            "adverse_action": "Was terminated three days later",
+            "timeline": "Report on April 2, termination on April 5",
+            "harm": "Lost wages, benefits, and housing stability",
+        },
+    )
+
+    payload = service.generate_complaint("pleading-style-user")
+    body = payload["draft"]["body"]
+
+    assert "engaged in protected activity by reporting wage-and-hour violations to HR." in body
+    assert "Plaintiff engaged in protected activity by reporting wage-and-hour violations to HR," in body
+    assert "After that protected activity, Plaintiff was terminated three days later." in body
+    assert "The relevant chronology is as follows: Plaintiff made the report on April 2, and the termination occurred on April 5." in body
+    assert "Plaintiff presently relies on the evidentiary materials identified below" in body
+    assert "the evidentiary basis for this pleading" in body
+    assert "By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, equitable relief, and such other relief as the Court deems just and proper." in body
+    assert "Back pay and lost benefits." in body
 
 
 def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path):

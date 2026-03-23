@@ -5,6 +5,7 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import Mock
 
 import pytest
@@ -401,7 +402,11 @@ def test_unified_navigation_connects_primary_pages(site_app: FastAPI):
 
             for label, suffix, expected_text in expect_texts:
                 href = page.get_by_role("link", name=label, exact=True).first.get_attribute("href")
-                assert href == suffix
+                assert href
+                parsed_href = urlparse(href)
+                assert parsed_href.path == suffix
+                if suffix not in {"/", "/home", "/mlwysiwyg"}:
+                    assert parse_qs(parsed_href.query).get("user_id")
                 page.goto(f"{base_url}{href}")
                 page.wait_for_load_state("networkidle")
                 assert expected_text in page.locator("body").inner_text()

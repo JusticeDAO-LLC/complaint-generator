@@ -151,7 +151,8 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#execution-result-card')).toBeVisible();
     expect(recorder.executeRequest.claim_type).toBe('retaliation');
 
-    await page.locator('a[href="/document"]').first().click();
+    await expect(page.locator('#review-nav-builder')).toHaveAttribute('href', /\/document/);
+    await page.locator('#review-nav-builder').click();
     await expect(page).toHaveURL(/\/document/);
     await expect(page.locator('body')).toContainText(/Formal Complaint Builder/i);
   });
@@ -308,14 +309,15 @@ test.describe('complaint generation workflow', () => {
     await installCommonMocks(page, recorder);
 
     await page.goto('/document');
-    await expect(page.locator('a[href="/document/optimization-trace"]').first()).toBeVisible();
-    await page.locator('a[href="/document/optimization-trace"]').first().click();
+    await expect(page.locator('#builder-nav-trace')).toHaveAttribute('href', /\/document\/optimization-trace/);
+    await page.locator('#builder-nav-trace').click();
     await expect(page).toHaveURL(/\/document\/optimization-trace/);
     await expect(page.locator('body')).toContainText(/Optimization Trace Viewer/i);
 
     await page.goto('/claim-support-review');
-    await expect(page.locator('a[href="/document/optimization-trace"]').first()).toBeVisible();
-    await page.locator('a[href="/document"]').first().click();
+    await expect(page.locator('#review-nav-trace')).toHaveAttribute('href', /\/document\/optimization-trace/);
+    await expect(page.locator('#review-nav-builder')).toHaveAttribute('href', /\/document/);
+    await page.locator('#review-nav-builder').click();
     await expect(page).toHaveURL(/\/document/);
 
     await page.getByLabel('District').fill('Northern District of California');
@@ -420,7 +422,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-preview')).toContainText(/JURISDICTION AND VENUE/i);
     await expect(page.locator('#draft-preview')).toContainText(/EVIDENTIARY SUPPORT AND NOTICE/i);
     await expect(page.locator('#draft-preview')).toContainText(/COUNT I - RETALIATION/i);
-    await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Jane Doe alleges retaliation/i);
+    await expect(page.locator('#draft-preview')).not.toContainText(/Working case synopsis:/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Jane Doe v\. Acme Corporation Retaliation Complaint/i);
     await expect(page.locator('#draft-body')).toHaveValue(/Jane Doe brings this retaliation complaint against Acme Corporation\./i);
     await expect(page.locator('#draft-generation-meta')).toContainText(/Draft strategy: llm_router/i);
@@ -506,7 +508,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#homepage-open-intake')).toBeVisible();
     await expect(page.locator('#homepage-open-workspace')).toBeVisible();
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Not ready to draft|Still building the record|Ready for first draft|Draft in progress/i);
-    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
+    await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', /\/workspace/);
 
     await page.goto('/workspace');
     await expect(page).toHaveURL(/\/workspace/);
@@ -563,7 +565,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-preview')).toContainText(/Civil Action No\./i);
     await expect(page.locator('#draft-preview')).toContainText(/EVIDENTIARY SUPPORT AND NOTICE/i);
     await expect(page.locator('#draft-preview')).toContainText(/COUNT I - RETALIATION/i);
-    await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Taylor Smith alleges retaliation/i);
+    await expect(page.locator('#draft-preview')).not.toContainText(/Working case synopsis:/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#draft-contract-preview')).toContainText(/Claim type: Retaliation/i);
     await expect(page.locator('#draft-contract-preview')).toContainText(/Drafting mode: llm_router formal complaint path/i);
@@ -603,9 +605,14 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"export_critic":/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"average_filing_shape_score":\s*[7-9]\d|"average_filing_shape_score":\s*100/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"average_claim_type_alignment_score":\s*[7-9]\d|"average_claim_type_alignment_score":\s*100/i);
+    await page.getByRole('button', { name: 'UX Audit', exact: true }).click();
     await expect(page.locator('#ux-review-repair-brief')).toContainText(/Complaint-output optimizer repair brief/i);
     await expect(page.locator('#ux-review-repair-brief')).toContainText(/critic gate:/i);
     await expect(page.locator('#ux-review-repair-brief')).toContainText(/Recommended UI surfaces:/i);
+    await page.locator('#ux-review-repair-brief').getByRole('button', { name: 'Open Draft' }).click();
+    await expect(page.locator('[data-tab-panel="draft"]')).toHaveClass(/is-active/);
+    await expect(page.locator('#workspace-status')).toContainText(/Opened Draft from the optimizer repair brief/i);
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
 
     const [markdownDownload] = await Promise.all([
       page.waitForEvent('download'),
@@ -616,7 +623,16 @@ test.describe('complaint generation workflow', () => {
     const markdownBody = await fs.readFile(markdownPath, 'utf-8');
     expect(markdownDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.md$/i);
     expect(markdownBody.startsWith('IN THE UNITED STATES DISTRICT COURT')).toBeTruthy();
+    expect(markdownBody).toContain('FOR THE APPROPRIATE JUDICIAL DISTRICT');
     expect(markdownBody).toContain('Taylor Smith brings this retaliation complaint against Acme Logistics.');
+    expect(markdownBody).toContain('Plaintiff Taylor Smith, proceeding pro se, alleges upon personal knowledge');
+    expect(markdownBody).toContain('engaged in protected activity by reporting wage-and-hour violations to HR.');
+    expect(markdownBody).toContain('The relevant chronology is as follows: Plaintiff made the report on April 2, and the termination occurred on April 5.');
+    expect(markdownBody).toContain('Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: Termination timeline email (Causal link).');
+    expect(markdownBody).toContain('Soon thereafter, Defendant subjected Plaintiff to materially adverse action when Plaintiff was terminated three days later, under circumstances supporting a causal inference of retaliation.');
+    expect(markdownBody).toContain('By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, equitable relief, and such other relief as the Court deems just and proper.');
+    expect(markdownBody).toContain('Wherefore, Plaintiff requests judgment against Defendant for the retaliation alleged herein and respectfully seeks the following relief:');
+    expect(markdownBody).toContain("3. Reasonable attorney's fees and costs.");
     expect(markdownBody).toContain('Civil Action No. ________________');
     expect(markdownBody).toContain('EVIDENTIARY SUPPORT AND NOTICE');
     expect(markdownBody).toContain('COUNT I - RETALIATION');
@@ -624,6 +640,7 @@ test.describe('complaint generation workflow', () => {
     expect(markdownBody).toContain('Plaintiff, Pro Se');
     expect(markdownBody).toContain('Address: ____________________');
     expect(markdownBody).toContain('APPENDIX A - CASE SYNOPSIS');
+    expect(markdownBody).not.toContain('WORKING CASE SYNOPSIS');
 
     const [pdfDownload] = await Promise.all([
       page.waitForEvent('download'),

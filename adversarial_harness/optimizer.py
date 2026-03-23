@@ -3610,6 +3610,7 @@ class Optimizer:
         report = dict(ui_review_report or {})
         review = dict(report.get("review") or {})
         complaint_output_feedback = dict(report.get("complaint_output_feedback") or review.get("complaint_output_feedback") or {})
+        formal_diagnostics = dict(complaint_output_feedback.get("formal_diagnostics") or {})
         target_files = [str(path) for path in self._ui_target_files_from_review(report)]
         recommended_changes = [
             dict(item) for item in list(review.get("recommended_changes") or []) if isinstance(item, dict)
@@ -3638,6 +3639,23 @@ class Optimizer:
                     ),
                     "shared_code_path": "applications/complaint_workspace.py",
                     "sdk_considerations": "Preserve MCP SDK draft generation while exposing when LLM outputs required cleanup before export.",
+                }
+            )
+        top_formal_findings = [
+            str(item).strip()
+            for item in list(formal_diagnostics.get("top_formal_findings") or [])
+            if str(item).strip()
+        ]
+        if top_formal_findings:
+            recommended_changes.append(
+                {
+                    "title": "Formal complaint diagnostics warning",
+                    "implementation_notes": (
+                        "The complaint-output analyzer still sees filing-quality defects. "
+                        f"Top findings: {' | '.join(top_formal_findings[:3])}."
+                    ),
+                    "shared_code_path": "templates/workspace.html",
+                    "sdk_considerations": "Keep MCP SDK export and analysis controls visible while highlighting the top complaint defects before download.",
                 }
             )
         alignment_score = int(complaint_output_feedback.get("claim_type_alignment_score") or 0)
@@ -3724,6 +3742,7 @@ class Optimizer:
                     "playwright_followups": list(bundle.playwright_followups or []),
                     "complaint_output_feedback": dict(bundle.complaint_output_feedback or {}),
                     "complaint_output_suggestions": list((bundle.complaint_output_feedback or {}).get("ui_suggestions") or []),
+                    "formal_diagnostics": dict((bundle.complaint_output_feedback or {}).get("formal_diagnostics") or {}),
                     "claim_type_alignment_score": int((bundle.complaint_output_feedback or {}).get("claim_type_alignment_score") or 0),
                     "draft_normalizations": list((bundle.complaint_output_feedback or {}).get("draft_normalizations") or []),
                     "recommended_target_files": list(bundle.target_files or []),
