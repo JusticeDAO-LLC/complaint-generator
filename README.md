@@ -218,7 +218,7 @@ Also available via:
 
 - VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
 - Run and Debug entries with the same three labels
-- Make targets `regression`, `regression-lean`, `regression-review`, and `regression-full`
+- Make targets `package-install-smoke`, `regression`, `regression-lean`, `regression-review`, and `regression-full`
 - GitHub Actions workflow `standard-regression.yml`
 
 The helper now defaults to the browser-inclusive `full` slice so the review, template, document, and Playwright workflow contracts stay gated together.
@@ -230,6 +230,15 @@ The review and full slices also gate the packaged complaint workspace surface:
 - `tests/test_complaint_generator_package.py` validates the importable package API, JSON-RPC tool calls, and fresh-session complaint generation.
 - `tests/test_complaint_generator_package_surface.py` validates the installed console scripts and broader package exports.
 - `tests/test_complaint_generator_site_playwright.py` validates the `/workspace` page using the shared browser MCP SDK against the real FastAPI review surface.
+
+There is also a dedicated install-smoke helper for the installed console scripts:
+
+```bash
+.venv/bin/python -m pip install -e . --no-deps
+.venv/bin/python scripts/run_package_install_smoke.py --json
+```
+
+The standard regression workflow runs that helper in a separate `package-install-smoke` CI job before the broader regression lane.
 
 The repo also includes a separate Node Playwright compatibility suite available through `npm test:e2e`, but that path runs against a stubbed server for browser-level compatibility checks. The Python regression runners remain the authoritative browser gate for the real FastAPI site surface.
 
@@ -244,15 +253,19 @@ Also available via:
 - VS Code task `Claim Support Regression` with `No Browser` and `Require Browser` variants
 - GitHub Actions workflow `claim-support-regression.yml` for the focused claim-support slice
 
+The focused claim-support workflow now also runs the packaged console-script smoke as a separate `package-install-smoke` job before the matrix lanes.
+
 When browser coverage is enabled, the focused slice runs the current template, real-browser, and stub-browser surfaces together so route registration, workspace SDK behavior, and unified navigation stay aligned.
 
 The current focused review/browser coverage is centered on:
 
 - `tests/test_claim_support_review_template.py`
-- `tests/test_review_surface_site_playwright.py`
+- `tests/test_complaint_generator_site_playwright.py`
 - `playwright/tests/navigation.spec.js`
 
 The package/import/entrypoint coverage for the install surface is in `tests/test_complaint_generator_package_surface.py`.
+
+For local editor use, there is also a `Package Install Smoke` VS Code task and matching Run and Debug entry.
 
 If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
 

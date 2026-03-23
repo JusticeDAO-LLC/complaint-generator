@@ -55,6 +55,7 @@ def test_resolve_test_targets_returns_lean_slice_with_temporal_registry_guard():
     targets = cli.resolve_test_targets("lean")
 
     assert targets == cli.REGRESSION_SLICES["lean"]
+    assert "tests/test_run_package_install_smoke_cli.py" in targets
     assert "tests/test_phase_manager_temporal_registry.py" in targets
 
 

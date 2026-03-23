@@ -36,6 +36,11 @@ class DraftUpdateRequest(BaseModel):
     requested_relief: Optional[List[str]] = None
 
 
+class SynopsisUpdateRequest(BaseModel):
+    user_id: Optional[str] = None
+    synopsis: str
+
+
 class McpCallRequest(BaseModel):
     tool_name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
@@ -95,6 +100,10 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             body=request.body,
             requested_relief=request.requested_relief,
         )
+
+    @router.post("/api/complaint-workspace/update-synopsis")
+    async def update_case_synopsis(request: SynopsisUpdateRequest) -> Dict[str, Any]:
+        return workspace.update_case_synopsis(request.user_id, request.synopsis)
 
     @router.post("/api/complaint-workspace/reset")
     async def reset_session(request: Dict[str, Any]) -> Dict[str, Any]:

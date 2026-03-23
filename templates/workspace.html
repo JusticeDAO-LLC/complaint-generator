@@ -6,17 +6,21 @@
     <title>Unified Complaint Workspace</title>
     <style>
         :root {
-            --bg: #efe6d7;
-            --ink: #1c252b;
-            --muted: #5c6b73;
-            --panel: rgba(255, 251, 245, 0.94);
-            --line: rgba(28, 37, 43, 0.12);
-            --accent: #9a3412;
-            --accent-strong: #7c2d12;
-            --accent-soft: #fff0e2;
+            --bg: #e8dcc9;
+            --bg-deep: #f6efe4;
+            --ink: #182229;
+            --muted: #58656e;
+            --panel: rgba(255, 252, 247, 0.95);
+            --line: rgba(24, 34, 41, 0.1);
+            --accent: #8d3d17;
+            --accent-strong: #6f2a0f;
+            --accent-soft: #fce9d8;
+            --accent-wash: rgba(141, 61, 23, 0.08);
+            --panel-strong: rgba(255, 248, 241, 0.98);
             --good: #166534;
             --warn: #b45309;
-            --shadow: 0 20px 50px rgba(28, 37, 43, 0.12);
+            --shadow: 0 20px 50px rgba(24, 34, 41, 0.12);
+            --shadow-strong: 0 28px 64px rgba(24, 34, 41, 0.16);
         }
 
         * {
@@ -27,16 +31,43 @@
             margin: 0;
             color: var(--ink);
             background:
-                radial-gradient(circle at top left, rgba(154, 52, 18, 0.12), transparent 28%),
-                radial-gradient(circle at top right, rgba(255, 237, 213, 0.8), transparent 24%),
-                linear-gradient(180deg, #f6efe5 0%, var(--bg) 100%);
+                radial-gradient(circle at top left, rgba(141, 61, 23, 0.16), transparent 26%),
+                radial-gradient(circle at 85% 0%, rgba(241, 204, 169, 0.72), transparent 22%),
+                linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 100%);
             font-family: "Public Sans", "Segoe UI", sans-serif;
         }
 
         .shell {
             max-width: 1440px;
             margin: 0 auto;
-            padding: 28px 20px 56px;
+            padding: 24px 20px 60px;
+        }
+
+        .topbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .brand-lockup strong,
+        .brand-lockup span {
+            display: block;
+        }
+
+        .brand-lockup strong {
+            font-size: 0.92rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent-strong);
+        }
+
+        .brand-lockup span {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.95rem;
         }
 
         .hero,
@@ -45,28 +76,43 @@
         .tool-card {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 24px;
+            border-radius: 28px;
             box-shadow: var(--shadow);
             backdrop-filter: blur(12px);
         }
 
         .hero {
-            padding: 28px;
-            margin-bottom: 22px;
+            padding: 32px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            inset: auto -80px -90px auto;
+            width: 240px;
+            height: 240px;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(141, 61, 23, 0.14), transparent 68%);
+            pointer-events: none;
         }
 
         .hero h1 {
             margin: 0 0 10px;
-            font-size: clamp(2.4rem, 5vw, 4.6rem);
-            line-height: 0.95;
+            font-size: clamp(2.7rem, 5vw, 5rem);
+            line-height: 0.9;
             letter-spacing: -0.04em;
+            max-width: 10ch;
         }
 
         .hero p {
             margin: 0;
             color: var(--muted);
-            max-width: 64ch;
-            line-height: 1.65;
+            max-width: 70ch;
+            line-height: 1.7;
+            font-size: 1.02rem;
         }
 
         .hero-grid,
@@ -77,21 +123,21 @@
 
         .hero-grid {
             grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
-            margin-top: 22px;
+            margin-top: 24px;
         }
 
         .hero-panel,
         .callout {
-            padding: 18px;
+            padding: 20px;
             border-radius: 22px;
             border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.72);
+            background: rgba(255, 255, 255, 0.76);
         }
 
         .hero-panel h2,
         .callout h3 {
             margin: 0 0 8px;
-            font-size: 1rem;
+            font-size: 1.04rem;
         }
 
         .eyebrow {
@@ -164,6 +210,7 @@
             font: inherit;
             font-weight: 700;
             cursor: pointer;
+            transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
         }
 
         .surface-link:hover,
@@ -171,6 +218,7 @@
         button:hover {
             border-color: rgba(154, 52, 18, 0.36);
             transform: translateY(-1px);
+            box-shadow: 0 10px 22px rgba(141, 61, 23, 0.08);
         }
 
         .tab-button.is-active,
@@ -186,18 +234,21 @@
 
         .layout {
             display: grid;
-            grid-template-columns: 300px minmax(0, 1fr);
-            gap: 22px;
+            grid-template-columns: 320px minmax(0, 1fr);
+            gap: 24px;
             align-items: start;
         }
 
         .panel {
-            padding: 22px;
+            padding: 24px;
         }
 
         .sidebar {
             position: sticky;
             top: 20px;
+            background:
+                linear-gradient(180deg, rgba(255, 249, 243, 0.98), rgba(252, 245, 237, 0.96));
+            box-shadow: var(--shadow-strong);
         }
 
         .summary-stack {
@@ -206,8 +257,140 @@
             margin-top: 18px;
         }
 
+        .progress-shell {
+            margin: 18px 0 22px;
+            padding: 18px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.78);
+        }
+
+        .reassurance-banner {
+            margin: 0 0 18px;
+            padding: 16px 18px;
+            border-radius: 22px;
+            border: 1px solid rgba(22, 101, 52, 0.12);
+            background: linear-gradient(180deg, rgba(240, 253, 244, 0.92), rgba(236, 253, 245, 0.86));
+        }
+
+        .reassurance-banner strong,
+        .reassurance-banner span {
+            display: block;
+        }
+
+        .reassurance-banner span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .progress-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .progress-track {
+            width: 100%;
+            height: 12px;
+            margin-top: 14px;
+            border-radius: 999px;
+            background: rgba(28, 37, 43, 0.08);
+            overflow: hidden;
+        }
+
+        .progress-meter {
+            height: 100%;
+            width: 6%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #9a3412, #d97706);
+            transition: width 200ms ease;
+        }
+
+        .progress-steps {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .progress-step {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .progress-step strong,
+        .progress-step span {
+            display: block;
+        }
+
+        .progress-step span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
         .summary-card {
             padding: 16px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(252, 244, 236, 0.88));
+        }
+
+        .diagnostic-card {
+            padding: 16px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(250, 242, 233, 0.86));
+        }
+
+        .diagnostic-card strong,
+        .diagnostic-card span {
+            display: block;
+        }
+
+        .diagnostic-card span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .diagnostic-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .diagnostic-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .diagnostic-item {
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .diagnostic-item strong,
+        .diagnostic-item span {
+            display: block;
+        }
+
+        .diagnostic-item span {
+            margin-top: 4px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .diagnostic-card textarea {
+            margin-top: 12px;
+            min-height: 130px;
         }
 
         .summary-label {
@@ -231,6 +414,18 @@
 
         .tab-panel.is-active {
             display: block;
+            animation: fadeUp 180ms ease;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .field-grid,
@@ -240,7 +435,10 @@
         .stage-grid,
         .ux-review-grid,
         .action-grid,
-        .guidance-grid {
+        .guidance-grid,
+        .panel-split,
+        .intake-interview,
+        .draft-layout {
             display: grid;
             gap: 14px;
         }
@@ -255,9 +453,143 @@
             margin-bottom: 20px;
         }
 
+        .journey-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin: 0 0 20px;
+        }
+
+        .journey-card {
+            padding: 16px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(251, 244, 236, 0.82));
+        }
+
+        .journey-card strong,
+        .journey-card span {
+            display: block;
+        }
+
+        .journey-card span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .panel-split {
+            grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+            align-items: start;
+        }
+
+        .intake-interview {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .interview-card,
+        .workbench-card,
+        .readiness-board,
+        .draft-sidebar-card {
+            padding: 18px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(251, 244, 236, 0.82));
+        }
+
+        .interview-card strong,
+        .interview-card span,
+        .workbench-card strong,
+        .workbench-card span,
+        .readiness-board strong,
+        .readiness-board span,
+        .draft-sidebar-card strong,
+        .draft-sidebar-card span {
+            display: block;
+        }
+
+        .interview-card span,
+        .workbench-card span,
+        .readiness-board span,
+        .draft-sidebar-card span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .interview-card textarea {
+            margin-top: 12px;
+            min-height: 132px;
+        }
+
+        .workbench-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .metric-card {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .metric-card strong,
+        .metric-card span {
+            display: block;
+        }
+
+        .metric-card span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .evidence-form-shell {
+            padding: 18px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .review-board {
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        .draft-layout {
+            grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.28fr);
+            align-items: start;
+        }
+
+        .draft-preview-shell {
+            margin-top: 14px;
+        }
+
         .guidance-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
             margin-top: 16px;
+        }
+
+        .tab-row {
+            position: sticky;
+            top: 12px;
+            z-index: 2;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 22px;
+            background: rgba(250, 243, 235, 0.94);
+            border: 1px solid var(--line);
+            box-shadow: 0 14px 28px rgba(24, 34, 41, 0.07);
+            backdrop-filter: blur(10px);
+        }
+
+        .tab-button {
+            background: rgba(255, 255, 255, 0.72);
         }
 
         .action-card {
@@ -318,11 +650,21 @@
             line-height: 1.55;
         }
 
+        .soft-note {
+            margin-top: 10px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px dashed rgba(141, 61, 23, 0.22);
+            background: rgba(252, 244, 236, 0.78);
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
         .stage-card {
-            padding: 16px;
+            padding: 18px;
             border-radius: 20px;
             border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.78);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(252, 245, 238, 0.8));
         }
 
         .stage-card strong,
@@ -361,6 +703,16 @@
             color: var(--ink);
             font: inherit;
             padding: 13px 14px;
+            transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: rgba(141, 61, 23, 0.38);
+            box-shadow: 0 0 0 4px rgba(141, 61, 23, 0.08);
+            background: rgba(255, 255, 255, 1);
         }
 
         textarea {
@@ -369,12 +721,32 @@
         }
 
         .tool-card {
-            padding: 16px;
+            padding: 18px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(251, 244, 236, 0.86));
         }
 
         .tool-card h3 {
             margin: 0 0 8px;
             font-size: 1rem;
+        }
+
+        .section-intro {
+            margin: 0 0 16px;
+            padding: 16px 18px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .section-intro strong,
+        .section-intro span {
+            display: block;
+        }
+
+        .section-intro span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.6;
         }
 
         .muted {
@@ -391,7 +763,7 @@
         .item {
             padding: 14px;
             border-radius: 18px;
-            background: rgba(255, 255, 255, 0.72);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(250, 242, 233, 0.78));
             border: 1px solid var(--line);
         }
 
@@ -425,14 +797,141 @@
 
         .status {
             margin-top: 16px;
-            padding: 14px 16px;
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.72);
+            padding: 16px 18px;
+            border-radius: 18px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(251, 244, 237, 0.78));
             border: 1px solid var(--line);
+        }
+
+        .status.is-busy {
+            border-color: rgba(141, 61, 23, 0.22);
+            box-shadow: 0 0 0 4px rgba(141, 61, 23, 0.05);
         }
 
         .review-overview {
             margin-bottom: 16px;
+        }
+
+        .readiness-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .readiness-item {
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .readiness-item strong,
+        .readiness-item span {
+            display: block;
+        }
+
+        .readiness-item span {
+            margin-top: 4px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .feature-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .feature-item {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .feature-item strong,
+        .feature-item span {
+            display: block;
+        }
+
+        .feature-item span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .walkthrough-list {
+            display: grid;
+            gap: 12px;
+            margin: 18px 0 6px;
+        }
+
+        .walkthrough-item {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.78);
+        }
+
+        .walkthrough-item strong,
+        .walkthrough-item span {
+            display: block;
+        }
+
+        .walkthrough-item span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .shortcut-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin: 18px 0 8px;
+        }
+
+        .shortcut-card {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .shortcut-card strong,
+        .shortcut-card span {
+            display: block;
+        }
+
+        .shortcut-card span {
+            margin: 6px 0 12px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .quick-action-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin: 18px 0 8px;
+        }
+
+        .quick-action-card {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.82);
+        }
+
+        .quick-action-card strong,
+        .quick-action-card span {
+            display: block;
+        }
+
+        .quick-action-card span {
+            margin: 6px 0 12px;
+            color: var(--muted);
+            line-height: 1.5;
         }
 
         pre {
@@ -450,7 +949,16 @@
             .support-grid,
             .stage-grid,
             .action-grid,
-            .guidance-grid {
+            .guidance-grid,
+            .progress-steps,
+            .journey-strip,
+            .panel-split,
+            .intake-interview,
+            .review-board,
+            .draft-layout,
+            .workbench-metrics,
+            .shortcut-grid,
+            .quick-action-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -462,6 +970,17 @@
 </head>
 <body>
     <div class="shell">
+        <section class="topbar" aria-label="Workspace identity">
+            <div class="brand-lockup">
+                <strong>Complaint Generator</strong>
+                <span>MCP complaint operations console for intake, evidence, review, and draft generation.</span>
+            </div>
+            <div class="chip-row">
+                <span class="chip good">shared package + CLI + MCP + SDK</span>
+                <span class="chip">operator workflow</span>
+                <span class="chip">playwright-audited UI</span>
+            </div>
+        </section>
         <section class="hero">
             <span class="eyebrow">Complaint Operations Workspace</span>
             <h1>Unified Complaint Workspace</h1>
@@ -532,9 +1051,40 @@
                         <span>The workspace will suggest the next best complaint-handling move once the session is loaded.</span>
                     </div>
                 </div>
+                <div class="summary-stack">
+                    <section class="diagnostic-card" aria-label="Case framing">
+                        <div class="diagnostic-header">
+                            <strong id="case-theory-title">Case framing is loading…</strong>
+                            <span class="chip" id="case-confidence-chip">confidence: pending</span>
+                        </div>
+                        <span id="case-theory-summary">The workspace will summarize the complaint theory once intake answers are available.</span>
+                        <div class="soft-note" id="case-theory-detail">This summary is meant to help the operator orient quickly. It does not replace the underlying intake record.</div>
+                        <label for="case-synopsis">Working case synopsis</label>
+                        <textarea id="case-synopsis" placeholder="Summarize the complaint theory, the strongest facts, and the biggest remaining uncertainty."></textarea>
+                        <div class="button-row">
+                            <button class="primary" id="save-synopsis-button" type="button">Save Shared Synopsis</button>
+                            <button class="secondary" id="refresh-synopsis-button" type="button">Refresh from Case Facts</button>
+                        </div>
+                    </section>
+                    <section class="diagnostic-card" aria-label="Case blockers">
+                        <strong>Blockers and recommendations</strong>
+                        <span>Use this list to spot what would most improve the complaint before relying on the current draft.</span>
+                        <div class="diagnostic-list" id="blocker-list">
+                            <div class="diagnostic-item">
+                                <strong>Loading case blockers…</strong>
+                                <span>The workspace will identify the next factual or evidentiary constraints after the shared session loads.</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
             </aside>
 
             <main class="panel">
+                <section class="reassurance-banner" aria-label="Workflow reassurance">
+                    <strong id="reassurance-title">The workspace will guide one step at a time.</strong>
+                    <span id="reassurance-detail">You do not need every fact immediately. Start with the clearest version of the story, then use evidence and review to strengthen it.</span>
+                </section>
+
                 <div class="stage-grid" aria-label="Complaint workflow summary">
                     <div class="stage-card">
                         <strong id="workflow-stage-chip">Loading stage…</strong>
@@ -549,6 +1099,108 @@
                         <span id="workflow-draft-guidance">A draft will become more reliable as each supported element has intake or evidence behind it.</span>
                     </div>
                 </div>
+
+                <section class="progress-shell" aria-label="Complaint progress">
+                    <div class="progress-header">
+                        <div>
+                            <strong id="progress-title">Case progress is loading</strong>
+                            <div class="muted" id="progress-detail">The workspace will estimate how far the complaint has moved from intake toward a usable draft.</div>
+                        </div>
+                        <div class="chip-row">
+                            <span class="chip good" id="progress-percent-chip">0% ready</span>
+                            <span class="chip" id="progress-phase-chip">phase: loading</span>
+                        </div>
+                    </div>
+                    <div class="progress-track" aria-hidden="true">
+                        <div class="progress-meter" id="progress-meter"></div>
+                    </div>
+                    <div class="progress-steps">
+                        <div class="progress-step">
+                            <strong>1. Intake</strong>
+                            <span id="progress-step-intake">Collect the core story and timeline.</span>
+                        </div>
+                        <div class="progress-step">
+                            <strong>2. Evidence</strong>
+                            <span id="progress-step-evidence">Attach support to the most important gaps.</span>
+                        </div>
+                        <div class="progress-step">
+                            <strong>3. Review</strong>
+                            <span id="progress-step-review">Check what is supported and what is still thin.</span>
+                        </div>
+                        <div class="progress-step">
+                            <strong>4. Draft</strong>
+                            <span id="progress-step-draft">Generate a draft when the theory feels coherent.</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="journey-strip" aria-label="What each stage is for">
+                    <div class="journey-card">
+                        <strong>Tell the story</strong>
+                        <span>Use Intake to capture the core events in plain language before worrying about perfect phrasing.</span>
+                    </div>
+                    <div class="journey-card">
+                        <strong>Anchor the record</strong>
+                        <span>Use Evidence to connect documents or witness information to the exact issues that still need support.</span>
+                    </div>
+                    <div class="journey-card">
+                        <strong>Check the gaps</strong>
+                        <span>Use Review to see what is already supported and what still feels thin or uncertain.</span>
+                    </div>
+                    <div class="journey-card">
+                        <strong>Shape the filing</strong>
+                        <span>Use Draft when the complaint theory is coherent enough to turn into a usable filing document.</span>
+                    </div>
+                </section>
+
+                <section class="section-intro" aria-label="Full workflow walkthrough">
+                    <strong>Use the full complaint workflow without guessing</strong>
+                    <span>This checklist tracks whether the current case can move through intake, evidence, support review, draft editing, and adversarial UX optimization. Each step stays tied to the same DID-backed session and MCP SDK tool path.</span>
+                    <div class="walkthrough-list" id="feature-walkthrough-list"></div>
+                </section>
+
+                <section class="section-intro" aria-label="Workspace shortcuts">
+                    <strong>Jump straight to the right tool</strong>
+                    <span>These shortcuts take the user directly to the feature they need next, including the adversarial optimizer controls, without making them decode the workspace layout first.</span>
+                    <div class="shortcut-grid">
+                        <div class="shortcut-card">
+                            <strong>Capture the story</strong>
+                            <span>Go directly to intake and focus the first question field.</span>
+                            <button class="secondary" id="shortcut-intake-button" type="button">Open Intake</button>
+                        </div>
+                        <div class="shortcut-card">
+                            <strong>Add support</strong>
+                            <span>Jump to evidence collection and attach testimony or documents to claim elements.</span>
+                            <button class="secondary" id="shortcut-evidence-button" type="button">Open Evidence</button>
+                        </div>
+                        <div class="shortcut-card">
+                            <strong>Check proof gaps</strong>
+                            <span>Open support review to see which elements still need corroboration.</span>
+                            <button class="secondary" id="shortcut-review-button" type="button">Open Review</button>
+                        </div>
+                        <div class="shortcut-card">
+                            <strong>Shape the filing</strong>
+                            <span>Jump straight to the draft editor when the theory is coherent enough to generate.</span>
+                            <button class="secondary" id="shortcut-draft-button" type="button">Open Draft</button>
+                        </div>
+                        <div class="shortcut-card">
+                            <strong>Inspect tool access</strong>
+                            <span>See the package, CLI, MCP, and SDK surfaces that back the website.</span>
+                            <button class="secondary" id="shortcut-tools-button" type="button">Open CLI + MCP</button>
+                        </div>
+                        <div class="shortcut-card">
+                            <strong>Improve the UX</strong>
+                            <span>Open the adversarial optimizer controls and run iterative or closed-loop UI improvement.</span>
+                            <button class="secondary" id="shortcut-optimizer-button" type="button">Open UX Audit</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="section-intro" aria-label="Recommended quick actions">
+                    <strong>Recommended quick actions</strong>
+                    <span>These actions adapt to the current complaint state so the user can immediately do the most helpful next thing from the main screen.</span>
+                    <div class="quick-action-grid" id="quick-action-grid"></div>
+                </section>
 
                 <div class="action-grid">
                     <section class="action-card" aria-label="Next best action">
@@ -588,139 +1240,219 @@
                     <button class="tab-button" data-tab-target="review" type="button">Review</button>
                     <button class="tab-button" data-tab-target="draft" type="button">Draft</button>
                     <button class="tab-button" data-tab-target="integrations" type="button">CLI + MCP</button>
-                    <button class="tab-button" data-tab-target="ux-review" type="button">UX Review</button>
+                    <button class="tab-button" data-tab-target="ux-review" type="button">UX Audit</button>
                 </div>
 
                 <section class="tab-panel is-active" data-tab-panel="intake">
                     <h2>Intake Questions</h2>
                     <p class="muted">Capture the facts once, then reuse them everywhere else in the workflow.</p>
-                    <div class="callout">
-                        <h3>Start with the story the complainant can tell clearly today</h3>
-                        <p class="muted">Use plain language. If dates or exact wording are uncertain, capture the best current version and come back with corroboration in the Evidence stage.</p>
+                    <div class="section-intro">
+                        <strong>What to do here</strong>
+                        <span>Focus on who was involved, what happened, when it happened, and what harm followed. If the exact date or wording is uncertain, save the best current version and improve it later.</span>
                     </div>
-                    <div class="guidance-grid" aria-label="Intake guidance">
-                        <div class="guidance-card">
-                            <strong>Ask for sequence</strong>
-                            <span>What happened first, what happened next, and how soon after the protected activity did the harm occur?</span>
+                    <div class="panel-split">
+                        <div>
+                            <div class="callout">
+                                <h3>Start with the story the complainant can tell clearly today</h3>
+                                <p class="muted">Use plain language. If dates or exact wording are uncertain, capture the best current version and come back with corroboration in the Evidence stage.</p>
+                            </div>
+                            <div class="guidance-grid" aria-label="Intake guidance">
+                                <div class="guidance-card">
+                                    <strong>Ask for sequence</strong>
+                                    <span>What happened first, what happened next, and how soon after the protected activity did the harm occur?</span>
+                                </div>
+                                <div class="guidance-card">
+                                    <strong>Name the actors</strong>
+                                    <span>Capture who made the decision, who knew about the complaint, and who communicated the adverse action.</span>
+                                </div>
+                                <div class="guidance-card">
+                                    <strong>Leave room for uncertainty</strong>
+                                    <span>Approximate dates and incomplete recall are acceptable at intake if they are marked for later corroboration.</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="guidance-card">
-                            <strong>Name the actors</strong>
-                            <span>Capture who made the decision, who knew about the complaint, and who communicated the adverse action.</span>
-                        </div>
-                        <div class="guidance-card">
-                            <strong>Leave room for uncertainty</strong>
-                            <span>Approximate dates and incomplete recall are acceptable at intake if they are marked for later corroboration.</span>
-                        </div>
+                        <div class="intake-interview" id="intake-question-grid"></div>
                     </div>
-                    <div class="field-grid" id="intake-question-grid"></div>
                     <div class="button-row">
-                        <button class="primary" id="save-intake-button" type="button">Save Intake Answers</button>
-                        <button class="secondary" id="refresh-session-button" type="button">Refresh Session</button>
+                        <button class="primary" id="save-intake-button" type="button">Save and Continue</button>
+                        <button class="secondary" id="refresh-session-button" type="button">Refresh Case State</button>
                     </div>
+                    <div class="soft-note" id="intake-soft-note">Nothing is filed from this page automatically. Saving here only updates the shared complaint workspace.</div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="evidence">
                     <h2>Evidence Intake</h2>
                     <p class="muted">Collect both testimony and documents, and attach each item to a claim element so support gaps are obvious.</p>
+                    <div class="section-intro">
+                        <strong>What to do here</strong>
+                        <span>Add the records or witness details most likely to strengthen the missing parts of the complaint. Every saved item should answer the question: what does this help prove?</span>
+                    </div>
                     <div class="callout">
                         <h3>What counts as helpful support</h3>
                         <p class="muted">Prefer concrete sources: emails, messages, witness accounts, meeting notes, timeline records, HR filings, performance reviews, and anything that helps anchor protected activity, employer knowledge, causation, or damages.</p>
                     </div>
-                    <div class="guidance-grid" aria-label="Evidence guidance">
-                        <div class="guidance-card">
-                            <strong>Match each item to a claim element</strong>
-                            <span>Do not save evidence without deciding whether it helps prove protected activity, knowledge, causation, adverse action, or harm.</span>
-                        </div>
-                        <div class="guidance-card">
-                            <strong>Summarize why it matters</strong>
-                            <span>Use the details field to explain what the evidence says and how it strengthens the case theory.</span>
-                        </div>
-                        <div class="guidance-card">
-                            <strong>Collect corroboration early</strong>
-                            <span>Strong cases usually need more than the complainant’s own account for timing, motive, or damages.</span>
-                        </div>
-                    </div>
-                    <div class="field-grid">
-                        <div class="field-row">
-                            <div>
-                                <label for="evidence-kind">Evidence Kind</label>
-                                <select id="evidence-kind">
-                                    <option value="testimony">Testimony</option>
-                                    <option value="document">Document</option>
-                                </select>
+                    <div class="panel-split">
+                        <div class="workbench-card">
+                            <strong>Support-gap workbench</strong>
+                            <span>Use this area to decide what kind of proof would move the complaint forward most. If the case already has a timeline but weak corroboration, add documents or witness support before drafting.</span>
+                            <div class="workbench-metrics">
+                                <div class="metric-card">
+                                    <strong>Testimony</strong>
+                                    <span id="workbench-testimony-count">0 saved items</span>
+                                </div>
+                                <div class="metric-card">
+                                    <strong>Documents</strong>
+                                    <span id="workbench-document-count">0 saved items</span>
+                                </div>
+                                <div class="metric-card">
+                                    <strong>Open gaps</strong>
+                                    <span id="workbench-gap-count">0 elements need support</span>
+                                </div>
                             </div>
-                            <div>
-                                <label for="evidence-claim-element">Claim Element</label>
-                                <select id="evidence-claim-element">
-                                    <option value="protected_activity">Protected activity</option>
-                                    <option value="employer_knowledge">Employer knowledge</option>
-                                    <option value="adverse_action">Adverse action</option>
-                                    <option value="causation">Causal link</option>
-                                    <option value="harm">Damages</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="field-row">
-                            <div>
-                                <label for="evidence-title">Title</label>
-                                <input id="evidence-title" type="text" placeholder="HR complaint email">
-                                <div class="helper-text">Use a title the team can recognize later, like “March 3 denial notice” or “Witness statement from Sarah Lee.”</div>
-                            </div>
-                            <div>
-                                <label for="evidence-source">Source</label>
-                                <input id="evidence-source" type="text" placeholder="Inbox export or witness interview">
-                                <div class="helper-text">Record where the evidence came from so it can be authenticated or re-requested.</div>
+                            <div class="guidance-grid" aria-label="Evidence guidance">
+                                <div class="guidance-card">
+                                    <strong>Match each item to a claim element</strong>
+                                    <span>Do not save evidence without deciding whether it helps prove protected activity, knowledge, causation, adverse action, or harm.</span>
+                                </div>
+                                <div class="guidance-card">
+                                    <strong>Summarize why it matters</strong>
+                                    <span>Use the details field to explain what the evidence says and how it strengthens the case theory.</span>
+                                </div>
+                                <div class="guidance-card">
+                                    <strong>Collect corroboration early</strong>
+                                    <span>Strong cases usually need more than the complainant’s own account for timing, motive, or damages.</span>
+                                </div>
                             </div>
                         </div>
-                        <div>
-                            <label for="evidence-content">Evidence Details</label>
-                            <textarea id="evidence-content" placeholder="Summarize what the evidence says and why it matters."></textarea>
+                        <div class="evidence-form-shell">
+                            <div class="field-grid">
+                                <div class="field-row">
+                                    <div>
+                                        <label for="evidence-kind">Evidence Kind</label>
+                                        <select id="evidence-kind">
+                                            <option value="testimony">Testimony</option>
+                                            <option value="document">Document</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="evidence-claim-element">Claim Element</label>
+                                        <select id="evidence-claim-element">
+                                            <option value="protected_activity">Protected activity</option>
+                                            <option value="employer_knowledge">Employer knowledge</option>
+                                            <option value="adverse_action">Adverse action</option>
+                                            <option value="causation">Causal link</option>
+                                            <option value="harm">Damages</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="field-row">
+                                    <div>
+                                        <label for="evidence-title">Title</label>
+                                        <input id="evidence-title" type="text" placeholder="HR complaint email">
+                                        <div class="helper-text">Use a title the team can recognize later, like “March 3 denial notice” or “Witness statement from Sarah Lee.”</div>
+                                    </div>
+                                    <div>
+                                        <label for="evidence-source">Source</label>
+                                        <input id="evidence-source" type="text" placeholder="Inbox export or witness interview">
+                                        <div class="helper-text">Record where the evidence came from so it can be authenticated or re-requested.</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="evidence-content">Evidence Details</label>
+                                    <textarea id="evidence-content" placeholder="Summarize what the evidence says and why it matters."></textarea>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="button-row">
-                        <button class="primary" id="save-evidence-button" type="button">Add Evidence</button>
+                        <button class="primary" id="save-evidence-button" type="button">Save Evidence Item</button>
                     </div>
+                    <div class="soft-note" id="evidence-soft-note">A short, specific summary is usually more useful than pasting an entire record without context.</div>
                     <div class="list" id="evidence-list"></div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="review">
                     <h2>Support Review</h2>
                     <p class="muted">See which claim elements are already supported and which ones still need more evidence before the complaint is finalized.</p>
-                    <div class="review-overview chip-row" id="review-overview"></div>
-                    <div class="support-grid" id="support-grid"></div>
-                    <div class="chip-row" id="recommended-actions"></div>
-                    <div class="list" id="review-gap-list"></div>
+                    <div class="section-intro">
+                        <strong>What to do here</strong>
+                        <span>Use this stage to decide whether the complaint is merely drafted or genuinely supported. Missing elements are the best clue for what to collect next.</span>
+                    </div>
+                    <div class="review-board">
+                        <div>
+                            <div class="review-overview chip-row" id="review-overview"></div>
+                            <div class="section-intro">
+                                <strong>Working case synopsis</strong>
+                                <span id="review-synopsis-preview">The case synopsis will appear here once the workspace has enough information to summarize the theory.</span>
+                            </div>
+                            <div class="support-grid" id="support-grid"></div>
+                            <div class="chip-row" id="recommended-actions"></div>
+                            <div class="list" id="review-gap-list"></div>
+                        </div>
+                        <div class="readiness-board">
+                            <strong>Proof-readiness board</strong>
+                            <span>Use this side column to decide whether to gather more support or move into drafting. The point is not just to create a draft, but to create one that rests on a stable record.</span>
+                            <div class="readiness-list" id="readiness-list"></div>
+                            <div class="soft-note" id="review-soft-note">If the theory is understandable but one element is thin, that does not block progress. It just tells you where the next best support should go.</div>
+                        </div>
+                    </div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="draft">
                     <h2>Draft and Edit</h2>
                     <p class="muted">Generate the complaint from the workspace state, then make final edits without leaving the same flow.</p>
+                    <div class="section-intro">
+                        <strong>What to do here</strong>
+                        <span>Generate a first draft once the timeline, protected activity, adverse action, and harm feel stable. Then refine clarity, tone, and requested relief before treating it as final.</span>
+                    </div>
                     <div class="callout">
                         <h3>Draft when the case theory is coherent</h3>
                         <p class="muted">A usable draft needs a stable plaintiff identity, an opposing party, protected activity, adverse action, timing, and harm. If one of those pieces is weak, use Review and Evidence first.</p>
                     </div>
-                    <div class="field-grid">
-                        <div class="field-row">
-                            <div>
-                                <label for="draft-title">Draft Title</label>
-                                <input id="draft-title" type="text" placeholder="Complaint title">
-                            </div>
-                            <div>
-                                <label for="requested-relief">Requested Relief</label>
-                                <textarea id="requested-relief" placeholder="Back pay&#10;Compensatory damages&#10;Injunctive relief"></textarea>
+                    <div class="draft-layout">
+                        <div class="draft-sidebar-card">
+                            <strong>Filing editor checklist</strong>
+                            <span>Before treating the draft as usable, make sure it names the parties clearly, ties the adverse action to the protected activity, describes the harm, and asks for relief that matches the record.</span>
+                            <div class="soft-note" id="draft-synopsis-preview">The case synopsis will appear here as a drafting reference.</div>
+                            <div class="guidance-grid">
+                                <div class="guidance-card">
+                                    <strong>Title the complaint clearly</strong>
+                                    <span>Use a caption that helps the draft feel like a real filing, not just a placeholder document.</span>
+                                </div>
+                                <div class="guidance-card">
+                                    <strong>Check relief against harm</strong>
+                                    <span>Requested relief should match what the complainant actually lost or needs restored.</span>
+                                </div>
+                                <div class="guidance-card">
+                                    <strong>Preserve supported facts</strong>
+                                    <span>Editing should improve clarity, not remove the supported details that make the complaint credible.</span>
+                                </div>
                             </div>
                         </div>
-                        <div>
-                            <label for="draft-body">Final Complaint Draft</label>
-                            <textarea id="draft-body" placeholder="Generated complaint draft appears here."></textarea>
+                        <div class="field-grid">
+                            <div class="field-row">
+                                <div>
+                                    <label for="draft-title">Draft Title</label>
+                                    <input id="draft-title" type="text" placeholder="Complaint title">
+                                </div>
+                                <div>
+                                    <label for="requested-relief">Requested Relief</label>
+                                    <textarea id="requested-relief" placeholder="Back pay&#10;Compensatory damages&#10;Injunctive relief"></textarea>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="draft-body">Final Complaint Draft</label>
+                                <textarea id="draft-body" placeholder="Generated complaint draft appears here."></textarea>
+                            </div>
                         </div>
                     </div>
                     <div class="button-row">
-                        <button class="primary" id="generate-draft-button" type="button">Generate Complaint</button>
-                        <button class="secondary" id="save-draft-button" type="button">Save Draft Edits</button>
+                        <button class="primary" id="generate-draft-button" type="button">Generate First Draft</button>
+                        <button class="secondary" id="save-draft-button" type="button">Save Draft Changes</button>
                         <button class="secondary" id="reset-session-button" type="button">Reset Workspace</button>
                     </div>
-                    <div class="status"><pre id="draft-preview">No complaint generated yet.</pre></div>
+                    <div class="soft-note" id="draft-soft-note">Treat the first draft as a working document. Review is still the place to decide whether the record behind it feels strong enough.</div>
+                    <div class="status draft-preview-shell"><pre id="draft-preview">No complaint generated yet.</pre></div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="integrations">
@@ -758,15 +1490,24 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                             <h3>Available MCP Tools</h3>
                             <div class="list" id="tool-list"></div>
                         </div>
+                        <div class="tool-card">
+                            <h3>Feature Coverage</h3>
+                            <p class="muted">This panel shows whether the current workspace session can actually use the full complaint-generator flow, including the adversarial optimizer path.</p>
+                            <div class="feature-grid" id="feature-coverage-list"></div>
+                        </div>
                     </div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="ux-review">
                     <h2>Agentic UX Review</h2>
-                    <p class="muted">Use the MCP JavaScript SDK to call the complaint.review_ui tool, run the screenshot audit flow, and review the current workspace for trauma-informed language, clearer next steps, and stronger complaint-handling guidance.</p>
+                    <p class="muted">Use the MCP JavaScript SDK to call the complaint.review_ui tool, run the screenshot audit flow, and review the current workspace for trauma-informed language, clearer next steps, stronger complaint-handling guidance, and whether the full complaint-generator feature set is actually discoverable and usable.</p>
+                    <div class="section-intro">
+                        <strong>What to do here</strong>
+                        <span>Use this stage when you want the system to critique the interface itself. It captures screenshots, reviews the UI, and can run a closed-loop optimization cycle without leaving the shared dashboard.</span>
+                    </div>
                     <div class="callout">
                         <h3>How this loop works</h3>
-                        <p class="muted">The workflow captures Playwright screenshots, sends them through the multimodal router when available, and returns recommendations that keep the package exports, CLI tools, MCP tools, and browser SDK aligned while the UI evolves.</p>
+                        <p class="muted">The workflow captures Playwright screenshots, sends them through the multimodal router when available, and returns recommendations that keep intake, evidence, review, draft, package exports, CLI tools, MCP tools, browser SDK paths, and the adversarial optimizer itself aligned while the UI evolves.</p>
                     </div>
                     <div class="ux-review-grid">
                         <div class="tool-card">
@@ -786,8 +1527,23 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                                     <input id="ux-review-iterations" type="number" min="0" step="1" value="1">
                                 </div>
                                 <div>
+                                    <label for="ux-review-max-rounds">Max Optimization Rounds</label>
+                                    <input id="ux-review-max-rounds" type="number" min="1" step="1" value="2">
+                                </div>
+                            </div>
+                            <div class="field-row">
+                                <div>
                                     <label for="ux-review-pytest-target">Playwright Screenshot Target</label>
-                                    <input id="ux-review-pytest-target" type="text" value="tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout">
+                                    <input id="ux-review-pytest-target" type="text" value="tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey">
+                                </div>
+                                <div>
+                                    <label for="ux-review-method">Optimizer Method</label>
+                                    <select id="ux-review-method">
+                                        <option value="adversarial">adversarial</option>
+                                        <option value="actor_critic">actor_critic</option>
+                                        <option value="test_driven">test_driven</option>
+                                        <option value="chaos">chaos</option>
+                                    </select>
                                 </div>
                             </div>
                             <div class="field-row">
@@ -800,21 +1556,38 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                                     <input id="ux-review-model" type="text" placeholder="Optional model override">
                                 </div>
                             </div>
+                            <div class="field-row">
+                                <div>
+                                    <label for="ux-review-priority">Optimization Priority</label>
+                                    <input id="ux-review-priority" type="number" min="1" max="100" step="1" value="90">
+                                </div>
+                                <div>
+                                    <label for="ux-review-goals">Optimization Goals</label>
+                                    <textarea id="ux-review-goals" placeholder="One goal per line">Make the complaint generator easier for first-time complainants to complete without legal coaching.
+Keep intake, evidence, review, draft, package, CLI, MCP, and JavaScript SDK paths visibly connected as one workflow.
+Expose every major complaint-generator capability with clearer next-step guidance so users can actually use the full system.
+Prefer calmer, trauma-informed language and remove friction that makes evidence capture or draft completion feel risky or confusing.</textarea>
+                                </div>
+                            </div>
                             <div>
                                 <label for="ux-review-notes">Review Notes</label>
-                                <textarea id="ux-review-notes" placeholder="Focus on real complainant clarity, calmer intake wording, evidence capture friction, and stronger use of the MCP browser SDK.">Focus on UI/UX problems that make the complaint workflow harder for real users to complete. Prioritize calmer intake wording, clearer next-step guidance, complaint evidence capture, and the shared MCP JavaScript SDK workflow.</textarea>
+                                <textarea id="ux-review-notes" placeholder="Focus on real complainant clarity, calmer intake wording, evidence capture friction, and stronger use of the MCP browser SDK.">Review the interface as if a stressed first-time complainant and a complaint operator both need to succeed without hand-holding. Actively look for places where the user could miss a required step, misunderstand what evidence helps prove, lose track of progress, or fail to discover package, CLI, MCP, and browser SDK capabilities that should remain part of one coherent complaint workflow.</textarea>
                             </div>
                             <div class="button-row">
                                 <button class="primary" id="run-ux-review-button" type="button">Run Iterative UX Review</button>
                                 <button class="secondary" id="run-ux-snapshot-button" type="button">Run Snapshot Review</button>
+                                <button class="secondary" id="run-ux-closed-loop-button" type="button">Run Closed-Loop Optimization</button>
                             </div>
+                            <div class="helper-text">The default audit walks the landing, chat, profile, workspace intake, evidence, draft, CLI + MCP, review, and builder surfaces before the adversarial optimizer proposes a patch.</div>
                         </div>
                         <div class="tool-card">
                             <h3>Latest Review</h3>
                             <div class="chip-row" id="ux-review-metadata"></div>
                             <div class="status"><pre id="ux-review-summary">No UI review has been run yet.</pre></div>
+                            <div class="list" id="ux-review-stage-findings"></div>
                             <div class="list" id="ux-review-issues"></div>
                             <div class="list" id="ux-review-runs"></div>
+                            <div class="list" id="ux-review-artifacts"></div>
                             <div class="list" id="ux-review-followups"></div>
                         </div>
                     </div>
@@ -831,9 +1604,18 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
         const client = new ComplaintMcpClient();
         let workspaceUserId = new URLSearchParams(window.location.search).get('user_id') || null;
         let workspaceSession = null;
+        let workspaceSessionTools = [];
 
         function setStatus(message) {
-            document.getElementById('workspace-status').textContent = message;
+            const statusNode = document.getElementById('workspace-status');
+            statusNode.textContent = message;
+            statusNode.classList.remove('is-busy');
+        }
+
+        function setBusyStatus(message) {
+            const statusNode = document.getElementById('workspace-status');
+            statusNode.textContent = message;
+            statusNode.classList.add('is-busy');
         }
 
         function escapeHtml(value) {
@@ -845,6 +1627,46 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                 .replace(/'/g, '&#39;');
         }
 
+        function synopsisStorageKey() {
+            return `complaint-workspace-synopsis:${workspaceUserId || 'anonymous'}`;
+        }
+
+        function buildDefaultSynopsis(sessionPayload) {
+            const session = (sessionPayload && sessionPayload.session) || {};
+            const answers = session.intake_answers || {};
+            const review = (sessionPayload && sessionPayload.review) || {};
+            const overview = review.overview || {};
+            const claimType = String(session.claim_type || sessionPayload.claim_type || 'retaliation').replace(/_/g, ' ');
+            const partyName = answers.party_name || 'The complainant';
+            const opposingParty = answers.opposing_party || 'the opposing party';
+            const protectedActivity = answers.protected_activity || 'an identified protected activity';
+            const adverseAction = answers.adverse_action || 'an adverse action';
+            const harm = answers.harm || 'described harm';
+            const timeline = answers.timeline || 'a still-developing timeline';
+            const evidenceCount = (overview.testimony_items || 0) + (overview.document_items || 0);
+            return `${partyName} is pursuing a ${claimType} complaint against ${opposingParty}. The current theory is that ${partyName} ${protectedActivity}, then experienced ${adverseAction}. The reported harm is ${harm}. Timeline posture: ${timeline}. Current support posture: ${overview.supported_elements || 0} supported elements, ${overview.missing_elements || 0} open gaps, ${evidenceCount} saved evidence items.`;
+        }
+
+        function syncSynopsisMirrors(value) {
+            const synopsis = String(value || '').trim();
+            document.getElementById('review-synopsis-preview').textContent = synopsis || 'The case synopsis will appear here once the workspace has enough information to summarize the theory.';
+            document.getElementById('draft-synopsis-preview').textContent = synopsis || 'The case synopsis will appear here as a drafting reference.';
+        }
+
+        function refreshSynopsisEditor(sessionPayload, forceDefault = false) {
+            const synopsisNode = document.getElementById('case-synopsis');
+            const sessionSynopsis = String((sessionPayload && sessionPayload.case_synopsis) || ((sessionPayload && sessionPayload.session) || {}).case_synopsis || '').trim();
+            const stored = window.localStorage.getItem(synopsisStorageKey());
+            const nextValue = forceDefault
+                ? buildDefaultSynopsis(sessionPayload)
+                : (sessionSynopsis || stored || buildDefaultSynopsis(sessionPayload));
+            synopsisNode.value = nextValue;
+            if (nextValue) {
+                window.localStorage.setItem(synopsisStorageKey(), nextValue);
+            }
+            syncSynopsisMirrors(nextValue);
+        }
+
         function activateTab(tabName) {
             document.querySelectorAll('.tab-button').forEach((node) => {
                 node.classList.toggle('is-active', node.dataset.tabTarget === tabName);
@@ -854,12 +1676,106 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             });
         }
 
+        function jumpToStage(tabName, focusSelector, statusMessage) {
+            activateTab(tabName);
+            if (focusSelector) {
+                const node = document.querySelector(focusSelector);
+                if (node && typeof node.focus === 'function') {
+                    node.focus();
+                }
+            }
+            if (statusMessage) {
+                setStatus(statusMessage);
+            }
+        }
+
+        function defaultFocusSelectorForTab(tabName) {
+            const focusMap = {
+                intake: '#intake-party_name',
+                evidence: '#evidence-title',
+                review: '#support-grid',
+                draft: '#draft-title',
+                integrations: '#tool-list',
+                'ux-review': '#ux-review-notes',
+            };
+            return focusMap[tabName] || '';
+        }
+
+        function defaultStatusMessageForTab(tabName) {
+            const statusMap = {
+                intake: 'Opened Intake so the complaint story can be captured.',
+                evidence: 'Opened Evidence so support can be attached to the case theory.',
+                review: 'Opened Review so support gaps can be checked.',
+                draft: 'Opened Draft so the complaint can be generated or refined.',
+                integrations: 'Opened CLI + MCP surfaces for the shared complaint tools.',
+                'ux-review': 'Opened UX Audit so the adversarial optimizer workflow can be used.',
+            };
+            return statusMap[tabName] || 'Opened the requested complaint workflow action.';
+        }
+
+        function buildOptimizerGoalSuggestions(sessionPayload) {
+            const review = sessionPayload.review || {};
+            const overview = review.overview || {};
+            const session = sessionPayload.session || {};
+            const answers = session.intake_answers || {};
+            const goals = [
+                'Keep every complaint feature reachable through the shared MCP SDK.',
+                'Make the complaint workflow easier for a first-time complainant to complete without legal coaching.',
+            ];
+            if (!answers.timeline) {
+                goals.push('Reduce friction around collecting timeline details and exact sequencing.');
+            }
+            if ((overview.missing_elements || 0) > 0) {
+                goals.push('Make support gaps and the next best evidence move more obvious before drafting.');
+            }
+            if (!(session.draft || {}).body) {
+                goals.push('Clarify when the complaint is ready to draft and what still needs support first.');
+            }
+            return goals;
+        }
+
+        function presetEvidenceForGap(sessionPayload, preferredGap) {
+            const review = sessionPayload.review || {};
+            const supportMatrix = review.support_matrix || [];
+            const weakest = preferredGap
+                || supportMatrix.find((item) => !item.supported)
+                || supportMatrix.find((item) => item.label);
+            if (weakest && weakest.id) {
+                const select = document.getElementById('evidence-claim-element');
+                if (select) {
+                    select.value = weakest.id;
+                }
+                const title = document.getElementById('evidence-title');
+                if (title && !title.value.trim()) {
+                    title.value = `${weakest.label} support`;
+                }
+                const content = document.getElementById('evidence-content');
+                if (content && !content.value.trim()) {
+                    content.value = `Add support that helps prove ${weakest.label.toLowerCase()} more directly.`;
+                }
+            }
+        }
+
+        function presetOptimizerFromCaseState(sessionPayload) {
+            const goalsField = document.getElementById('ux-review-goals');
+            const notesField = document.getElementById('ux-review-notes');
+            const review = sessionPayload.review || {};
+            const overview = review.overview || {};
+            const suggestedGoals = buildOptimizerGoalSuggestions(sessionPayload);
+            goalsField.value = suggestedGoals.join('\n');
+            if ((overview.missing_elements || 0) > 0) {
+                notesField.value = 'Focus on making support gaps easier to act on, calming the intake language, and keeping the drafting path visible when evidence is still incomplete.';
+            } else {
+                notesField.value = 'Focus on making the end-to-end complaint workflow feel linear, trustworthy, and easy to use without hiding the MCP SDK-backed tooling.';
+            }
+        }
+
         function renderIntake(sessionPayload) {
             const grid = document.getElementById('intake-question-grid');
             grid.innerHTML = (sessionPayload.questions || []).map((question) => `
-                <div class="tool-card">
-                    <label for="intake-${escapeHtml(question.id)}">${escapeHtml(question.label)}</label>
-                    <div class="muted">${escapeHtml(question.prompt)}</div>
+                <div class="interview-card">
+                    <strong>${escapeHtml(question.label)}</strong>
+                    <span>${escapeHtml(question.prompt)}</span>
                     <textarea id="intake-${escapeHtml(question.id)}" data-question-id="${escapeHtml(question.id)}" placeholder="${escapeHtml(question.placeholder || '')}">${escapeHtml(question.answer || '')}</textarea>
                 </div>
             `).join('');
@@ -867,9 +1783,14 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
 
         function renderEvidence(reviewPayload) {
             const container = document.getElementById('evidence-list');
-            const testimony = (reviewPayload.review && reviewPayload.review.testimony) || [];
-            const documents = (reviewPayload.review && reviewPayload.review.documents) || [];
+            const review = reviewPayload.review || {};
+            const testimony = review.testimony || [];
+            const documents = review.documents || [];
+            const overview = review.overview || {};
             const items = testimony.concat(documents);
+            document.getElementById('workbench-testimony-count').textContent = `${testimony.length} saved items`;
+            document.getElementById('workbench-document-count').textContent = `${documents.length} saved items`;
+            document.getElementById('workbench-gap-count').textContent = `${overview.missing_elements || 0} elements need support`;
             if (!items.length) {
                 container.innerHTML = '<div class="item">No evidence saved yet.</div>';
                 return;
@@ -892,8 +1813,11 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             const recommended = document.getElementById('recommended-actions');
             const reviewOverview = document.getElementById('review-overview');
             const reviewGapList = document.getElementById('review-gap-list');
+            const readinessList = document.getElementById('readiness-list');
             const overview = review.overview || {};
             const missingItems = (review.support_matrix || []).filter((item) => !item.supported);
+            const totalElements = (review.support_matrix || []).length || 0;
+            const supportedElements = overview.supported_elements || 0;
             supportGrid.innerHTML = (review.support_matrix || []).map((item) => `
                 <div class="tool-card">
                     <h3>${escapeHtml(item.label)}</h3>
@@ -919,9 +1843,31 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                     <div class="item">
                         <strong>${escapeHtml(item.label)} still needs support</strong>
                         <div class="muted">Capture more testimony or documents tied to ${escapeHtml(item.label.toLowerCase())} before relying on the generated draft.</div>
+                        <div class="button-row">
+                            <button
+                                class="secondary review-gap-action"
+                                type="button"
+                                data-gap-id="${escapeHtml(item.id)}"
+                                data-gap-label="${escapeHtml(item.label)}"
+                            >Add support for ${escapeHtml(item.label)}</button>
+                        </div>
                     </div>
                 `).join('')
                 : '<div class="item"><strong>Core claim coverage is present.</strong><div class="muted">You can still strengthen the record, but the main elements now have some support.</div></div>';
+            readinessList.innerHTML = `
+                <div class="readiness-item">
+                    <strong>Coverage ratio</strong>
+                    <span>${escapeHtml(String(supportedElements))} of ${escapeHtml(String(totalElements))} tracked elements currently have some support.</span>
+                </div>
+                <div class="readiness-item">
+                    <strong>Best next strengthening move</strong>
+                    <span>${missingItems.length ? 'Collect support for the missing elements before relying heavily on the draft.' : 'The core theory is present; focus on precision, relief, and corroboration quality.'}</span>
+                </div>
+            `;
+            document.getElementById('review-soft-note').textContent = missingItems.length
+                ? 'A missing element is a guide for what to collect next, not a sign that the complaint has failed.'
+                : 'The core theory is holding together. The next pass is about sharpening precision and corroboration quality.';
+            syncSynopsisMirrors(document.getElementById('case-synopsis').value);
         }
 
         function renderDraft(sessionPayload) {
@@ -930,6 +1876,7 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             document.getElementById('requested-relief').value = (draft.requested_relief || []).join('\n');
             document.getElementById('draft-body').value = draft.body || '';
             document.getElementById('draft-preview').textContent = draft.body || 'No complaint generated yet.';
+            syncSynopsisMirrors(document.getElementById('case-synopsis').value);
         }
 
         function renderSidebar(sessionPayload) {
@@ -938,13 +1885,20 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             const overview = review.overview || {};
             const draft = sessionPayload.draft || (sessionPayload.session || {}).draft || null;
             const session = sessionPayload.session || {};
+            const answers = session.intake_answers || {};
+            const supportMatrix = review.support_matrix || [];
             const answeredCount = (sessionPayload.questions || []).filter((question) => question && question.is_answered).length;
+            const totalQuestions = (sessionPayload.questions || []).length || 0;
+            const evidenceCount = (overview.testimony_items || 0) + (overview.document_items || 0);
+            const missingItems = supportMatrix.filter((item) => !item.supported);
             const stageLabel = draft ? 'Draft in progress' : (nextQuestion ? 'Collecting complaint facts' : 'Ready for document drafting');
             const nextActionText = nextQuestion
                 ? `Ask and save: ${nextQuestion.label || nextQuestion.prompt}`
                 : (draft ? 'Review, refine, and export the complaint draft.' : 'Generate a complaint draft from the current record.');
             const actionButton = document.getElementById('action-button');
             const queue = document.getElementById('queue-list');
+            const blockerList = document.getElementById('blocker-list');
+            let readinessPercent = 8;
             let actionTab = 'intake';
             let actionTitle = 'Complete intake before moving on';
             let actionDetail = 'Capture the next unanswered question so the complaint theory has a stable factual base.';
@@ -967,21 +1921,123 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                 actionDetail = 'Check that the final draft still reflects the supported facts, requested relief, and remaining proof gaps.';
             }
 
+            if (totalQuestions > 0) {
+                readinessPercent = Math.max(readinessPercent, Math.round((answeredCount / totalQuestions) * 35));
+            }
+            if ((overview.supported_elements || 0) > 0) {
+                readinessPercent = Math.max(
+                    readinessPercent,
+                    35 + Math.round(((overview.supported_elements || 0) / Math.max((review.support_matrix || []).length || 1, 1)) * 35)
+                );
+            }
+            if (draft) {
+                readinessPercent = Math.max(readinessPercent, 88);
+            }
+            readinessPercent = Math.min(100, readinessPercent);
+
+            const claimType = String(session.claim_type || sessionPayload.claim_type || 'retaliation').replace(/_/g, ' ');
+            const partyName = answers.party_name || 'The complainant';
+            const opposingParty = answers.opposing_party || 'the opposing party';
+            const protectedActivity = answers.protected_activity || 'an identified protected activity';
+            const adverseAction = answers.adverse_action || 'an adverse action';
+            const harm = answers.harm || 'described harm';
+            const timeline = answers.timeline || 'a still-developing timeline';
+            const theorySummary = `${partyName} is building a ${claimType} complaint against ${opposingParty}.`;
+            const theoryDetail = `${partyName} reports ${protectedActivity}, followed by ${adverseAction}, with harm described as ${harm}. Timeline posture: ${timeline}.`;
+            const confidenceLabel = readinessPercent >= 85
+                ? 'confidence: high'
+                : readinessPercent >= 55
+                    ? 'confidence: developing'
+                    : 'confidence: early stage';
+            const blockers = [];
+            if (nextQuestion) {
+                blockers.push({
+                    title: `Answer ${nextQuestion.label || 'the next intake question'}`,
+                    detail: nextQuestion.prompt || 'The next unanswered intake prompt is the clearest way to improve the factual record.',
+                });
+            }
+            if (missingItems.length) {
+                blockers.push({
+                    title: `Support ${missingItems[0].label}`,
+                    detail: `${missingItems.length} claim element${missingItems.length === 1 ? '' : 's'} still need support. Add testimony or documents tied to the weakest element first.`,
+                });
+            }
+            if (!evidenceCount) {
+                blockers.push({
+                    title: 'Add corroborating evidence',
+                    detail: 'No testimony or documents have been saved yet. Even one targeted record can make the complaint easier to trust.',
+                });
+            }
+            if (!draft && !nextQuestion && !missingItems.length) {
+                blockers.push({
+                    title: 'Generate the first draft',
+                    detail: 'The current record looks coherent enough for a first complaint draft. Use the draft stage to shape the filing language.',
+                });
+            }
+            if (draft) {
+                blockers.push({
+                    title: 'Compare the draft to the record',
+                    detail: 'Before treating the complaint as final, make sure the draft still matches the supported facts, requested relief, and any remaining proof gaps.',
+                });
+            }
+            if (!blockers.length) {
+                blockers.push({
+                    title: 'Load the shared complaint session',
+                    detail: 'Once the shared state is available, the workspace will identify the strongest next move automatically.',
+                });
+            }
+
             document.getElementById('next-question-count').textContent = nextQuestion ? '1' : '0';
             document.getElementById('next-question-label').textContent = nextQuestion ? nextQuestion.prompt : 'Intake complete.';
             document.getElementById('supported-count').textContent = String(overview.supported_elements || 0);
             document.getElementById('missing-count-label').textContent = `${overview.missing_elements || 0} need more support`;
-            document.getElementById('evidence-count').textContent = String((overview.testimony_items || 0) + (overview.document_items || 0));
+            document.getElementById('evidence-count').textContent = String(evidenceCount);
             document.getElementById('draft-status').textContent = draft ? `Draft updated ${draft.updated_at || draft.generated_at || ''}` : 'No draft generated yet.';
+            document.getElementById('case-theory-title').textContent = `${partyName} v. ${opposingParty}`;
+            document.getElementById('case-confidence-chip').textContent = confidenceLabel;
+            document.getElementById('case-theory-summary').textContent = theorySummary;
+            document.getElementById('case-theory-detail').textContent = theoryDetail;
+            refreshSynopsisEditor(sessionPayload);
             document.getElementById('workflow-user-id').textContent = `Complainant ID: ${workspaceUserId || session.user_id || 'unknown'}`;
             document.getElementById('workflow-priority-text').textContent = nextActionText;
             document.getElementById('workflow-stage-detail').textContent = `Answered intake questions: ${answeredCount}. Supported elements: ${overview.supported_elements || 0}. Missing elements: ${overview.missing_elements || 0}.`;
             document.getElementById('workflow-stage-chip').textContent = stageLabel;
-            document.getElementById('workflow-stage-summary').textContent = `${answeredCount} intake answers saved, ${(overview.testimony_items || 0) + (overview.document_items || 0)} evidence items collected, ${overview.supported_elements || 0} supported elements.`;
+            document.getElementById('workflow-stage-summary').textContent = `${answeredCount} intake answers saved, ${evidenceCount} evidence items collected, ${overview.supported_elements || 0} supported elements.`;
             document.getElementById('workflow-next-action').textContent = nextActionText;
             document.getElementById('workflow-draft-guidance').textContent = draft
                 ? 'A draft exists. Check support gaps and refine tone, relief, and factual precision before filing.'
                 : 'No complaint draft yet. Use Review to close missing support before generation if possible.';
+            document.getElementById('progress-title').textContent = draft
+                ? 'The complaint is in drafting and refinement mode'
+                : nextQuestion
+                    ? 'The complaint is still in information-gathering mode'
+                    : 'The complaint is ready for a first draft pass';
+            document.getElementById('progress-detail').textContent = `Intake answered: ${answeredCount}/${totalQuestions}. Evidence items: ${evidenceCount}. Supported elements: ${overview.supported_elements || 0}.`;
+            document.getElementById('progress-meter').style.width = `${readinessPercent}%`;
+            document.getElementById('progress-percent-chip').textContent = `${readinessPercent}% ready`;
+            document.getElementById('progress-phase-chip').textContent = `phase: ${stageLabel.toLowerCase()}`;
+            document.getElementById('progress-step-intake').textContent = nextQuestion
+                ? `Still collecting ${nextQuestion.label || 'intake details'}.`
+                : 'The intake questionnaire has been answered.';
+            document.getElementById('progress-step-evidence').textContent = evidenceCount > 0
+                ? `${evidenceCount} evidence items already support the case record.`
+                : 'No supporting evidence has been attached yet.';
+            document.getElementById('progress-step-review').textContent = `${overview.supported_elements || 0} elements supported, ${overview.missing_elements || 0} still need support.`;
+            document.getElementById('progress-step-draft').textContent = draft
+                ? 'A complaint draft exists and can be refined.'
+                : 'No complaint draft exists yet.';
+            document.getElementById('reassurance-title').textContent = nextQuestion
+                ? 'You can move forward without having every detail yet.'
+                : draft
+                    ? 'The complaint is far enough along to refine carefully.'
+                    : 'The story is in place, and the next step is to turn it into a filing draft.';
+            document.getElementById('reassurance-detail').textContent = nextQuestion
+                ? 'Save the best available version of the story now, then come back with evidence or corrections once the complainant has more records.'
+                : (overview.missing_elements || 0) > 0
+                    ? 'The complaint is understandable, but some parts still need stronger support before the filing feels fully grounded.'
+                    : draft
+                        ? 'Use Review and Draft together to make sure the final document matches the supported facts and the requested relief.'
+                        : 'The intake record is coherent enough to generate a first draft, even if you still plan to strengthen corroboration afterward.';
             document.getElementById('action-title').textContent = actionTitle.trim();
             document.getElementById('action-detail').textContent = actionDetail;
             document.getElementById('action-stage-chip').textContent = `stage: ${stageLabel.toLowerCase()}`;
@@ -994,6 +2050,12 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                     : actionTab === 'review'
                         ? 'Go to review'
                         : 'Go to intake';
+            document.getElementById('intake-soft-note').textContent = nextQuestion
+                ? 'Saving here only updates the shared workspace. You can keep improving answers as the record becomes clearer.'
+                : 'The intake is complete enough for the next step. You can still return later if details need correction.';
+            document.getElementById('draft-soft-note').textContent = draft
+                ? 'The draft is now editable. Tighten wording carefully without removing the facts that give the complaint its support.'
+                : 'Treat the first draft as a working document. Review is still the place to decide whether the record behind it feels strong enough.';
             queue.innerHTML = `
                 <div class="queue-item">
                     <strong>${escapeHtml(stageLabel)}</strong>
@@ -1001,9 +2063,15 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                 </div>
                 <div class="queue-item">
                     <strong>Evidence posture</strong>
-                    <span>${escapeHtml(`${(overview.testimony_items || 0) + (overview.document_items || 0)} saved items across ${overview.supported_elements || 0} supported elements.`)}</span>
+                    <span>${escapeHtml(`${evidenceCount} saved items across ${overview.supported_elements || 0} supported elements.`)}</span>
                 </div>
             `;
+            blockerList.innerHTML = blockers.map((blocker) => `
+                <div class="diagnostic-item">
+                    <strong>${escapeHtml(blocker.title)}</strong>
+                    <span>${escapeHtml(blocker.detail)}</span>
+                </div>
+            `).join('');
         }
 
         function renderTools(tools) {
@@ -1012,6 +2080,230 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                 <div class="item">
                     <strong>${escapeHtml(tool.name)}</strong>
                     <div class="muted">${escapeHtml(tool.description)}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderFeatureCoverage(sessionPayload, tools) {
+            const featureList = document.getElementById('feature-coverage-list');
+            const review = sessionPayload.review || {};
+            const overview = review.overview || {};
+            const session = sessionPayload.session || {};
+            const draft = sessionPayload.draft || session.draft || null;
+            const toolNames = new Set((tools || []).map((tool) => tool.name));
+            const answeredCount = Object.values(session.intake_answers || {}).filter((value) => String(value || '').trim()).length;
+            const totalQuestions = (sessionPayload.questions || []).length || 0;
+            const evidenceCount = (overview.testimony_items || 0) + (overview.document_items || 0);
+            const features = [
+                {
+                    name: 'Intake workflow',
+                    enabled: totalQuestions > 0,
+                    detail: totalQuestions > 0
+                        ? `${answeredCount} of ${totalQuestions} intake questions currently answered.`
+                        : 'No intake prompts were loaded for this session.',
+                },
+                {
+                    name: 'Evidence capture',
+                    enabled: toolNames.has('complaint.save_evidence'),
+                    detail: evidenceCount > 0
+                        ? `${evidenceCount} evidence items already attached to the case.`
+                        : 'The evidence tool is available, but no testimony or document items are saved yet.',
+                },
+                {
+                    name: 'Support review',
+                    enabled: toolNames.has('complaint.review_case'),
+                    detail: `The review matrix currently shows ${overview.supported_elements || 0} supported elements and ${overview.missing_elements || 0} remaining gaps.`,
+                },
+                {
+                    name: 'Draft editing',
+                    enabled: toolNames.has('complaint.generate_complaint') && toolNames.has('complaint.update_draft'),
+                    detail: draft
+                        ? 'A complaint draft already exists and can be refined in-place.'
+                        : 'Draft generation and editing tools are available once the theory is coherent enough.',
+                },
+                {
+                    name: 'Shared MCP SDK path',
+                    enabled: toolNames.size > 0,
+                    detail: `The browser is connected to ${toolNames.size} MCP tools through the shared JavaScript SDK client.`,
+                },
+                {
+                    name: 'Adversarial UI optimizer',
+                    enabled: toolNames.has('complaint.optimize_ui'),
+                    detail: toolNames.has('complaint.optimize_ui')
+                        ? 'Closed-loop screenshot review, optimization, and validation are available from this dashboard.'
+                        : 'The optimizer tool is not currently exposed to the browser workspace.',
+                },
+            ];
+
+            featureList.innerHTML = features.map((feature) => `
+                <div class="feature-item">
+                    <strong>${escapeHtml(feature.name)}</strong>
+                    <div class="chip-row">
+                        <span class="chip ${feature.enabled ? 'good' : 'warn'}">${feature.enabled ? 'available' : 'attention needed'}</span>
+                    </div>
+                    <span>${escapeHtml(feature.detail)}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderFeatureWalkthrough(sessionPayload, tools) {
+            const walkthrough = document.getElementById('feature-walkthrough-list');
+            const review = sessionPayload.review || {};
+            const overview = review.overview || {};
+            const session = sessionPayload.session || {};
+            const draft = sessionPayload.draft || session.draft || null;
+            const toolNames = new Set((tools || []).map((tool) => tool.name));
+            const answeredCount = Object.values(session.intake_answers || {}).filter((value) => String(value || '').trim()).length;
+            const totalQuestions = (sessionPayload.questions || []).length || 0;
+            const evidenceCount = (overview.testimony_items || 0) + (overview.document_items || 0);
+            const missingCount = overview.missing_elements || 0;
+            const steps = [
+                {
+                    title: '1. Finish intake',
+                    done: totalQuestions > 0 && answeredCount === totalQuestions,
+                    detail: totalQuestions > 0 && answeredCount === totalQuestions
+                        ? 'The core story has been captured in the shared complaint session.'
+                        : `Answer the remaining intake questions before relying on the later stages (${answeredCount}/${totalQuestions} complete).`,
+                },
+                {
+                    title: '2. Attach targeted evidence',
+                    done: evidenceCount > 0,
+                    detail: evidenceCount > 0
+                        ? `${evidenceCount} evidence items are already attached to the theory.`
+                        : 'Use testimony or documents to support the most important claim elements, especially timing and causation.',
+                },
+                {
+                    title: '3. Review support gaps',
+                    done: toolNames.has('complaint.review_case') && missingCount === 0,
+                    detail: missingCount === 0
+                        ? 'The current review matrix shows no uncovered core claim elements.'
+                        : `${missingCount} claim elements still need stronger support before the draft is fully reliable.`,
+                },
+                {
+                    title: '4. Generate and edit the complaint',
+                    done: Boolean(draft),
+                    detail: draft
+                        ? 'A complaint draft exists and can be revised directly in this workspace.'
+                        : 'Once the theory is coherent enough, generate the complaint and refine the language in place.',
+                },
+                {
+                    title: '5. Improve the UI with the optimizer',
+                    done: toolNames.has('complaint.optimize_ui'),
+                    detail: toolNames.has('complaint.optimize_ui')
+                        ? 'The adversarial optimizer can review screenshots, emit patch artifacts, and validate the updated UX from the same dashboard.'
+                        : 'Expose complaint.optimize_ui to let the dashboard self-audit and improve its UX through the shared MCP path.',
+                },
+            ];
+
+            walkthrough.innerHTML = steps.map((step) => `
+                <div class="walkthrough-item">
+                    <strong>${escapeHtml(step.title)}</strong>
+                    <div class="chip-row">
+                        <span class="chip ${step.done ? 'good' : 'warn'}">${step.done ? 'ready' : 'next up'}</span>
+                    </div>
+                    <span>${escapeHtml(step.detail)}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderQuickActions(sessionPayload, tools) {
+            const container = document.getElementById('quick-action-grid');
+            const review = sessionPayload.review || {};
+            const overview = review.overview || {};
+            const session = sessionPayload.session || {};
+            const draft = sessionPayload.draft || session.draft || null;
+            const answers = session.intake_answers || {};
+            const toolNames = new Set((tools || []).map((tool) => tool.name));
+            const answeredCount = Object.values(answers).filter((value) => String(value || '').trim()).length;
+            const totalQuestions = (sessionPayload.questions || []).length || 0;
+            const missingCount = overview.missing_elements || 0;
+            const evidenceCount = (overview.testimony_items || 0) + (overview.document_items || 0);
+
+            const actions = [];
+            if (answeredCount < totalQuestions) {
+                actions.push({
+                    label: 'Finish intake',
+                    detail: `Answer the remaining intake questions so the case theory has a complete factual baseline (${answeredCount}/${totalQuestions} complete).`,
+                    buttonLabel: 'Continue Intake',
+                    targetTab: 'intake',
+                    focusSelector: '#intake-party_name',
+                    statusMessage: 'Opened Intake to continue capturing the complaint story.',
+                });
+            }
+            if (missingCount > 0 || evidenceCount === 0) {
+                actions.push({
+                    label: 'Add targeted evidence',
+                    detail: missingCount > 0
+                        ? `${missingCount} claim elements still need support. Add testimony or documents that directly close those gaps.`
+                        : 'No evidence is saved yet. Add the strongest available support before relying on the draft.',
+                    buttonLabel: 'Open Evidence',
+                    targetTab: 'evidence',
+                    focusSelector: '#evidence-title',
+                    statusMessage: 'Opened Evidence so targeted support can be attached to the complaint.',
+                    effect: 'prefill-evidence-gap',
+                });
+            }
+            actions.push({
+                label: 'Review support posture',
+                detail: `The review matrix currently shows ${overview.supported_elements || 0} supported elements and ${missingCount} remaining gaps.`,
+                buttonLabel: 'Open Review',
+                targetTab: 'review',
+                focusSelector: '#support-grid',
+                statusMessage: 'Opened Review to inspect support coverage and proof gaps.',
+            });
+            if (!draft) {
+                actions.push({
+                    label: 'Generate the complaint draft',
+                    detail: 'When the factual theory is coherent enough, move to Draft and generate the first complaint version.',
+                    buttonLabel: 'Open Draft',
+                    targetTab: 'draft',
+                    focusSelector: '#draft-title',
+                    statusMessage: 'Opened Draft so the complaint can be generated.',
+                });
+            } else {
+                actions.push({
+                    label: 'Refine the draft',
+                    detail: 'A complaint draft already exists. Review tone, facts, requested relief, and corroboration before filing.',
+                    buttonLabel: 'Edit Draft',
+                    targetTab: 'draft',
+                    focusSelector: '#draft-body',
+                    statusMessage: 'Opened Draft so the complaint can be refined.',
+                });
+            }
+            if (toolNames.size > 0) {
+                actions.push({
+                    label: 'Inspect shared tool access',
+                    detail: 'Open the integrated package, CLI, MCP, and browser SDK surface so the full complaint-generator capability set stays visible.',
+                    buttonLabel: 'Open CLI + MCP',
+                    targetTab: 'integrations',
+                    focusSelector: '#tool-list',
+                    statusMessage: 'Opened CLI + MCP surfaces for the shared complaint tools.',
+                });
+            }
+            if (toolNames.has('complaint.optimize_ui')) {
+                actions.push({
+                    label: 'Run the adversarial optimizer',
+                    detail: 'Use the shared MCP SDK path to review screenshots, generate patch artifacts, and validate the workspace UX.',
+                    buttonLabel: 'Open UX Audit',
+                    targetTab: 'ux-review',
+                    focusSelector: '#ux-review-notes',
+                    statusMessage: 'Opened UX Audit so the adversarial optimizer workflow can be used.',
+                    effect: 'prefill-optimizer',
+                });
+            }
+
+            container.innerHTML = actions.slice(0, 6).map((action) => `
+                <div class="quick-action-card">
+                    <strong>${escapeHtml(action.label)}</strong>
+                    <span>${escapeHtml(action.detail)}</span>
+                    <button
+                        class="secondary quick-action-button"
+                        type="button"
+                        data-target-tab="${escapeHtml(action.targetTab)}"
+                        data-focus-selector="${escapeHtml(action.focusSelector)}"
+                        data-status-message="${escapeHtml(action.statusMessage)}"
+                        data-effect="${escapeHtml(action.effect || '')}"
+                    >${escapeHtml(action.buttonLabel)}</button>
                 </div>
             `).join('');
         }
@@ -1044,12 +2336,97 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             return 'Review completed, but no summary text was returned.';
         }
 
+        function extractMarkdownHeadingSection(markdown, heading) {
+            const source = String(markdown || '');
+            if (!source.trim()) {
+                return '';
+            }
+            const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = new RegExp(`(?:^|\\n)#{1,6}\\s*${escapedHeading}\\s*\\n([\\s\\S]*?)(?=\\n#{1,6}\\s+|$)`, 'i');
+            const match = source.match(pattern);
+            return match ? match[1].trim() : '';
+        }
+
+        function normalizeStructuredStageFindings(result) {
+            const raw = (result && result.stage_findings)
+                || (result && result.review && result.review.stage_findings)
+                || null;
+            if (!raw) {
+                return null;
+            }
+            if (Array.isArray(raw)) {
+                const mapped = raw
+                    .map((item) => ({
+                        heading: String(item.stage || item.heading || item.title || '').trim(),
+                        content: String(item.content || item.summary || item.detail || item.finding || '').trim(),
+                    }))
+                    .filter((item) => item.heading && item.content);
+                return mapped.length ? mapped : null;
+            }
+            if (typeof raw === 'object') {
+                const mapped = Object.entries(raw)
+                    .map(([heading, value]) => ({
+                        heading: String(heading || '').trim(),
+                        content: String((value && value.content) || (value && value.summary) || value || '').trim(),
+                    }))
+                    .filter((item) => item.heading && item.content);
+                return mapped.length ? mapped : null;
+            }
+            return null;
+        }
+
+        function renderStageFindings(result) {
+            const container = document.getElementById('ux-review-stage-findings');
+            const structured = normalizeStructuredStageFindings(result);
+            if (structured) {
+                container.innerHTML = structured.map((card) => `
+                    <div class="walkthrough-item">
+                        <strong>${escapeHtml(card.heading)}</strong>
+                        <div class="chip-row">
+                            <span class="chip good">structured finding</span>
+                        </div>
+                        <span>${escapeHtml(card.content)}</span>
+                    </div>
+                `).join('');
+                return;
+            }
+            const reviewText = normalizeUiReviewSummary(result);
+            const stageSection = extractMarkdownHeadingSection(reviewText, 'Stage Findings') || reviewText;
+            const stageSpecs = [
+                ['Intake', 'What blocks first-time users from starting or completing the story intake.'],
+                ['Evidence', 'What makes proof capture or claim-element matching confusing.'],
+                ['Review', 'What hides support gaps or the next strengthening move.'],
+                ['Draft', 'What makes draft generation or editing feel disconnected from the case theory.'],
+                ['Integration Discovery', 'What prevents users from discovering the package, CLI, MCP, SDK, or optimizer paths.'],
+            ];
+            const cards = stageSpecs.map(([heading, fallback]) => {
+                const content = extractMarkdownHeadingSection(stageSection, heading);
+                return {
+                    heading,
+                    content: content || fallback,
+                    hasStructuredFinding: Boolean(content),
+                };
+            });
+
+            container.innerHTML = cards.map((card) => `
+                <div class="walkthrough-item">
+                    <strong>${escapeHtml(card.heading)}</strong>
+                    <div class="chip-row">
+                        <span class="chip ${card.hasStructuredFinding ? 'good' : 'warn'}">${card.hasStructuredFinding ? 'reviewed' : 'awaiting structured finding'}</span>
+                    </div>
+                    <span>${escapeHtml(card.content)}</span>
+                </div>
+            `).join('');
+        }
+
         function renderUiReviewResult(result) {
             const metadata = document.getElementById('ux-review-metadata');
             const summary = document.getElementById('ux-review-summary');
             const issues = document.getElementById('ux-review-issues');
             const runs = document.getElementById('ux-review-runs');
+            const artifacts = document.getElementById('ux-review-artifacts');
             const followups = document.getElementById('ux-review-followups');
+            const cycles = Array.isArray(result && result.cycles) ? result.cycles : [];
             const issueList = Array.isArray(result && result.review && result.review.issues)
                 ? result.review.issues
                 : Array.isArray(result && result.issues)
@@ -1065,13 +2442,16 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
 
             metadata.innerHTML = [
                 result && result.iterations ? `<span class="chip good">iterations: ${escapeHtml(String(result.iterations))}</span>` : '',
+                result && result.rounds_executed ? `<span class="chip good">rounds: ${escapeHtml(String(result.rounds_executed))}</span>` : '',
                 backendStrategy ? `<span class="chip good">strategy: ${escapeHtml(String(backendStrategy))}</span>` : '',
+                result && result.stop_reason ? `<span class="chip warn">stop: ${escapeHtml(String(result.stop_reason))}</span>` : '',
                 result && result.screenshot_dir ? `<span class="chip">screenshots: ${escapeHtml(String(result.screenshot_dir))}</span>` : '',
                 result && result.output_dir ? `<span class="chip">output: ${escapeHtml(String(result.output_dir))}</span>` : '',
                 result && result.latest_review_markdown_path ? `<span class="chip">latest markdown: ${escapeHtml(String(result.latest_review_markdown_path))}</span>` : '',
             ].filter(Boolean).join('');
 
             summary.textContent = normalizeUiReviewSummary(result);
+            renderStageFindings(result);
 
             issues.innerHTML = issueList.length
                 ? issueList.map((item) => `
@@ -1093,7 +2473,36 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                         <div class="muted">${escapeHtml(item.review_excerpt || 'Review saved to disk.')}</div>
                     </div>
                 `).join('')
-                : '<div class="item"><strong>Single review response</strong><div class="muted">Use iterative mode to capture multiple screenshot-review cycles.</div></div>';
+                : cycles.length
+                    ? cycles.map((cycle) => `
+                        <div class="item">
+                            <strong>Round ${escapeHtml(String(cycle.round || '?'))}</strong>
+                            <div class="muted">${escapeHtml((((cycle.validation_review || {}).latest_review || '') || 'Closed-loop validation completed.').slice(0, 240))}</div>
+                            <div class="chip-row">
+                                ${((cycle.optimizer_result || {}).changed_files || []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}
+                            </div>
+                        </div>
+                    `).join('')
+                    : '<div class="item"><strong>Single review response</strong><div class="muted">Use iterative mode to capture multiple screenshot-review cycles.</div></div>';
+
+            artifacts.innerHTML = cycles.length
+                ? cycles.map((cycle) => {
+                    const optimizerResult = cycle.optimizer_result || {};
+                    const patchPath = optimizerResult.patch_path || '';
+                    const patchCid = optimizerResult.patch_cid || '';
+                    const changedFiles = Array.isArray(optimizerResult.changed_files) ? optimizerResult.changed_files : [];
+                    return `
+                        <div class="item">
+                            <strong>Patch artifact for round ${escapeHtml(String(cycle.round || '?'))}</strong>
+                            <div class="muted">${escapeHtml(patchPath || 'No patch file path returned.')}</div>
+                            ${patchCid ? `<div class="muted">CID: ${escapeHtml(String(patchCid))}</div>` : ''}
+                            <div class="chip-row">
+                                ${changedFiles.map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('')
+                : '<div class="item"><strong>No optimizer artifacts yet.</strong><div class="muted">Run closed-loop optimization to capture patch paths, CIDs, and changed files.</div></div>';
 
             followups.innerHTML = playwrightFollowups.length
                 ? playwrightFollowups.map((item) => `
@@ -1102,10 +2511,13 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                         <div class="muted">${escapeHtml(String(item))}</div>
                     </div>
                 `).join('')
+                : cycles.length
+                    ? '<div class="item"><strong>Closed-loop optimization completed.</strong><div class="muted">The MCP workflow ran screenshot capture, router critique, optimizer patching, and validation review.</div></div>'
                 : '<div class="item"><strong>No follow-up actions listed.</strong><div class="muted">Run another review after a UI pass to collect the next recommended screenshot assertions.</div></div>';
         }
 
         async function refreshWorkspace() {
+            setBusyStatus('Refreshing shared complaint session…');
             const sessionPayload = await client.startSession(workspaceUserId);
             workspaceSession = sessionPayload;
             renderIntake(sessionPayload);
@@ -1113,10 +2525,14 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             renderReview(sessionPayload);
             renderDraft(sessionPayload);
             renderSidebar(sessionPayload);
+            renderFeatureCoverage(sessionPayload, workspaceSessionTools || []);
+            renderFeatureWalkthrough(sessionPayload, workspaceSessionTools || []);
+            renderQuickActions(sessionPayload, workspaceSessionTools || []);
             setStatus(`Workspace synchronized for ${workspaceUserId}.`);
         }
 
         async function saveIntake() {
+            setBusyStatus('Saving intake answers to the shared complaint session…');
             const answers = {};
             document.querySelectorAll('[data-question-id]').forEach((node) => {
                 answers[node.dataset.questionId] = node.value.trim();
@@ -1125,10 +2541,14 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             renderIntake(workspaceSession);
             renderReview(workspaceSession);
             renderSidebar(workspaceSession);
+            renderFeatureCoverage(workspaceSession, workspaceSessionTools);
+            renderFeatureWalkthrough(workspaceSession, workspaceSessionTools);
+            renderQuickActions(workspaceSession, workspaceSessionTools);
             setStatus('Intake answers saved.');
         }
 
         async function addEvidence() {
+            setBusyStatus('Saving evidence and refreshing support review…');
             workspaceSession = await client.saveEvidence(workspaceUserId, {
                 kind: document.getElementById('evidence-kind').value,
                 claim_element_id: document.getElementById('evidence-claim-element').value,
@@ -1139,21 +2559,29 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             renderEvidence(workspaceSession);
             renderReview(workspaceSession);
             renderSidebar(workspaceSession);
+            renderFeatureCoverage(workspaceSession, workspaceSessionTools);
+            renderFeatureWalkthrough(workspaceSession, workspaceSessionTools);
+            renderQuickActions(workspaceSession, workspaceSessionTools);
             setStatus('Evidence saved and support review refreshed.');
         }
 
         async function generateDraft() {
+            setBusyStatus('Generating the first complaint draft from the current record…');
             workspaceSession = await client.generateComplaint(workspaceUserId, {
                 requested_relief: document.getElementById('requested-relief').value.split('\n').map((item) => item.trim()).filter(Boolean),
                 title_override: document.getElementById('draft-title').value.trim() || null,
             });
             renderDraft(workspaceSession);
             renderSidebar(workspaceSession);
+            renderFeatureCoverage(workspaceSession, workspaceSessionTools);
+            renderFeatureWalkthrough(workspaceSession, workspaceSessionTools);
+            renderQuickActions(workspaceSession, workspaceSessionTools);
             activateTab('draft');
             setStatus('Complaint draft generated from intake and evidence.');
         }
 
         async function saveDraft() {
+            setBusyStatus('Saving draft changes to the shared complaint session…');
             workspaceSession = await client.updateDraft(workspaceUserId, {
                 title: document.getElementById('draft-title').value.trim(),
                 body: document.getElementById('draft-body').value.trim(),
@@ -1161,17 +2589,40 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
             });
             renderDraft(workspaceSession);
             renderSidebar(workspaceSession);
+            renderFeatureCoverage(workspaceSession, workspaceSessionTools);
+            renderFeatureWalkthrough(workspaceSession, workspaceSessionTools);
+            renderQuickActions(workspaceSession, workspaceSessionTools);
             setStatus('Draft edits saved.');
         }
 
+        async function saveSynopsis() {
+            setBusyStatus('Saving the shared case synopsis through the MCP workspace…');
+            const synopsis = document.getElementById('case-synopsis').value.trim();
+            workspaceSession = await client.updateCaseSynopsis(workspaceUserId, synopsis);
+            refreshSynopsisEditor(workspaceSession);
+            renderReview(workspaceSession);
+            renderDraft(workspaceSession);
+            renderSidebar(workspaceSession);
+            renderFeatureCoverage(workspaceSession, workspaceSessionTools);
+            renderFeatureWalkthrough(workspaceSession, workspaceSessionTools);
+            renderQuickActions(workspaceSession, workspaceSessionTools);
+            setStatus('Shared case synopsis saved.');
+        }
+
         async function resetSession() {
+            setBusyStatus('Resetting the workspace to a clean complaint session…');
             workspaceSession = await client.resetSession(workspaceUserId);
+            window.localStorage.removeItem(synopsisStorageKey());
             await refreshWorkspace();
             activateTab('intake');
             setStatus('Workspace reset to a clean state.');
         }
 
         async function runUiReview(iterative) {
+            const goals = document.getElementById('ux-review-goals').value
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
             const payload = {
                 screenshot_dir: document.getElementById('ux-review-screenshot-dir').value.trim(),
                 output_path: document.getElementById('ux-review-output-path').value.trim(),
@@ -1180,12 +2631,46 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
                 model: document.getElementById('ux-review-model').value.trim() || undefined,
                 pytest_target: document.getElementById('ux-review-pytest-target').value.trim(),
                 iterations: iterative ? Number(document.getElementById('ux-review-iterations').value || '1') : 0,
+                goals,
             };
             activateTab('ux-review');
-            setStatus(iterative ? 'Running iterative UI/UX review workflow via MCP…' : 'Running snapshot UI review via MCP…');
+            setBusyStatus(iterative ? 'Running iterative UI/UX review workflow via MCP…' : 'Running snapshot UI review via MCP…');
             const result = await client.runUiUxWorkflow(payload);
             renderUiReviewResult(result);
             setStatus(iterative ? 'Iterative UI/UX review completed.' : 'Snapshot UI review completed.');
+        }
+
+        async function runClosedLoopUiOptimization() {
+            const goals = document.getElementById('ux-review-goals').value
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
+            const payload = {
+                screenshot_dir: document.getElementById('ux-review-screenshot-dir').value.trim(),
+                output_path: document.getElementById('ux-review-output-path').value.trim(),
+                notes: document.getElementById('ux-review-notes').value.trim(),
+                provider: document.getElementById('ux-review-provider').value.trim() || undefined,
+                model: document.getElementById('ux-review-model').value.trim() || undefined,
+                pytest_target: document.getElementById('ux-review-pytest-target').value.trim(),
+                iterations: Number(document.getElementById('ux-review-iterations').value || '1'),
+                max_rounds: Number(document.getElementById('ux-review-max-rounds').value || '2'),
+                method: document.getElementById('ux-review-method').value,
+                priority: Number(document.getElementById('ux-review-priority').value || '80'),
+                goals,
+            };
+            activateTab('ux-review');
+            setBusyStatus('Running closed-loop UI/UX optimization via MCP…');
+            const result = await client.runClosedLoopUiUxWorkflow(payload);
+            renderUiReviewResult(Object.assign({}, result, {
+                output_dir: payload.output_path,
+                latest_review: result.latest_validation_review,
+                review: {
+                    summary: result.latest_validation_review || 'Closed-loop optimization completed.',
+                    issues: [],
+                    playwright_followups: [],
+                },
+            }));
+            setStatus('Closed-loop UI/UX optimization completed.');
         }
 
         document.querySelectorAll('.tab-button').forEach((node) => {
@@ -1196,24 +2681,81 @@ await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre
         document.getElementById('save-evidence-button').addEventListener('click', addEvidence);
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
+        document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
         document.getElementById('action-button').addEventListener('click', () => {
-            activateTab(document.getElementById('action-button').dataset.targetTab || 'intake');
+            const targetTab = document.getElementById('action-button').dataset.targetTab || 'intake';
+            jumpToStage(
+                targetTab,
+                defaultFocusSelectorForTab(targetTab),
+                defaultStatusMessageForTab(targetTab),
+            );
         });
         document.getElementById('action-refresh-button').addEventListener('click', refreshWorkspace);
+        document.getElementById('shortcut-intake-button').addEventListener('click', () => jumpToStage('intake', '#intake-party_name', 'Opened Intake so the complaint story can be captured.'));
+        document.getElementById('shortcut-evidence-button').addEventListener('click', () => jumpToStage('evidence', '#evidence-title', 'Opened Evidence so support can be attached to the case theory.'));
+        document.getElementById('shortcut-review-button').addEventListener('click', () => jumpToStage('review', '#support-grid', 'Opened Review so support gaps can be checked.'));
+        document.getElementById('shortcut-draft-button').addEventListener('click', () => jumpToStage('draft', '#draft-title', 'Opened Draft so the complaint can be generated or refined.'));
+        document.getElementById('shortcut-tools-button').addEventListener('click', () => jumpToStage('integrations', '#tool-list', 'Opened CLI + MCP surfaces for the shared complaint tools.'));
+        document.getElementById('shortcut-optimizer-button').addEventListener('click', () => jumpToStage('ux-review', '#ux-review-notes', 'Opened UX Audit so the adversarial optimizer workflow can be used.'));
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('.quick-action-button');
+            if (!button) {
+                const gapButton = event.target.closest('.review-gap-action');
+                if (!gapButton) {
+                    return;
+                }
+                const gap = {
+                    id: gapButton.dataset.gapId || '',
+                    label: gapButton.dataset.gapLabel || 'claim element',
+                };
+                presetEvidenceForGap(workspaceSession || {}, gap);
+                jumpToStage(
+                    'evidence',
+                    '#evidence-title',
+                    `Opened Evidence to add support for ${gap.label}.`,
+                );
+                return;
+            }
+            if (button.dataset.effect === 'prefill-evidence-gap') {
+                presetEvidenceForGap(workspaceSession || {});
+            }
+            if (button.dataset.effect === 'prefill-optimizer') {
+                presetOptimizerFromCaseState(workspaceSession || {});
+            }
+            jumpToStage(
+                button.dataset.targetTab || 'intake',
+                button.dataset.focusSelector || '',
+                button.dataset.statusMessage || 'Opened the requested complaint workflow action.',
+            );
+        });
+        document.getElementById('refresh-synopsis-button').addEventListener('click', () => {
+            refreshSynopsisEditor(workspaceSession, true);
+            setStatus('Case synopsis refreshed from the current complaint facts.');
+        });
+        document.getElementById('case-synopsis').addEventListener('input', (event) => {
+            const value = event.target.value;
+            window.localStorage.setItem(synopsisStorageKey(), value);
+            syncSynopsisMirrors(value);
+        });
         document.getElementById('run-ux-review-button').addEventListener('click', () => runUiReview(true));
         document.getElementById('run-ux-snapshot-button').addEventListener('click', () => runUiReview(false));
+        document.getElementById('run-ux-closed-loop-button').addEventListener('click', runClosedLoopUiOptimization);
 
         client.bootstrapWorkspace(workspaceUserId).then(async (bootstrap) => {
             workspaceUserId = bootstrap.did;
             workspaceSession = bootstrap.session;
+            workspaceSessionTools = bootstrap.tools || [];
             renderIntake(bootstrap.session);
             renderEvidence(bootstrap.session);
             renderReview(bootstrap.session);
             renderDraft(bootstrap.session);
             renderSidebar(bootstrap.session);
-            renderTools(bootstrap.tools);
-            renderSdkServerInfo(bootstrap.initialization, bootstrap.tools);
+            renderTools(workspaceSessionTools);
+            renderFeatureCoverage(bootstrap.session, workspaceSessionTools);
+            renderFeatureWalkthrough(bootstrap.session, workspaceSessionTools);
+            renderQuickActions(bootstrap.session, workspaceSessionTools);
+            renderSdkServerInfo(bootstrap.initialization, workspaceSessionTools);
             setStatus(`Workspace synchronized for ${workspaceUserId}.`);
         }).catch((error) => {
             setStatus(`Workspace failed to load: ${error.message}`);

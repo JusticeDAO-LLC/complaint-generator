@@ -860,7 +860,11 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
             "iterations": int(kwargs.get("iterations") or 1),
             "screenshot_dir": str(kwargs.get("screenshot_dir") or workspace_root / "screens"),
             "output_dir": str(kwargs.get("output_dir") or workspace_root / "reviews"),
-            "latest_review": "# Top Risks\n- Intake language needs calmer guidance for first-time complainants.",
+            "latest_review": "# Top Risks\n- Intake language needs calmer guidance for first-time complainants.\n\n# Stage Findings\n## Intake\nMarkdown fallback should not replace structured intake guidance.\n\n## Evidence\nMarkdown fallback should not replace structured evidence guidance.",
+            "stage_findings": {
+                "Intake": "First-time complainants need calmer prompts before being asked for exact detail.",
+                "Evidence": "The evidence stage should explain what helps prove causation next.",
+            },
             "latest_review_markdown_path": str(workspace_root / "reviews" / "iteration-01-review.md"),
             "runs": [
                 {
@@ -869,6 +873,28 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                     "review_excerpt": "Intake language needs calmer guidance for first-time complainants.",
                     "review_markdown_path": str(workspace_root / "reviews" / "iteration-01-review.md"),
                     "review_json_path": str(workspace_root / "reviews" / "iteration-01-review.json"),
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "complaint_generator.ui_ux_workflow.run_closed_loop_ui_ux_improvement",
+        lambda **kwargs: {
+            "workflow_type": "ui_ux_closed_loop",
+            "max_rounds": int(kwargs.get("max_rounds") or 2),
+            "rounds_executed": 1,
+            "stop_reason": "validation_review_stable",
+            "latest_validation_review": "# Top Risks\n- Closed-loop pass recommends calmer intake guidance and clearer evidence sequencing.\n\n# Stage Findings\n## Integration Discovery\nMarkdown fallback should not replace the structured integration-discovery finding.",
+            "stage_findings": {
+                "Draft": "Draft readiness should remain visible after optimization.",
+                "Integration Discovery": "The shared MCP SDK and optimizer path should remain discoverable from the dashboard.",
+            },
+            "cycles": [
+                {
+                    "round": 1,
+                    "validation_review": {
+                        "latest_review": "# Top Risks\n- Closed-loop pass recommends calmer intake guidance and clearer evidence sequencing.",
+                    },
                 }
             ],
         },
@@ -922,13 +948,25 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                 assert "complaint-workspace session" in page.locator("body").inner_text()
                 assert "complaint-mcp-server" in page.locator("body").inner_text()
 
-                page.get_by_role("button", name="UX Review", exact=True).click()
+                page.locator("[data-tab-target='ux-review']").click()
                 page.locator("#ux-review-screenshot-dir").fill(str(workspace_root / "screens"))
                 page.locator("#ux-review-output-path").fill(str(workspace_root / "reviews"))
                 page.locator("#ux-review-iterations").fill("2")
                 page.locator("#run-ux-review-button").click()
                 _wait_for_text(page, "#workspace-status", "Iterative UI/UX review completed.")
                 _wait_for_text(page, "#ux-review-summary", "Top Risks")
-                _wait_for_text(page, "#ux-review-runs", "Iteration 1")
+                _wait_for_text(page, "#ux-review-metadata", "iterations: 2")
+                _wait_for_text(page, "#ux-review-stage-findings", "First-time complainants need calmer prompts")
+                iterative_stage_text = page.locator("#ux-review-stage-findings").inner_text()
+                assert "Markdown fallback should not replace structured intake guidance." not in iterative_stage_text
+                assert "Markdown fallback should not replace structured evidence guidance." not in iterative_stage_text
+
+                page.locator("#run-ux-closed-loop-button").click()
+                _wait_for_text(page, "#workspace-status", "Closed-loop UI/UX optimization completed.")
+                _wait_for_text(page, "#ux-review-summary", "Closed-loop pass recommends calmer intake guidance")
+                _wait_for_text(page, "#ux-review-metadata", "rounds: 1")
+                _wait_for_text(page, "#ux-review-stage-findings", "shared MCP SDK and optimizer path should remain discoverable")
+                closed_loop_stage_text = page.locator("#ux-review-stage-findings").inner_text()
+                assert "Markdown fallback should not replace the structured integration-discovery finding." not in closed_loop_stage_text
             finally:
                 browser.close()

@@ -151,6 +151,26 @@ test.describe('website surface navigation', () => {
     await page.getByRole('button', { name: 'Intake', exact: true }).click();
     await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
+    await expect(page.locator('#feature-coverage-list')).toContainText(/Intake workflow/i);
+    await expect(page.locator('#feature-coverage-list')).toContainText(/Adversarial UI optimizer/i);
+    await expect(page.locator('#feature-coverage-list')).toContainText(/available/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/1\. Finish intake/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/5\. Improve the UI with the optimizer/i);
+    await expect(page.locator('#quick-action-grid')).toContainText(/Finish intake/i);
+    await expect(page.locator('#quick-action-grid')).toContainText(/Run the adversarial optimizer/i);
+    await page.locator('#shortcut-optimizer-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Opened UX Audit/i);
+    await expect(page.locator('#ux-review-notes')).toBeFocused();
+    await page.locator('#shortcut-tools-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Opened CLI \+ MCP/i);
+    await expect(page.locator('#tool-list')).toBeVisible();
+    await page.locator('#shortcut-intake-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Opened Intake/i);
+    await expect(page.locator('#intake-party_name')).toBeFocused();
+    await page.locator('#quick-action-grid').getByRole('button', { name: 'Open Review' }).click();
+    await expect(page.locator('#workspace-status')).toContainText(/Opened Review/i);
+    await expect(page.locator('#support-grid')).toBeVisible();
+    await page.locator('#shortcut-intake-button').click();
 
     await page.locator('#intake-party_name').fill('Jane Doe');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
@@ -162,6 +182,10 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/The core story has been captured/i);
+    await page.locator('#shortcut-evidence-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Opened Evidence so support can be attached to the case theory/i);
+    await expect(page.locator('#evidence-title')).toBeFocused();
 
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();
     await page.locator('#evidence-kind').selectOption('document');
@@ -181,21 +205,47 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/Complaint draft generated from intake and evidence/i);
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint against Acme Corporation/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/A complaint draft exists and can be revised directly/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await expect(page.locator('body')).toContainText(/complaint-workspace session/i);
     await expect(page.locator('body')).toContainText(/complaint-mcp-server/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.review_case/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.optimize_ui/i);
 
-    await page.getByRole('button', { name: 'UX Review', exact: true }).click();
+    await page.locator('#quick-action-grid').getByRole('button', { name: 'Open UX Audit' }).click();
+    await expect(page.locator('#workspace-status')).toContainText(/Opened UX Audit so the adversarial optimizer workflow can be used/i);
+    await expect(page.locator('#ux-review-goals')).toContainText(/JavaScript SDK paths visibly connected/i);
+    await expect(page.locator('#ux-review-notes')).toContainText(/complaint workflow/i);
+
+    await page.getByRole('button', { name: 'UX Audit', exact: true }).click();
     await page.locator('#ux-review-screenshot-dir').fill('artifacts/ui-audit/screenshots');
     await page.locator('#ux-review-output-path').fill('artifacts/ui-audit/reviews');
     await page.locator('#ux-review-iterations').fill('2');
+    await page.locator('#ux-review-max-rounds').fill('3');
+    await page.locator('#ux-review-method').selectOption('test_driven');
+    await page.locator('#ux-review-priority').fill('91');
+    await page.locator('#ux-review-goals').fill('Make the complaint workspace easier for first-time users.\nKeep every feature reachable through the shared MCP SDK.');
     await page.locator('#run-ux-review-button').click();
 
     await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed/i);
     await expect(page.locator('#ux-review-summary')).toContainText(/Top Risks/i);
     await expect(page.locator('#ux-review-runs')).toContainText(/Iteration 1/i);
+
+    await page.locator('#run-ux-closed-loop-button').click();
+
+    await expect(page.locator('#workspace-status')).toContainText(/Closed-loop UI\/UX optimization completed/i);
+    await expect(page.locator('#ux-review-metadata')).toContainText(/rounds:/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/Intake/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/The evidence panel still needs stronger claim-element guidance after optimization/i);
+    await expect(page.locator('#ux-review-metadata')).toContainText(/stop:/i);
+    await expect(page.locator('#ux-review-metadata')).toContainText(/output:/i);
+    await expect(page.locator('#ux-review-runs')).toContainText(/Round 1/i);
+    await expect(page.locator('#ux-review-runs')).toContainText(/templates\/workspace\.html/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels/i);
+    await expect(page.locator('#ux-review-artifacts')).toContainText(/round-01\.patch/i);
+    await expect(page.locator('#ux-review-artifacts')).toContainText(/bafyuiuxround01/i);
+    await expect(page.locator('#ux-review-artifacts')).toContainText(/static\/complaint_mcp_sdk\.js/i);
   });
 
   test('first-class pages share the same DID-backed application sidebar and session summary', async ({ page, request }) => {

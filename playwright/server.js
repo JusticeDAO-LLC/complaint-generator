@@ -199,6 +199,7 @@ function createWorkspaceState(userId = 'did:key:playwright-demo') {
   return {
     user_id: userId,
     claim_type: 'retaliation',
+    case_synopsis: '',
     intake_answers: {},
     evidence: {
       testimony: [],
@@ -267,12 +268,15 @@ function workspaceSessionPayload(userId = 'did:key:playwright-demo') {
   const nextQuestion = workspaceQuestions.find((question) => !workspaceState.intake_answers[question.id]) || null;
   return {
     session: JSON.parse(JSON.stringify(workspaceState)),
+    draft: workspaceState.draft ? JSON.parse(JSON.stringify(workspaceState.draft)) : null,
     questions: workspaceQuestions.map((question) => ({
       ...question,
       answer: workspaceState.intake_answers[question.id] || '',
+      is_answered: Boolean(String(workspaceState.intake_answers[question.id] || '').trim()),
     })),
     next_question: nextQuestion,
     review: workspaceReview(workspaceState),
+    case_synopsis: String(workspaceState.case_synopsis || '').trim(),
   };
 }
 
@@ -479,6 +483,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
+        { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
         { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI.', inputSchema: { type: 'object' } },
@@ -506,6 +511,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
+            { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
             { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI.', inputSchema: { type: 'object' } },
@@ -555,6 +561,9 @@ const server = http.createServer(async (request, response) => {
         if (typeof args.body === 'string') workspaceState.draft.body = args.body;
         if (Array.isArray(args.requested_relief)) workspaceState.draft.requested_relief = args.requested_relief;
         structuredContent = workspaceSessionPayload(userId);
+      } else if (toolName === 'complaint.update_case_synopsis') {
+        workspaceState.case_synopsis = typeof args.synopsis === 'string' ? args.synopsis.trim() : '';
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.reset_session') {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
@@ -565,6 +574,13 @@ const server = http.createServer(async (request, response) => {
             screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
             output_dir: args.output_path || 'artifacts/ui-audit/reviews',
             latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.',
+            stage_findings: {
+              Intake: 'First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.',
+              Evidence: 'The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof.',
+              Review: 'Support-gap guidance should tell the operator what missing element to close next instead of only showing counts.',
+              Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
+              'Integration Discovery': 'The MCP SDK and optimizer path need to stay visible so operators do not miss the shared complaint-generator tooling.',
+            },
             latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
             runs: [
               {
@@ -583,6 +599,10 @@ const server = http.createServer(async (request, response) => {
             screenshots: [],
             review: {
               summary: 'Stub UI review completed.',
+              stage_findings: {
+                Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
+                Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
+              },
               issues: [
                 {
                   severity: 'medium',
@@ -601,6 +621,13 @@ const server = http.createServer(async (request, response) => {
           rounds_executed: 1,
           stop_reason: 'validation_review_stable',
           latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+          stage_findings: {
+            Intake: 'The optimizer should reduce branching language and keep the first story steps calmer and more linear.',
+            Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
+            Review: 'The review panel should turn missing support counts into next-step instructions.',
+            Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
+            'Integration Discovery': 'The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels.',
+          },
           cycles: [
             {
               round: 1,
@@ -612,6 +639,7 @@ const server = http.createServer(async (request, response) => {
                 success: true,
                 status: 'applied',
                 patch_path: 'artifacts/ui-audit/round-01.patch',
+                patch_cid: 'bafyuiuxround01',
                 changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
                 metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
               },
@@ -718,6 +746,10 @@ const server = http.createServer(async (request, response) => {
       if (Array.isArray(args.requested_relief)) workspaceState.draft.requested_relief = args.requested_relief;
       return sendJson(response, workspaceSessionPayload(userId));
     }
+    if (toolName === 'complaint.update_case_synopsis') {
+      workspaceState.case_synopsis = typeof args.synopsis === 'string' ? args.synopsis.trim() : '';
+      return sendJson(response, workspaceSessionPayload(userId));
+    }
     if (toolName === 'complaint.reset_session') {
       workspaceSessions.set(userId, createWorkspaceState(userId));
       return sendJson(response, workspaceSessionPayload(userId));
@@ -729,6 +761,13 @@ const server = http.createServer(async (request, response) => {
           screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
           output_dir: args.output_path || 'artifacts/ui-audit/reviews',
           latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.',
+          stage_findings: {
+            Intake: 'First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.',
+            Evidence: 'The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof.',
+            Review: 'Support-gap guidance should tell the operator what missing element to close next instead of only showing counts.',
+            Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
+            'Integration Discovery': 'The MCP SDK and optimizer path need to stay visible so operators do not miss the shared complaint-generator tooling.',
+          },
           latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
           runs: [
             {
@@ -747,6 +786,10 @@ const server = http.createServer(async (request, response) => {
         screenshots: [],
         review: {
           summary: 'Stub UI review completed.',
+          stage_findings: {
+            Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
+            Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
+          },
           issues: [
             {
               severity: 'medium',
@@ -765,6 +808,13 @@ const server = http.createServer(async (request, response) => {
         rounds_executed: 1,
         stop_reason: 'validation_review_stable',
         latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+        stage_findings: {
+          Intake: 'The optimizer should reduce branching language and keep the first story steps calmer and more linear.',
+          Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
+          Review: 'The review panel should turn missing support counts into next-step instructions.',
+          Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
+          'Integration Discovery': 'The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels.',
+        },
         cycles: [
           {
             round: 1,
@@ -776,6 +826,7 @@ const server = http.createServer(async (request, response) => {
               success: true,
               status: 'applied',
               patch_path: 'artifacts/ui-audit/round-01.patch',
+              patch_cid: 'bafyuiuxround01',
               changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
               metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
             },

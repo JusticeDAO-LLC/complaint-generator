@@ -326,6 +326,25 @@
             background: rgba(255,255,255,0.86);
         }
 
+        .synopsis-banner {
+            margin-bottom: 18px;
+            border-radius: 18px;
+            padding: 16px;
+            border: 1px solid rgba(143, 45, 30, 0.18);
+            background: rgba(255, 247, 237, 0.82);
+        }
+
+        .synopsis-banner strong,
+        .synopsis-banner span {
+            display: block;
+        }
+
+        .synopsis-banner span {
+            margin-top: 8px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
         .readiness-banner[data-status="warning"] {
             border-color: rgba(143, 45, 30, 0.24);
             background: rgba(143, 45, 30, 0.08);
@@ -1214,6 +1233,11 @@
                     </div>
                 </div>
 
+                <div class="synopsis-banner" id="builder-synopsis-banner">
+                    <strong id="builder-synopsis-title">Shared case framing</strong>
+                    <span id="builder-synopsis-text">Open this builder with a shared complaint user ID to keep the case synopsis visible during drafting.</span>
+                </div>
+
                 <div id="previewRoot" class="empty-state">
                     <div>
                         <strong>Nothing rendered yet</strong>
@@ -1233,6 +1257,57 @@
             generatedPayload: null,
             reviewIntent: null,
         };
+
+        function getRequestedUserId() {
+            return new URLSearchParams(window.location.search).get('user_id') || null;
+        }
+
+        function getComplaintWorkspaceClient() {
+            return window.ComplaintMcpSdk
+                ? new window.ComplaintMcpSdk.ComplaintMcpClient()
+                : null;
+        }
+
+        function renderBuilderSynopsis(text, title) {
+            document.getElementById('builder-synopsis-title').textContent = title || 'Shared case framing';
+            document.getElementById('builder-synopsis-text').textContent = text || 'Open this builder with a shared complaint user ID to keep the case synopsis visible during drafting.';
+        }
+
+        async function syncBuilderSynopsis() {
+            const complaintWorkspaceClient = getComplaintWorkspaceClient();
+            if (!complaintWorkspaceClient) {
+                return;
+            }
+            const userId = state.userId
+                || getRequestedUserId()
+                || (typeof complaintWorkspaceClient.getCachedDid === 'function' ? complaintWorkspaceClient.getCachedDid() : null)
+                || null;
+            if (!userId) {
+                renderBuilderSynopsis('', 'Shared case framing');
+                return;
+            }
+            try {
+                const cachedSynopsis = window.localStorage.getItem(`complaint-workspace-synopsis:${userId}`) || '';
+                if (cachedSynopsis.trim()) {
+                    renderBuilderSynopsis(cachedSynopsis.trim(), `Shared case framing for ${userId}`);
+                }
+            } catch (error) {
+                // Local storage is an optional fast-path only.
+            }
+            try {
+                const sessionPayload = await complaintWorkspaceClient.startSession(userId);
+                const caseSynopsis = String(sessionPayload.case_synopsis || ((sessionPayload.session || {}).case_synopsis) || '').trim();
+                renderBuilderSynopsis(
+                    caseSynopsis || 'The shared complaint session is available, but no synopsis has been saved yet.',
+                    `Shared case framing for ${userId}`,
+                );
+            } catch (error) {
+                renderBuilderSynopsis(
+                    `Unable to load the shared complaint synopsis for ${userId}.`,
+                    'Shared case framing unavailable',
+                );
+            }
+        }
 
         function showBox(id, message) {
             const element = document.getElementById(id);
@@ -4196,6 +4271,14 @@
         function renderPreview(payload) {
             state.generatedPayload = payload;
             persistGeneratedPayload(payload);
+            const sharedSynopsis = String(
+                (payload && payload.case_synopsis)
+                || (payload && payload.draft && payload.draft.case_synopsis)
+                || ''
+            ).trim();
+            if (sharedSynopsis) {
+                renderBuilderSynopsis(sharedSynopsis, `Shared case framing for ${state.userId || getRequestedUserId() || 'this complaint'}`);
+            }
             const draft = payload.draft || {};
             const readiness = payload.drafting_readiness || draft.drafting_readiness || {};
             const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
@@ -4602,8 +4685,9 @@
             restoreGeneratedPayload();
             validateOptimizationAdvancedConfig();
             try {
+                state.userId = getRequestedUserId() || state.userId;
                 const cookies = await fetchCookies();
-                state.userId = cookies.hashed_username || null;
+                state.userId = state.userId || cookies.hashed_username || null;
                 const summary = await fetchProfileSummary(cookies.hashed_username, cookies.hashed_password);
                 hydrateFormFromSummary(summary);
                 persistDraftState();
@@ -4611,6 +4695,7 @@
             } catch (error) {
                 showBox('errorBox', 'Unable to prefill the document form from the current profile. You can still build the document manually.');
             }
+            syncBuilderSynopsis();
         }
 
         document.getElementById('documentForm').addEventListener('submit', generateDocument);

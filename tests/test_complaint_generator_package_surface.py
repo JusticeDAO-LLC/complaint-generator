@@ -15,6 +15,7 @@ except ModuleNotFoundError:
 from complaint_generator import (
     ComplaintWorkspaceService,
     build_ui_ux_review_prompt,
+    run_closed_loop_ui_ux_improvement,
     create_review_dashboard_app,
     create_ui_review_report,
     create_review_surface_app,
@@ -68,12 +69,15 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     )
     assert session_payload["session"]["user_id"] == "package-user"
     assert any(tool["name"] == "complaint.generate_complaint" for tool in tool_payload["tools"])
+    assert any(tool["name"] == "complaint.update_case_synopsis" for tool in tool_payload["tools"])
     assert any(tool["name"] == "complaint.review_ui" for tool in tool_payload["tools"])
+    assert any(tool["name"] == "complaint.optimize_ui" for tool in tool_payload["tools"])
     assert initialize_payload["result"]["serverInfo"]["name"] == "complaint-workspace-mcp"
     assert callable(generate_decentralized_id)
     assert callable(build_ui_ux_review_prompt)
     assert callable(create_ui_review_report)
     assert callable(create_review_dashboard_app)
+    assert callable(run_closed_loop_ui_ux_improvement)
     assert callable(run_iterative_ui_ux_workflow)
     assert callable(run_playwright_screenshot_audit)
     if HAS_MULTIPART:

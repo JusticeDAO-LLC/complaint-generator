@@ -801,17 +801,35 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
                 "() => document.getElementById('supported-count').innerText !== '0'"
             )
             page.wait_for_function(
+                "() => document.getElementById('progress-percent-chip').innerText !== '0% ready'"
+            )
+            assert "intake questionnaire has been answered" in page.locator("#progress-step-intake").inner_text().lower()
+            page.wait_for_function(
                 "() => document.getElementById('action-button').innerText.includes('Go to draft')"
             )
             assert "Generate the complaint draft" in page.locator("#action-title").inner_text()
+            page.fill(
+                "#case-synopsis",
+                "Jordan Example alleges retaliation after reporting discrimination to HR, with the strongest current support on timeline and the biggest remaining question around corroboration.",
+            )
+            page.click("#save-synopsis-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Shared case synopsis saved.')"
+            )
+            workspace_user_id = page.locator("#did-chip").inner_text().replace("did: ", "").strip()
             page.click("#action-button")
             assert "is-active" in page.locator("button[data-tab-target='draft']").get_attribute("class")
+            assert "Jordan Example alleges retaliation" in page.locator("#draft-synopsis-preview").inner_text()
+            assert page.locator("#draft-title").evaluate("(node) => document.activeElement === node") is True
 
             page.click("button[data-tab-target='integrations']")
             integrations_text = page.locator("[data-tab-panel='integrations']").inner_text()
             assert "complaint-generator-workspace session" in integrations_text
             assert "complaint-generator-mcp" in integrations_text
             assert "window.ComplaintMcpSdk.ComplaintMcpClient" in integrations_text
+
+            page.click("button[data-tab-target='review']")
+            assert "Jordan Example alleges retaliation" in page.locator("#review-synopsis-preview").inner_text()
 
             page.click("button[data-tab-target='evidence']")
             page.select_option("#evidence-kind", "testimony")
@@ -846,12 +864,15 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             )
             assert page.locator("#draft-preview").inner_text() == "Custom revised complaint body."
 
-            page.click("#reset-session-button")
+            page.goto(f"{base_url}/claim-support-review?claim_type=retaliation&workspace_user_id={workspace_user_id}")
             page.wait_for_function(
-                "() => document.getElementById('workspace-status').innerText.includes('Workspace reset to a clean state.')"
+                "() => document.getElementById('shared-case-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
             )
-            assert page.locator("#draft-preview").inner_text() == "No complaint generated yet."
-            assert "Who is bringing the complaint?" in page.locator("#next-question-label").inner_text()
+
+            page.goto(f"{base_url}/document?user_id={workspace_user_id}")
+            page.wait_for_function(
+                "() => document.getElementById('builder-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
+            )
 
             browser.close()
 
@@ -902,5 +923,102 @@ def test_user_interfaces_capture_screenshots_and_preserve_coherent_layout(tmp_pa
 
             assert len(screenshot_paths) == len(audited_surfaces)
             assert all(path.exists() and path.stat().st_size > 0 for path in screenshot_paths)
+
+            browser.close()
+
+
+def test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey(tmp_path):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    screenshot_dir = tmp_path / "playwright-complaint-feature-snapshots"
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+
+            _create_account_and_open_chat(page, base_url)
+
+            feature_screenshots = []
+
+            page.goto(f"{base_url}/")
+            _wait_for_surface(page, "/")
+            _assert_surface_layout(page)
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "landing"))
+
+            page.goto(f"{base_url}/chat")
+            _wait_for_surface(page, "/chat")
+            _assert_surface_layout(page)
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "chat"))
+
+            page.goto(f"{base_url}/profile")
+            _wait_for_surface(page, "/profile")
+            _assert_surface_layout(page)
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "profile"))
+
+            page.goto(f"{base_url}/workspace")
+            _wait_for_surface(page, "/workspace")
+            _assert_surface_layout(page, min_content_height=320)
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-intake"))
+
+            page.fill("#intake-party_name", "Jordan Example")
+            page.fill("#intake-opposing_party", "Acme Corporation")
+            page.fill("#intake-protected_activity", "Reported discrimination to HR")
+            page.fill("#intake-adverse_action", "Termination two days later")
+            page.fill("#intake-timeline", "Reported discrimination on March 8 and was terminated on March 10")
+            page.fill("#intake-harm", "Lost wages and benefits")
+            page.click("#save-intake-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"
+            )
+
+            page.get_by_role("button", name="Evidence", exact=True).click()
+            page.select_option("#evidence-kind", "document")
+            page.select_option("#evidence-claim-element", "causation")
+            page.fill("#evidence-title", "Termination email")
+            page.fill("#evidence-source", "Inbox export")
+            page.fill("#evidence-content", "Termination followed within two days of the HR complaint.")
+            page.click("#save-evidence-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Evidence saved and support review refreshed.')"
+            )
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-evidence"))
+
+            page.get_by_role("button", name="Draft", exact=True).click()
+            page.fill("#draft-title", "Jordan Example v. Acme Corporation Complaint")
+            page.fill("#requested-relief", "Back pay\nInjunctive relief")
+            page.click("#generate-draft-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint draft generated from intake and evidence.')"
+            )
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-draft"))
+
+            page.get_by_role("button", name="CLI + MCP", exact=True).click()
+            page.wait_for_function(
+                "() => document.getElementById('tool-list').innerText.includes('complaint.generate_complaint')"
+            )
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-cli-mcp"))
+
+            page.get_by_role("button", name="UX Audit", exact=True).click()
+            page.wait_for_function(
+                "() => document.getElementById('ux-review-pytest-target').value.includes('test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey')"
+            )
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-ux-review"))
+
+            review_path = f"/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}"
+            page.goto(f"{base_url}{review_path}")
+            _wait_for_surface(page, review_path)
+            _assert_surface_layout(page)
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "review"))
+
+            page.goto(f"{base_url}/document")
+            _wait_for_surface(page, "/document")
+            _assert_surface_layout(page)
+            feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "builder"))
+
+            assert len(feature_screenshots) == 10
+            assert all(path.exists() and path.stat().st_size > 0 for path in feature_screenshots)
 
             browser.close()

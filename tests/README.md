@@ -223,17 +223,29 @@ python scripts/run_standard_regression.py --slice review
 python scripts/run_standard_regression.py --slice full
 ```
 
+For the installed console-script surface, use the dedicated smoke helper after an editable install:
+
+```bash
+python -m pip install -e . --no-deps
+python scripts/run_package_install_smoke.py --json
+```
+
+That helper validates `complaint-generator`, `complaint-workspace`, `complaint-generator-workspace`, `complaint-mcp-server`, and `complaint-generator-mcp` from the interpreter's script directory.
+
 The same slices are also available through editor and shell tooling:
 
 - VS Code tasks:
+  - `Package Install Smoke`
   - `Standard Regression (Lean)`
   - `Standard Regression (Review)`
   - `Standard Regression (Full)`
 - Run and Debug:
+  - `Package Install Smoke`
   - `Standard Regression (Lean)`
   - `Standard Regression (Review)`
   - `Standard Regression (Full)`
 - Make targets:
+  - `make package-install-smoke`
   - `make regression`
   - `make regression-lean`
   - `make regression-review`

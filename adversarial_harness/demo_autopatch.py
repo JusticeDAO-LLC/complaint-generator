@@ -333,7 +333,7 @@ def _run_ui_review_lane(
     ui_ux_bundle = optimizer.build_ui_ux_optimization_bundle(
         screenshot_dir=screenshot_dir,
         output_dir=ui_ux_output_dir,
-        pytest_target="tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+        pytest_target="tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey",
         iterations=1,
         workflow_result=ui_ux_workflow_result,
     )
@@ -344,7 +344,7 @@ def _run_ui_review_lane(
     ui_ux_task = optimizer.build_ui_ux_optimization_task(
         screenshot_dir=screenshot_dir,
         output_dir=ui_ux_output_dir,
-        pytest_target="tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+        pytest_target="tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey",
         iterations=int(ui_ux_workflow_result.get("iterations") or 1),
         method="test_driven",
         review_runs=list(ui_ux_workflow_result.get("runs") or []),

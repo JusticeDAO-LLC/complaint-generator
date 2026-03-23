@@ -64,6 +64,14 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
+    "complaint.update_case_synopsis": {
+        "type": "object",
+        "properties": {
+            "user_id": {"type": "string"},
+            "synopsis": {"type": "string"},
+        },
+        "required": ["synopsis"],
+    },
     "complaint.reset_session": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},

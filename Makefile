@@ -1,9 +1,13 @@
-.PHONY: canary-validate canary-smoke canary-sample regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit hacc-adversarial-runner
+.PHONY: canary-validate canary-smoke canary-sample package-install-smoke regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit hacc-adversarial-runner
 
 HACC_GROUNDED_RUN_DIR ?= output/hacc_grounded/latest
 HACC_REPO_DIR ?= ../HACC
 
 regression: regression-full
+
+package-install-smoke:
+	.venv/bin/python -m pip install -e . --no-deps
+	.venv/bin/python scripts/run_package_install_smoke.py --json
 
 regression-lean:
 	.venv/bin/python scripts/run_standard_regression.py --slice lean

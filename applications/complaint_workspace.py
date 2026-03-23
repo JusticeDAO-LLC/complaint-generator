@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 
 DEFAULT_USER_ID = "did:key:anonymous"
+DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 _DATA_DIR = Path(__file__).resolve().parent.parent / ".complaint_workspace"
 _SESSION_DIR = _DATA_DIR / "sessions"
 
@@ -108,6 +109,7 @@ def _default_state(user_id: str) -> Dict[str, Any]:
         "created_at": _utc_now(),
         "updated_at": _utc_now(),
         "claim_type": "retaliation",
+        "case_synopsis": "",
         "intake_answers": {},
         "intake_history": [],
         "evidence": {"testimony": [], "documents": []},
@@ -133,6 +135,7 @@ class ComplaintWorkspaceService:
             return _default_state(user_id)
         payload.setdefault("user_id", user_id)
         payload.setdefault("claim_type", "retaliation")
+        payload.setdefault("case_synopsis", "")
         payload.setdefault("intake_answers", {})
         payload.setdefault("intake_history", [])
         payload.setdefault("evidence", {"testimony": [], "documents": []})
@@ -195,8 +198,10 @@ class ComplaintWorkspaceService:
         supported = [item for item in matrix if item["supported"]]
         missing = [item for item in matrix if not item["supported"]]
         evidence = state.get("evidence") or {}
+        case_synopsis = self._build_case_synopsis(state)
         return {
             "claim_type": state.get("claim_type", "retaliation"),
+            "case_synopsis": case_synopsis,
             "support_matrix": matrix,
             "overview": {
                 "supported_elements": len(supported),
@@ -234,6 +239,7 @@ class ComplaintWorkspaceService:
             "Back pay",
             "Injunctive relief",
         ]
+        case_synopsis = self._build_case_synopsis(state)
         body = "\n\n".join(
             [
                 f"{plaintiff} brings this retaliation complaint against {defendant}.",
@@ -242,15 +248,42 @@ class ComplaintWorkspaceService:
                 f"The timeline shows that {timeline}.",
                 f"As a result, {plaintiff} suffered {harm}.",
                 "Requested relief includes: " + "; ".join(relief) + ".",
+                f"Working case synopsis: {case_synopsis}",
             ]
         )
         return {
             "title": f"{plaintiff} v. {defendant} Retaliation Complaint",
             "requested_relief": relief,
+            "case_synopsis": case_synopsis,
             "body": body,
             "generated_at": _utc_now(),
             "review_snapshot": self._build_review(state),
         }
+
+    def _build_case_synopsis(self, state: Dict[str, Any]) -> str:
+        custom_synopsis = str(state.get("case_synopsis") or "").strip()
+        if custom_synopsis:
+            return custom_synopsis
+        answers = state.get("intake_answers") or {}
+        matrix = self._support_matrix(state)
+        supported_elements = len([item for item in matrix if item.get("supported")])
+        missing_elements = len([item for item in matrix if not item.get("supported")])
+        evidence = state.get("evidence") or {}
+        claim_type = str(state.get("claim_type") or "retaliation").replace("_", " ")
+        party_name = answers.get("party_name") or "The complainant"
+        opposing_party = answers.get("opposing_party") or "the opposing party"
+        protected_activity = answers.get("protected_activity") or "an identified protected activity"
+        adverse_action = answers.get("adverse_action") or "an adverse action"
+        harm = answers.get("harm") or "described harm"
+        timeline = answers.get("timeline") or "a still-developing timeline"
+        evidence_count = len(evidence.get("testimony") or []) + len(evidence.get("documents") or [])
+        return (
+            f"{party_name} is pursuing a {claim_type} complaint against {opposing_party}. "
+            f"The current theory is that {party_name} {protected_activity}, then experienced {adverse_action}. "
+            f"The reported harm is {harm}. Timeline posture: {timeline}. "
+            f"Current support posture: {supported_elements} supported elements, "
+            f"{missing_elements} open gaps, {evidence_count} saved evidence items."
+        )
 
     def get_session(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         normalized_user_id = str(user_id or DEFAULT_USER_ID)
@@ -261,6 +294,7 @@ class ComplaintWorkspaceService:
             "questions": self._build_question_status(answers),
             "next_question": self._next_question(answers),
             "review": self._build_review(state),
+            "case_synopsis": self._build_case_synopsis(state),
         }
 
     def submit_intake_answers(self, user_id: Optional[str], answers: Dict[str, Any]) -> Dict[str, Any]:
@@ -304,6 +338,7 @@ class ComplaintWorkspaceService:
             "saved": record,
             "review": self._build_review(state),
             "session": deepcopy(state),
+            "case_synopsis": self._build_case_synopsis(state),
         }
 
     def generate_complaint(
@@ -323,6 +358,7 @@ class ComplaintWorkspaceService:
             "draft": deepcopy(draft),
             "review": self._build_review(state),
             "session": deepcopy(state),
+            "case_synopsis": self._build_case_synopsis(state),
         }
 
     def update_draft(
@@ -348,6 +384,20 @@ class ComplaintWorkspaceService:
             "draft": deepcopy(draft),
             "review": self._build_review(state),
             "session": deepcopy(state),
+            "case_synopsis": self._build_case_synopsis(state),
+        }
+
+    def update_case_synopsis(self, user_id: Optional[str], synopsis: Optional[str]) -> Dict[str, Any]:
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        state["case_synopsis"] = str(synopsis or "").strip()
+        self._save_state(state)
+        session = self.get_session(str(state.get("user_id")))
+        return {
+            "session": session["session"],
+            "review": session["review"],
+            "questions": session["questions"],
+            "next_question": session["next_question"],
+            "case_synopsis": session["case_synopsis"],
         }
 
     def reset_session(self, user_id: Optional[str]) -> Dict[str, Any]:
@@ -365,6 +415,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.review_case", "description": "Return the current support matrix and evidence review."},
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
+                {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
                 {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
                 {"name": "complaint.optimize_ui", "description": "Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI."},
@@ -395,6 +446,7 @@ class ComplaintWorkspaceService:
                 "review": session["review"],
                 "questions": session["questions"],
                 "next_question": session["next_question"],
+                "case_synopsis": session["case_synopsis"],
             }
         if tool_name == "complaint.generate_complaint":
             return self.generate_complaint(
@@ -413,6 +465,11 @@ class ComplaintWorkspaceService:
                 title=args.get("title"),
                 body=args.get("body"),
                 requested_relief=requested_relief,
+            )
+        if tool_name == "complaint.update_case_synopsis":
+            return self.update_case_synopsis(
+                args.get("user_id"),
+                args.get("synopsis"),
             )
         if tool_name == "complaint.reset_session":
             return self.reset_session(args.get("user_id"))
@@ -444,9 +501,10 @@ class ComplaintWorkspaceService:
                         provider=args.get("provider"),
                         model=args.get("model"),
                         notes=args.get("notes"),
+                        goals=args.get("goals"),
                         pytest_target=str(pytest_target)
                         if pytest_target
-                        else "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+                        else "tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey",
                     )
                 return run_ui_review_workflow(
                     str(screenshot_dir),
@@ -468,13 +526,13 @@ class ComplaintWorkspaceService:
             return run_closed_loop_ui_ux_improvement(
                 screenshot_dir=str(screenshot_dir),
                 output_dir=str(args.get("output_path") or Path(str(screenshot_dir)).expanduser().resolve() / "closed-loop"),
-                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout"),
+                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"),
                 max_rounds=int(args.get("max_rounds") or 2),
                 review_iterations=int(args.get("iterations") or 1),
                 provider=args.get("provider"),
                 model=args.get("model"),
-                method=str(args.get("method") or "actor_critic"),
-                priority=int(args.get("priority") or 80),
+                method=str(args.get("method") or "adversarial"),
+                priority=int(args.get("priority") or DEFAULT_UI_UX_OPTIMIZER_PRIORITY),
                 notes=args.get("notes"),
                 goals=args.get("goals"),
             )

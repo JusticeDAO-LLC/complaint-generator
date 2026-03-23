@@ -31,6 +31,7 @@ applications/ui_review.py
 backends/__init__.py
 backends/huggingface.py
 backends/llm_router_backend.py
+backends/multimodal_router_backend.py
 backends/openai.py
 backends/openaibackend.py
 backends/workstation.py
@@ -89,6 +90,7 @@ integrations/ipfs_datasets/llm.py
 integrations/ipfs_datasets/loader.py
 integrations/ipfs_datasets/logic.py
 integrations/ipfs_datasets/mcp_gateway.py
+integrations/ipfs_datasets/multimodal.py
 integrations/ipfs_datasets/policy_rules.py
 integrations/ipfs_datasets/provenance.py
 integrations/ipfs_datasets/router_status.py
@@ -263,6 +265,7 @@ tests/test_mediator.py
 tests/test_mediator_inquiry_payload.py
 tests/test_mediator_legal_support_context.py
 tests/test_mediator_three_phase.py
+tests/test_multimodal_router_backend.py
 tests/test_negation_handling_extraction.py
 tests/test_no_duckdb_fallbacks.py
 tests/test_ontology_critic_explain_score.py
@@ -291,6 +294,7 @@ tests/test_run_hacc_grounded_pipeline_cli.py
 tests/test_run_hacc_grounding_regression_cli.py
 tests/test_run_hacc_preset_matrix.py
 tests/test_run_hacc_unit_regression_cli.py
+tests/test_run_package_install_smoke_cli.py
 tests/test_run_standard_regression_cli.py
 tests/test_search_hooks.py
 tests/test_sgd_cycle_integration.py
@@ -300,6 +304,7 @@ tests/test_sweep_ranker.py
 tests/test_synonym_handling_resolution.py
 tests/test_synthesize_hacc_complaint.py
 tests/test_temporal_reasoning_extraction.py
+tests/test_ui_review_multimodal.py
 tests/test_ui_ux_optimizer_bundle.py
 tests/test_ui_ux_workflow.py
 tests/test_validate_intake_follow_up_worksheet.py

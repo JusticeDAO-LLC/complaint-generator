@@ -60,6 +60,24 @@
       }
     },
     {
+      "label": "Package Install Smoke",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/run_package_install_smoke.py",
+        "--json"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "Standard Regression (Lean)",
       "type": "shell",
       "command": "${workspaceFolder}/.venv/bin/python",

@@ -63,6 +63,8 @@ def test_mcp_generate_complaint_returns_draft_for_new_session(tmp_path):
     assert response is not None
     assert response["result"]["isError"] is False
     assert response["result"]["structuredContent"]["draft"]["body"]
+    assert response["result"]["structuredContent"]["draft"]["case_synopsis"]
+    assert response["result"]["structuredContent"]["draft"]["review_snapshot"]["case_synopsis"]
 
 
 def test_console_entrypoint_targets_run_main():

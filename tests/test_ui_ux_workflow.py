@@ -33,6 +33,17 @@ def _write_artifact(directory: Path, name: str, url: str = "http://example.test/
     (directory / f"{name}.png").write_bytes(b"fake-png")
 
 
+def test_ui_ux_workflow_defaults_target_full_feature_audit_and_adversarial_optimizer():
+    assert workflow_module.DEFAULT_SCREENSHOT_TEST.endswith(
+        "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+    )
+    assert workflow_module.DEFAULT_OPTIMIZER_METHOD == "adversarial"
+    assert workflow_module.DEFAULT_OPTIMIZER_PRIORITY == 90
+    assert any("first-time complainants" in goal for goal in workflow_module.DEFAULT_UI_UX_REVIEW_GOALS)
+    assert any("Evidence capture" in item for item in workflow_module.DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES)
+    assert "package, CLI, MCP, and browser SDK" in workflow_module.DEFAULT_UI_UX_REVIEW_NOTES
+
+
 def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_path):
     _write_artifact(tmp_path, "workspace")
 
@@ -48,6 +59,26 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "complaint-mcp-server" in prompt or "complaint-generator-mcp" in prompt
     assert "JavaScript MCP SDK" in prompt or "ComplaintMcpClient" in prompt
     assert "Previous iteration asked for clearer intake guidance." in prompt
+    assert "Treat this as an adversarial workflow audit" in prompt
+    assert "Required capability audit:" in prompt
+    assert "Hidden Or Missing Feature Paths" in prompt
+    assert "Stage Findings" in prompt
+    assert "Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`" in prompt
+
+
+def test_build_ui_ux_review_prompt_uses_default_goals_and_notes_when_not_supplied(tmp_path):
+    _write_artifact(tmp_path, "workspace")
+
+    prompt = build_ui_ux_review_prompt(
+        iteration=1,
+        artifacts=workflow_module.collect_screenshot_artifacts(tmp_path),
+    )
+
+    assert "Workflow goals:" in prompt
+    assert "first-time complainants" in prompt
+    assert "Review notes:" in prompt
+    assert "complaint operator both need to succeed" in prompt
+    assert "Package, CLI, MCP server, and JavaScript SDK entry points remain discoverable" in prompt
 
 
 def test_run_playwright_screenshot_audit_uses_configured_artifact_directory(monkeypatch, tmp_path):
@@ -162,8 +193,33 @@ def test_closed_loop_ui_ux_improvement_delegates_to_optimizer(monkeypatch, tmp_p
         max_rounds=2,
         review_iterations=1,
         notes="Focus on calmer intake wording.",
+        goals=["keep the full complaint flow visible", "make the intake calmer"],
+        method="adversarial",
+        priority=92,
     )
 
     assert result["workflow_type"] == "ui_ux_closed_loop"
     assert captured["max_rounds"] == 2
     assert captured["notes"] == "Focus on calmer intake wording."
+    assert captured["goals"] == ["keep the full complaint flow visible", "make the intake calmer"]
+    assert captured["method"] == "adversarial"
+    assert captured["priority"] == 92
+
+
+def test_closed_loop_ui_ux_improvement_uses_default_brief_when_none_is_supplied(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_feedback_loop(self, **kwargs):
+        captured.update(kwargs)
+        return {"workflow_type": "ui_ux_closed_loop", "rounds_executed": 1}
+
+    monkeypatch.setattr("adversarial_harness.optimizer.Optimizer.run_agentic_ui_ux_feedback_loop", fake_feedback_loop)
+
+    run_closed_loop_ui_ux_improvement(
+        screenshot_dir=tmp_path / "screens",
+        output_dir=tmp_path / "reviews",
+    )
+
+    assert captured["priority"] == workflow_module.DEFAULT_OPTIMIZER_PRIORITY
+    assert captured["goals"] == workflow_module.DEFAULT_UI_UX_REVIEW_GOALS
+    assert captured["notes"] == workflow_module.DEFAULT_UI_UX_REVIEW_NOTES

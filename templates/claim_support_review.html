@@ -307,6 +307,25 @@
             border: 1px solid rgba(154, 52, 18, 0.14);
         }
 
+        .synopsis-card {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(154, 52, 18, 0.16);
+            background: rgba(255, 247, 237, 0.8);
+        }
+
+        .synopsis-card strong,
+        .synopsis-card span {
+            display: block;
+        }
+
+        .synopsis-card span {
+            margin-top: 8px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
         .resolution-panel {
             margin-top: 18px;
             padding: 16px;
@@ -701,6 +720,10 @@
                 </div>
                 <div class="status-line" id="prefill-context-line" hidden>Opened from document workflow.</div>
                 <div class="focus-chip-row" id="section-focus-chip-row" hidden></div>
+                <div class="synopsis-card" id="shared-case-synopsis-card">
+                    <strong id="shared-case-synopsis-title">Shared case framing</strong>
+                    <span id="shared-case-synopsis-text">Load a review payload with a shared complaint user ID to keep the case synopsis visible on this dashboard.</span>
+                </div>
                 <div class="hero-stats">
                     <div class="stat">
                         <span class="stat-label">Covered</span>
@@ -1222,6 +1245,55 @@
             postSaveValidationFocus: null,
             lastValidationOutcome: null,
         };
+
+        function renderSharedCaseSynopsisText(text, title) {
+            document.getElementById('shared-case-synopsis-title').textContent = title || 'Shared case framing';
+            document.getElementById('shared-case-synopsis-text').textContent = text || 'Load a review payload with a shared complaint user ID to keep the case synopsis visible on this dashboard.';
+        }
+
+        function getComplaintWorkspaceClient() {
+            return window.ComplaintMcpSdk
+                ? new window.ComplaintMcpSdk.ComplaintMcpClient()
+                : null;
+        }
+
+        async function syncSharedCaseSynopsis() {
+            const complaintWorkspaceClient = getComplaintWorkspaceClient();
+            if (!complaintWorkspaceClient) {
+                return;
+            }
+            const requestedWorkspaceUserId = new URLSearchParams(window.location.search).get('workspace_user_id') || null;
+            const explicitUserId = String(document.getElementById('user-id').value || '').trim();
+            const cachedDid = typeof complaintWorkspaceClient.getCachedDid === 'function'
+                ? complaintWorkspaceClient.getCachedDid()
+                : null;
+            const userId = requestedWorkspaceUserId || explicitUserId || cachedDid || null;
+            if (!userId) {
+                renderSharedCaseSynopsisText('', 'Shared case framing');
+                return;
+            }
+            try {
+                const cachedSynopsis = window.localStorage.getItem(`complaint-workspace-synopsis:${userId}`) || '';
+                if (cachedSynopsis.trim()) {
+                    renderSharedCaseSynopsisText(cachedSynopsis.trim(), `Shared case framing for ${userId}`);
+                }
+            } catch (error) {
+                // Local storage is an optional fast-path only.
+            }
+            try {
+                const sessionPayload = await complaintWorkspaceClient.startSession(userId);
+                const caseSynopsis = String(sessionPayload.case_synopsis || ((sessionPayload.session || {}).case_synopsis) || '').trim();
+                renderSharedCaseSynopsisText(
+                    caseSynopsis || 'The shared complaint session is available, but no synopsis has been saved yet.',
+                    `Shared case framing for ${userId}`,
+                );
+            } catch (error) {
+                renderSharedCaseSynopsisText(
+                    `Unable to load the shared complaint synopsis for ${userId}.`,
+                    'Shared case framing unavailable',
+                );
+            }
+        }
 
         function normalizeAlignmentUpdateList(payload) {
             const intakeCaseSummary = payload && payload.intake_case_summary && typeof payload.intake_case_summary === 'object'
@@ -5765,6 +5837,9 @@
             renderTasks(plan, planSummary);
             renderHistory(historyEntries, historySummary);
             document.getElementById('raw-output').textContent = JSON.stringify(payload, null, 2);
+            if (payload && (payload.user_id || document.getElementById('user-id').value.trim())) {
+                syncSharedCaseSynopsis();
+            }
             if (reviewRenderState.postSaveValidationFocus) {
                 const focus = reviewRenderState.postSaveValidationFocus;
                 openAlignmentUpdateFilter('promoted', 'pending_review_first', focus.claimType, focus.claimElementId);
@@ -6080,6 +6155,9 @@
         document.getElementById('clear-testimony-button').addEventListener('click', clearTestimonyForm);
         document.getElementById('save-document-button').addEventListener('click', saveDocument);
         document.getElementById('clear-document-button').addEventListener('click', clearDocumentForm);
+        document.getElementById('user-id').addEventListener('change', () => {
+            syncSharedCaseSynopsis();
+        });
         document.getElementById('alignment-task-update-filter').addEventListener('change', () => {
             syncReviewIntentUrl(persistReviewIntent({
                 alignment_task_update_filter: document.getElementById('alignment-task-update-filter').value || 'all',
@@ -6411,6 +6489,7 @@
         if (applyQueryPrefill()) {
             setStatus('Review prefilled from document workflow.');
         }
+        syncSharedCaseSynopsis();
         loadReview();
     </script>
 </body>

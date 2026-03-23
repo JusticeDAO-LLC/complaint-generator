@@ -54,6 +54,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.review_case",
         "complaint.generate_complaint",
         "complaint.update_draft",
+        "complaint.update_case_synopsis",
         "complaint.reset_session",
         "complaint.review_ui",
         "complaint.optimize_ui",
@@ -111,6 +112,8 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     review_payload = _invoke_cli(runner, "review", "--user-id", "cli-user")
     assert review_payload["review"]["claim_type"] == "retaliation"
     assert review_payload["session"]["user_id"] == "cli-user"
+    assert "case_synopsis" in review_payload
+    assert "Reported discrimination to HR" in review_payload["review"]["case_synopsis"]
 
     generate_payload = _invoke_cli(
         runner,
@@ -124,6 +127,8 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     )
     assert generate_payload["draft"]["title"] == "CLI generated complaint"
     assert generate_payload["draft"]["requested_relief"] == ["Back pay", "Injunctive relief"]
+    assert "Working case synopsis:" in generate_payload["draft"]["body"]
+    assert "Reported discrimination to HR" in generate_payload["draft"]["case_synopsis"]
 
     update_payload = _invoke_cli(
         runner,
@@ -140,6 +145,17 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert update_payload["draft"]["title"] == "Edited CLI complaint"
     assert update_payload["draft"]["body"] == "Edited complaint body from CLI."
     assert update_payload["draft"]["requested_relief"] == ["Reinstatement", "Fees"]
+
+    synopsis_payload = _invoke_cli(
+        runner,
+        "update-synopsis",
+        "--user-id",
+        "cli-user",
+        "--synopsis",
+        "Jordan Example alleges retaliation after reporting discrimination to HR and needs stronger causation support.",
+    )
+    assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
+    assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
 
     reset_payload = _invoke_cli(runner, "reset", "--user-id", "cli-user")
     assert reset_payload["session"]["user_id"] == "cli-user"
@@ -193,6 +209,8 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     review_payload = _call_mcp_tool(service, 4, "complaint.review_case", {"user_id": "mcp-user"})
     assert review_payload["review"]["overview"]["testimony_items"] == 1
     assert review_payload["session"]["user_id"] == "mcp-user"
+    assert "case_synopsis" in review_payload
+    assert "Reported discrimination to HR" in review_payload["review"]["case_synopsis"]
 
     generate_payload = _call_mcp_tool(
         service,
@@ -206,6 +224,8 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     )
     assert generate_payload["draft"]["title"] == "MCP generated complaint"
     assert generate_payload["draft"]["requested_relief"] == ["Back pay", "Compensatory damages"]
+    assert "Working case synopsis:" in generate_payload["draft"]["body"]
+    assert "Reported discrimination to HR" in generate_payload["draft"]["case_synopsis"]
 
     update_payload = _call_mcp_tool(
         service,
@@ -222,7 +242,19 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert update_payload["draft"]["body"] == "Updated body from MCP."
     assert update_payload["draft"]["requested_relief"] == ["Reinstatement", "Attorney fees"]
 
-    reset_payload = _call_mcp_tool(service, 7, "complaint.reset_session", {"user_id": "mcp-user"})
+    synopsis_payload = _call_mcp_tool(
+        service,
+        7,
+        "complaint.update_case_synopsis",
+        {
+            "user_id": "mcp-user",
+            "synopsis": "Jordan Example alleges retaliation after reporting discrimination and wants the shared case framing preserved.",
+        },
+    )
+    assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
+    assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
+
+    reset_payload = _call_mcp_tool(service, 8, "complaint.reset_session", {"user_id": "mcp-user"})
     assert reset_payload["session"]["user_id"] == "mcp-user"
     assert reset_payload["session"]["draft"] is None
     assert reset_payload["session"]["intake_answers"] == {}
@@ -268,6 +300,7 @@ def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp
     def fake_iterative(**kwargs):
         assert kwargs["iterations"] == 2
         assert str(kwargs["screenshot_dir"]) == str(tmp_path)
+        assert kwargs["goals"] == ["reduce intake friction", "keep evidence and draft connected"]
         return {
             "iterations": 2,
             "screenshot_dir": str(tmp_path),
@@ -287,7 +320,12 @@ def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp
         service,
         12,
         "complaint.review_ui",
-        {"screenshot_dir": str(tmp_path), "iterations": 2, "output_path": str(tmp_path / "reviews")},
+        {
+            "screenshot_dir": str(tmp_path),
+            "iterations": 2,
+            "output_path": str(tmp_path / "reviews"),
+            "goals": ["reduce intake friction", "keep evidence and draft connected"],
+        },
     )
 
     assert mcp_payload["iterations"] == 2
@@ -299,6 +337,9 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
     service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-optimize-sessions")
 
     def fake_closed_loop(**kwargs):
+        assert kwargs["method"] == "adversarial"
+        assert kwargs["priority"] == 91
+        assert kwargs["goals"] == ["make intake calmer", "surface every complaint-generator feature"]
         return {
             "workflow_type": "ui_ux_closed_loop",
             "max_rounds": kwargs["max_rounds"],
@@ -324,6 +365,12 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
         str(tmp_path / "closed-loop"),
         "--max-rounds",
         "2",
+        "--method",
+        "adversarial",
+        "--priority",
+        "91",
+        "--goals",
+        "make intake calmer\nsurface every complaint-generator feature",
     )
     assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
     assert cli_payload["max_rounds"] == 2
@@ -332,7 +379,58 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
         service,
         13,
         "complaint.optimize_ui",
-        {"screenshot_dir": str(tmp_path), "max_rounds": 2, "output_path": str(tmp_path / "closed-loop")},
+        {
+            "screenshot_dir": str(tmp_path),
+            "max_rounds": 2,
+            "output_path": str(tmp_path / "closed-loop"),
+            "method": "adversarial",
+            "priority": 91,
+            "goals": ["make intake calmer", "surface every complaint-generator feature"],
+        },
     )
     assert mcp_payload["workflow_type"] == "ui_ux_closed_loop"
     assert mcp_payload["cycles"][0]["optimizer_result"]["changed_files"] == ["templates/workspace.html"]
+
+
+def test_optimize_ui_defaults_to_feature_complete_audit_and_adversarial_method(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-optimize-default-sessions")
+    captured = {}
+
+    def fake_closed_loop(**kwargs):
+        captured.update(kwargs)
+        return {"workflow_type": "ui_ux_closed_loop", "rounds_executed": 1}
+
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+    monkeypatch.setattr(
+        "complaint_generator.ui_ux_workflow.run_closed_loop_ui_ux_improvement",
+        fake_closed_loop,
+    )
+
+    cli_payload = _invoke_cli(
+        runner,
+        "optimize-ui",
+        str(tmp_path),
+    )
+    assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
+    assert captured["method"] == "adversarial"
+    assert captured["priority"] == 90
+    assert captured["pytest_target"].endswith(
+        "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+    )
+
+    captured.clear()
+    mcp_payload = _call_mcp_tool(
+        service,
+        14,
+        "complaint.optimize_ui",
+        {
+            "screenshot_dir": str(tmp_path),
+        },
+    )
+    assert mcp_payload["workflow_type"] == "ui_ux_closed_loop"
+    assert captured["method"] == "adversarial"
+    assert captured["priority"] == 90
+    assert captured["pytest_target"].endswith(
+        "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+    )

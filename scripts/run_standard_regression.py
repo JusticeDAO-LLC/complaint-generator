@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 REGRESSION_SLICES = {
     "lean": [
+        "tests/test_run_package_install_smoke_cli.py",
         "tests/test_cli_commands.py",
         "tests/test_intake_status.py",
         "tests/test_mediator_three_phase.py",

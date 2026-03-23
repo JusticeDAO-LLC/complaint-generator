@@ -278,30 +278,30 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#intake-adverse_action').fill('Was terminated two days later');
     await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
     await page.locator('#intake-harm').fill('Lost wages and benefits');
-    await page.getByRole('button', { name: 'Save Intake Answers' }).click();
+    await page.locator('#save-intake-button').click();
 
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
-    await page.getByRole('button', { name: 'Evidence' }).click();
+    await page.getByRole('button', { name: 'Evidence', exact: true }).click();
 
     await page.locator('#evidence-kind').selectOption('testimony');
     await page.locator('#evidence-claim-element').selectOption('causation');
     await page.locator('#evidence-title').fill('Witness statement');
     await page.locator('#evidence-source').fill('Coworker interview');
     await page.locator('#evidence-content').fill('A coworker confirmed the termination happened immediately after the HR complaint.');
-    await page.getByRole('button', { name: 'Add Evidence' }).click();
+    await page.locator('#save-evidence-button').click();
 
     await expect(page.locator('#evidence-list')).toContainText(/Witness statement/i);
-    await page.getByRole('button', { name: 'Review' }).click();
+    await page.getByRole('button', { name: 'Review', exact: true }).click();
     await expect(page.locator('#support-grid')).toContainText(/Protected activity/i);
     await expect(page.locator('#recommended-actions')).toContainText(/Check timing/i);
 
-    await page.getByRole('button', { name: 'Draft' }).click();
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
-    await page.getByRole('button', { name: 'Generate Complaint' }).click();
+    await page.locator('#generate-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint/i);
 
     await page.locator('#draft-body').fill('Edited final complaint body.');
-    await page.getByRole('button', { name: 'Save Draft Edits' }).click();
+    await page.locator('#save-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
 
     const cachedDid = await page.evaluate(() => localStorage.getItem('complaintGenerator.did'));

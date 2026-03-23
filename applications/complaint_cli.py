@@ -8,7 +8,14 @@ import typer
 
 from .complaint_workspace import ComplaintWorkspaceService
 from .ui_review import run_ui_review_workflow
-from .ui_review import run_ui_review_workflow
+
+
+DEFAULT_UI_UX_SCREENSHOT_TARGET = (
+    "tests/test_website_cohesion_playwright.py::"
+    "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+)
+DEFAULT_UI_UX_OPTIMIZER_METHOD = "adversarial"
+DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 
 
 app = typer.Typer(help="Unified complaint workspace CLI.")
@@ -17,6 +24,13 @@ service = ComplaintWorkspaceService()
 
 def _print(payload) -> None:
     typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _split_multiline_values(raw_value: Optional[str]) -> Optional[list[str]]:
+    if not raw_value:
+        return None
+    values = [line.strip() for line in raw_value.splitlines() if line.strip()]
+    return values or None
 
 
 @app.command("session")
@@ -92,6 +106,11 @@ def update_draft(
     _print(service.update_draft(user_id, title=title, body=body, requested_relief=relief_items or None))
 
 
+@app.command("update-synopsis")
+def update_synopsis(user_id: str = "demo-user", synopsis: str = "") -> None:
+    _print(service.update_case_synopsis(user_id, synopsis))
+
+
 @app.command("reset")
 def reset(user_id: str = "demo-user") -> None:
     _print(service.reset_session(user_id))
@@ -103,12 +122,14 @@ def review_ui(
     artifact_path: str = "artifacts/ui_review/latest.json",
     iterations: int = 0,
     notes: Optional[str] = None,
+    goals: Optional[str] = None,
     provider: Optional[str] = None,
     model: Optional[str] = None,
     config_path: str = "config.llm_router.json",
     backend_id: Optional[str] = None,
-    pytest_target: str = "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+    pytest_target: str = DEFAULT_UI_UX_SCREENSHOT_TARGET,
 ) -> None:
+    goal_items = _split_multiline_values(goals)
     if iterations > 0:
         from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
 
@@ -121,6 +142,7 @@ def review_ui(
                 model=model,
                 pytest_target=pytest_target,
                 notes=notes,
+                goals=goal_items,
             )
         )
         return
@@ -128,6 +150,7 @@ def review_ui(
         run_ui_review_workflow(
             screenshot_dir,
             notes=notes,
+            goals=goal_items,
             provider=provider,
             model=model,
             config_path=config_path,
@@ -144,14 +167,16 @@ def optimize_ui(
     max_rounds: int = 2,
     iterations: int = 1,
     notes: Optional[str] = None,
+    goals: Optional[str] = None,
     provider: Optional[str] = None,
     model: Optional[str] = None,
-    method: str = "actor_critic",
-    priority: int = 80,
-    pytest_target: str = "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+    method: str = DEFAULT_UI_UX_OPTIMIZER_METHOD,
+    priority: int = DEFAULT_UI_UX_OPTIMIZER_PRIORITY,
+    pytest_target: str = DEFAULT_UI_UX_SCREENSHOT_TARGET,
 ) -> None:
     from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement
 
+    goal_items = _split_multiline_values(goals)
     _print(
         run_closed_loop_ui_ux_improvement(
             screenshot_dir=screenshot_dir,
@@ -164,6 +189,7 @@ def optimize_ui(
             method=method,
             priority=priority,
             notes=notes,
+            goals=goal_items,
         )
     )
 

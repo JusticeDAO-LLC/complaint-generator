@@ -1,331 +1,787 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <title>Lex Publicus</title>
-    <!-- Latest compiled and minified CSS -->
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/complaint_app_shell.css">
-    <!-- jQuery library -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A unified complaint generator for intake, evidence collection, support review, drafting, MCP tools, and adversarial UI optimization.">
+    <title>Lex Publicus | Complaint Generator</title>
     <script defer src="/static/complaint_mcp_sdk.js"></script>
     <script defer src="/static/complaint_app_shell.js"></script>
     <style>
+        :root {
+            --bg: #f6efe3;
+            --bg-panel: rgba(255, 251, 245, 0.84);
+            --bg-strong: #fffaf2;
+            --ink: #23160b;
+            --muted: #6c5a4e;
+            --line: rgba(91, 60, 28, 0.18);
+            --accent: #b44d1b;
+            --accent-strong: #812f0b;
+            --accent-soft: #fde2cf;
+            --green: #23513a;
+            --green-soft: #dff3e5;
+            --shadow: 0 24px 64px rgba(54, 31, 13, 0.14);
+            --radius-xl: 28px;
+            --radius-lg: 22px;
+            --radius-md: 16px;
+            --content-width: 1240px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            background-color: #eeeeee;
-        }
-        
-        p {
-            font-size: large;
-            line-height: 1.5;
-            margin-left: 1em;
-            margin-right: 1em;
-        }
-        
-        .info {
-            margin-top: 40px;
-        }
-        
-        .search {
-            margin: auto;
-            width: 680px;
-        }
-        
-        .search input {
-            width: 400px;
-            float: left;
-            display: inline;
-        }
-        
-        #preview {
-            margin: auto;
-            text-align: center;
-            padding: auto
-        }
-        
-        .preview_box {
-            width: 100%;
-            display: inline;
-        }
-        
-        .preview_box iframe {
-            min-height: 700px;
-            margin: 1.5em;
-            width: 46%;
-        }
-        
-        .search label {
-            margin-top: .5em;
-            margin-right: .5em;
-            font-size: large;
-            font-weight: bolder;
-            float: left;
-            display: inline;
-        }
-        
-        .search button {
-            float: right;
-            display: inline;
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(238, 175, 120, 0.42), transparent 28%),
+                radial-gradient(circle at top right, rgba(102, 146, 118, 0.18), transparent 22%),
+                linear-gradient(180deg, #fbf5ea 0%, #f5ede0 46%, #efe5d6 100%);
         }
 
-        .operator-link {
-            margin: 1.5em auto 0;
-            width: 680px;
-            text-align: center;
+        a {
+            color: inherit;
         }
 
-        .operator-link a {
-            display: inline-block;
-            padding: 0.8em 1.2em;
+        .page-shell {
+            width: min(var(--content-width), calc(100% - 40px));
+            margin: 0 auto;
+            padding: 24px 0 64px;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 22px;
+            border: 1px solid var(--line);
             border-radius: 999px;
-            background-color: #fff7ed;
-            border: 1px solid #fdba74;
-            color: #9a3412;
-            font-weight: bold;
+            background: rgba(255, 252, 247, 0.76);
+            backdrop-filter: blur(14px);
+            box-shadow: 0 14px 34px rgba(63, 39, 22, 0.08);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #8f2d09, #d06a2d);
+            color: #fff7ef;
+            font-size: 24px;
+            font-weight: 700;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .brand-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .brand-eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .brand-subtitle {
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .topbar-nav {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .topbar-nav a {
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(180, 77, 27, 0.14);
+            background: rgba(255, 247, 237, 0.9);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent-strong);
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.9fr);
+            gap: 28px;
+            margin-top: 30px;
+            align-items: stretch;
+        }
+
+        .hero-card,
+        .status-card,
+        .panel,
+        .route-card,
+        .workflow-step,
+        .feature-card {
+            border: 1px solid var(--line);
+            background: var(--bg-panel);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(14px);
+        }
+
+        .hero-card {
+            border-radius: var(--radius-xl);
+            padding: 34px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -10% -18% 28%;
+            height: 220px;
+            background: radial-gradient(circle, rgba(180, 77, 27, 0.18), transparent 66%);
+            pointer-events: none;
+        }
+
+        .eyebrow {
+            margin: 0 0 10px;
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(2.8rem, 6vw, 5rem);
+            line-height: 0.96;
+            max-width: 12ch;
+        }
+
+        .hero-copy {
+            max-width: 60ch;
+            margin: 18px 0 0;
+            font-size: 1.1rem;
+            line-height: 1.7;
+            color: var(--muted);
+        }
+
+        .cta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-top: 28px;
+        }
+
+        .primary-cta,
+        .secondary-cta,
+        .mini-cta {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .primary-cta,
+        .secondary-cta {
+            min-height: 54px;
+            padding: 0 22px;
+        }
+
+        .primary-cta {
+            background: linear-gradient(135deg, #9e360e, #d5672d);
+            color: #fff9f4;
+            box-shadow: 0 14px 28px rgba(158, 54, 14, 0.28);
+        }
+
+        .secondary-cta {
+            background: rgba(255, 251, 245, 0.78);
+            border: 1px solid rgba(91, 60, 28, 0.16);
+            color: var(--ink);
+        }
+
+        .hero-points {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 32px;
+        }
+
+        .hero-point {
+            padding: 16px 18px;
+            border-radius: var(--radius-md);
+            background: rgba(255, 248, 240, 0.9);
+            border: 1px solid rgba(180, 77, 27, 0.14);
+        }
+
+        .hero-point strong {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .hero-point span {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .status-card {
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .status-banner {
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            background: #eef6ff;
+            color: #1d4ed8;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .identity-card {
+            padding: 18px 20px;
+            border-radius: var(--radius-lg);
+            background: var(--bg-strong);
+            border: 1px solid rgba(91, 60, 28, 0.12);
+        }
+
+        .identity-label {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .identity-value {
+            margin-top: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+
+        .stat-grid,
+        .feature-grid,
+        .routes-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .stat-card {
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            background: var(--bg-strong);
+            border: 1px solid rgba(91, 60, 28, 0.12);
+        }
+
+        .stat-card strong {
+            display: block;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .stat-card span {
+            display: block;
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .status-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .mini-cta {
+            min-height: 46px;
+            padding: 0 16px;
+            background: var(--green-soft);
+            border: 1px solid rgba(35, 81, 58, 0.18);
+            color: var(--green);
+        }
+
+        .section {
+            margin-top: 28px;
+        }
+
+        .panel {
+            border-radius: var(--radius-xl);
+            padding: 28px;
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .section-heading h2 {
+            margin: 0;
+            font-size: clamp(1.8rem, 3vw, 2.6rem);
+            line-height: 1.05;
+        }
+
+        .section-heading p {
+            margin: 0;
+            max-width: 52ch;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .workflow-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .workflow-step {
+            padding: 20px;
+            border-radius: var(--radius-lg);
+        }
+
+        .workflow-step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--accent-soft);
+            color: var(--accent-strong);
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .workflow-step h3,
+        .feature-card h3,
+        .route-card h3 {
+            margin: 0 0 10px;
+            font-size: 1.1rem;
+        }
+
+        .workflow-step p,
+        .feature-card p,
+        .route-card p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .feature-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .feature-card {
+            padding: 22px;
+            border-radius: var(--radius-lg);
+        }
+
+        .feature-chip {
+            display: inline-block;
+            margin-bottom: 12px;
+            padding: 7px 11px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent-strong);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .routes-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .route-card {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 22px;
+            border-radius: var(--radius-lg);
+        }
+
+        .route-card a {
             text-decoration: none;
         }
 
-        .operator-link a + a {
-            margin-left: 0.75em;
+        .route-link {
+            margin-top: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent-strong);
+            font-weight: 700;
         }
-        
-        #chat_icon img {
-            width: 128px;
-            height: 128px;
+
+        .footer-note {
+            margin-top: 28px;
+            padding: 20px 24px;
+            border-radius: var(--radius-lg);
+            background: rgba(255, 251, 245, 0.82);
+            border: 1px solid var(--line);
+            color: var(--muted);
+            line-height: 1.7;
         }
-        
-        #chat_icon {
-            position: absolute;
-            bottom: 0px;
-            right: 0px;
+
+        @media (max-width: 1100px) {
+            .hero,
+            .workflow-grid,
+            .feature-grid,
+            .routes-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-points {
+                grid-template-columns: 1fr;
+            }
         }
-        
-        #chatbox {
-            position: absolute;
-            bottom: 0%;
-            right: 0%;
-            width: 640px;
-            height: 570px;
-            overflow: hidden;
-        }
-        
-        #chatbox iframe {
-            width: 100%;
-            border: none;
-            height: 600px;
-            background-color: transparent;
-            overflow: hidden;
-            padding-right: 50px;
-        }
-        
-        #Err {
-            background-color: lightcoral;
-            color: crimson;
-            display: none;
-            width: 93%;
-            margin: auto;
-        }
-        
-        #submit_button {
-            display: block;
-        }
-        
-        .card {
-            position: absolute;
-            width: 95%;
-            height: 80%;
-            box-shadow: 0px 0px 5px gray;
-            left: 2.5%;
-            top: 5%;
-        }
-        
-        #user-form {
-            position: absolute;
-            top: 20%;
-            /* left: 50%; */
-            /* transform: translateX(-50%); */
-            padding: auto;
-            text-align: center;
-            align-content: center;
-            margin: auto;
-            width: 100%;
-        }
-        
-        .row {
-            margin: auto;
-            display: block;
-        }
-        
-        #user-form input {
-            width: 400px;
-        }
-        
-        #user-form button {
-            /* position: absolute; */
-            margin-left: 2px;
-            width: 400px;
+
+        @media (max-width: 760px) {
+            .page-shell {
+                width: min(var(--content-width), calc(100% - 24px));
+                padding-top: 14px;
+            }
+
+            .topbar,
+            .section-heading {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .hero-card,
+            .status-card,
+            .panel {
+                padding: 22px;
+            }
+
+            .stat-grid,
+            .status-actions {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: clamp(2.4rem, 14vw, 3.7rem);
+            }
         }
     </style>
 </head>
-<script>
-    hostname = "http://localhost:19000";
-
-
-    function create_profile(username, password, email) {
-
-        $.ajaxSetup({
-            async: false
-        }); //execute synchronously
-        var returnData = null; //define returnData outside the scope of the callback function
-        $.ajax({
-            type: "POST",
-            contentType: 'application/json',
-            url: hostname + "/create_profile",
-            data: '{"request": {"username" : "' + username + '", "password": "' + password + '", "email": "' + email + '"}}',
-            dataType: 'json',
-            async: false,
-            success: function(data) {
-                returnData = data;
-            }
-        });
-
-
-        $.ajaxSetup({
-            async: true
-        }); //return to default setting
-
-        if (returnData["results"]["status_code"] == 200) {
-            // window.location(hostname + "/chat");
-            return returnData["results"];
-        } else {
-            return returnData["results"];
-        }
-        return returnData;
-    }
-
-
-    function load_profile(username, password, email) {
-
-        $.ajaxSetup({
-            async: false
-        }); //execute synchronously
-        var returnData = null; //define returnData outside the scope of the callback function
-        $.ajax({
-            type: "POST",
-            contentType: 'application/json',
-            url: hostname + "/load_profile",
-            data: '{"request": {"username" : "' + username + '", "password": "' + password + '"}}',
-            dataType: 'json',
-            async: false,
-            success: function(data) {
-                returnData = data;
-            }
-        });
-
-
-        $.ajaxSetup({
-            async: true
-        }); //return to default setting
-        data = JSON.parse(returnData[0]["data"]);
-        // alert(data)
-        // alert(JSON.stringify((returnData)[0]["data"]));
-        if (returnData[0]["data"]) {
-            window.location.href = "/chat";
-            return data;
-        } else if (returnData = ["Err"]) {
-            return returnData = ["Err"];
-        }
-        return returnData;
-    }
-
-    function show_error(message) {
-        form_field = $("#Err").html();
-        form_field = "<span>" + message + "</span>";
-        $("#Err").html(form_field);
-        $("#Err").show();
-    }
-
-    function chat_box_state(url_location) {
-
-        new_href = url_location.replace(hostname, "");
-        if (new_href == "/chat") {
-            // alert(new_href);
-            new_html = "<div id='preview'>";
-            iframe1 = "<iframe src='" + hostname + "/profile'></iframe>";
-            iframe2 = "<iframe src='" + hostname + "/document'></iframe>";
-            new_html = new_html + "<div id='profile_box' class='preview_box'>" + iframe1 + "</div>";
-            new_html = new_html + "<div id='document_box' class='preview_box'>" + iframe2 + "</div>";
-            new_html = new_html + "</div>";
-            $("#card-body").html(new_html);
-        }
-    }
-
-
-    $(document).ready(function() {
-        $("#chat_icon img").click(function() {
-            if ($("#chatbox").is(":visible")) {
-                $("#chat_box").fadeOut(500);
-                $("#chatbox").toggle();
-            } else {
-                $("#chatbox").toggle();
-
-                $("#chat_box").fadeIn(500);
-            }
-        });
-
-
-
-    });
-</script>
-
-<body>
-    <div class="search">
-
-        <form action="search" method="post">
-            <div class="form-group">
-                <label for="search">Search for Citation</label>
-                <input type="text" class="form-control" id="search" aria-describedby="searchHelp" placeholder="Enter search term e.g. U.S. v. Stevens 559 U.S. 460" name="search"> <button type="submit" class="btn btn-primary">search</button>
+<body data-complaint-shell="off">
+    <div class="page-shell">
+        <header class="topbar" data-surface-nav="primary">
+            <div class="brand">
+                <div class="brand-mark">L</div>
+                <div class="brand-copy">
+                    <span class="brand-eyebrow">Unified Complaint Generator</span>
+                    <span class="brand-title">Lex Publicus</span>
+                    <span class="brand-subtitle">One complaint workflow across intake, evidence, review, drafting, MCP, CLI, and SDK.</span>
+                </div>
             </div>
-        </form>
-    </div>
-    <div class="operator-link" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
-        <a href="/">Landing</a>
-        <a href="/home">Account</a>
-        <a href="/chat">Chat</a>
-        <a href="/profile">Profile</a>
-        <a href="/results">Results</a>
-        <a href="/claim-support-review">Review</a>
-        <a href="/document">Builder</a>
-        <a href="/document/optimization-trace">Trace</a>
-        <a href="/mlwysiwyg">Editor</a>
-        <a href="/ipfs-datasets/sdk-playground">SDK</a>
-        <a href="/dashboards">Dashboards</a>
-    </div>
-    <div class="card info">
-        <br/>
-        <div id="card-body">
-            <h2 class="card-title text-center">Lex Publicus Complaint Generator</h4>
-                <p> This is a demo of a AI chat application, meant to make it easier for people to interact with the JusticeDAO platform, to help organize and track their complaints.
-                </p>
-                <p> To begin the chat, please enter your username and password, which is used to encrypt your chat session and store it on the server. Start by telling the bot your complaint, and it will ask you a series of questions, based upon the previous
-                    questions, andbased upon the original complaint.
-                </p>
-                <p> Its sole purpose is to assist the person with developing the facts of their complaint, and it is not designed to be a substitute for a lawyer.It will then use the information you have provided to auto-fill in a pro-se complaint PDF with
-                    the US district courts, if the case is within its jurisdiction. The application will then generate a PDF of the complaint, and assist you with electronically filing the complaint, and sending it to the appropriate court.
-                </p>
-                <p> It is up to you to make sure that the information that you have provided is accurate, and that you have the legal authority to file the complaint. Because you are filing these documents under the penalty of perjury, you should not use
-                    the platform to pretend to be Mickey Mouse suing Donald Duck for example. However be aware that you will have to pay for the court fees, and that the court may not accept your complaint, and may even deny it altogether, or sanction
-                    individuals for abuse of the courts.
-                </p>
-        </div>
-    </div>
-    <div id="chatbox">
-        <iframe src="/home/" onLoad="chat_box_state(this.contentWindow.location.href)">  </iframe>
-    </div>
-    <div id="chat_icon">
-        <img src="data:image/png;base64,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">
-    </div>
-</body>
+            <nav class="topbar-nav" aria-label="Primary">
+                <a href="/workspace">Workspace</a>
+                <a href="/document">Builder</a>
+                <a href="/claim-support-review">Review</a>
+                <a href="/mlwysiwyg">Editor</a>
+                <a href="/document/optimization-trace">Trace</a>
+                <a href="/ipfs-datasets/sdk-playground">SDK</a>
+            </nav>
+        </header>
 
+        <main>
+            <section class="hero">
+                <article class="hero-card">
+                    <p class="eyebrow">Complaint Intake To Final Draft</p>
+                    <h1>Build a complaint like one connected case file, not a pile of disconnected pages.</h1>
+                    <p class="hero-copy">
+                        The homepage now points straight into the real workflow: collect intake facts, add testimony and documents,
+                        review claim support, generate a draft, refine it in the editor, and audit the UI through the same MCP-backed SDK
+                        that powers the rest of the application.
+                    </p>
+                    <div class="cta-row">
+                        <a class="primary-cta" id="homepage-open-workspace" href="/workspace">Resume In Workspace</a>
+                        <a class="secondary-cta" id="homepage-open-builder" href="/document">Go To Draft Builder</a>
+                    </div>
+                    <div class="hero-points">
+                        <div class="hero-point">
+                            <strong>Shared identity</strong>
+                            <span>The browser keeps a cached DID so the complaint can survive reloads and reconnect to the same session.</span>
+                        </div>
+                        <div class="hero-point">
+                            <strong>Shared case state</strong>
+                            <span>Homepage, workspace, review, editor, CLI, and MCP tools all speak to the same complaint workspace contract.</span>
+                        </div>
+                        <div class="hero-point">
+                            <strong>Shared optimization loop</strong>
+                            <span>Playwright screenshots and `llm_router` reviews feed the same closed-loop UX optimizer used elsewhere in the app.</span>
+                        </div>
+                    </div>
+                </article>
+
+                <aside class="status-card" aria-label="Complaint session status">
+                    <div>
+                        <p class="eyebrow">Live Browser Session</p>
+                        <div class="status-banner" id="homepage-session-status">Connecting to the complaint workspace...</div>
+                    </div>
+                    <div class="identity-card">
+                        <div class="identity-label">Cached DID</div>
+                        <div class="identity-value" id="homepage-did">Loading browser identity...</div>
+                    </div>
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <strong id="homepage-answered-count">0</strong>
+                            <span>Intake answers captured so far.</span>
+                        </div>
+                        <div class="stat-card">
+                            <strong id="homepage-evidence-count">0</strong>
+                            <span>Evidence items attached to the current complaint.</span>
+                        </div>
+                        <div class="stat-card">
+                            <strong id="homepage-supported-count">0</strong>
+                            <span>Claim elements currently supported.</span>
+                        </div>
+                        <div class="stat-card">
+                            <strong id="homepage-tool-count">0</strong>
+                            <span>MCP tools available to the browser client.</span>
+                        </div>
+                    </div>
+                    <div class="status-actions">
+                        <a class="mini-cta" id="homepage-resume-review" href="/claim-support-review">Review Support</a>
+                        <a class="mini-cta" id="homepage-resume-editor" href="/mlwysiwyg">Open Editor</a>
+                    </div>
+                </aside>
+            </section>
+
+            <section class="section">
+                <div class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">How The Complaint Moves</p>
+                            <h2>A homepage that actually leads into the case workflow</h2>
+                        </div>
+                        <p>
+                            This landing page is no longer pretending to be a login widget. It now mirrors the real case lifecycle and points each
+                            stage into the corresponding dashboard so a user can move through the complaint coherently.
+                        </p>
+                    </div>
+                    <div class="workflow-grid">
+                        <article class="workflow-step">
+                            <div class="workflow-step-number">1</div>
+                            <h3>Capture intake</h3>
+                            <p>Use the workspace to answer intake questions and preserve the complaint narrative in the DID-backed session.</p>
+                        </article>
+                        <article class="workflow-step">
+                            <div class="workflow-step-number">2</div>
+                            <h3>Add evidence</h3>
+                            <p>Attach testimony and document support directly to claim elements instead of scattering proof across pages.</p>
+                        </article>
+                        <article class="workflow-step">
+                            <div class="workflow-step-number">3</div>
+                            <h3>Review support posture</h3>
+                            <p>Open the review surface to see weak elements, missing support, and the recommended next evidence action.</p>
+                        </article>
+                        <article class="workflow-step">
+                            <div class="workflow-step-number">4</div>
+                            <h3>Draft and refine</h3>
+                            <p>Generate the complaint, edit it in the drafting surfaces, and inspect optimization traces or UX audits when needed.</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Shared Platform</p>
+                            <h2>One complaint engine, exposed everywhere</h2>
+                        </div>
+                        <p>
+                            The complaint generator is not just a webpage. It is the same shared service contract surfaced through the Python package,
+                            CLI tools, MCP server tools, and the browser JavaScript SDK used by the dashboards.
+                        </p>
+                    </div>
+                    <div class="feature-grid">
+                        <article class="feature-card">
+                            <span class="feature-chip">Package exports</span>
+                            <h3>Import the complaint workspace</h3>
+                            <p>Python package exports expose session management, identity helpers, and closed-loop UI optimization workflows for automation.</p>
+                        </article>
+                        <article class="feature-card">
+                            <span class="feature-chip">CLI tools</span>
+                            <h3>Run the same workflow from the terminal</h3>
+                            <p>Use complaint CLI commands to inspect sessions, create identities, list tools, review UI artifacts, and run optimization loops.</p>
+                        </article>
+                        <article class="feature-card">
+                            <span class="feature-chip">MCP server + JS SDK</span>
+                            <h3>Use the same tools in the browser</h3>
+                            <p>The dashboards call the JSON-RPC MCP server through the JavaScript SDK, so the website shares the same tool paths as automation.</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Complaint Surfaces</p>
+                            <h2>Every major page is now part of the same application</h2>
+                        </div>
+                        <p>
+                            These are the first-class routes a user actually needs. The homepage now acts like a sensible front door into those surfaces
+                            instead of dropping people into an orphaned legacy layout.
+                        </p>
+                    </div>
+                    <div class="routes-grid">
+                        <article class="route-card">
+                            <h3>Unified Workspace</h3>
+                            <p>Use the guided operator console for intake, evidence, support review, draft generation, MCP tools, and the UX optimizer.</p>
+                            <a class="route-link" href="/workspace">Open `/workspace`</a>
+                        </article>
+                        <article class="route-card">
+                            <h3>Complaint Builder</h3>
+                            <p>Review the formal draft builder when you want to focus on generating and revising complaint text.</p>
+                            <a class="route-link" href="/document">Open `/document`</a>
+                        </article>
+                        <article class="route-card">
+                            <h3>Claim Support Review</h3>
+                            <p>Inspect which claim elements are supported, which remain weak, and what evidence needs to be added next.</p>
+                            <a class="route-link" href="/claim-support-review">Open `/claim-support-review`</a>
+                        </article>
+                        <article class="route-card">
+                            <h3>Draft Editor</h3>
+                            <p>Move into the editor workshop when the final complaint needs revision, cleanup, or a different drafting posture.</p>
+                            <a class="route-link" href="/mlwysiwyg">Open `/mlwysiwyg`</a>
+                        </article>
+                        <article class="route-card">
+                            <h3>Optimization Trace</h3>
+                            <p>Inspect the evidence-to-draft optimization trail when you need to audit how the complaint structure was assembled.</p>
+                            <a class="route-link" href="/document/optimization-trace">Open trace viewer</a>
+                        </article>
+                        <article class="route-card">
+                            <h3>SDK Playground</h3>
+                            <p>Open the JavaScript and IPFS SDK preview when validating the browser integration and MCP tool behavior.</p>
+                            <a class="route-link" href="/ipfs-datasets/sdk-playground">Open SDK playground</a>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <p class="footer-note">
+                The homepage uses the same browser DID and complaint session contract as the rest of the dashboards. Reloading the page should
+                reconnect to the same case, not strand the user in a dead-end front page.
+            </p>
+        </main>
+    </div>
+
+    <script>
+        (function () {
+            function countAnsweredQuestions(payload) {
+                if (payload && Array.isArray(payload.questions)) {
+                    return payload.questions.filter(function (question) {
+                        if (!question) {
+                            return false;
+                        }
+                        if (typeof question.is_answered === 'boolean') {
+                            return question.is_answered;
+                        }
+                        return Boolean(question.answer);
+                    }).length;
+                }
+                const answers = payload && payload.session && payload.session.intake_answers;
+                return answers ? Object.keys(answers).length : 0;
+            }
+
+            function summarizeEvidence(review) {
+                const overview = review && review.overview ? review.overview : {};
+                return (overview.testimony_items || 0) + (overview.document_items || 0);
+            }
+
+            async function loadHomepageSession() {
+                const statusEl = document.getElementById('homepage-session-status');
+                const didEl = document.getElementById('homepage-did');
+                const answeredEl = document.getElementById('homepage-answered-count');
+                const evidenceEl = document.getElementById('homepage-evidence-count');
+                const supportedEl = document.getElementById('homepage-supported-count');
+                const toolCountEl = document.getElementById('homepage-tool-count');
+
+                try {
+                    const sdkGlobal = globalThis.ComplaintMcpSdk;
+                    if (!sdkGlobal || !sdkGlobal.ComplaintMcpClient) {
+                        throw new Error('Complaint MCP SDK not available.');
+                    }
+
+                    const client = new sdkGlobal.ComplaintMcpClient();
+                    const did = await client.getOrCreateDid();
+                    didEl.textContent = did;
+
+                    try {
+                        await client.initialize();
+                    } catch (error) {
+                        statusEl.textContent = 'Browser identity is ready, but MCP initialize returned: ' + error.message;
+                    }
+
+                    try {
+                        const tools = await client.listTools();
+                        toolCountEl.textContent = Array.isArray(tools) ? String(tools.length) : '0';
+                    } catch (error) {
+                        toolCountEl.textContent = '0';
+                    }
+
+                    const sessionPayload = await client.getSession(did);
+                    const review = sessionPayload && sessionPayload.review ? sessionPayload.review : {};
+                    const overview = review && review.overview ? review.overview : {};
+                    answeredEl.textContent = String(countAnsweredQuestions(sessionPayload));
+                    evidenceEl.textContent = String(summarizeEvidence(review));
+                    supportedEl.textContent = String(overview.supported_elements || 0);
+                    statusEl.textContent = 'Complaint workspace is ready for ' + did + '. Resume the case from the workspace or jump straight into review and drafting.';
+                } catch (error) {
+                    statusEl.textContent = 'Complaint workspace connection failed: ' + error.message;
+                    didEl.textContent = 'Unavailable';
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', loadHomepageSession);
+            } else {
+                loadHomepageSession();
+            }
+        })();
+    </script>
+</body>
 </html>

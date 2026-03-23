@@ -177,6 +177,13 @@
             }, payload || {}));
         }
 
+        updateCaseSynopsis(userId, synopsis) {
+            return this.callTool('complaint.update_case_synopsis', {
+                user_id: userId,
+                synopsis: synopsis || '',
+            });
+        }
+
         resetSession(userId) {
             return this.callTool('complaint.reset_session', {
                 user_id: userId,
@@ -193,6 +200,10 @@
 
         runUiUxWorkflow(payload) {
             return this.reviewUiArtifacts(payload);
+        }
+
+        runClosedLoopUiUxWorkflow(payload) {
+            return this.optimizeUiArtifacts(payload);
         }
     }
 

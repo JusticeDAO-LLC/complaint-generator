@@ -13,7 +13,29 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SCREENSHOT_TEST = (
     "tests/test_website_cohesion_playwright.py::"
-    "test_user_interfaces_capture_screenshots_and_preserve_coherent_layout"
+    "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+)
+DEFAULT_OPTIMIZER_METHOD = "adversarial"
+DEFAULT_OPTIMIZER_PRIORITY = 90
+DEFAULT_UI_UX_REVIEW_GOALS = [
+    "Make the complaint generator easier for first-time complainants to complete without legal coaching.",
+    "Keep intake, evidence, review, draft, package, CLI, MCP, and JavaScript SDK paths visibly connected as one workflow.",
+    "Expose every major complaint-generator capability with clearer next-step guidance so users can actually use the full system.",
+    "Prefer calmer, trauma-informed language and remove friction that makes evidence capture or draft completion feel risky or confusing.",
+]
+DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES = [
+    "Intake questions can be understood and completed without legal coaching.",
+    "Evidence capture makes it clear what proof helps each claim element.",
+    "Support review makes missing elements and next evidence steps obvious.",
+    "Draft generation and editing feel like the natural continuation of intake and review.",
+    "The workspace makes progress, readiness, and next-step guidance legible under stress.",
+    "Package, CLI, MCP server, and JavaScript SDK entry points remain discoverable as first-class capabilities.",
+    "The adversarial optimizer path is clearly available and does not feel detached from the main complaint workflow.",
+]
+DEFAULT_UI_UX_REVIEW_NOTES = (
+    "Review the interface as if a stressed first-time complainant and a complaint operator both need to succeed without hand-holding. "
+    "Actively look for places where the user could miss a required step, misunderstand what evidence helps prove, lose track of progress, "
+    "or fail to discover package, CLI, MCP, and browser SDK capabilities that should remain part of one coherent complaint workflow."
 )
 
 
@@ -40,6 +62,16 @@ def _artifact_image_paths(artifacts: list[dict[str, Any]]) -> list[str]:
         if raw_path:
             image_paths.append(raw_path)
     return image_paths
+
+
+def _resolve_review_goals(goals: list[str] | None) -> list[str]:
+    cleaned = [goal.strip() for goal in (goals or []) if str(goal).strip()]
+    return cleaned or list(DEFAULT_UI_UX_REVIEW_GOALS)
+
+
+def _resolve_review_notes(notes: str | None) -> str:
+    cleaned = str(notes or "").strip()
+    return cleaned or DEFAULT_UI_UX_REVIEW_NOTES
 
 
 def run_playwright_screenshot_audit(
@@ -87,6 +119,8 @@ def build_ui_ux_review_prompt(
     notes: str | None = None,
     goals: list[str] | None = None,
 ) -> str:
+    resolved_goals = _resolve_review_goals(goals)
+    resolved_notes = _resolve_review_notes(notes)
     workspace_html = _read_text(REPO_ROOT / "templates" / "workspace.html", limit=14000)
     sdk_source = _read_text(REPO_ROOT / "static" / "complaint_mcp_sdk.js", limit=8000)
     artifact_blocks = []
@@ -110,22 +144,19 @@ def build_ui_ux_review_prompt(
         "Focus on UI/UX problems that would make the site poorly suited for real user complaints.",
         "Prioritize issues around trauma-informed wording, complaint triage clarity, evidence capture usability, navigation coherence, draft confidence, and MCP SDK transparency.",
         "Also check that the complaint generator functionality remains legible as package exports, CLI tools, MCP server tools, and a JavaScript MCP SDK workflow.",
+        "Treat this as an adversarial workflow audit: identify where a real user could fail to complete the full complaint journey or miss major product capabilities.",
         f"Iteration: {iteration}",
     ]
-    if goals:
-        prompt_sections.extend(
-            [
-                "Additional workflow goals:",
-                "\n".join(f"- {goal}" for goal in goals),
-            ]
-        )
-    if notes:
-        prompt_sections.extend(
-            [
-                "Additional review notes:",
-                notes,
-            ]
-        )
+    prompt_sections.extend(
+        [
+            "Workflow goals:",
+            "\n".join(f"- {goal}" for goal in resolved_goals),
+            "Review notes:",
+            resolved_notes,
+            "Required capability audit:",
+            "\n".join(f"- {capability}" for capability in DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES),
+        ]
+    )
     if previous_review:
         prompt_sections.extend(
             [
@@ -154,8 +185,13 @@ def build_ui_ux_review_prompt(
             sdk_source,
             (
                 "Return markdown with these sections: `Top Risks`, `High-Impact UX Fixes`, "
+                "`Complaint Journey Coverage`, `Hidden Or Missing Feature Paths`, `Stage Findings`, "
                 "`MCP/SDK Workflow Improvements`, `Complaint Intake Language Fixes`, "
                 "`Playwright Assertions To Add`, and `Implementation Order`."
+            ),
+            (
+                "Under `Stage Findings`, use explicit subsections named `Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`, "
+                "each with concrete UX failures or fixes for that stage."
             ),
         ]
     )
@@ -222,6 +258,8 @@ def run_iterative_ui_ux_workflow(
     goals: list[str] | None = None,
     initial_previous_review: str | None = None,
 ) -> dict[str, Any]:
+    resolved_goals = _resolve_review_goals(goals)
+    resolved_notes = _resolve_review_notes(notes)
     target_output_dir = Path(output_dir or (Path(screenshot_dir) / "reviews"))
     target_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -245,8 +283,8 @@ def run_iterative_ui_ux_workflow(
             provider=provider,
             model=model,
             previous_review=previous_review,
-            notes=notes,
-            goals=goals,
+            notes=resolved_notes,
+            goals=resolved_goals,
         )
         markdown_path = target_output_dir / f"iteration-{iteration:02d}-review.md"
         json_path = target_output_dir / f"iteration-{iteration:02d}-review.json"
@@ -284,8 +322,8 @@ def run_closed_loop_ui_ux_improvement(
     review_iterations: int = 1,
     provider: str | None = None,
     model: str | None = None,
-    method: str = "actor_critic",
-    priority: int = 80,
+    method: str = DEFAULT_OPTIMIZER_METHOD,
+    priority: int = DEFAULT_OPTIMIZER_PRIORITY,
     notes: str | None = None,
     goals: list[str] | None = None,
     constraints: dict[str, Any] | None = None,
@@ -300,6 +338,8 @@ def run_closed_loop_ui_ux_improvement(
 ) -> dict[str, Any]:
     from adversarial_harness import Optimizer
 
+    resolved_goals = _resolve_review_goals(goals)
+    resolved_notes = _resolve_review_notes(notes)
     resolved_optimizer = optimizer or Optimizer()
     return resolved_optimizer.run_agentic_ui_ux_feedback_loop(
         screenshot_dir=screenshot_dir,
@@ -311,8 +351,8 @@ def run_closed_loop_ui_ux_improvement(
         model=model,
         method=method,
         priority=priority,
-        notes=notes,
-        goals=goals,
+        notes=resolved_notes,
+        goals=resolved_goals,
         constraints=constraints,
         metadata=metadata,
         llm_router=llm_router,
@@ -335,6 +375,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=None)
     parser.add_argument("--pytest-target", default=DEFAULT_SCREENSHOT_TEST)
     parser.add_argument("--notes", default=None)
+    parser.add_argument("--goal", dest="goals", action="append", default=None)
+    parser.add_argument("--method", default=DEFAULT_OPTIMIZER_METHOD)
+    parser.add_argument("--priority", type=int, default=DEFAULT_OPTIMIZER_PRIORITY)
     parser.add_argument("--max-rounds", type=int, default=0)
     args = parser.parse_args(argv)
 
@@ -348,6 +391,9 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             model=args.model,
             notes=args.notes,
+            goals=args.goals,
+            method=args.method,
+            priority=args.priority,
         )
     else:
         result = run_iterative_ui_ux_workflow(
@@ -358,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
             model=args.model,
             pytest_target=args.pytest_target,
             notes=args.notes,
+            goals=args.goals,
         )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
@@ -365,8 +412,12 @@ def main(argv: list[str] | None = None) -> int:
 
 __all__ = [
     "DEFAULT_SCREENSHOT_TEST",
+    "DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES",
+    "DEFAULT_OPTIMIZER_PRIORITY",
     "build_ui_ux_review_prompt",
     "collect_screenshot_artifacts",
+    "DEFAULT_UI_UX_REVIEW_GOALS",
+    "DEFAULT_UI_UX_REVIEW_NOTES",
     "review_screenshot_audit_with_llm_router",
     "run_closed_loop_ui_ux_improvement",
     "run_iterative_ui_ux_workflow",
