@@ -114,6 +114,15 @@ def build_mediator_prompt(
     return _resolve_service(service, root_dir=root_dir).build_mediator_prompt(user_id)
 
 
+def get_complaint_readiness(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_complaint_readiness(user_id)
+
+
 def get_workflow_capabilities(
     user_id: Optional[str],
     *,
@@ -196,6 +205,7 @@ __all__ = [
     "DEFAULT_INTAKE_QUESTIONS",
     "attach_complaint_workspace_routes",
     "build_mediator_prompt",
+    "get_complaint_readiness",
     "create_identity",
     "create_complaint_workspace_router",
     "export_complaint_packet",

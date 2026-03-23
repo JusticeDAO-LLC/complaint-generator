@@ -179,6 +179,12 @@
             });
         }
 
+        getComplaintReadiness(userId) {
+            return this.callTool('complaint.get_complaint_readiness', {
+                user_id: userId,
+            });
+        }
+
         getWorkflowCapabilities(userId) {
             return this.callTool('complaint.get_workflow_capabilities', {
                 user_id: userId,

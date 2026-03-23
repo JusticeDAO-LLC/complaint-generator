@@ -1550,6 +1550,27 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <div class="status draft-preview-shell"><pre id="packet-export-summary">No packet export run yet.</pre></div>
                             </div>
                         </div>
+                        <div class="tool-card">
+                            <h3>SDK Diagnostics</h3>
+                            <p class="muted">Inspect the underlying complaint identity, intake question bank, and claim-element definitions that power the workspace.</p>
+                            <div class="button-row">
+                                <button class="secondary" id="refresh-sdk-primitives-button" type="button">Refresh SDK Primitives</button>
+                            </div>
+                            <div class="field-grid">
+                                <div>
+                                    <label>Identity and Session</label>
+                                    <div class="status draft-preview-shell"><pre id="sdk-identity-preview">No SDK identity snapshot loaded yet.</pre></div>
+                                </div>
+                                <div>
+                                    <label>Intake Questions</label>
+                                    <div class="list" id="sdk-questions-preview"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <label>Claim Elements</label>
+                                <div class="list" id="sdk-claim-elements-preview"></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -1666,6 +1687,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceCapabilities = null;
         let workspaceMediatorPrompt = null;
         let latestPacketExport = null;
+        let sdkPrimitiveSnapshot = null;
         const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
         function setStatus(message) {
@@ -2352,6 +2374,44 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             }
         }
 
+        function renderSdkDiagnostics() {
+            const identityNode = document.getElementById('sdk-identity-preview');
+            const questionsNode = document.getElementById('sdk-questions-preview');
+            const claimElementsNode = document.getElementById('sdk-claim-elements-preview');
+            const snapshot = sdkPrimitiveSnapshot || {};
+            const identity = snapshot.identity || {};
+            const questions = Array.isArray(snapshot.questions) ? snapshot.questions : [];
+            const claimElements = Array.isArray(snapshot.claim_elements) ? snapshot.claim_elements : [];
+
+            if (identity.did || workspaceUserId) {
+                identityNode.textContent = JSON.stringify({
+                    did: identity.did || workspaceUserId || 'unknown',
+                    provider: identity.provider || 'workspace bootstrap',
+                    method: identity.method || 'did:key',
+                }, null, 2);
+            } else {
+                identityNode.textContent = 'No SDK identity snapshot loaded yet.';
+            }
+
+            questionsNode.innerHTML = questions.length
+                ? questions.map((item) => `
+                    <div class="item">
+                        <strong>${escapeHtml(item.label || item.id || 'Question')}</strong>
+                        <div class="muted">${escapeHtml(item.prompt || item.placeholder || '')}</div>
+                    </div>
+                `).join('')
+                : '<div class="item"><strong>No intake question payload loaded yet.</strong><div class="muted">Refresh SDK primitives to inspect the shared intake contract.</div></div>';
+
+            claimElementsNode.innerHTML = claimElements.length
+                ? claimElements.map((item) => `
+                    <div class="item">
+                        <strong>${escapeHtml(item.label || item.id || 'Claim element')}</strong>
+                        <div class="muted">${escapeHtml(item.id || '')}</div>
+                    </div>
+                `).join('')
+                : '<div class="item"><strong>No claim element payload loaded yet.</strong><div class="muted">Refresh SDK primitives to inspect the review and evidence support model.</div></div>';
+        }
+
         function renderFeatureWalkthrough(sessionPayload, tools) {
             const walkthrough = document.getElementById('feature-walkthrough-list');
             const review = sessionPayload.review || {};
@@ -2577,12 +2637,30 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             renderQuickActions(sessionPayload, workspaceSessionTools || []);
             renderConnectedHandoffs(sessionPayload);
             renderWorkflowOperations();
+            renderSdkDiagnostics();
         }
 
         async function loadSharedCapabilities() {
             workspaceCapabilities = await client.getWorkflowCapabilities(workspaceUserId);
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
             renderWorkflowOperations();
+        }
+
+        async function loadSdkPrimitives() {
+            const [questionsPayload, claimElementsPayload] = await Promise.all([
+                client.listIntakeQuestions(),
+                client.listClaimElements(),
+            ]);
+            sdkPrimitiveSnapshot = {
+                identity: {
+                    did: workspaceUserId,
+                    provider: 'workspace bootstrap',
+                    method: 'did:key',
+                },
+                questions: questionsPayload.questions || [],
+                claim_elements: claimElementsPayload.claim_elements || [],
+            };
+            renderSdkDiagnostics();
         }
 
         function normalizeUiReviewSummary(result) {
@@ -3251,6 +3329,12 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setStatus('Mediator brief refreshed.');
         }
 
+        async function refreshSdkPrimitivesPanel() {
+            setBusyStatus('Refreshing SDK identity, intake questions, and claim elements…');
+            await loadSdkPrimitives();
+            setStatus('SDK primitives refreshed.');
+        }
+
         async function resetSession() {
             setBusyStatus('Resetting the workspace to a clean complaint session…');
             workspaceSession = await client.resetSession(workspaceUserId);
@@ -3359,6 +3443,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
+        document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
         document.getElementById('action-button').addEventListener('click', () => {
@@ -3433,7 +3518,17 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             workspaceUserId = bootstrap.did;
             workspaceSession = bootstrap.session;
             workspaceSessionTools = bootstrap.tools || [];
+            sdkPrimitiveSnapshot = {
+                identity: {
+                    did: bootstrap.did,
+                    provider: 'workspace bootstrap',
+                    method: 'did:key',
+                },
+                questions: [],
+                claim_elements: [],
+            };
             await loadSharedCapabilities();
+            await loadSdkPrimitives();
             renderWorkspace(bootstrap.session);
             renderTools(workspaceSessionTools);
             renderSdkServerInfo(bootstrap.initialization, workspaceSessionTools);

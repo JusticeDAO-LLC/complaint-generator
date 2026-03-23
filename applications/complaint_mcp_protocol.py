@@ -57,6 +57,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.get_complaint_readiness": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
     "complaint.get_workflow_capabilities": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},

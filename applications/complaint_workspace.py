@@ -335,6 +335,72 @@ class ComplaintWorkspaceService:
             "return_target_tab": "review",
         }
 
+    def get_complaint_readiness(self, user_id: Optional[str]) -> Dict[str, Any]:
+        session = self.get_session(user_id)
+        review = session["review"]
+        overview = dict(review.get("overview") or {})
+        current_session = dict(session.get("session") or {})
+        questions = list(session.get("questions") or [])
+        answered_count = len([item for item in questions if item.get("is_answered")])
+        total_questions = len(questions)
+        supported_elements = int(overview.get("supported_elements") or 0)
+        missing_elements = int(overview.get("missing_elements") or 0)
+        evidence_count = int(overview.get("testimony_items") or 0) + int(overview.get("document_items") or 0)
+        current_draft = current_session.get("draft")
+
+        score = 10
+        if total_questions > 0:
+            score += round((answered_count / total_questions) * 35)
+        score += round((supported_elements / max(supported_elements + missing_elements, 1)) * 35)
+        if evidence_count > 0:
+            score += min(12, evidence_count * 4)
+        if current_draft:
+            score += 12
+        score = max(0, min(100, score))
+
+        verdict = "Not ready to draft"
+        detail = "Finish intake and add support before relying on generated complaint text."
+        recommended_route = "/workspace"
+        recommended_action = "Continue the guided complaint workflow to complete intake and collect support."
+        if current_draft:
+            verdict = "Draft in progress"
+            detail = (
+                "A complaint draft already exists. Compare it against the supported facts, requested relief, "
+                "and any remaining proof gaps before treating it as filing-ready."
+            )
+            recommended_route = "/document"
+            recommended_action = "Refine the existing draft and reconcile it with the support review."
+        elif total_questions > 0 and answered_count == total_questions and missing_elements == 0 and evidence_count > 0:
+            verdict = "Ready for first draft"
+            detail = "The intake record and support posture are coherent enough to generate a first complaint draft."
+            recommended_route = "/document"
+            recommended_action = "Generate the first complaint draft from the current record."
+        elif answered_count > 0:
+            verdict = "Still building the record"
+            detail = (
+                f"{missing_elements} claim elements still need support and "
+                f"{max(total_questions - answered_count, 0)} intake answers may still be missing."
+            )
+            recommended_route = "/claim-support-review" if missing_elements > 0 else "/workspace"
+            recommended_action = (
+                "Review support gaps and attach stronger evidence before relying on generated complaint language."
+            )
+
+        return {
+            "user_id": current_session.get("user_id"),
+            "score": score,
+            "verdict": verdict,
+            "detail": detail,
+            "recommended_route": recommended_route,
+            "recommended_action": recommended_action,
+            "answered_questions": answered_count,
+            "total_questions": total_questions,
+            "supported_elements": supported_elements,
+            "missing_elements": missing_elements,
+            "evidence_count": evidence_count,
+            "has_draft": bool(current_draft),
+        }
+
     def get_workflow_capabilities(self, user_id: Optional[str]) -> Dict[str, Any]:
         session = self.get_session(user_id)
         review = session["review"]
@@ -343,6 +409,7 @@ class ComplaintWorkspaceService:
         questions = list(session.get("questions") or [])
         answered_count = len([item for item in questions if item.get("is_answered")])
         total_questions = len(questions)
+        readiness = self.get_complaint_readiness(user_id)
         capabilities = [
             {
                 "id": "intake_questions",
@@ -385,6 +452,7 @@ class ComplaintWorkspaceService:
             "user_id": session["session"]["user_id"],
             "case_synopsis": session["case_synopsis"],
             "overview": overview,
+            "complaint_readiness": readiness,
             "capabilities": capabilities,
         }
 
@@ -414,6 +482,7 @@ class ComplaintWorkspaceService:
                 "testimony_items": int((review.get("overview") or {}).get("testimony_items") or 0),
                 "document_items": int((review.get("overview") or {}).get("document_items") or 0),
                 "has_draft": bool(state.get("draft")),
+                "complaint_readiness": self.get_complaint_readiness(user_id),
             },
         }
 
@@ -538,6 +607,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.save_evidence", "description": "Save testimony or document evidence to the workspace."},
                 {"name": "complaint.review_case", "description": "Return the current support matrix and evidence review."},
                 {"name": "complaint.build_mediator_prompt", "description": "Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps."},
+                {"name": "complaint.get_complaint_readiness", "description": "Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement."},
                 {"name": "complaint.get_workflow_capabilities", "description": "Summarize which complaint-workflow abilities are currently available for the session."},
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
@@ -583,6 +653,8 @@ class ComplaintWorkspaceService:
             }
         if tool_name == "complaint.build_mediator_prompt":
             return self.build_mediator_prompt(args.get("user_id"))
+        if tool_name == "complaint.get_complaint_readiness":
+            return self.get_complaint_readiness(args.get("user_id"))
         if tool_name == "complaint.get_workflow_capabilities":
             return self.get_workflow_capabilities(args.get("user_id"))
         if tool_name == "complaint.generate_complaint":

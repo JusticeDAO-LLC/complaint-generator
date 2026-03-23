@@ -96,6 +96,11 @@ def mediator_prompt(user_id: str = "demo-user") -> None:
     _print(service.build_mediator_prompt(user_id))
 
 
+@app.command("complaint-readiness")
+def complaint_readiness(user_id: str = "demo-user") -> None:
+    _print(service.get_complaint_readiness(user_id))
+
+
 @app.command("capabilities")
 def capabilities(user_id: str = "demo-user") -> None:
     _print(service.get_workflow_capabilities(user_id))

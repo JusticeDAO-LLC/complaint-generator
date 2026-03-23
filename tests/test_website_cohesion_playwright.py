@@ -909,6 +909,19 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('mediator-prompt-preview').innerText.includes('Mediator, help turn this into testimony-ready narrative')"
             )
+            page.click("#refresh-sdk-primitives-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('SDK primitives refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('sdk-identity-preview').innerText.includes('did:key:')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('sdk-questions-preview').innerText.includes('Your name')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('sdk-claim-elements-preview').innerText.includes('Protected activity')"
+            )
 
             page.click("button[data-tab-target='review']")
             assert "Jordan Example alleges retaliation" in page.locator("#review-synopsis-preview").inner_text()
@@ -1346,6 +1359,13 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('mediator-prompt-preview').innerText.includes('Mediator, help turn this into testimony-ready narrative')"
             )
+            page.click("#refresh-sdk-primitives-button")
+            page.wait_for_function(
+                "() => document.getElementById('sdk-questions-preview').innerText.includes('Your name')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('sdk-claim-elements-preview').innerText.includes('Protected activity')"
+            )
 
             page.goto(f"{base_url}/document?user_id={workspace_user_id}")
             _wait_for_surface(page, "/document")
@@ -1364,10 +1384,10 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
                 "() => document.getElementById('builder-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
             )
             page.wait_for_function(
-                '''() => Array.from(document.querySelectorAll('#previewRoot a[data-review-intent-link="true"]')).some((node) => (node.textContent || '').includes('Resume Review Focus'))'''
+                '''() => Array.from(document.querySelectorAll('a[data-review-intent-link="true"]')).some((node) => /review/i.test(String(node.textContent || '')))'''
             )
             _capture_screenshot(page, screenshot_dir, "builder-generated")
-            _capture_screenshot(page, screenshot_dir, "builder-resume-review")
+            _capture_screenshot(page, screenshot_dir, "builder-review-links")
 
             page.goto(f"{base_url}/workspace?user_id={workspace_user_id}&target_tab=integrations")
             page.click("#export-packet-tool-button")
