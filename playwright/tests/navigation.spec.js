@@ -64,8 +64,9 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator|Prepare your complaint in the order a real case should be built/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toBeVisible();
-    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 1/i);
-    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 5/i);
+      await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Secure Intake/i);
+      await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
+      await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Chat|Editor/i);
     await expect(page.locator('#resume-panel')).toBeVisible();
     await expect(page.locator('#homepage-session-status')).toContainText(/Connecting to the complaint workspace|Shared complaint session loaded/i);
     await expect(page.locator('#homepage-next-step')).toBeVisible();
@@ -86,7 +87,7 @@ test.describe('website surface navigation', () => {
       ['/home', /Lex Publicus Chat App/i],
       ['/chat', /Lex Publicus Chat App/i],
       ['/profile', /Profile Data/i],
-      ['/results', /Profile Data/i],
+        ['/results', /Complaint Output Snapshot|Results/i],
       ['/workspace', /Unified Complaint Workspace/i],
       ['/wysiwyg', /Complaint Editor Workshop/i],
       ['/mlwysiwyg', /Complaint Editor Workshop/i],
