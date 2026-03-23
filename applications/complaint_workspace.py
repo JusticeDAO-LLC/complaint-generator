@@ -61,6 +61,8 @@ _CLAIM_ELEMENTS: List[Dict[str, str]] = [
     {"id": "causation", "label": "Causal link"},
     {"id": "harm", "label": "Damages"},
 ]
+DEFAULT_INTAKE_QUESTIONS: List[Dict[str, str]] = deepcopy(_INTAKE_QUESTIONS)
+DEFAULT_CLAIM_ELEMENTS: List[Dict[str, str]] = deepcopy(_CLAIM_ELEMENTS)
 
 
 def _utc_now() -> str:
@@ -224,6 +226,16 @@ class ComplaintWorkspaceService:
             ],
             "testimony": deepcopy(evidence.get("testimony") or []),
             "documents": deepcopy(evidence.get("documents") or []),
+        }
+
+    def list_intake_questions(self) -> Dict[str, Any]:
+        return {
+            "questions": deepcopy(DEFAULT_INTAKE_QUESTIONS),
+        }
+
+    def list_claim_elements(self) -> Dict[str, Any]:
+        return {
+            "claim_elements": deepcopy(DEFAULT_CLAIM_ELEMENTS),
         }
 
     def _build_draft(self, state: Dict[str, Any], requested_relief: Optional[List[str]] = None) -> Dict[str, Any]:

@@ -445,6 +445,10 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
         "complaint_generator.ui_ux_workflow.run_end_to_end_complaint_browser_audit",
         fake_browser_audit,
     )
+    monkeypatch.setattr(
+        "complaint_generator.ui_ux_workflow.run_playwright_screenshot_audit",
+        fake_browser_audit,
+    )
 
     cli_payload = _invoke_cli(
         runner,
