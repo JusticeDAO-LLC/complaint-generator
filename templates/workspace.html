@@ -2602,7 +2602,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                     filing_shape_score: Number(releaseGate.filing_shape_score || 0),
                     claim_type_alignment_score: Number(releaseGate.claim_type_alignment_score || 0),
                     draft_normalizations: Array.isArray((((latestPacketExport || {}).packet || {}).draft || {}).draft_normalizations)
-                        ? (((latestPacketExport || {}).packet || {}).draft.draft_normalizations
+                        ? ((((latestPacketExport || {}).packet || {}).draft || {}).draft_normalizations)
                         : [],
                     draft_fallback_reason: String((((latestPacketExport || {}).packet || {}).draft || {}).draft_fallback_reason || '').trim(),
                 }, null, 2);

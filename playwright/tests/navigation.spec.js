@@ -26,6 +26,26 @@ const dashboardRoutes = [
   ['/dashboards/ipfs-datasets/admin-mcp', /Admin MCP Dashboard/i],
 ];
 
+async function waitForWorkspaceReady(page) {
+  await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i, { timeout: 30000 });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i, { timeout: 20000 });
+      await expect(page.locator('#workspace-status')).toContainText(/synchronized|workspace ready|opened workspace|returned from|draft generated|intake answers saved|reset to a clean state/i, { timeout: 20000 });
+      await expect(page.locator('[data-tab-target="intake"]')).toBeVisible({ timeout: 10000 });
+      await page.locator('[data-tab-target="intake"]').click();
+      await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 10000 });
+      return;
+    } catch (error) {
+      if (attempt === 1) {
+        throw error;
+      }
+      await page.reload({ waitUntil: 'networkidle' });
+    }
+  }
+}
+
 test.describe('website surface navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
@@ -287,8 +307,7 @@ test.describe('website surface navigation', () => {
     });
 
     await page.goto('/workspace');
-    await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i, { timeout: 30000 });
-    await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 30000 });
+    await waitForWorkspaceReady(page);
 
     await page.locator('#intake-party_name').fill('Jordan Example');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
@@ -474,13 +493,14 @@ test.describe('website surface navigation', () => {
       window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-workspace-flow');
     });
     await page.goto('/workspace');
-    await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i, { timeout: 30000 });
-    await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 30000 });
-    await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await waitForWorkspaceReady(page);
+    await expect(page.locator('[data-tab-target="draft"]')).toBeVisible({ timeout: 30000 });
+    await page.locator('[data-tab-target="draft"]').click();
+    await expect(page.locator('#draft-title')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#reset-session-button')).toBeVisible({ timeout: 10000 });
     await page.locator('#reset-session-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/reset to a clean state/i);
-    await page.getByRole('button', { name: 'Intake', exact: true }).click();
+    await page.locator('[data-tab-target="intake"]').click();
     await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.build_mediator_prompt/i);

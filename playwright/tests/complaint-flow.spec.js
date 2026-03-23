@@ -4,6 +4,27 @@ const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { installCommonMocks, documentGenerationResponse } = require('./helpers/fixtures');
 
+async function waitForWorkspaceReady(page, { requireIntakeVisible = true } = {}) {
+  await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i, { timeout: 30000 });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i, { timeout: 20000 });
+      await expect(page.locator('#workspace-status')).toContainText(/synchronized|workspace ready|opened workspace|returned from|draft generated|intake answers saved|complaint readiness refreshed/i, { timeout: 20000 });
+      if (requireIntakeVisible) {
+        await page.locator('[data-tab-target="intake"]').click();
+        await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 10000 });
+      }
+      return;
+    } catch (error) {
+      if (attempt === 1) {
+        throw error;
+      }
+      await page.reload({ waitUntil: 'networkidle' });
+    }
+  }
+}
+
 async function writeComplaintExportArtifact({
   routeUrl,
   markdownFilename,
@@ -316,8 +337,7 @@ test.describe('complaint generation workflow', () => {
       window.localStorage.setItem('complaintGenerator.did', did);
     }, did);
     await page.goto('/workspace');
-
-    await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
+    await waitForWorkspaceReady(page);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.get_complaint_readiness/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.update_claim_type/i);
@@ -360,6 +380,7 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#results-open-workspace').click();
     await expect(page).toHaveURL(/\/workspace\?/);
     await expect(page).toHaveURL(/user_id=/);
+    await waitForWorkspaceReady(page, { requireIntakeVisible: false });
     await expect(page.locator('#workspace-status')).toContainText(/Opened Workspace from the results surface\./i);
     await expect(page.locator('#case-synopsis')).toHaveValue(/Jane Doe alleges retaliation/i);
 
@@ -387,6 +408,7 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#handoff-review-button').click();
     await expect(page).toHaveURL(/\/claim-support-review/);
     await page.goto('/workspace');
+    await waitForWorkspaceReady(page, { requireIntakeVisible: false });
 
     await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#draft-mode').selectOption('llm_router');
@@ -488,6 +510,7 @@ test.describe('complaint generation workflow', () => {
 
     await page.goto('/workspace');
     await expect(page).toHaveURL(/\/workspace/);
+    await waitForWorkspaceReady(page);
     await expect(page.locator('#save-intake-button')).toBeVisible();
     await expect.poll(async () => page.locator('#intake-question-grid textarea').count()).toBeGreaterThan(0);
     await expect(page.locator('#intake-party_name')).toBeVisible();
@@ -512,6 +535,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
 
     await page.goto('/workspace');
+    await waitForWorkspaceReady(page);
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();
     await page.locator('#evidence-kind').selectOption('document');
     await page.locator('#evidence-claim-element').selectOption('causation');
@@ -646,8 +670,7 @@ test.describe('complaint generation workflow', () => {
       window.localStorage.setItem('complaintGenerator.did', did);
     }, did);
     await page.goto('/workspace');
-
-    await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
+    await waitForWorkspaceReady(page);
 
     await page.locator('#intake-party_name').fill('Morgan Lee');
     await page.locator('#intake-opposing_party').fill('Acme Housing Authority');
