@@ -1473,6 +1473,17 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
+            page.click("#analyze-complaint-output-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint output analysis refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('ui_suggestions')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('Tighten review-to-draft gatekeeping') || document.getElementById('complaint-output-analysis-preview').innerText.includes('Preserve the current filing flow')"
+            )
+            const_workspace_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             with page.expect_download() as markdown_download_info:
                 page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
             markdown_download = markdown_download_info.value
@@ -1497,6 +1508,7 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
                 markdown_text=markdown_text,
                 pdf_filename=pdf_download.suggested_filename,
                 pdf_bytes=pdf_bytes,
+                ui_suggestions_excerpt=const_workspace_output_analysis[:1000],
             )
             _capture_screenshot(page, screenshot_dir, "workspace-operations")
 
@@ -1641,6 +1653,17 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             page.wait_for_function(
                 "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
+            page.click("#analyze-complaint-output-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint output analysis refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('ui_suggestions')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('Tighten review-to-draft gatekeeping') || document.getElementById('complaint-output-analysis-preview').innerText.includes('Preserve the current filing flow')"
+            )
+            const_homepage_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             with page.expect_download() as markdown_download_info:
                 page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
             markdown_download = markdown_download_info.value
@@ -1665,6 +1688,7 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 markdown_text=markdown_text,
                 pdf_filename=pdf_download.suggested_filename,
                 pdf_bytes=pdf_bytes,
+                ui_suggestions_excerpt=const_homepage_output_analysis[:1000],
             )
             _capture_screenshot(page, screenshot_dir, "workspace-final-packet")
 
