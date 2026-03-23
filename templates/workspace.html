@@ -1527,6 +1527,29 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <p class="muted">This panel shows whether the current workspace session can actually use the full complaint-generator flow, including the actor/critic optimizer path and cross-surface handoffs.</p>
                             <div class="feature-grid" id="feature-coverage-list"></div>
                         </div>
+                        <div class="tool-card">
+                            <h3>Workflow Operations</h3>
+                            <p class="muted">Use the same JavaScript MCP SDK path to inspect capabilities, prepare the mediator brief, and export the current lawsuit packet without leaving the workspace.</p>
+                            <div class="button-row">
+                                <button class="secondary" id="refresh-capabilities-button" type="button">Refresh Capabilities</button>
+                                <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
+                                <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
+                            </div>
+                            <div class="field-grid">
+                                <div>
+                                    <label>Mediator Brief Preview</label>
+                                    <div class="status draft-preview-shell"><pre id="mediator-prompt-preview">No mediator brief loaded yet.</pre></div>
+                                </div>
+                                <div>
+                                    <label>Workflow Capabilities</label>
+                                    <div class="list" id="workflow-capabilities-preview"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <label>Packet Export Summary</label>
+                                <div class="status draft-preview-shell"><pre id="packet-export-summary">No packet export run yet.</pre></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -1642,6 +1665,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceSessionTools = [];
         let workspaceCapabilities = null;
         let workspaceMediatorPrompt = null;
+        let latestPacketExport = null;
         const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
         function setStatus(message) {
@@ -2298,6 +2322,36 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             `).join('');
         }
 
+        function renderWorkflowOperations() {
+            const mediatorNode = document.getElementById('mediator-prompt-preview');
+            const capabilitiesNode = document.getElementById('workflow-capabilities-preview');
+            const packetSummaryNode = document.getElementById('packet-export-summary');
+
+            if (workspaceMediatorPrompt && workspaceMediatorPrompt.prefill_message) {
+                mediatorNode.textContent = workspaceMediatorPrompt.prefill_message;
+            } else {
+                mediatorNode.textContent = 'No mediator brief loaded yet.';
+            }
+
+            const capabilities = (workspaceCapabilities && Array.isArray(workspaceCapabilities.capabilities))
+                ? workspaceCapabilities.capabilities
+                : [];
+            capabilitiesNode.innerHTML = capabilities.length
+                ? capabilities.map((item) => `
+                    <div class="item">
+                        <strong>${escapeHtml(item.label || item.id || 'Capability')}</strong>
+                        <div class="muted">${escapeHtml(item.detail || item.description || 'Available through the shared complaint workflow.')}</div>
+                    </div>
+                `).join('')
+                : '<div class="item"><strong>No capability payload loaded yet.</strong><div class="muted">Refresh capabilities after the workspace bootstraps to confirm the exposed complaint workflow.</div></div>';
+
+            if (latestPacketExport && latestPacketExport.packet_summary) {
+                packetSummaryNode.textContent = JSON.stringify(latestPacketExport.packet_summary, null, 2);
+            } else {
+                packetSummaryNode.textContent = 'No packet export run yet.';
+            }
+        }
+
         function renderFeatureWalkthrough(sessionPayload, tools) {
             const walkthrough = document.getElementById('feature-walkthrough-list');
             const review = sessionPayload.review || {};
@@ -2496,6 +2550,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             renderFeatureCoverage(sessionPayload, workspaceSessionTools || []);
             renderFeatureWalkthrough(sessionPayload, workspaceSessionTools || []);
             renderQuickActions(sessionPayload, workspaceSessionTools || []);
+            renderWorkflowOperations();
         }
 
         function renderSdkServerInfo(initializationPayload, tools) {
@@ -2521,11 +2576,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             renderFeatureWalkthrough(sessionPayload, workspaceSessionTools || []);
             renderQuickActions(sessionPayload, workspaceSessionTools || []);
             renderConnectedHandoffs(sessionPayload);
+            renderWorkflowOperations();
         }
 
         async function loadSharedCapabilities() {
             workspaceCapabilities = await client.getWorkflowCapabilities(workspaceUserId);
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
+            renderWorkflowOperations();
         }
 
         function normalizeUiReviewSummary(result) {
@@ -3174,9 +3231,24 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         async function exportPacket() {
             setBusyStatus('Exporting the current lawsuit packet through the complaint MCP tools…');
             const packetPayload = await client.exportComplaintPacket(workspaceUserId);
+            latestPacketExport = packetPayload;
             const summary = packetPayload.packet_summary || {};
             document.getElementById('packet-preview').textContent = JSON.stringify(summary, null, 2);
+            renderWorkflowOperations();
             setStatus('Complaint packet exported.');
+        }
+
+        async function refreshCapabilitiesPanel() {
+            setBusyStatus('Refreshing workflow capabilities and mediator brief through the MCP tools…');
+            await loadSharedCapabilities();
+            setStatus('Workflow capabilities refreshed.');
+        }
+
+        async function previewMediatorBrief() {
+            setBusyStatus('Refreshing the mediator testimony brief through the MCP tools…');
+            workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Mediator brief refreshed.');
         }
 
         async function resetSession() {
@@ -3284,6 +3356,9 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('export-packet-button').addEventListener('click', exportPacket);
+        document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
+        document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
+        document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
         document.getElementById('action-button').addEventListener('click', () => {

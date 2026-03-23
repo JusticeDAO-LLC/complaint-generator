@@ -895,6 +895,20 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             assert page.evaluate(
                 "() => typeof window.ComplaintMcpSdk.ComplaintMcpClient.prototype.runBrowserAudit === 'function'"
             ) is True
+            page.click("#refresh-capabilities-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Workflow capabilities refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('workflow-capabilities-preview').innerText.includes('Complaint packet')"
+            )
+            page.click("#build-mediator-prompt-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Mediator brief refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('mediator-prompt-preview').innerText.includes('Mediator, help turn this into testimony-ready narrative')"
+            )
 
             page.click("button[data-tab-target='review']")
             assert "Jordan Example alleges retaliation" in page.locator("#review-synopsis-preview").inner_text()
@@ -931,6 +945,14 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
                 "() => document.getElementById('workspace-status').innerText.includes('Draft edits saved.')"
             )
             assert page.locator("#draft-preview").inner_text() == "Custom revised complaint body."
+            page.click("button[data-tab-target='integrations']")
+            page.click("#export-packet-tool-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint packet exported.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('has_draft')"
+            )
 
             page.goto(f"{base_url}/claim-support-review?claim_type=retaliation&workspace_user_id={workspace_user_id}")
             page.wait_for_function(
@@ -1264,6 +1286,10 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             )
             _wait_for_surface(page, f"/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}")
             _assert_surface_layout(page, min_content_height=320)
+            page.wait_for_function(
+                "() => !!document.getElementById('shared-case-synopsis-card')"
+            )
+            _capture_screenshot(page, screenshot_dir, "review-loaded")
             page.fill("#testimony-element-id", "retaliation:1")
             page.fill("#testimony-element-text", "Protected activity")
             page.fill("#testimony-event-date", "2026-03-08")
@@ -1311,6 +1337,16 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             )
             _capture_screenshot(page, screenshot_dir, "workspace-optimizer")
 
+            page.get_by_role("button", name="CLI + MCP", exact=True).click()
+            page.click("#refresh-capabilities-button")
+            page.wait_for_function(
+                "() => document.getElementById('workflow-capabilities-preview').innerText.includes('Complaint packet')"
+            )
+            page.click("#build-mediator-prompt-button")
+            page.wait_for_function(
+                "() => document.getElementById('mediator-prompt-preview').innerText.includes('Mediator, help turn this into testimony-ready narrative')"
+            )
+
             page.goto(f"{base_url}/document?user_id={workspace_user_id}")
             _wait_for_surface(page, "/document")
             _assert_surface_layout(page)
@@ -1327,10 +1363,21 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('builder-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
             )
+            page.wait_for_function(
+                '''() => Array.from(document.querySelectorAll('#previewRoot a[data-review-intent-link="true"]')).some((node) => (node.textContent || '').includes('Resume Review Focus'))'''
+            )
             _capture_screenshot(page, screenshot_dir, "builder-generated")
+            _capture_screenshot(page, screenshot_dir, "builder-resume-review")
+
+            page.goto(f"{base_url}/workspace?user_id={workspace_user_id}&target_tab=integrations")
+            page.click("#export-packet-tool-button")
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('has_draft')"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-operations")
 
             artifact_paths = sorted(screenshot_dir.glob("*.png"))
-            assert len(artifact_paths) >= 7
+            assert len(artifact_paths) >= 8
             assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 
             browser.close()

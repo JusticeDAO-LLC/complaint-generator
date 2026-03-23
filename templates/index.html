@@ -540,6 +540,10 @@
                     <strong>Recommended next step</strong>
                     <span id="homepage-next-step">Open secure intake to create an account, or resume the complaint workspace from this device.</span>
                 </div>
+                <div class="recommended-step" id="homepage-complaint-readiness-panel">
+                    <strong>Current complaint readiness</strong>
+                    <span id="homepage-complaint-readiness-summary">The complaint record has not been reviewed on this device yet.</span>
+                </div>
                 <div class="recommended-step" id="homepage-ui-readiness-panel">
                     <strong>Current UI readiness</strong>
                     <span id="homepage-ui-readiness-summary">No actor/critic verdict is cached on this device yet. Run UX Audit from the workspace before trusting the client flow.</span>
@@ -683,6 +687,40 @@
                 };
             }
 
+            function complaintReadinessSummary(payload) {
+                const answered = countAnswers(payload);
+                const reviewOverview = overview(payload);
+                const evidenceCount = Number(reviewOverview.testimony_items || 0) + Number(reviewOverview.document_items || 0);
+                const missing = Number(reviewOverview.missing_elements || 0);
+                const supported = Number(reviewOverview.supported_elements || 0);
+                const totalQuestions = Array.isArray(payload && payload.questions) ? payload.questions.length : 0;
+                const draft = payload && payload.session ? payload.session.draft : null;
+
+                let score = 10;
+                if (totalQuestions > 0) {
+                    score += Math.round((answered / totalQuestions) * 35);
+                }
+                score += Math.round((supported / Math.max(supported + missing, 1)) * 35);
+                if (evidenceCount > 0) {
+                    score += Math.min(12, evidenceCount * 4);
+                }
+                if (draft) {
+                    score += 12;
+                }
+                score = Math.max(0, Math.min(100, score));
+
+                if (draft) {
+                    return `Draft in progress (${score}/100). A complaint draft already exists, so the next job is to compare it against the supported facts and remaining proof gaps.`;
+                }
+                if (totalQuestions > 0 && answered === totalQuestions && missing === 0 && evidenceCount > 0) {
+                    return `Ready for first draft (${score}/100). Intake is complete, the core elements are supported, and the record is coherent enough for generation.`;
+                }
+                if (answered > 0) {
+                    return `Still building the record (${score}/100). ${missing} claim elements still need support and ${Math.max(totalQuestions - answered, 0)} intake answers may still be missing.`;
+                }
+                return `Not ready to draft (${score}/100). Start intake and capture the core facts before the complaint is treated as a drafting candidate.`;
+            }
+
             async function hydrateHomepageSession() {
                 const badge = document.getElementById('homepage-session-badge');
                 const workspaceLink = document.getElementById('homepage-open-workspace');
@@ -719,6 +757,7 @@
                     setText('homepage-evidence-count', String(Number(summary.testimony_items || 0) + Number(summary.document_items || 0)));
                     setText('homepage-session-status', 'Shared complaint session loaded for ' + did + '.');
                     setText('homepage-next-step', action.detail + ' ' + nextQuestion);
+                    setText('homepage-complaint-readiness-summary', complaintReadinessSummary(payload));
 
                     if (badge) {
                         badge.textContent = 'Connected';
@@ -741,6 +780,7 @@
                     setText('homepage-evidence-count', '0');
                     setText('homepage-session-status', 'The complaint workspace is not connected yet on this device.');
                     setText('homepage-next-step', 'Open secure intake to create an account, or resume the complaint workspace from this device.');
+                    setText('homepage-complaint-readiness-summary', 'Not ready to draft. Start intake and capture the core facts before treating the complaint as ready for drafting.');
                     if (badge) {
                         badge.textContent = 'Offline';
                     }

@@ -520,6 +520,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', '/claim-support-review');
     await expect(page.locator('#homepage-open-workspace')).toContainText(/Review Claim Support|Review Support First/i);
     await expect(page.locator('#homepage-next-step')).toContainText(/Inspect missing claim elements/i);
+    await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Still building the record|Ready for first draft|Draft in progress/i);
 
     for (const path of ['/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
       await page.goto(path);
@@ -527,6 +528,8 @@ test.describe('website surface navigation', () => {
       await expect(page.locator('#cg-app-shell-did')).toContainText(cachedDid);
       await expect(page.locator('#cg-app-shell-intake-count')).toHaveText('6');
       await expect(page.locator('#cg-app-shell-supported-count')).toHaveText('5');
+      await expect(page.locator('#cg-app-shell-complaint-readiness')).toContainText(/Not ready to draft|Still building the record|Ready for first draft|Draft in progress/i);
+      await expect(page.locator('#cg-app-shell-complaint-readiness')).toContainText(/Answered intake:/i);
       await expect(page.locator('#cg-app-shell a[href="/workspace"]').first()).toBeVisible();
       await expect(page.locator('#cg-app-shell a[href="/document"]').first()).toBeVisible();
       await expect(page.locator('#cg-app-shell a[href="/claim-support-review"]').first()).toBeVisible();
