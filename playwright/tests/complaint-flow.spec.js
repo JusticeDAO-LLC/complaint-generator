@@ -275,6 +275,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.get_complaint_readiness/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.update_claim_type/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
@@ -327,8 +328,10 @@ test.describe('complaint generation workflow', () => {
     await page.goto('/workspace');
 
     await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await page.locator('#draft-mode').selectOption('llm_router');
     await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
     await page.locator('#generate-draft-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/llm_router formal complaint path/i);
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint/i);
     await expect(page.locator('#draft-preview')).toContainText(/Civil Action No\./i);
     await expect(page.locator('#draft-preview')).toContainText(/JURISDICTION AND VENUE/i);
@@ -337,6 +340,8 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Jane Doe alleges retaliation/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Jane Doe v\. Acme Corporation Retaliation Complaint/i);
     await expect(page.locator('#draft-body')).toHaveValue(/Jane Doe brings this retaliation complaint against Acme Corporation\./i);
+    await expect(page.locator('#draft-generation-meta')).toContainText(/Draft strategy: llm_router/i);
+    await expect(page.locator('#draft-generation-meta')).toContainText(/Claim type: retaliation/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#refresh-complaint-readiness-button').click();
@@ -515,5 +520,56 @@ test.describe('complaint generation workflow', () => {
     await page.goto('/');
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Ready for first draft|Draft in progress/i);
     await expect(page.locator('#homepage-next-step')).toContainText(/draft|builder|revis/i);
+  });
+
+  test('workspace can switch complaint type and use the llm_router drafting path for a formal housing complaint', async ({ page }) => {
+    const did = `did:key:workspace-housing-flow-${Date.now()}`;
+    await page.addInitScript((did) => {
+      window.localStorage.setItem('complaintGenerator.did', did);
+    }, did);
+    await page.goto('/workspace');
+
+    await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
+
+    await page.locator('#intake-party_name').fill('Morgan Lee');
+    await page.locator('#intake-opposing_party').fill('Acme Housing Authority');
+    await page.locator('#intake-protected_activity').fill('Requested a disability accommodation and complained about discriminatory housing treatment');
+    await page.locator('#intake-adverse_action').fill('Was denied continued housing assistance and threatened with eviction');
+    await page.locator('#intake-timeline').fill('Accommodation request on May 2, denial notice on May 5, eviction threat on May 7');
+    await page.locator('#intake-harm').fill('Risked losing housing stability and incurred out-of-pocket relocation costs');
+    await page.locator('#save-intake-button').click();
+    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+
+    await page.getByRole('button', { name: 'Evidence', exact: true }).click();
+    await page.locator('#evidence-kind').selectOption('document');
+    await page.locator('#evidence-claim-element').selectOption('causation');
+    await page.locator('#evidence-title').fill('Accommodation denial notice');
+    await page.locator('#evidence-source').fill('Housing portal download');
+    await page.locator('#evidence-content').fill('The denial notice and eviction warning followed immediately after the accommodation request and complaint.');
+    await page.locator('#save-evidence-button').click();
+    await expect(page.locator('#evidence-list')).toContainText(/Accommodation denial notice/i);
+
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await page.locator('#draft-claim-type').selectOption('housing_discrimination');
+    await expect(page.locator('#draft-mode')).toHaveValue('llm_router');
+    await page.locator('#requested-relief').fill('Injunctive relief\nCompensatory damages\nDeclaratory relief');
+    await page.locator('#generate-draft-button').click();
+
+    await expect(page.locator('#workspace-status')).toContainText(/llm_router formal complaint path/i);
+    await expect(page.locator('#draft-generation-meta')).toContainText(/Draft strategy: llm_router/i);
+    await expect(page.locator('#draft-generation-meta')).toContainText(/Claim type: housing discrimination/i);
+    await expect(page.locator('#draft-preview')).toContainText(/COMPLAINT FOR HOUSING DISCRIMINATION/i);
+    await expect(page.locator('#draft-preview')).toContainText(/Morgan Lee brings this housing discrimination complaint against Acme Housing Authority\./i);
+    await expect(page.locator('#draft-preview')).toContainText(/COUNT I - HOUSING DISCRIMINATION/i);
+    await expect(page.locator('#draft-title')).toHaveValue(/Morgan Lee v\. Acme Housing Authority Housing Discrimination Complaint/i);
+
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#export-packet-tool-button').click();
+    await expect(page.locator('#packet-preview')).toContainText(/Claim type: housing_discrimination/i);
+    await expect(page.locator('#packet-preview')).toContainText(/COMPLAINT FOR HOUSING DISCRIMINATION/i);
+
+    await page.locator('#analyze-complaint-output-button').click();
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"formal_sections_present":/i);
   });
 });

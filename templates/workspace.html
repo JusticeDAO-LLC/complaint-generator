@@ -1441,6 +1441,7 @@
                             <strong>Filing editor checklist</strong>
                             <span>Before treating the draft as usable, make sure it names the parties clearly, ties the adverse action to the protected activity, describes the harm, and asks for relief that matches the record.</span>
                             <div class="soft-note" id="draft-synopsis-preview">The case synopsis will appear here as a drafting reference.</div>
+                            <div class="soft-note" id="draft-generation-meta">Draft generation strategy details will appear here once a complaint is generated.</div>
                             <div class="guidance-grid">
                                 <div class="guidance-card">
                                     <strong>Title the complaint clearly</strong>
@@ -1457,6 +1458,27 @@
                             </div>
                         </div>
                         <div class="field-grid">
+                            <div class="field-row">
+                                <div>
+                                    <label for="draft-claim-type">Complaint Type</label>
+                                    <select id="draft-claim-type">
+                                        <option value="retaliation">Retaliation</option>
+                                        <option value="employment_discrimination">Employment discrimination</option>
+                                        <option value="housing_discrimination">Housing discrimination</option>
+                                        <option value="due_process_failure">Due process failure</option>
+                                        <option value="consumer_protection">Consumer protection</option>
+                                    </select>
+                                    <div class="helper-text">Choose the legal complaint shape before drafting so the pleading structure and claim language stay aligned.</div>
+                                </div>
+                                <div>
+                                    <label for="draft-mode">Drafting Mode</label>
+                                    <select id="draft-mode">
+                                        <option value="llm_router">Formal complaint via llm_router</option>
+                                        <option value="template">Deterministic template fallback</option>
+                                    </select>
+                                    <div class="helper-text">The recommended mode asks the router to turn the record into a more filing-shaped complaint and falls back safely if the router is unavailable.</div>
+                                </div>
+                            </div>
                             <div class="field-row">
                                 <div>
                                     <label for="draft-title">Draft Title</label>
@@ -2098,10 +2120,19 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
 
         function renderDraft(sessionPayload) {
             const draft = sessionPayload.draft || (sessionPayload.session || {}).draft || {};
+            const claimType = String((sessionPayload.session || {}).claim_type || sessionPayload.claim_type || 'retaliation');
             document.getElementById('draft-title').value = draft.title || '';
             document.getElementById('requested-relief').value = (draft.requested_relief || []).join('\n');
             document.getElementById('draft-body').value = draft.body || '';
             document.getElementById('draft-preview').textContent = draft.body || 'No complaint generated yet.';
+            document.getElementById('draft-claim-type').value = claimType;
+            document.getElementById('draft-mode').value = draft.draft_strategy === 'template' ? 'template' : 'llm_router';
+            const backend = draft.draft_backend || {};
+            const strategyLabel = draft.draft_strategy || 'none';
+            const backendParts = [backend.provider, backend.model].filter(Boolean).join(' / ');
+            document.getElementById('draft-generation-meta').textContent = draft.body
+                ? `Draft strategy: ${strategyLabel}${backendParts ? ` (${backendParts})` : ''}. Claim type: ${claimType.replace(/_/g, ' ')}.`
+                : 'Draft generation strategy details will appear here once a complaint is generated.';
             syncSynopsisMirrors(document.getElementById('case-synopsis').value);
         }
 
@@ -3356,15 +3387,24 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 }
                 return;
             }
+            const selectedClaimType = document.getElementById('draft-claim-type').value;
+            const currentClaimType = String((((workspaceSession || {}).session || {}).claim_type) || 'retaliation');
+            if (selectedClaimType !== currentClaimType) {
+                workspaceSession = await client.updateClaimType(workspaceUserId, selectedClaimType);
+            }
+            const draftMode = document.getElementById('draft-mode').value;
             setBusyStatus('Generating the first complaint draft from the current record…');
             workspaceSession = await client.generateComplaint(workspaceUserId, {
                 requested_relief: document.getElementById('requested-relief').value.split('\n').map((item) => item.trim()).filter(Boolean),
                 title_override: document.getElementById('draft-title').value.trim() || null,
+                use_llm: draftMode === 'llm_router',
             });
             await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             activateTab('draft');
-            setStatus('Complaint draft generated from intake and evidence.');
+            setStatus(draftMode === 'llm_router'
+                ? 'Complaint draft generated through the llm_router formal complaint path.'
+                : 'Complaint draft generated from the deterministic template fallback.');
         }
 
         async function saveDraft() {

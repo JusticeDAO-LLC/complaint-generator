@@ -771,13 +771,24 @@ function buildStubUiOptimizationResult(args = {}, userId = 'did:key:playwright-d
   };
 }
 
-function generateWorkspaceDraft(workspaceState, requestedRelief) {
+function generateWorkspaceDraft(workspaceState, requestedRelief, options = {}) {
   const answers = workspaceState.intake_answers;
   const review = workspaceReview(workspaceState);
   const overview = (review || {}).overview || {};
   const evidence = workspaceState.evidence || { testimony: [], documents: [] };
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
   const caseSynopsis = String(workspaceState.case_synopsis || '').trim();
+  const claimType = String(workspaceState.claim_type || 'retaliation');
+  const claimTypeTitle = claimType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  const complaintHeading = claimType === 'retaliation'
+    ? 'COMPLAINT FOR RETALIATION'
+    : `COMPLAINT FOR ${claimType.replace(/_/g, ' ').toUpperCase()}`;
+  const countHeading = claimType === 'retaliation'
+    ? 'COUNT I - RETALIATION'
+    : `COUNT I - ${claimType.replace(/_/g, ' ').toUpperCase()}`;
+  const natureOfAction = claimType === 'retaliation'
+    ? `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${answers.protected_activity || 'engaged in protected activity'}.`
+    : `1. ${answers.party_name || 'Plaintiff'} brings this ${claimType.replace(/_/g, ' ')} complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unlawful conduct that injured ${answers.party_name || 'Plaintiff'} and is being framed in the correct claim-specific pleading posture.`;
   const testimonySummary = (evidence.testimony || []).slice(0, 3)
     .map((item) => `${item.title || 'Untitled testimony'} (${item.claim_element_id || 'unmapped'})`)
     .join('; ') || 'No witness or complainant testimony has been summarized yet';
@@ -797,13 +808,13 @@ function generateWorkspaceDraft(workspaceState, requestedRelief) {
     `${answers.opposing_party || 'Defendant'}, Defendant.`,
     '',
     'Civil Action No. ________________',
-    'COMPLAINT FOR RETALIATION',
+    complaintHeading,
     'JURY TRIAL DEMANDED',
     '',
     `Plaintiff ${answers.party_name || 'Plaintiff'}, by and through this Complaint, alleges upon personal knowledge as to their own acts and upon information and belief as to all other matters, as follows:`,
     '',
     'NATURE OF THE ACTION',
-    `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${answers.protected_activity || 'engaged in protected activity'}.`,
+    natureOfAction,
     `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the retaliatory conduct, restore lost compensation, and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`,
     '',
     'JURISDICTION AND VENUE',
@@ -829,7 +840,7 @@ function generateWorkspaceDraft(workspaceState, requestedRelief) {
     ...[...testimonyReferenceLines, ...documentReferenceLines].slice(0, 2).map((line, index) => `${16 + index}. ${line}`),
     '',
     'CLAIM FOR RELIEF',
-    'COUNT I - RETALIATION',
+    countHeading,
     `18. ${answers.party_name || 'Plaintiff'} repeats and realleges the preceding paragraphs as if fully set forth herein.`,
     `19. ${answers.party_name || 'Plaintiff'} engaged in protected activity by ${answers.protected_activity || 'engaged in protected activity'}, and Defendant knew or should have known of that protected conduct.`,
     `20. Defendant thereafter subjected Plaintiff to materially adverse action, including ${answers.adverse_action || 'adverse action'}, under circumstances supporting retaliatory motive and causation.`,
@@ -858,10 +869,16 @@ function generateWorkspaceDraft(workspaceState, requestedRelief) {
     'WORKING CASE SYNOPSIS',
     caseSynopsis ? `Working case synopsis: ${caseSynopsis}.` : 'Working case synopsis: No case synopsis recorded.',
   ].join('\n\n');
+  const useLlm = Boolean(options.use_llm);
+  const provider = String(options.provider || '').trim() || 'playwright-stub';
+  const model = String(options.model || '').trim() || 'stub-formal-complaint';
   workspaceState.draft = {
-    title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} Retaliation Complaint`,
+    title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} ${claimTypeTitle} Complaint`,
     requested_relief: relief,
     body,
+    claim_type: claimType,
+    draft_strategy: useLlm ? 'llm_router' : 'template',
+    draft_backend: useLlm ? { id: 'complaint-draft', provider, model } : undefined,
   };
 }
 
@@ -1074,6 +1091,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
+        { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -1113,6 +1131,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
+            { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -1166,7 +1185,11 @@ const server = http.createServer(async (request, response) => {
       } else if (toolName === 'complaint.get_workflow_capabilities') {
         structuredContent = workflowCapabilitiesPayload(userId);
       } else if (toolName === 'complaint.generate_complaint') {
-        generateWorkspaceDraft(workspaceState, args.requested_relief || []);
+        generateWorkspaceDraft(workspaceState, args.requested_relief || [], {
+          use_llm: Boolean(args.use_llm),
+          provider: args.provider,
+          model: args.model,
+        });
         if (args.title_override) {
           workspaceState.draft.title = args.title_override;
         }
@@ -1210,6 +1233,9 @@ const server = http.createServer(async (request, response) => {
         };
       } else if (toolName === 'complaint.analyze_complaint_output') {
         structuredContent = buildComplaintOutputAnalysis(userId);
+      } else if (toolName === 'complaint.update_claim_type') {
+        workspaceState.claim_type = typeof args.claim_type === 'string' && args.claim_type.trim() ? args.claim_type.trim() : 'retaliation';
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.reset_session') {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
@@ -1329,7 +1355,11 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, workflowCapabilitiesPayload(userId));
     }
     if (toolName === 'complaint.generate_complaint') {
-      generateWorkspaceDraft(workspaceState, args.requested_relief || []);
+      generateWorkspaceDraft(workspaceState, args.requested_relief || [], {
+        use_llm: Boolean(args.use_llm),
+        provider: args.provider,
+        model: args.model,
+      });
       if (args.title_override) {
         workspaceState.draft.title = args.title_override;
       }
@@ -1379,6 +1409,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.analyze_complaint_output') {
       return sendJson(response, buildComplaintOutputAnalysis(userId));
+    }
+    if (toolName === 'complaint.update_claim_type') {
+      workspaceState.claim_type = typeof args.claim_type === 'string' && args.claim_type.trim() ? args.claim_type.trim() : 'retaliation';
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.reset_session') {
       workspaceSessions.set(userId, createWorkspaceState(userId));

@@ -1083,7 +1083,7 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                 page.locator("#draft-title").fill("Jane Doe v. Acme Corporation Complaint")
                 page.locator("#requested-relief").fill("Back pay\nInjunctive relief")
                 page.locator("#generate-draft-button").click()
-                _wait_for_text(page, "#workspace-status", "Complaint draft generated from intake and evidence.")
+                _wait_for_text(page, "#workspace-status", "Complaint draft generated through the llm_router formal complaint path.")
                 _wait_for_text(page, "#draft-preview", "Jane Doe brings this retaliation complaint against Acme Corporation.")
                 assert page.locator("#draft-body").input_value().startswith(
                     "Jane Doe brings this retaliation complaint against Acme Corporation."

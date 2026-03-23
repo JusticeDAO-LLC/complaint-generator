@@ -449,6 +449,78 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert reset_payload["session"]["intake_answers"] == {}
 
 
+def test_cli_and_mcp_can_request_llm_backed_complaint_generation(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-draft-tool-sessions")
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+
+    service.submit_intake_answers(
+        "llm-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+
+    observed_calls = []
+
+    def fake_refine(self, state, base_draft, **kwargs):
+        observed_calls.append(dict(kwargs))
+        return {
+            **base_draft,
+            "title": f"{base_draft['title']} (LLM)",
+            "draft_strategy": "llm_router",
+            "draft_backend": {
+                "id": "complaint-draft",
+                "provider": kwargs.get("provider") or "stub-provider",
+                "model": kwargs.get("model") or "stub-model",
+            },
+        }
+
+    monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
+
+    cli_payload = _invoke_cli(
+        runner,
+        "generate",
+        "--user-id",
+        "llm-user",
+        "--requested-relief",
+        "Back pay|Injunctive relief",
+        "--use-llm",
+        "--provider",
+        "stub-provider",
+        "--model",
+        "stub-model",
+    )
+    assert cli_payload["draft"]["draft_strategy"] == "llm_router"
+    assert cli_payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert cli_payload["draft"]["draft_backend"]["model"] == "stub-model"
+
+    mcp_payload = _call_mcp_tool(
+        service,
+        90,
+        "complaint.generate_complaint",
+        {
+            "user_id": "llm-user",
+            "requested_relief": ["Front pay", "Declaratory relief"],
+            "use_llm": True,
+            "provider": "stub-provider-2",
+            "model": "stub-model-2",
+        },
+    )
+    assert mcp_payload["draft"]["draft_strategy"] == "llm_router"
+    assert mcp_payload["draft"]["draft_backend"]["provider"] == "stub-provider-2"
+    assert mcp_payload["draft"]["draft_backend"]["model"] == "stub-model-2"
+    assert observed_calls[0]["provider"] == "stub-provider"
+    assert observed_calls[0]["model"] == "stub-model"
+    assert observed_calls[1]["provider"] == "stub-provider-2"
+    assert observed_calls[1]["model"] == "stub-model-2"
+
+
 def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path):
     runner = CliRunner()
     service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-review-sessions")

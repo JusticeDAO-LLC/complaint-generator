@@ -105,6 +105,35 @@ def _claim_type_display_name(value: Optional[str]) -> str:
     return _CLAIM_TYPE_LABELS.get(normalized, normalized.replace("_", " ").title())
 
 
+def _claim_type_filing_guidance(value: Optional[str]) -> str:
+    normalized = _normalize_claim_type(value)
+    return {
+        "retaliation": (
+            "Emphasize protected activity, employer knowledge, temporal proximity, retaliatory motive, adverse action, "
+            "and damages. Keep the chronology tight and make the causation theory explicit."
+        ),
+        "employment_discrimination": (
+            "Emphasize protected status or protected conduct, discriminatory treatment, comparator or disparate-treatment logic "
+            "when present, adverse employment action, damages, and requested relief tied to employment harm."
+        ),
+        "housing_discrimination": (
+            "Emphasize housing rights, discriminatory denial or interference, protected status or protected housing activity, "
+            "housing-related harm, and the requested equitable or damages relief."
+        ),
+        "due_process_failure": (
+            "Emphasize the deprivation, missing notice or hearing protections, procedural defects, resulting harm, and the specific "
+            "procedural relief or damages being sought."
+        ),
+        "consumer_protection": (
+            "Emphasize the deceptive or unfair practice, reliance or transaction context when present, resulting economic harm, "
+            "and restitutionary or injunctive relief."
+        ),
+    }.get(
+        normalized,
+        "Shape the complaint like a formal civil pleading with a clear chronology, concrete harm, and requested relief grounded in the record.",
+    )
+
+
 def _strip_code_fences(text: str) -> str:
     stripped = str(text or "").strip()
     if stripped.startswith("```"):
@@ -600,6 +629,7 @@ class ComplaintWorkspaceService:
             "You are revising a generated complaint so it reads like a formal legal complaint rather than a workflow summary.\n"
             "Use only the facts already present in the complaint record. Do not invent statutes, parties, dates, courts, judges, or evidence.\n"
             "Keep the output in plain text with numbered factual paragraphs and a clear caption. Preserve the requested relief unless the record plainly requires a tighter phrasing.\n"
+            f"Claim-specific filing guidance: {_claim_type_filing_guidance(payload['claim_type'])}\n"
             "Retain these exact section headings in the body:\n"
             f"{markers}\n\n"
             "Return strict JSON with this shape:\n"

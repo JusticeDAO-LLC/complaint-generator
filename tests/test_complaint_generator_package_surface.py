@@ -296,6 +296,7 @@ def test_package_ui_review_wrappers_delegate_to_matching_mcp_tools(tmp_path, mon
 
 def test_package_workspace_generate_complaint_can_optionally_use_llm_router(tmp_path, monkeypatch):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "package-llm-draft-sessions")
+    update_claim_type("package-llm-user", "housing_discrimination", service=service)
     submit_intake_answers(
         "package-llm-user",
         {
@@ -315,12 +316,13 @@ def test_package_workspace_generate_complaint_can_optionally_use_llm_router(tmp_
         captured.update(kwargs)
         return {
             **base_draft,
-            "title": "LLM Refined Complaint",
+            "title": "LLM Refined Housing Complaint",
             "body": base_draft["body"].replace(
                 "WORKING CASE SYNOPSIS",
-                "PRELIMINARY STATEMENT\n\n24. Plaintiff seeks prompt judicial intervention to stop ongoing retaliation and preserve the evidentiary record.\n\nWORKING CASE SYNOPSIS",
+                "PRELIMINARY STATEMENT\n\n24. Plaintiff seeks prompt judicial intervention to stop discriminatory interference with housing rights and preserve the evidentiary record.\n\nWORKING CASE SYNOPSIS",
             ),
             "draft_strategy": "llm_router",
+            "draft_backend": {"provider": "stub-provider", "model": "stub-model"},
         }
 
     monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
@@ -334,9 +336,11 @@ def test_package_workspace_generate_complaint_can_optionally_use_llm_router(tmp_
         service=service,
     )
 
-    assert draft_payload["draft"]["title"] == "LLM Refined Complaint"
+    assert draft_payload["draft"]["title"] == "LLM Refined Housing Complaint"
     assert draft_payload["draft"]["draft_strategy"] == "llm_router"
     assert "PRELIMINARY STATEMENT" in draft_payload["draft"]["body"]
+    assert "COMPLAINT FOR HOUSING DISCRIMINATION" in draft_payload["draft"]["body"]
+    assert draft_payload["draft"]["claim_type"] == "housing_discrimination"
     assert captured["provider"] == "stub-provider"
     assert captured["model"] == "stub-model"
 

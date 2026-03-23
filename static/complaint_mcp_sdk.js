@@ -233,6 +233,13 @@
             });
         }
 
+        updateClaimType(userId, claimType) {
+            return this.callTool('complaint.update_claim_type', {
+                user_id: userId,
+                claim_type: claimType,
+            });
+        }
+
         downloadComplaintPacketUrl(userId, outputFormat) {
             const url = new URL(this.baseUrl + '/export/download', this.origin);
             if (userId) {
