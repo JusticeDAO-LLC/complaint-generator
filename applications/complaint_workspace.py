@@ -242,6 +242,63 @@ def _strip_code_fences(text: str) -> str:
     return stripped
 
 
+def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -> str:
+    normalized = str(body or "").replace("\r\n", "\n").strip()
+    if not normalized:
+        return ""
+
+    # Trim obvious non-pleading appendices or workspace scaffolding that can
+    # appear after an otherwise-usable complaint body.
+    trailing_section_markers = [
+        "\nAPPENDIX A - ",
+        "\nAPPENDIX B - ",
+        "\nAPPENDIX C - ",
+        "\nAPPENDIX D - ",
+        "\nAPPENDIX E - ",
+        "\nAPPENDIX F - ",
+        "\nWORKING CASE SYNOPSIS",
+        "\nCOMPLAINT RECORD",
+        "\nWORKFLOW SUMMARY",
+    ]
+    cut_points = [normalized.find(marker) for marker in trailing_section_markers if normalized.find(marker) > 0]
+    if cut_points:
+        normalized = normalized[: min(cut_points)].rstrip()
+
+    replacements = {
+        "current complaint record": "present evidentiary record",
+        "support review": "present evidentiary posture",
+        "workflow summary": "pleading summary",
+        "complaint record": "pleading record",
+        "support matrix": "evidentiary posture",
+        "json": "record",
+        "sdk": "record",
+    }
+    for old, new in replacements.items():
+        normalized = re.sub(re.escape(old), new, normalized, flags=re.IGNORECASE)
+
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
+
+    # If the model omitted the exact claim heading but otherwise produced a
+    # usable pleading body, normalize the heading to the selected claim type.
+    if claim_type:
+        preferred_heading = f"COMPLAINT FOR {_claim_type_display_name(claim_type).upper()}"
+        preferred_count_heading = _claim_type_count_heading(claim_type)
+        normalized = re.sub(
+            r"(?m)^COMPLAINT FOR .+$",
+            preferred_heading,
+            normalized,
+            count=1,
+        )
+        normalized = re.sub(
+            r"(?m)^COUNT I - .+$",
+            preferred_count_heading,
+            normalized,
+            count=1,
+        )
+
+    return normalized
+
+
 def _parse_json_object(text: str) -> Dict[str, Any]:
     stripped = _strip_code_fences(text)
     try:

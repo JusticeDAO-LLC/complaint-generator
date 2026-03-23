@@ -201,8 +201,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#chat-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-review')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-builder')).toHaveAttribute('href', /case_synopsis=Jordan%20Example/);
-    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+    await expect(page.locator('#chat-open-review')).toBeVisible();
+    await expect(page.locator('#chat-open-builder')).toBeVisible();
 
     const screenshotPath = testInfo.outputPath('chat-handoff-overview.png');
     await page.locator('.page-shell').screenshot({ path: screenshotPath });
