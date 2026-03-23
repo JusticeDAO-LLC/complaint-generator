@@ -284,13 +284,564 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+const workspaceIntakeQuestions = [
+  {
+    id: 'party_name',
+    label: 'Complainant name',
+    prompt: 'Who is filing this complaint?',
+    placeholder: 'Jane Doe',
+  },
+  {
+    id: 'opposing_party',
+    label: 'Opposing party',
+    prompt: 'Who is the complaint against?',
+    placeholder: 'Acme Corporation',
+  },
+  {
+    id: 'protected_activity',
+    label: 'Protected activity',
+    prompt: 'What protected activity did the complainant engage in?',
+    placeholder: 'Reported discrimination to HR',
+  },
+  {
+    id: 'adverse_action',
+    label: 'Adverse action',
+    prompt: 'What adverse action followed?',
+    placeholder: 'Termination',
+  },
+  {
+    id: 'timeline',
+    label: 'Timeline',
+    prompt: 'What is the timing between the protected activity and the adverse action?',
+    placeholder: 'Complaint on March 8, termination on March 10',
+  },
+  {
+    id: 'harm',
+    label: 'Harm',
+    prompt: 'What harm did the complainant suffer?',
+    placeholder: 'Lost wages and benefits',
+  },
+];
+
+const workspaceClaimElements = [
+  { id: 'protected_activity', label: 'Protected activity' },
+  { id: 'employer_knowledge', label: 'Employer knowledge' },
+  { id: 'adverse_action', label: 'Adverse action' },
+  { id: 'causation', label: 'Causation' },
+  { id: 'harm', label: 'Harm' },
+];
+
+const workspaceToolList = [
+  { name: 'complaint.create_identity', description: 'Create a decentralized identity for browser or CLI use.' },
+  { name: 'complaint.list_intake_questions', description: 'List the complaint intake questions used across browser, CLI, and MCP flows.' },
+  { name: 'complaint.list_claim_elements', description: 'List the tracked claim elements used for evidence and review.' },
+  { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.' },
+  { name: 'complaint.submit_intake', description: 'Save complaint intake answers.' },
+  { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.' },
+  { name: 'complaint.review_case', description: 'Return the current support matrix and evidence review.' },
+  { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.' },
+  { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.' },
+  { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.' },
+  { name: 'complaint.update_draft', description: 'Persist edits to the generated complaint draft.' },
+  { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.' },
+  { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.' },
+  { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.' },
+  { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique.' },
+  { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, actor/critic optimizer, and revalidation workflow for the complaint dashboard UI.' },
+  { name: 'complaint.run_browser_audit', description: 'Run the Playwright end-to-end complaint browser audit that drives chat, intake, evidence, review, draft, and builder surfaces.' },
+];
+
+function createWorkspaceState(userId) {
+  return {
+    user_id: userId,
+    claim_type: 'retaliation',
+    intake_answers: {},
+    intake_history: [],
+    evidence: {
+      testimony: [],
+      documents: [],
+    },
+    draft: null,
+    case_synopsis: '',
+  };
+}
+
+function buildWorkspaceQuestionStatus(state) {
+  return workspaceIntakeQuestions.map((question) => {
+    const answer = String((state.intake_answers || {})[question.id] || '');
+    return {
+      ...question,
+      answer,
+      is_answered: Boolean(answer.trim()),
+    };
+  });
+}
+
+function buildWorkspaceSupportMatrix(state) {
+  const answers = state.intake_answers || {};
+  const testimony = ((state.evidence || {}).testimony || []);
+  const documents = ((state.evidence || {}).documents || []);
+  return workspaceClaimElements.map((element) => {
+    const intakeSupported = Boolean(answers[element.id])
+      || (element.id === 'employer_knowledge' && Boolean(answers.protected_activity))
+      || (element.id === 'causation' && Boolean(answers.timeline));
+    const testimonyMatches = testimony.filter((item) => item.claim_element_id === element.id);
+    const documentMatches = documents.filter((item) => item.claim_element_id === element.id);
+    const supportCount = testimonyMatches.length + documentMatches.length + (intakeSupported ? 1 : 0);
+    return {
+      id: element.id,
+      label: element.label,
+      supported: supportCount > 0,
+      intake_supported: intakeSupported,
+      testimony_count: testimonyMatches.length,
+      document_count: documentMatches.length,
+      support_count: supportCount,
+      status: supportCount > 0 ? 'supported' : 'needs_support',
+    };
+  });
+}
+
+function buildWorkspaceCaseSynopsis(state) {
+  const customSynopsis = String(state.case_synopsis || '').trim();
+  if (customSynopsis) {
+    return customSynopsis;
+  }
+  const answers = state.intake_answers || {};
+  const matrix = buildWorkspaceSupportMatrix(state);
+  const supportedElements = matrix.filter((item) => item.supported).length;
+  const missingElements = matrix.filter((item) => !item.supported).length;
+  const evidence = state.evidence || {};
+  const evidenceCount = (evidence.testimony || []).length + (evidence.documents || []).length;
+  return `${answers.party_name || 'The complainant'} is pursuing a retaliation complaint against ${answers.opposing_party || 'the opposing party'}. The current theory is that ${answers.party_name || 'the complainant'} ${answers.protected_activity || 'engaged in protected activity'}, then experienced ${answers.adverse_action || 'an adverse action'}. The reported harm is ${answers.harm || 'described harm'}. Timeline posture: ${answers.timeline || 'a still-developing timeline'}. Current support posture: ${supportedElements} supported elements, ${missingElements} open gaps, ${evidenceCount} saved evidence items.`;
+}
+
+function buildWorkspaceReview(state) {
+  const matrix = buildWorkspaceSupportMatrix(state);
+  const supported = matrix.filter((item) => item.supported);
+  const missing = matrix.filter((item) => !item.supported);
+  const evidence = state.evidence || {};
+  return {
+    claim_type: state.claim_type || 'retaliation',
+    case_synopsis: buildWorkspaceCaseSynopsis(state),
+    support_matrix: matrix,
+    overview: {
+      supported_elements: supported.length,
+      missing_elements: missing.length,
+      testimony_items: (evidence.testimony || []).length,
+      document_items: (evidence.documents || []).length,
+    },
+    recommended_actions: [
+      {
+        title: 'Collect more corroboration',
+        detail: missing.length
+          ? 'Add testimony or documents to any unsupported claim element.'
+          : 'All core elements have at least one support source.',
+      },
+      {
+        title: 'Check timing',
+        detail: 'Close timing between protected activity and adverse action strengthens causation.',
+      },
+    ],
+    testimony: clone(evidence.testimony || []),
+    documents: clone(evidence.documents || []),
+  };
+}
+
+function buildWorkspaceDraft(state, requestedRelief) {
+  const answers = state.intake_answers || {};
+  const existingDraft = state.draft || {};
+  const relief = requestedRelief || existingDraft.requested_relief || ['Compensatory damages', 'Back pay', 'Injunctive relief'];
+  const synopsis = buildWorkspaceCaseSynopsis(state);
+  return {
+    title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} Retaliation Complaint`,
+    requested_relief: relief,
+    case_synopsis: synopsis,
+    body: [
+      `${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}.`,
+      `${answers.party_name || 'Plaintiff'} alleges that they ${answers.protected_activity || 'engaged in protected activity'}.`,
+      `After that protected activity, ${answers.party_name || 'Plaintiff'} experienced ${answers.adverse_action || 'an adverse action'}.`,
+      `The timeline shows that ${answers.timeline || 'the events occurred close in time'}.`,
+      `As a result, ${answers.party_name || 'Plaintiff'} suffered ${answers.harm || 'compensable harm'}.`,
+      `Requested relief includes: ${relief.join('; ')}.`,
+      `Working case synopsis: ${synopsis}`,
+    ].join('\n\n'),
+    generated_at: '2026-03-22T12:00:00Z',
+    review_snapshot: buildWorkspaceReview(state),
+  };
+}
+
+function buildWorkspaceSessionPayload(state) {
+  const questions = buildWorkspaceQuestionStatus(state);
+  const nextQuestion = questions.find((question) => !question.is_answered) || null;
+  const review = buildWorkspaceReview(state);
+  return {
+    session: clone(state),
+    questions,
+    next_question: nextQuestion,
+    review,
+    case_synopsis: buildWorkspaceCaseSynopsis(state),
+    draft: state.draft ? clone(state.draft) : null,
+  };
+}
+
+function buildWorkspaceMediatorPrompt(state) {
+  const sessionPayload = buildWorkspaceSessionPayload(state);
+  const supportMatrix = sessionPayload.review.support_matrix || [];
+  const firstGap = supportMatrix.find((item) => !item.supported) || null;
+  const synopsis = sessionPayload.case_synopsis;
+  const gapFocus = firstGap
+    ? `Focus especially on clarifying ${String(firstGap.label || '').toLowerCase()} and what proof could corroborate it.`
+    : 'Focus on sharpening the strongest testimony, identifying corroboration, and confirming the cleanest sequence of events.';
+  return {
+    user_id: state.user_id,
+    case_synopsis: synopsis,
+    target_gap: firstGap ? clone(firstGap) : null,
+    prefill_message: `${synopsis}\n\nMediator, help turn this into testimony-ready narrative for the complaint record. Ask the single most useful next follow-up question, keep the tone calm, and explain what support would strengthen the case. ${gapFocus}`,
+    return_target_tab: 'review',
+  };
+}
+
+function buildWorkspaceCapabilities(state) {
+  const sessionPayload = buildWorkspaceSessionPayload(state);
+  const review = sessionPayload.review || {};
+  const overview = review.overview || {};
+  const questions = sessionPayload.questions || [];
+  const answeredCount = questions.filter((question) => question.is_answered).length;
+  return {
+    user_id: state.user_id,
+    case_synopsis: sessionPayload.case_synopsis,
+    overview: clone(overview),
+    capabilities: [
+      {
+        id: 'intake_questions',
+        label: 'Complaint intake questions',
+        available: questions.length > 0,
+        detail: `${answeredCount} of ${questions.length} intake questions answered.`,
+      },
+      {
+        id: 'mediator_prompt',
+        label: 'Chat mediator handoff',
+        available: true,
+        detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.',
+      },
+      {
+        id: 'evidence_capture',
+        label: 'Evidence capture',
+        available: true,
+        detail: `${Number(overview.testimony_items || 0) + Number(overview.document_items || 0)} evidence items saved.`,
+      },
+      {
+        id: 'support_review',
+        label: 'Claim support review',
+        available: true,
+        detail: `${overview.supported_elements || 0} supported elements, ${overview.missing_elements || 0} gaps remaining.`,
+      },
+      {
+        id: 'complaint_draft',
+        label: 'Complaint draft',
+        available: true,
+        detail: state.draft ? 'A draft already exists and can be edited.' : 'A draft can be generated from the current complaint record.',
+      },
+      {
+        id: 'complaint_packet',
+        label: 'Complaint packet export',
+        available: true,
+        detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.',
+      },
+    ],
+  };
+}
+
 async function installCommonMocks(page, recorder = {}, options = {}) {
   const documentResponses = Array.isArray(options.documentResponses) && options.documentResponses.length
     ? options.documentResponses.map((item) => clone(item))
     : [clone(documentGenerationResponse)];
+  const workspaceSessions = new Map();
+  let workspaceIdentityCounter = 0;
+
+  function getWorkspaceState(userId) {
+    const resolvedUserId = userId || `did:key:playwright-${String(workspaceIdentityCounter + 1).padStart(4, '0')}`;
+    if (!workspaceSessions.has(resolvedUserId)) {
+      workspaceSessions.set(resolvedUserId, createWorkspaceState(resolvedUserId));
+    }
+    return workspaceSessions.get(resolvedUserId);
+  }
+
+  function jsonRpcSuccess(id, result) {
+    return {
+      jsonrpc: '2.0',
+      id,
+      result,
+    };
+  }
+
+  function jsonRpcError(id, message) {
+    return {
+      jsonrpc: '2.0',
+      id,
+      error: {
+        code: -32601,
+        message,
+      },
+    };
+  }
+
+  function handleWorkspaceToolCall(name, args) {
+    const toolArgs = args || {};
+    const state = getWorkspaceState(toolArgs.user_id);
+
+    if (name === 'complaint.create_identity') {
+      return { did: state.user_id };
+    }
+    if (name === 'complaint.list_intake_questions') {
+      return { questions: clone(workspaceIntakeQuestions) };
+    }
+    if (name === 'complaint.list_claim_elements') {
+      return { claim_elements: clone(workspaceClaimElements) };
+    }
+    if (name === 'complaint.start_session' || name === 'complaint.review_case') {
+      return buildWorkspaceSessionPayload(state);
+    }
+    if (name === 'complaint.submit_intake') {
+      const answers = toolArgs.answers || {};
+      workspaceIntakeQuestions.forEach((question) => {
+        const value = String(answers[question.id] || '').trim();
+        if (!value) {
+          return;
+        }
+        state.intake_answers[question.id] = value;
+        state.intake_history.push({
+          question_id: question.id,
+          answer: value,
+          captured_at: '2026-03-22T12:05:00Z',
+        });
+      });
+      return buildWorkspaceSessionPayload(state);
+    }
+    if (name === 'complaint.save_evidence') {
+      const kind = String(toolArgs.kind || 'testimony');
+      const collectionKey = kind === 'document' ? 'documents' : 'testimony';
+      const collection = state.evidence[collectionKey];
+      collection.push({
+        id: `${collectionKey}-${collection.length + 1}`,
+        kind,
+        claim_element_id: String(toolArgs.claim_element_id || 'causation'),
+        title: String(toolArgs.title || 'Untitled evidence'),
+        content: String(toolArgs.content || ''),
+        source: String(toolArgs.source || ''),
+        attachment_names: Array.isArray(toolArgs.attachment_names) ? toolArgs.attachment_names.filter(Boolean) : [],
+        saved_at: '2026-03-22T12:10:00Z',
+      });
+      return {
+        saved: clone(collection[collection.length - 1]),
+        review: buildWorkspaceReview(state),
+        session: clone(state),
+        case_synopsis: buildWorkspaceCaseSynopsis(state),
+      };
+    }
+    if (name === 'complaint.build_mediator_prompt') {
+      return buildWorkspaceMediatorPrompt(state);
+    }
+    if (name === 'complaint.get_workflow_capabilities') {
+      return buildWorkspaceCapabilities(state);
+    }
+    if (name === 'complaint.generate_complaint') {
+      const requestedRelief = Array.isArray(toolArgs.requested_relief)
+        ? toolArgs.requested_relief
+        : typeof toolArgs.requested_relief === 'string'
+          ? toolArgs.requested_relief.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+          : null;
+      state.draft = buildWorkspaceDraft(state, requestedRelief);
+      if (toolArgs.title_override) {
+        state.draft.title = String(toolArgs.title_override);
+      }
+      return {
+        draft: clone(state.draft),
+        review: buildWorkspaceReview(state),
+        session: clone(state),
+        case_synopsis: buildWorkspaceCaseSynopsis(state),
+      };
+    }
+    if (name === 'complaint.update_draft') {
+      state.draft = state.draft || buildWorkspaceDraft(state, null);
+      if (Object.prototype.hasOwnProperty.call(toolArgs, 'title')) {
+        state.draft.title = String(toolArgs.title || '');
+      }
+      if (Object.prototype.hasOwnProperty.call(toolArgs, 'body')) {
+        state.draft.body = String(toolArgs.body || '');
+      }
+      if (Object.prototype.hasOwnProperty.call(toolArgs, 'requested_relief')) {
+        state.draft.requested_relief = Array.isArray(toolArgs.requested_relief)
+          ? toolArgs.requested_relief
+          : [];
+      }
+      state.draft.updated_at = '2026-03-22T12:20:00Z';
+      return {
+        draft: clone(state.draft),
+        review: buildWorkspaceReview(state),
+        session: clone(state),
+        case_synopsis: buildWorkspaceCaseSynopsis(state),
+      };
+    }
+    if (name === 'complaint.export_complaint_packet') {
+      const sessionPayload = buildWorkspaceSessionPayload(state);
+      const draft = state.draft || buildWorkspaceDraft(state, null);
+      return {
+        packet: {
+          title: draft.title,
+          user_id: state.user_id,
+          claim_type: state.claim_type,
+          case_synopsis: sessionPayload.case_synopsis,
+          questions: clone(sessionPayload.questions),
+          evidence: clone(state.evidence),
+          review: clone(sessionPayload.review),
+          draft: clone(draft),
+          exported_at: '2026-03-22T12:30:00Z',
+        },
+        packet_summary: {
+          question_count: sessionPayload.questions.length,
+          answered_question_count: sessionPayload.questions.filter((item) => item.is_answered).length,
+          supported_elements: Number((sessionPayload.review.overview || {}).supported_elements || 0),
+          missing_elements: Number((sessionPayload.review.overview || {}).missing_elements || 0),
+          testimony_items: Number((sessionPayload.review.overview || {}).testimony_items || 0),
+          document_items: Number((sessionPayload.review.overview || {}).document_items || 0),
+          has_draft: Boolean(state.draft),
+        },
+      };
+    }
+    if (name === 'complaint.update_case_synopsis') {
+      state.case_synopsis = String(toolArgs.synopsis || '').trim();
+      return buildWorkspaceSessionPayload(state);
+    }
+    if (name === 'complaint.reset_session') {
+      const freshState = createWorkspaceState(state.user_id);
+      workspaceSessions.set(state.user_id, freshState);
+      return buildWorkspaceSessionPayload(freshState);
+    }
+    if (name === 'complaint.review_ui') {
+      return {
+        latest_review: 'Workspace mock review completed.',
+        review: {
+          summary: 'Workspace mock review completed.',
+          issues: [],
+          playwright_followups: [],
+        },
+      };
+    }
+    if (name === 'complaint.optimize_ui') {
+      return {
+        latest_validation_review: 'Workspace mock optimization completed.',
+        changed_files: ['templates/workspace.html'],
+      };
+    }
+    if (name === 'complaint.run_browser_audit') {
+      return {
+        returncode: 0,
+        artifact_count: 7,
+        screenshot_dir: String(toolArgs.screenshot_dir || 'artifacts/ui-audit/browser-audit'),
+        command: ['npx', 'playwright', 'test', String(toolArgs.pytest_target || 'playwright/tests/complaint-flow.spec.js')],
+      };
+    }
+
+    return null;
+  }
 
   await page.addInitScript(() => {
     window.alert = () => {};
+  });
+
+  await page.route('**/api/complaint-workspace/identity', async (route) => {
+    workspaceIdentityCounter += 1;
+    const did = `did:key:playwright-${String(workspaceIdentityCounter).padStart(4, '0')}`;
+    getWorkspaceState(did);
+    recorder.workspaceIdentityRequestCount = (recorder.workspaceIdentityRequestCount || 0) + 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ did }),
+    });
+  });
+
+  await page.route('**/api/complaint-workspace/session**', async (route) => {
+    const url = new URL(route.request().url());
+    const userId = url.searchParams.get('user_id');
+    const payload = buildWorkspaceSessionPayload(getWorkspaceState(userId));
+    recorder.workspaceSessionRequestCount = (recorder.workspaceSessionRequestCount || 0) + 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
+    });
+  });
+
+  await page.route('**/api/complaint-workspace/mcp/rpc', async (route) => {
+    const request = route.request().postDataJSON();
+    const { id, method, params } = request;
+    recorder.workspaceRpcRequests = recorder.workspaceRpcRequests || [];
+    recorder.workspaceRpcRequests.push(request);
+
+    if (method === 'ping') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(jsonRpcSuccess(id, { ok: true })),
+      });
+      return;
+    }
+
+    if (method === 'initialize') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(jsonRpcSuccess(id, {
+          protocolVersion: '2026-03-22',
+          serverInfo: {
+            name: 'complaint-workspace-mock',
+            version: '0.1.0',
+          },
+        })),
+      });
+      return;
+    }
+
+    if (method === 'tools/list') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(jsonRpcSuccess(id, {
+          tools: clone(workspaceToolList),
+        })),
+      });
+      return;
+    }
+
+    if (method === 'tools/call') {
+      const toolName = params && params.name;
+      const toolArguments = (params && params.arguments) || {};
+      const structuredContent = handleWorkspaceToolCall(toolName, toolArguments);
+      if (!structuredContent) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(jsonRpcError(id, 'Method not found')),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(jsonRpcSuccess(id, {
+          structuredContent,
+        })),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(jsonRpcError(id, 'Method not found')),
+    });
   });
 
   await page.route('**/api/documents/formal-complaint', async (route) => {

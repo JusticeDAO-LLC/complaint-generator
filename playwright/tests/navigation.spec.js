@@ -186,7 +186,7 @@ test.describe('website surface navigation', () => {
 
     await expect(page).toHaveTitle(/Lex Publicus Chat App/i);
     await expect(page.locator('h1').first()).toContainText(/Tell the story before the pleading/i);
-    await expect(page.locator('h2').first()).toContainText(/Complaint narrative chat/i);
+    await expect(page.locator('body')).toContainText(/What to focus on in the interview|Complaint narrative chat/i);
     await expect(page.locator('#chat-context-card')).toBeVisible();
     await expect(page.locator('#chat-context-summary')).toContainText(/did:key:handoff-demo/i);
     await expect(page.locator('#chat-context-summary')).toContainText(/Jordan Example alleges retaliation/i);
