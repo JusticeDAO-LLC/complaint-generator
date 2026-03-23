@@ -146,6 +146,11 @@ def generate_complaint(
     *,
     requested_relief: Optional[list[str]] = None,
     title_override: Optional[str] = None,
+    use_llm: bool = False,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
     service: Optional[ComplaintWorkspaceService] = None,
     root_dir: Optional[str | Path] = None,
 ) -> dict[str, Any]:
@@ -153,6 +158,11 @@ def generate_complaint(
         user_id,
         requested_relief=requested_relief,
         title_override=title_override,
+        use_llm=use_llm,
+        provider=provider,
+        model=model,
+        config_path=config_path,
+        backend_id=backend_id,
     )
 
 
@@ -207,6 +217,16 @@ def analyze_complaint_output(
     root_dir: Optional[str | Path] = None,
 ) -> dict[str, Any]:
     return _resolve_service(service, root_dir=root_dir).analyze_complaint_output(user_id)
+
+
+def update_claim_type(
+    user_id: Optional[str],
+    claim_type: str,
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).update_claim_type(user_id, claim_type)
 
 
 def update_case_synopsis(
@@ -337,6 +357,7 @@ __all__ = [
     "export_complaint_markdown",
     "export_complaint_pdf",
     "analyze_complaint_output",
+    "update_claim_type",
     "generate_decentralized_id",
     "generate_complaint",
     "get_workflow_capabilities",

@@ -66,6 +66,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.export_complaint_markdown",
         "complaint.export_complaint_pdf",
         "complaint.analyze_complaint_output",
+        "complaint.update_claim_type",
         "complaint.update_case_synopsis",
         "complaint.reset_session",
         "complaint.review_ui",
@@ -100,6 +101,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert any(tool["name"] == "complaint.export_complaint_markdown" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.export_complaint_pdf" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.update_claim_type" for tool in tools_payload["tools"])
 
     answer_payload = _invoke_cli(
         runner,
@@ -168,7 +170,20 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     )
     assert generate_payload["draft"]["title"] == "CLI generated complaint"
     assert generate_payload["draft"]["requested_relief"] == ["Back pay", "Injunctive relief"]
-    assert "Working case synopsis:" in generate_payload["draft"]["body"]
+    assert "Civil Action No. ________________" in generate_payload["draft"]["body"]
+    assert "COMPLAINT FOR RETALIATION" in generate_payload["draft"]["body"]
+    assert "JURISDICTION AND VENUE" in generate_payload["draft"]["body"]
+    assert "FACTUAL ALLEGATIONS" in generate_payload["draft"]["body"]
+    assert "EVIDENTIARY SUPPORT AND NOTICE" in generate_payload["draft"]["body"]
+    assert "COUNT I - RETALIATION" in generate_payload["draft"]["body"]
+    assert "PRAYER FOR RELIEF" in generate_payload["draft"]["body"]
+    assert "JURY DEMAND" in generate_payload["draft"]["body"]
+    assert "SIGNATURE BLOCK" in generate_payload["draft"]["body"]
+    assert "Plaintiff, Pro Se" in generate_payload["draft"]["body"]
+    assert "Address: ____________________" in generate_payload["draft"]["body"]
+    assert "Email: ____________________" in generate_payload["draft"]["body"]
+    assert "WORKING CASE SYNOPSIS" in generate_payload["draft"]["body"]
+    assert "by and through this Complaint" in generate_payload["draft"]["body"]
     assert "Reported discrimination to HR" in generate_payload["draft"]["case_synopsis"]
 
     update_payload = _invoke_cli(
@@ -195,7 +210,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     markdown_payload = _invoke_cli(runner, "export-markdown", "--user-id", "cli-user")
     assert markdown_payload["artifact"]["format"] == "markdown"
     assert markdown_payload["artifact"]["filename"].endswith(".md")
-    assert "Edited CLI complaint" in markdown_payload["artifact"]["excerpt"]
+    assert "Edited complaint body from CLI." in markdown_payload["artifact"]["excerpt"]
 
     pdf_payload = _invoke_cli(runner, "export-pdf", "--user-id", "cli-user")
     assert pdf_payload["artifact"]["format"] == "pdf"
@@ -206,6 +221,44 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert output_analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
     assert output_analysis_payload["packet_summary"]["has_draft"] is True
     assert output_analysis_payload["artifact_analysis"]["draft_word_count"] >= 1
+    assert output_analysis_payload["ui_feedback"]["filing_shape_score"] < 70
+    assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["civil_action_number"] is False
+    assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["evidentiary_support"] is False
+    assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["claim_count"] is False
+    assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["signature_block"] is False
+    assert any(
+        item["title"] == "Enforce formal pleading structure"
+        for item in output_analysis_payload["ui_feedback"]["ui_suggestions"]
+    )
+
+    claim_type_payload = _invoke_cli(
+        runner,
+        "set-claim-type",
+        "--user-id",
+        "cli-user",
+        "--claim-type",
+        "housing_discrimination",
+    )
+    assert claim_type_payload["claim_type"] == "housing_discrimination"
+    assert claim_type_payload["claim_type_label"] == "Housing Discrimination"
+
+    housing_generate_payload = _invoke_cli(
+        runner,
+        "generate",
+        "--user-id",
+        "cli-user",
+        "--requested-relief",
+        "Declaratory relief|Injunctive relief",
+        "--title-override",
+        "CLI housing complaint",
+    )
+    assert housing_generate_payload["draft"]["claim_type"] == "housing_discrimination"
+    assert "COMPLAINT FOR HOUSING DISCRIMINATION" in housing_generate_payload["draft"]["body"]
+    assert "COUNT I - HOUSING DISCRIMINATION" in housing_generate_payload["draft"]["body"]
+    assert (
+        "discriminatory denial, limitation, interference, or retaliation affecting housing rights or benefits"
+        in housing_generate_payload["draft"]["body"]
+    )
 
     synopsis_payload = _invoke_cli(
         runner,
@@ -296,6 +349,15 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert "complaint_readiness" in capabilities_payload
     assert "ui_readiness" in capabilities_payload
 
+    claim_type_payload = _call_mcp_tool(
+        service,
+        26_1,
+        "complaint.update_claim_type",
+        {"user_id": "mcp-user", "claim_type": "housing_discrimination"},
+    )
+    assert claim_type_payload["claim_type"] == "housing_discrimination"
+    assert claim_type_payload["claim_type_label"] == "Housing Discrimination"
+
     generate_payload = _call_mcp_tool(
         service,
         27,
@@ -308,7 +370,19 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     )
     assert generate_payload["draft"]["title"] == "MCP generated complaint"
     assert generate_payload["draft"]["requested_relief"] == ["Back pay", "Compensatory damages"]
-    assert "Working case synopsis:" in generate_payload["draft"]["body"]
+    assert "Civil Action No. ________________" in generate_payload["draft"]["body"]
+    assert "COMPLAINT FOR HOUSING DISCRIMINATION" in generate_payload["draft"]["body"]
+    assert "JURISDICTION AND VENUE" in generate_payload["draft"]["body"]
+    assert "FACTUAL ALLEGATIONS" in generate_payload["draft"]["body"]
+    assert "EVIDENTIARY SUPPORT AND NOTICE" in generate_payload["draft"]["body"]
+    assert "COUNT I - HOUSING DISCRIMINATION" in generate_payload["draft"]["body"]
+    assert "PRAYER FOR RELIEF" in generate_payload["draft"]["body"]
+    assert "JURY DEMAND" in generate_payload["draft"]["body"]
+    assert "by and through this Complaint" in generate_payload["draft"]["body"]
+    assert (
+        "discriminatory denial, limitation, interference, or retaliation affecting housing rights or benefits"
+        in generate_payload["draft"]["body"]
+    )
     assert "Reported discrimination to HR" in generate_payload["draft"]["case_synopsis"]
 
     update_payload = _call_mcp_tool(
@@ -333,6 +407,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
     assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
     assert "Jordan Example" in export_payload["artifacts"]["markdown"]["content"]
+    assert "Claim type: housing_discrimination" in export_payload["artifacts"]["markdown"]["content"]
     assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
     assert export_payload["ui_feedback"]["ui_suggestions"]
 
@@ -349,6 +424,12 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     output_analysis_payload = _call_mcp_tool(service, 32, "complaint.analyze_complaint_output", {"user_id": "mcp-user"})
     assert output_analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
     assert output_analysis_payload["packet_summary"]["has_draft"] is True
+    assert output_analysis_payload["ui_feedback"]["filing_shape_score"] < 70
+    assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["signature_block"] is False
+    assert any(
+        item["title"] == "Enforce formal pleading structure"
+        for item in output_analysis_payload["ui_feedback"]["ui_suggestions"]
+    )
 
     synopsis_payload = _call_mcp_tool(
         service,
@@ -696,9 +777,9 @@ def test_workspace_download_route_serves_json_markdown_and_pdf_exports(tmp_path)
     assert 'filename="jordan-example-v.-acme-corporation-complaint.json"' in json_response.headers["content-disposition"]
     json_payload = json_response.json()
     assert json_payload["draft"]["title"] == "Jordan Example v. Acme Corporation Complaint"
-    assert json_payload["draft"]["body"].startswith(
-        "Jordan Example brings this retaliation complaint against Acme Corporation."
-    )
+    assert "COMPLAINT FOR RETALIATION" in json_payload["draft"]["body"]
+    assert "Civil Action No. ________________" in json_payload["draft"]["body"]
+    assert "Jordan Example brings this retaliation complaint against Acme Corporation." in json_payload["draft"]["body"]
 
     markdown_response = client.get(
         "/api/complaint-workspace/export/download",
@@ -707,8 +788,12 @@ def test_workspace_download_route_serves_json_markdown_and_pdf_exports(tmp_path)
     assert markdown_response.status_code == 200
     assert markdown_response.headers["content-type"].startswith("text/markdown")
     assert 'filename="jordan-example-v.-acme-corporation-complaint.md"' in markdown_response.headers["content-disposition"]
-    assert markdown_response.text.startswith("# Jordan Example v. Acme Corporation Complaint")
+    assert markdown_response.text.startswith("IN THE UNITED STATES DISTRICT COURT")
     assert "Jordan Example brings this retaliation complaint against Acme Corporation." in markdown_response.text
+    assert "Civil Action No. ________________" in markdown_response.text
+    assert "EVIDENTIARY SUPPORT AND NOTICE" in markdown_response.text
+    assert "COUNT I - RETALIATION" in markdown_response.text
+    assert "APPENDIX A - CASE SYNOPSIS" in markdown_response.text
 
     pdf_response = client.get(
         "/api/complaint-workspace/export/download",

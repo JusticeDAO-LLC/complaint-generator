@@ -116,6 +116,11 @@ def generate(
     user_id: str = "demo-user",
     requested_relief: str = "",
     title_override: Optional[str] = None,
+    use_llm: bool = False,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
 ) -> None:
     relief_items = [line.strip() for line in requested_relief.split("|") if line.strip()]
     _print(
@@ -123,6 +128,11 @@ def generate(
             user_id,
             requested_relief=relief_items or None,
             title_override=title_override,
+            use_llm=use_llm,
+            provider=provider,
+            model=model,
+            config_path=config_path,
+            backend_id=backend_id,
         )
     )
 
@@ -156,6 +166,11 @@ def export_pdf(user_id: str = "demo-user") -> None:
 @app.command("analyze-output")
 def analyze_output(user_id: str = "demo-user") -> None:
     _print(service.analyze_complaint_output(user_id))
+
+
+@app.command("set-claim-type")
+def set_claim_type(user_id: str = "demo-user", claim_type: str = "retaliation") -> None:
+    _print(service.update_claim_type(user_id, claim_type))
 
 
 @app.command("update-synopsis")

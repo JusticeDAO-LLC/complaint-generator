@@ -44,6 +44,7 @@ from complaint_generator import (
     start_session,
     submit_intake_answers,
     tool_list_payload,
+    update_claim_type,
     update_case_synopsis,
     update_draft,
 )
@@ -195,6 +196,14 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
 
+    claim_type_payload = update_claim_type(
+        "package-wrapper-user",
+        "housing_discrimination",
+        service=service,
+    )
+    assert claim_type_payload["claim_type"] == "housing_discrimination"
+    assert claim_type_payload["claim_type_label"] == "Housing Discrimination"
+
     draft_payload = generate_complaint(
         "package-wrapper-user",
         requested_relief=["Back pay", "Injunctive relief"],
@@ -202,6 +211,10 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
         service=service,
     )
     assert draft_payload["draft"]["title"] == "Package wrapper complaint"
+    assert "COMPLAINT FOR HOUSING DISCRIMINATION" in draft_payload["draft"]["body"]
+    assert "COUNT I - HOUSING DISCRIMINATION" in draft_payload["draft"]["body"]
+    assert "FACTUAL ALLEGATIONS" in draft_payload["draft"]["body"]
+    assert "PRAYER FOR RELIEF" in draft_payload["draft"]["body"]
 
     updated_payload = update_draft(
         "package-wrapper-user",
@@ -222,9 +235,12 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
     assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
     assert export_payload["ui_feedback"]["ui_suggestions"]
+    assert export_payload["ui_feedback"]["filing_shape_score"] < 70
+    assert export_payload["ui_feedback"]["formal_sections_present"]["signature_block"] is False
     assert markdown_payload["artifact"]["filename"].endswith(".md")
     assert pdf_payload["artifact"]["filename"].endswith(".pdf")
     assert analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
+    assert analysis_payload["ui_feedback"]["formal_sections_present"]["claim_count"] is False
     assert any(tool["name"] == "complaint.run_browser_audit" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
 
@@ -276,6 +292,53 @@ def test_package_ui_review_wrappers_delegate_to_matching_mcp_tools(tmp_path, mon
         "complaint.optimize_ui",
         "complaint.run_browser_audit",
     ]
+
+
+def test_package_workspace_generate_complaint_can_optionally_use_llm_router(tmp_path, monkeypatch):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "package-llm-draft-sessions")
+    submit_intake_answers(
+        "package-llm-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+        service=service,
+    )
+
+    captured = {}
+
+    def fake_refine(self, state, base_draft, **kwargs):
+        captured.update(kwargs)
+        return {
+            **base_draft,
+            "title": "LLM Refined Complaint",
+            "body": base_draft["body"].replace(
+                "WORKING CASE SYNOPSIS",
+                "PRELIMINARY STATEMENT\n\n24. Plaintiff seeks prompt judicial intervention to stop ongoing retaliation and preserve the evidentiary record.\n\nWORKING CASE SYNOPSIS",
+            ),
+            "draft_strategy": "llm_router",
+        }
+
+    monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
+
+    draft_payload = generate_complaint(
+        "package-llm-user",
+        requested_relief=["Back pay", "Injunctive relief"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+        service=service,
+    )
+
+    assert draft_payload["draft"]["title"] == "LLM Refined Complaint"
+    assert draft_payload["draft"]["draft_strategy"] == "llm_router"
+    assert "PRELIMINARY STATEMENT" in draft_payload["draft"]["body"]
+    assert captured["provider"] == "stub-provider"
+    assert captured["model"] == "stub-model"
 
 
 def test_complaint_generator_cli_wrapper_exposes_workspace_commands(tmp_path, monkeypatch):

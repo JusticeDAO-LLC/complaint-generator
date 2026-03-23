@@ -68,6 +68,13 @@ _CLAIM_ELEMENTS: List[Dict[str, str]] = [
 ]
 DEFAULT_INTAKE_QUESTIONS: List[Dict[str, str]] = deepcopy(_INTAKE_QUESTIONS)
 DEFAULT_CLAIM_ELEMENTS: List[Dict[str, str]] = deepcopy(_CLAIM_ELEMENTS)
+_CLAIM_TYPE_LABELS: Dict[str, str] = {
+    "retaliation": "Retaliation",
+    "employment_discrimination": "Employment Discrimination",
+    "housing_discrimination": "Housing Discrimination",
+    "due_process_failure": "Due Process Violation",
+    "consumer_protection": "Consumer Protection",
+}
 
 
 def _utc_now() -> str:
@@ -86,6 +93,59 @@ def _split_lines(value: Optional[str]) -> List[str]:
 def _slugify_filename(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip().lower())
     return normalized.strip("-") or "complaint-packet"
+
+
+def _normalize_claim_type(value: Optional[str]) -> str:
+    normalized = re.sub(r"[^a-z0-9_]+", "_", str(value or "").strip().lower()).strip("_")
+    return normalized or "retaliation"
+
+
+def _claim_type_display_name(value: Optional[str]) -> str:
+    normalized = _normalize_claim_type(value)
+    return _CLAIM_TYPE_LABELS.get(normalized, normalized.replace("_", " ").title())
+
+
+def _strip_code_fences(text: str) -> str:
+    stripped = str(text or "").strip()
+    if stripped.startswith("```"):
+        parts = stripped.splitlines()
+        if parts:
+            parts = parts[1:]
+        while parts and parts[-1].strip().startswith("```"):
+            parts = parts[:-1]
+        stripped = "\n".join(parts).strip()
+    return stripped
+
+
+def _parse_json_object(text: str) -> Dict[str, Any]:
+    stripped = _strip_code_fences(text)
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
+
+
+def _required_formal_complaint_markers() -> List[str]:
+    return [
+        "IN THE UNITED STATES DISTRICT COURT",
+        "Civil Action No. ________________",
+        "COMPLAINT FOR",
+        "JURISDICTION AND VENUE",
+        "FACTUAL ALLEGATIONS",
+        "EVIDENTIARY SUPPORT AND NOTICE",
+        "COUNT I -",
+        "PRAYER FOR RELIEF",
+        "JURY DEMAND",
+        "SIGNATURE BLOCK",
+    ]
+
+
+def _has_required_formal_complaint_markers(body: str) -> bool:
+    complaint_body = str(body or "")
+    return all(marker in complaint_body for marker in _required_formal_complaint_markers())
 
 
 def generate_decentralized_id() -> Dict[str, Any]:
@@ -121,7 +181,7 @@ def _default_state(user_id: str) -> Dict[str, Any]:
         "user_id": user_id,
         "created_at": _utc_now(),
         "updated_at": _utc_now(),
-        "claim_type": "retaliation",
+        "claim_type": _normalize_claim_type("retaliation"),
         "case_synopsis": "",
         "intake_answers": {},
         "intake_history": [],
@@ -148,7 +208,7 @@ class ComplaintWorkspaceService:
         if not isinstance(payload, dict):
             return _default_state(user_id)
         payload.setdefault("user_id", user_id)
-        payload.setdefault("claim_type", "retaliation")
+        payload["claim_type"] = _normalize_claim_type(payload.get("claim_type"))
         payload.setdefault("case_synopsis", "")
         payload.setdefault("intake_answers", {})
         payload.setdefault("intake_history", [])
@@ -250,9 +310,26 @@ class ComplaintWorkspaceService:
             "claim_elements": deepcopy(DEFAULT_CLAIM_ELEMENTS),
         }
 
-    def _build_draft(self, state: Dict[str, Any], requested_relief: Optional[List[str]] = None) -> Dict[str, Any]:
+    def _build_draft(
+        self,
+        state: Dict[str, Any],
+        requested_relief: Optional[List[str]] = None,
+        *,
+        use_llm: bool = False,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        config_path: Optional[str] = None,
+        backend_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         answers = state.get("intake_answers") or {}
         existing_draft = state.get("draft") or {}
+        review_snapshot = self._build_review(state)
+        overview = dict(review_snapshot.get("overview") or {})
+        evidence = dict(state.get("evidence") or {})
+        testimony_items = list(evidence.get("testimony") or [])
+        document_items = list(evidence.get("documents") or [])
+        claim_type = _normalize_claim_type(state.get("claim_type"))
+        claim_label = _claim_type_display_name(claim_type)
         plaintiff = answers.get("party_name") or "Plaintiff"
         defendant = answers.get("opposing_party") or "Defendant"
         protected_activity = answers.get("protected_activity") or "engaged in protected activity"
@@ -265,25 +342,205 @@ class ComplaintWorkspaceService:
             "Injunctive relief",
         ]
         case_synopsis = self._build_case_synopsis(state)
+        relief_lines = [f"{index}. {item}." for index, item in enumerate(relief, start=1)]
+        support_count = int(overview.get("supported_elements") or 0)
+        missing_count = int(overview.get("missing_elements") or 0)
+        evidence_count = len(testimony_items) + len(document_items)
+        testimony_reference_lines = [
+            f"Plaintiff testimony or witness account titled '{item.get('title') or 'Untitled testimony'}' supports {item.get('claim_element_id') or 'an identified claim element'}."
+            for item in testimony_items[:3]
+        ]
+        document_reference_lines = [
+            f"Documentary exhibit '{item.get('title') or 'Untitled document'}' is presently tied to {item.get('claim_element_id') or 'an identified claim element'}."
+            for item in document_items[:3]
+        ]
+        testimony_summary = "; ".join(
+            f"{item.get('title') or 'Untitled testimony'} ({item.get('claim_element_id') or 'unmapped'})"
+            for item in testimony_items[:3]
+        ) or "No witness or complainant testimony has been summarized yet"
+        document_summary = "; ".join(
+            f"{item.get('title') or 'Untitled document'} ({item.get('claim_element_id') or 'unmapped'})"
+            for item in document_items[:3]
+        ) or "No documentary exhibits have been summarized yet"
+        complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
+        nature_of_action = {
+            "retaliation": (
+                f"1. {plaintiff} brings this retaliation complaint against {defendant}. "
+                f"This civil action arises from {defendant}'s retaliatory response after {plaintiff} {protected_activity}."
+            ),
+            "employment_discrimination": (
+                f"1. {plaintiff} brings this employment discrimination complaint against {defendant}. "
+                f"This civil action arises from discriminatory workplace treatment, unequal terms or conditions, and resulting harm."
+            ),
+            "housing_discrimination": (
+                f"1. {plaintiff} brings this housing discrimination complaint against {defendant}. "
+                f"This civil action arises from discriminatory denial, limitation, interference, or retaliation affecting housing rights or benefits."
+            ),
+            "due_process_failure": (
+                f"1. {plaintiff} brings this due process complaint against {defendant}. "
+                f"This civil action arises from adverse action imposed without the notice, hearing, review, or procedural protections required by law."
+            ),
+            "consumer_protection": (
+                f"1. {plaintiff} brings this consumer protection complaint against {defendant}. "
+                f"This civil action arises from unfair, deceptive, fraudulent, or otherwise unlawful business practices that caused injury."
+            ),
+        }.get(
+            claim_type,
+            f"1. {plaintiff} brings this {claim_label.lower()} complaint against {defendant}. "
+            f"This civil action arises from unlawful conduct that injured {plaintiff}.",
+        )
+        count_heading = {
+            "retaliation": "COUNT I - RETALIATION",
+            "employment_discrimination": "COUNT I - EMPLOYMENT DISCRIMINATION",
+            "housing_discrimination": "COUNT I - HOUSING DISCRIMINATION",
+            "due_process_failure": "COUNT I - DUE PROCESS VIOLATION",
+            "consumer_protection": "COUNT I - CONSUMER PROTECTION",
+        }.get(claim_type, f"COUNT I - {claim_label.upper()}")
+        claim_paragraphs = {
+            "retaliation": [
+                f"{plaintiff} engaged in protected activity by {protected_activity}, and Defendant knew or should have known of that protected conduct.",
+                f"Defendant thereafter subjected Plaintiff to materially adverse action, including {adverse_action}, under circumstances supporting retaliatory motive and causation.",
+                "The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.",
+            ],
+            "employment_discrimination": [
+                f"Plaintiff was subjected to adverse employment treatment, including {adverse_action}, in a manner that was discriminatory, disparate, or otherwise unlawful.",
+                "The pleaded facts support an inference that Defendant's conduct was motivated by unlawful bias, protected status, protected conduct, or a prohibited employment practice.",
+                "The evidentiary record and resulting harm support a plausible employment discrimination claim.",
+            ],
+            "housing_discrimination": [
+                f"Defendant denied, limited, burdened, or interfered with housing-related rights, opportunities, services, or benefits, including conduct reflected in {adverse_action}.",
+                "The pleaded facts support an inference that Defendant acted in a discriminatory manner or retaliated in connection with protected housing activity, status, or rights.",
+                "The evidentiary record and resulting harm support a plausible housing discrimination claim.",
+            ],
+            "due_process_failure": [
+                "Defendant imposed or maintained adverse consequences without the notice, review, hearing, or procedural protections required by law.",
+                f"The resulting deprivation included {adverse_action} and related harms without adequate procedural safeguards.",
+                "The pleaded facts and evidentiary record support a plausible due process claim.",
+            ],
+            "consumer_protection": [
+                "Defendant engaged in unfair, deceptive, misleading, or unlawful conduct in connection with a consumer transaction or obligation.",
+                f"That conduct resulted in {adverse_action} and caused economic or other compensable harm, including {harm}.",
+                "The pleaded facts and evidentiary record support a plausible consumer protection claim.",
+            ],
+        }.get(
+            claim_type,
+            [
+                "Defendant engaged in unlawful conduct causing harm to Plaintiff.",
+                "The pleaded facts support a plausible claim for relief.",
+                "The evidentiary record and resulting harm warrant judicial relief.",
+            ],
+        )
         body = "\n\n".join(
             [
-                f"{plaintiff} brings this retaliation complaint against {defendant}.",
-                f"{plaintiff} alleges that they {protected_activity}.",
-                f"After that protected activity, {plaintiff} experienced {adverse_action}.",
-                f"The timeline shows that {timeline}.",
-                f"As a result, {plaintiff} suffered {harm}.",
-                "Requested relief includes: " + "; ".join(relief) + ".",
+                "IN THE UNITED STATES DISTRICT COURT",
+                "FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED",
+                "",
+                f"{plaintiff}, Plaintiff,",
+                "v.",
+                f"{defendant}, Defendant.",
+                "",
+                "Civil Action No. ________________",
+                complaint_heading,
+                "JURY TRIAL DEMANDED",
+                "",
+                (
+                    f"Plaintiff {plaintiff}, by and through this Complaint, alleges upon personal knowledge as to "
+                    "their own acts and upon information and belief as to all other matters, as follows:"
+                ),
+                "",
+                "NATURE OF THE ACTION",
+                nature_of_action,
+                (
+                    f"2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the retaliatory "
+                    f"conduct, restore lost compensation, and prevent additional harm flowing from {adverse_action}."
+                ),
+                "",
+                "JURISDICTION AND VENUE",
+                "3. Jurisdiction is alleged in this Court because the controversy arises under retaliation law and related remedial doctrines applicable to the challenged conduct.",
+                "4. Venue is alleged to be proper because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.",
+                "",
+                "PARTIES",
+                f"5. Plaintiff {plaintiff} is the person harmed by the retaliation described below.",
+                f"6. Defendant {defendant} is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.",
+                "",
+                "FACTUAL ALLEGATIONS",
+                f"7. {plaintiff} alleges that they {protected_activity}.",
+                "8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.",
+                f"9. After that protected activity, {plaintiff} experienced {adverse_action}.",
+                f"10. The chronology currently available in the record shows that {timeline}.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+                "",
+                "EVIDENTIARY SUPPORT AND NOTICE",
+                (
+                    f"12. The current complaint record includes {evidence_count} saved evidence items, including testimony such as {testimony_summary}."
+                ),
+                (
+                    f"13. The current documentary record includes the following summarized exhibits or records: {document_summary}."
+                ),
+                (
+                    f"14. The present support review reflects {support_count} supported claim elements and {missing_count} open support gaps, "
+                    "which Plaintiff identifies so the pleading can be refined rather than to concede any deficiency in the claim."
+                ),
+                (
+                    "15. Plaintiff incorporates the current testimony summaries, documentary exhibits, chronology notes, and support review findings "
+                    "as the preliminary exhibit and notice record for this pleading."
+                ),
+                *[
+                    f"{16 + index}. {line}"
+                    for index, line in enumerate((testimony_reference_lines + document_reference_lines)[:2])
+                ],
+                "",
+                "CLAIM FOR RELIEF",
+                count_heading,
+                f"18. {plaintiff} repeats and realleges the preceding paragraphs as if fully set forth herein.",
+                *[f"{19 + index}. {line}" for index, line in enumerate(claim_paragraphs)],
+                f"22. Plaintiff has suffered damages and other losses including {harm}.",
+                "23. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.",
+                "",
+                "PRAYER FOR RELIEF",
+                "Wherefore, Plaintiff requests judgment against Defendant and the following relief:",
+                "\n".join(relief_lines),
+                "",
+                "JURY DEMAND",
+                "Plaintiff demands a trial by jury on all issues so triable.",
+                "",
+                "SIGNATURE BLOCK",
+                f"Dated: ____________________",
+                "",
+                "Respectfully submitted,",
+                "",
+                f"{plaintiff}",
+                "Plaintiff, Pro Se",
+                "Address: ____________________",
+                "Telephone: ____________________",
+                "Email: ____________________",
+                "",
+                "WORKING CASE SYNOPSIS",
                 f"Working case synopsis: {case_synopsis}",
             ]
         )
-        return {
-            "title": f"{plaintiff} v. {defendant} Retaliation Complaint",
+        draft = {
+            "title": f"{plaintiff} v. {defendant} {claim_label} Complaint",
             "requested_relief": relief,
             "case_synopsis": case_synopsis,
+            "claim_type": claim_type,
             "body": body,
             "generated_at": _utc_now(),
-            "review_snapshot": self._build_review(state),
+            "review_snapshot": review_snapshot,
+            "draft_strategy": "template",
         }
+        if use_llm:
+            refined_draft = self._refine_draft_with_llm_router(
+                state,
+                draft,
+                provider=provider,
+                model=model,
+                config_path=config_path,
+                backend_id=backend_id,
+            )
+            if refined_draft:
+                return refined_draft
+        return draft
 
     def _build_case_synopsis(self, state: Dict[str, Any]) -> str:
         custom_synopsis = str(state.get("case_synopsis") or "").strip()
@@ -310,6 +567,103 @@ class ComplaintWorkspaceService:
             f"{missing_elements} open gaps, {evidence_count} saved evidence items."
         )
 
+    def _build_formal_complaint_generation_prompt(
+        self,
+        state: Dict[str, Any],
+        base_draft: Dict[str, Any],
+    ) -> str:
+        answers = dict(state.get("intake_answers") or {})
+        evidence = dict(state.get("evidence") or {})
+        review_snapshot = dict(base_draft.get("review_snapshot") or self._build_review(state) or {})
+        support_matrix = [
+            {
+                "id": item.get("id"),
+                "label": item.get("label"),
+                "supported": item.get("supported"),
+                "support_count": item.get("support_count"),
+            }
+            for item in list(review_snapshot.get("support_matrix") or [])
+        ]
+        payload = {
+            "claim_type": base_draft.get("claim_type") or _normalize_claim_type(state.get("claim_type")),
+            "claim_label": _claim_type_display_name(base_draft.get("claim_type") or state.get("claim_type")),
+            "case_synopsis": base_draft.get("case_synopsis") or self._build_case_synopsis(state),
+            "intake_answers": answers,
+            "requested_relief": list(base_draft.get("requested_relief") or []),
+            "testimony": list(evidence.get("testimony") or [])[:4],
+            "documents": list(evidence.get("documents") or [])[:4],
+            "support_matrix": support_matrix,
+            "base_draft": str(base_draft.get("body") or "")[:12000],
+        }
+        markers = "\n".join(f"- {marker}" for marker in _required_formal_complaint_markers())
+        return (
+            "You are revising a generated complaint so it reads like a formal legal complaint rather than a workflow summary.\n"
+            "Use only the facts already present in the complaint record. Do not invent statutes, parties, dates, courts, judges, or evidence.\n"
+            "Keep the output in plain text with numbered factual paragraphs and a clear caption. Preserve the requested relief unless the record plainly requires a tighter phrasing.\n"
+            "Retain these exact section headings in the body:\n"
+            f"{markers}\n\n"
+            "Return strict JSON with this shape:\n"
+            "{\n"
+            '  "title": "draft title",\n'
+            '  "body": "full complaint text",\n'
+            '  "requested_relief": ["item 1", "item 2"]\n'
+            "}\n\n"
+            "Complaint record:\n"
+            f"{json.dumps(payload, indent=2, sort_keys=True)}\n"
+        )
+
+    def _refine_draft_with_llm_router(
+        self,
+        state: Dict[str, Any],
+        base_draft: Dict[str, Any],
+        *,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        config_path: Optional[str] = None,
+        backend_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            from backends import LLMRouterBackend
+            from .ui_review import _load_backend_kwargs
+
+            backend_kwargs = _load_backend_kwargs(config_path, backend_id)
+            backend_kwargs.setdefault("id", backend_id or "complaint-draft")
+            if provider:
+                backend_kwargs["provider"] = provider
+            if model:
+                backend_kwargs["model"] = model
+            backend = LLMRouterBackend(**backend_kwargs)
+            raw_response = backend(self._build_formal_complaint_generation_prompt(state, base_draft))
+        except Exception:
+            return None
+
+        parsed = _parse_json_object(raw_response)
+        llm_body = str(parsed.get("body") or "").strip()
+        if not llm_body:
+            raw_text = _strip_code_fences(raw_response)
+            if _has_required_formal_complaint_markers(raw_text):
+                llm_body = raw_text
+        if not _has_required_formal_complaint_markers(llm_body):
+            return None
+
+        requested_relief = [
+            str(item).strip()
+            for item in list(parsed.get("requested_relief") or base_draft.get("requested_relief") or [])
+            if str(item).strip()
+        ]
+        return {
+            **deepcopy(base_draft),
+            "title": str(parsed.get("title") or base_draft.get("title") or "Complaint").strip(),
+            "body": llm_body,
+            "requested_relief": requested_relief or list(base_draft.get("requested_relief") or []),
+            "draft_strategy": "llm_router",
+            "draft_backend": {
+                "id": getattr(backend, "id", backend_id or "complaint-draft"),
+                "provider": getattr(backend, "provider", provider),
+                "model": getattr(backend, "model", model),
+            },
+        }
+
     def _build_packet_markdown(self, packet: Dict[str, Any]) -> str:
         draft = dict(packet.get("draft") or {})
         review = dict(packet.get("review") or {})
@@ -332,36 +686,34 @@ class ComplaintWorkspaceService:
         ]
         relief_lines = [f"- {item}" for item in requested_relief]
         sections = [
-            f"# {draft.get('title') or packet.get('title') or 'Complaint Packet'}",
-            "",
-            f"Claim type: {packet.get('claim_type') or 'retaliation'}",
-            f"User ID: {packet.get('user_id') or 'unknown'}",
-            f"Exported at: {packet.get('exported_at') or _utc_now()}",
-            "",
-            "## Working Case Synopsis",
-            packet.get("case_synopsis") or "No case synopsis recorded.",
-            "",
-            "## Complaint Draft",
             draft.get("body") or "No complaint body available.",
             "",
-            "## Requested Relief",
+            "APPENDIX A - CASE SYNOPSIS",
+            packet.get("case_synopsis") or "No case synopsis recorded.",
+            "",
+            "APPENDIX B - REQUESTED RELIEF CHECKLIST",
             "\n".join(relief_lines) if relief_lines else "- No requested relief recorded.",
             "",
-            "## Intake Answers",
+            "APPENDIX C - INTAKE ANSWERS",
             "\n".join(question_lines) if question_lines else "- No intake answers recorded.",
             "",
-            "## Evidence",
+            "APPENDIX D - EVIDENCE SUMMARY",
             "### Testimony",
             "\n".join(testimony_lines) if testimony_lines else "- No testimony saved.",
             "",
             "### Documents",
             "\n".join(document_lines) if document_lines else "- No documents saved.",
             "",
-            "## Review Overview",
+            "APPENDIX E - REVIEW OVERVIEW",
             f"- Supported elements: {overview.get('supported_elements') or 0}",
             f"- Missing elements: {overview.get('missing_elements') or 0}",
             f"- Testimony items: {overview.get('testimony_items') or 0}",
             f"- Document items: {overview.get('document_items') or 0}",
+            "",
+            "APPENDIX F - EXPORT METADATA",
+            f"- Claim type: {packet.get('claim_type') or 'retaliation'}",
+            f"- User ID: {packet.get('user_id') or 'unknown'}",
+            f"- Exported at: {packet.get('exported_at') or _utc_now()}",
         ]
         return "\n".join(sections).strip() + "\n"
 
@@ -735,6 +1087,8 @@ class ComplaintWorkspaceService:
         }
 
     def _analyze_complaint_output(self, packet: Dict[str, Any], artifact_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        from .ui_review import review_complaint_output_with_llm_router
+
         draft = dict(packet.get("draft") or {})
         review = dict(packet.get("review") or {})
         overview = dict(review.get("overview") or {})
@@ -742,6 +1096,20 @@ class ComplaintWorkspaceService:
         case_synopsis = str(packet.get("case_synopsis") or "").strip()
         issues: List[Dict[str, Any]] = []
         suggestions: List[Dict[str, Any]] = []
+        formal_sections_present = {
+            "caption": "IN THE UNITED STATES DISTRICT COURT" in body,
+            "civil_action_number": "Civil Action No. ________________" in body,
+            "nature_of_action": "NATURE OF THE ACTION" in body,
+            "jurisdiction_and_venue": "JURISDICTION AND VENUE" in body,
+            "parties": "PARTIES" in body,
+            "factual_allegations": "FACTUAL ALLEGATIONS" in body,
+            "evidentiary_support": "EVIDENTIARY SUPPORT AND NOTICE" in body,
+            "claim_count": "COUNT I -" in body,
+            "prayer_for_relief": "PRAYER FOR RELIEF" in body,
+            "jury_demand": "JURY DEMAND" in body,
+            "signature_block": "SIGNATURE BLOCK" in body,
+            "working_case_synopsis": "WORKING CASE SYNOPSIS" in body,
+        }
 
         if artifact_analysis.get("missing_elements", 0) > 0:
             missing_count = int(artifact_analysis.get("missing_elements") or 0)
@@ -825,6 +1193,143 @@ class ComplaintWorkspaceService:
                 }
             )
 
+        formal_markers = [
+            "IN THE UNITED STATES DISTRICT COURT",
+            "Civil Action No. ________________",
+            "COMPLAINT FOR",
+            "JURISDICTION AND VENUE",
+            "FACTUAL ALLEGATIONS",
+            "EVIDENTIARY SUPPORT AND NOTICE",
+            "COUNT I -",
+            "PRAYER FOR RELIEF",
+            "JURY DEMAND",
+            "SIGNATURE BLOCK",
+        ]
+        missing_markers = [marker for marker in formal_markers if marker not in body]
+        if missing_markers:
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": "The exported complaint is missing formal pleading sections.",
+                    "ui_implication": "The drafting UI is letting users export something that does not read like a formal legal complaint.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Enforce formal pleading structure",
+                    "recommendation": "Keep the draft builder anchored to formal complaint sections like jurisdiction, factual allegations, prayer for relief, and jury demand before export.",
+                    "target_surface": "draft,document,integrations",
+                }
+            )
+
+        if not formal_sections_present["signature_block"]:
+            issues.append(
+                {
+                    "severity": "medium",
+                    "source": "complaint_output",
+                    "finding": "The exported complaint is missing a signature block.",
+                    "ui_implication": "The draft stage still reads too much like a memo unless the filing posture stays visible through export.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Keep filing posture visible in the draft",
+                    "recommendation": "Preserve a default signature block and explain in the draft editor that the output should resemble a court filing rather than a loose narrative summary.",
+                    "target_surface": "draft,integrations",
+                }
+            )
+
+        if artifact_analysis.get("evidence_item_count", 0) > 0 and "EVIDENTIARY SUPPORT AND NOTICE" not in body:
+            issues.append(
+                {
+                    "severity": "medium",
+                    "source": "complaint_output",
+                    "finding": "The complaint includes evidence in the record, but the draft does not make that evidentiary posture legible.",
+                    "ui_implication": "Users may not see how saved evidence is helping shape the pleading.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Ground the draft in saved exhibits",
+                    "recommendation": "Show clearer exhibit and support references in the draft so the complaint feels tied to the record gathered in the evidence and review stages.",
+                    "target_surface": "evidence,review,draft",
+                }
+            )
+
+        router_review = None
+        try:
+            router_review = review_complaint_output_with_llm_router(
+                self._build_packet_markdown(packet),
+                notes=(
+                    "Assess whether this output looks like a formal legal complaint and turn any filing-shape defects "
+                    "into UI/UX repairs for intake, evidence, review, draft, and export surfaces."
+                ),
+            )
+        except Exception:
+            router_review = None
+
+        router_payload = dict((router_review or {}).get("review") or {})
+        router_issues = [dict(item) for item in list(router_payload.get("issues") or []) if isinstance(item, dict)]
+        router_suggestions = [
+            dict(item) for item in list(router_payload.get("ui_suggestions") or []) if isinstance(item, dict)
+        ]
+        for issue in router_issues[:6]:
+            issues.append(
+                {
+                    "severity": str(issue.get("severity") or "medium"),
+                    "source": "complaint_output_router",
+                    "finding": str(issue.get("finding") or "The complaint output router identified a filing-shape issue."),
+                    "ui_implication": str(
+                        issue.get("ui_implication")
+                        or issue.get("complaint_impact")
+                        or "The UI flow is likely under-guiding the user before export."
+                    ),
+                }
+            )
+        for suggestion in router_suggestions[:6]:
+            suggestions.append(
+                {
+                    "title": str(suggestion.get("title") or "Repair complaint-output workflow"),
+                    "recommendation": str(
+                        suggestion.get("recommendation")
+                        or suggestion.get("why_it_matters")
+                        or "Tighten the complaint workflow so the exported filing reads more formally."
+                    ),
+                    "target_surface": str(suggestion.get("target_surface") or "draft,review,integrations"),
+                }
+            )
+
+        section_score = 5 * sum(1 for value in formal_sections_present.values() if value)
+        body_length_score = 10 if artifact_analysis.get("draft_word_count", 0) >= 180 else 0
+        evidence_score = 10 if artifact_analysis.get("evidence_item_count", 0) > 0 else 0
+        relief_score = 5 if artifact_analysis.get("requested_relief_count", 0) > 0 else 0
+        support_score = 5 if int(artifact_analysis.get("supported_elements") or 0) > 0 else 0
+        heuristic_score = min(100, 35 + section_score + body_length_score + evidence_score + relief_score + support_score)
+        router_score = int(router_payload.get("filing_shape_score") or 0) if router_payload else 0
+        filing_shape_score = (
+            round((heuristic_score + router_score) / 2)
+            if router_score
+            else heuristic_score
+        )
+
+        if filing_shape_score < 75:
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": "The generated complaint still does not read enough like a filing-ready legal complaint.",
+                    "ui_implication": "The intake, evidence, review, and draft surfaces need stronger structure cues before export is treated as safe.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Promote filing-readiness guidance before export",
+                    "recommendation": "Keep the draft builder focused on caption, chronology, claim counts, evidentiary grounding, and requested relief so the exported complaint resembles a court filing instead of a loose summary.",
+                    "target_surface": "draft,review,integrations",
+                }
+            )
+
         if not suggestions:
             suggestions.append(
                 {
@@ -839,6 +1344,8 @@ class ComplaintWorkspaceService:
                 "The exported complaint artifact was analyzed to infer which UI steps may still be too weak, "
                 "hidden, or permissive for a real complainant."
             ),
+            "filing_shape_score": filing_shape_score,
+            "formal_sections_present": formal_sections_present,
             "issues": issues,
             "ui_suggestions": suggestions,
             "draft_excerpt": body[:600],
@@ -846,7 +1353,9 @@ class ComplaintWorkspaceService:
                 f"Supported elements: {int(overview.get('supported_elements') or 0)}",
                 f"Evidence items: {int(overview.get('testimony_items') or 0) + int(overview.get('document_items') or 0)}",
                 f"Requested relief items: {int(artifact_analysis.get('requested_relief_count') or 0)}",
+                f"Formal sections present: {sum(1 for value in formal_sections_present.values() if value)}/{len(formal_sections_present)}",
             ],
+            "router_review": router_review,
         }
 
     def analyze_complaint_output(self, user_id: Optional[str]) -> Dict[str, Any]:
@@ -856,6 +1365,21 @@ class ComplaintWorkspaceService:
             "packet_summary": deepcopy(payload.get("packet_summary") or {}),
             "artifact_analysis": deepcopy(payload.get("artifact_analysis") or {}),
             "ui_feedback": deepcopy(payload.get("ui_feedback") or {}),
+        }
+
+    def update_claim_type(self, user_id: Optional[str], claim_type: Optional[str]) -> Dict[str, Any]:
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        state["claim_type"] = _normalize_claim_type(claim_type)
+        self._save_state(state)
+        session = self.get_session(str(state.get("user_id")))
+        return {
+            "session": session["session"],
+            "review": session["review"],
+            "questions": session["questions"],
+            "next_question": session["next_question"],
+            "case_synopsis": session["case_synopsis"],
+            "claim_type": session["session"]["claim_type"],
+            "claim_type_label": _claim_type_display_name(session["session"]["claim_type"]),
         }
 
     def _build_complaint_output_review_artifacts(self, user_id: Optional[str]) -> List[Dict[str, Any]]:
@@ -1003,9 +1527,22 @@ class ComplaintWorkspaceService:
         *,
         requested_relief: Optional[List[str]] = None,
         title_override: Optional[str] = None,
+        use_llm: bool = False,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        config_path: Optional[str] = None,
+        backend_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         state = self._load_state(str(user_id or DEFAULT_USER_ID))
-        draft = self._build_draft(state, requested_relief=requested_relief)
+        draft = self._build_draft(
+            state,
+            requested_relief=requested_relief,
+            use_llm=use_llm,
+            provider=provider,
+            model=model,
+            config_path=config_path,
+            backend_id=backend_id,
+        )
         if title_override:
             draft["title"] = title_override
         state["draft"] = draft
@@ -1081,6 +1618,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.export_complaint_markdown", "description": "Export the generated complaint as a downloadable Markdown artifact."},
                 {"name": "complaint.export_complaint_pdf", "description": "Export the generated complaint as a downloadable PDF artifact."},
                 {"name": "complaint.analyze_complaint_output", "description": "Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions."},
+                {"name": "complaint.update_claim_type", "description": "Set the current complaint type so drafting and review stay aligned to the right legal claim shape."},
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
                 {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
@@ -1135,6 +1673,11 @@ class ComplaintWorkspaceService:
                 if isinstance(args.get("requested_relief"), str)
                 else args.get("requested_relief"),
                 title_override=args.get("title_override"),
+                use_llm=bool(args.get("use_llm")),
+                provider=args.get("provider"),
+                model=args.get("model"),
+                config_path=args.get("config_path"),
+                backend_id=args.get("backend_id"),
             )
         if tool_name == "complaint.update_draft":
             requested_relief = args.get("requested_relief")
@@ -1154,6 +1697,8 @@ class ComplaintWorkspaceService:
             return self.export_complaint_pdf(args.get("user_id"))
         if tool_name == "complaint.analyze_complaint_output":
             return self.analyze_complaint_output(args.get("user_id"))
+        if tool_name == "complaint.update_claim_type":
+            return self.update_claim_type(args.get("user_id"), args.get("claim_type"))
         if tool_name == "complaint.update_case_synopsis":
             return self.update_case_synopsis(
                 args.get("user_id"),

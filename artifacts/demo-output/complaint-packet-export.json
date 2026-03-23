@@ -1,0 +1,334 @@
+{
+  "artifact_analysis": {
+    "draft_word_count": 93,
+    "evidence_item_count": 1,
+    "has_case_synopsis": true,
+    "missing_elements": 0,
+    "requested_relief_count": 3,
+    "supported_elements": 5
+  },
+  "artifacts": {
+    "json": {
+      "content_type": "application/json",
+      "filename": "jordan-example-v.-acme-corporation-complaint.json",
+      "size_bytes": 8688
+    },
+    "markdown": {
+      "content": "# Jordan Example v. Acme Corporation Complaint\n\nClaim type: retaliation\nUser ID: did:key:demo-output-user\nExported at: 2026-03-23T07:41:27.156809+00:00\n\n## Working Case Synopsis\nJordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.\n\n## Complaint Draft\nJordan Example brings this retaliation complaint against Acme Corporation.\n\nJordan Example alleges that they Reported discrimination to HR.\n\nAfter that protected activity, Jordan Example experienced Threatened termination and then terminated two days later.\n\nThe timeline shows that Reported discrimination on March 8, threat on March 9, termination on March 10.\n\nAs a result, Jordan Example suffered Lost wages, benefits, and emotional distress.\n\nRequested relief includes: Back pay; Compensatory damages; Injunctive relief.\n\nWorking case synopsis: Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.\n\n## Requested Relief\n- Back pay\n- Compensatory damages\n- Injunctive relief\n\n## Intake Answers\n- **Your name:** Jordan Example\n- **Opposing party:** Acme Corporation\n- **Protected activity:** Reported discrimination to HR\n- **Adverse action:** Threatened termination and then terminated two days later\n- **Timeline:** Reported discrimination on March 8, threat on March 9, termination on March 10\n- **Harm:** Lost wages, benefits, and emotional distress\n\n## Evidence\n### Testimony\n- No testimony saved.\n\n### Documents\n- **Termination email** (causation): The termination email followed within two days of the HR complaint.\n\n## Review Overview\n- Supported elements: 5\n- Missing elements: 0\n- Testimony items: 0\n- Document items: 1\n",
+      "content_type": "text/markdown",
+      "excerpt": "# Jordan Example v. Acme Corporation Complaint\n\nClaim type: retaliation\nUser ID: did:key:demo-output-user\nExported at: 2026-03-23T07:41:27.156809+00:00\n\n## Working Case Synopsis\nJordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.\n\n## Complaint Draft\nJordan Example brings this retaliation complaint against Acme Corporation.\n\nJordan Example alleges that they Reported discrimination to HR.\n\nAfter that protected activity, Jordan Example experienced Threatened termination and then terminated two days later.\n\nThe timeline shows that Reported discrimination on March 8, threat on March 9, termination on March 10.\n\nAs a result, Jordan Example suffered Lost wages, benefits, and emotional distress.\n\nRequested relief includes: Back pay; Compensatory damages; Injunctive relief.\n\nWorking case synopsis: Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.\n\n## Requested Relief\n- Back pay\n- Compensatory damages\n- Injunctive relief\n\n## Intake Answers\n- **Your name:** Jordan Example\n- **Opposing party:** Acme Corporation\n- **Protected activity:** Reported discrimination to HR\n- **Adverse action:** Threatened termination and then terminated two days later\n- **Timeline:** Reported discrimination on March 8, threat on March 9, termination on March 10\n- **Harm:** Lost wages, benefits, and emotional distress\n\n## Evidence\n### Testimony\n- No testimony saved.\n\n### Documents\n- **Termination email** (causation): The termination email followed within two days of the HR complaint.\n\n## Review Overview\n- Supported elements: 5\n- Missing elements: 0\n- Testimony items: 0\n- Document items: 1\n",
+      "filename": "jordan-example-v.-acme-corporation-complaint.md",
+      "size_bytes": 1763
+    },
+    "pdf": {
+      "content_type": "application/pdf",
+      "filename": "jordan-example-v.-acme-corporation-complaint.pdf",
+      "header_b64": "JVBERi0xLjQKJeLjz9MKMSAwIG9iaiA8PCAvVHlwZSA=",
+      "size_bytes": 2754
+    }
+  },
+  "packet": {
+    "case_synopsis": "Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.",
+    "claim_type": "retaliation",
+    "draft": {
+      "body": "Jordan Example brings this retaliation complaint against Acme Corporation.\n\nJordan Example alleges that they Reported discrimination to HR.\n\nAfter that protected activity, Jordan Example experienced Threatened termination and then terminated two days later.\n\nThe timeline shows that Reported discrimination on March 8, threat on March 9, termination on March 10.\n\nAs a result, Jordan Example suffered Lost wages, benefits, and emotional distress.\n\nRequested relief includes: Back pay; Compensatory damages; Injunctive relief.\n\nWorking case synopsis: Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.",
+      "case_synopsis": "Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.",
+      "generated_at": "2026-03-23T07:41:27.156341+00:00",
+      "requested_relief": [
+        "Back pay",
+        "Compensatory damages",
+        "Injunctive relief"
+      ],
+      "review_snapshot": {
+        "case_synopsis": "Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.",
+        "claim_type": "retaliation",
+        "documents": [
+          {
+            "attachment_names": [
+              "termination-email.txt"
+            ],
+            "claim_element_id": "causation",
+            "content": "The termination email followed within two days of the HR complaint.",
+            "id": "documents-1",
+            "kind": "document",
+            "saved_at": "2026-03-23T07:41:27.156147+00:00",
+            "source": "Inbox export",
+            "title": "Termination email"
+          }
+        ],
+        "overview": {
+          "document_items": 1,
+          "missing_elements": 0,
+          "supported_elements": 5,
+          "testimony_items": 0
+        },
+        "recommended_actions": [
+          {
+            "detail": "All core elements have at least one support source.",
+            "title": "Collect more corroboration"
+          },
+          {
+            "detail": "Close timing between protected activity and adverse action strengthens causation.",
+            "title": "Check the timeline"
+          }
+        ],
+        "support_matrix": [
+          {
+            "document_count": 0,
+            "id": "protected_activity",
+            "intake_supported": true,
+            "label": "Protected activity",
+            "status": "supported",
+            "support_count": 1,
+            "supported": true,
+            "testimony_count": 0
+          },
+          {
+            "document_count": 0,
+            "id": "employer_knowledge",
+            "intake_supported": true,
+            "label": "Employer knowledge",
+            "status": "supported",
+            "support_count": 1,
+            "supported": true,
+            "testimony_count": 0
+          },
+          {
+            "document_count": 0,
+            "id": "adverse_action",
+            "intake_supported": true,
+            "label": "Adverse action",
+            "status": "supported",
+            "support_count": 1,
+            "supported": true,
+            "testimony_count": 0
+          },
+          {
+            "document_count": 1,
+            "id": "causation",
+            "intake_supported": true,
+            "label": "Causal link",
+            "status": "supported",
+            "support_count": 2,
+            "supported": true,
+            "testimony_count": 0
+          },
+          {
+            "document_count": 0,
+            "id": "harm",
+            "intake_supported": true,
+            "label": "Damages",
+            "status": "supported",
+            "support_count": 1,
+            "supported": true,
+            "testimony_count": 0
+          }
+        ],
+        "testimony": []
+      },
+      "title": "Jordan Example v. Acme Corporation Complaint"
+    },
+    "evidence": {
+      "documents": [
+        {
+          "attachment_names": [
+            "termination-email.txt"
+          ],
+          "claim_element_id": "causation",
+          "content": "The termination email followed within two days of the HR complaint.",
+          "id": "documents-1",
+          "kind": "document",
+          "saved_at": "2026-03-23T07:41:27.156147+00:00",
+          "source": "Inbox export",
+          "title": "Termination email"
+        }
+      ],
+      "testimony": []
+    },
+    "exported_at": "2026-03-23T07:41:27.156809+00:00",
+    "questions": [
+      {
+        "answer": "Jordan Example",
+        "id": "party_name",
+        "is_answered": true,
+        "label": "Your name",
+        "placeholder": "Jane Doe",
+        "prompt": "Who is bringing the complaint?"
+      },
+      {
+        "answer": "Acme Corporation",
+        "id": "opposing_party",
+        "is_answered": true,
+        "label": "Opposing party",
+        "placeholder": "Acme Corporation",
+        "prompt": "Who are you filing against?"
+      },
+      {
+        "answer": "Reported discrimination to HR",
+        "id": "protected_activity",
+        "is_answered": true,
+        "label": "Protected activity",
+        "placeholder": "Reported discrimination to HR",
+        "prompt": "What did you report, oppose, or request before the retaliation happened?"
+      },
+      {
+        "answer": "Threatened termination and then terminated two days later",
+        "id": "adverse_action",
+        "is_answered": true,
+        "label": "Adverse action",
+        "placeholder": "Termination two days later",
+        "prompt": "What happened to you afterward?"
+      },
+      {
+        "answer": "Reported discrimination on March 8, threat on March 9, termination on March 10",
+        "id": "timeline",
+        "is_answered": true,
+        "label": "Timeline",
+        "placeholder": "Complaint on March 8, termination on March 10",
+        "prompt": "When did the key events happen?"
+      },
+      {
+        "answer": "Lost wages, benefits, and emotional distress",
+        "id": "harm",
+        "is_answered": true,
+        "label": "Harm",
+        "placeholder": "Lost wages, lost benefits, emotional distress",
+        "prompt": "What harm did you suffer?"
+      }
+    ],
+    "review": {
+      "case_synopsis": "Jordan Example alleges retaliation after reporting discrimination to HR, supported by testimony, a termination email, and a coherent timeline.",
+      "claim_type": "retaliation",
+      "documents": [
+        {
+          "attachment_names": [
+            "termination-email.txt"
+          ],
+          "claim_element_id": "causation",
+          "content": "The termination email followed within two days of the HR complaint.",
+          "id": "documents-1",
+          "kind": "document",
+          "saved_at": "2026-03-23T07:41:27.156147+00:00",
+          "source": "Inbox export",
+          "title": "Termination email"
+        }
+      ],
+      "overview": {
+        "document_items": 1,
+        "missing_elements": 0,
+        "supported_elements": 5,
+        "testimony_items": 0
+      },
+      "recommended_actions": [
+        {
+          "detail": "All core elements have at least one support source.",
+          "title": "Collect more corroboration"
+        },
+        {
+          "detail": "Close timing between protected activity and adverse action strengthens causation.",
+          "title": "Check the timeline"
+        }
+      ],
+      "support_matrix": [
+        {
+          "document_count": 0,
+          "id": "protected_activity",
+          "intake_supported": true,
+          "label": "Protected activity",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "employer_knowledge",
+          "intake_supported": true,
+          "label": "Employer knowledge",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "adverse_action",
+          "intake_supported": true,
+          "label": "Adverse action",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 1,
+          "id": "causation",
+          "intake_supported": true,
+          "label": "Causal link",
+          "status": "supported",
+          "support_count": 2,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "harm",
+          "intake_supported": true,
+          "label": "Damages",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        }
+      ],
+      "testimony": []
+    },
+    "title": "Jordan Example v. Acme Corporation Complaint",
+    "user_id": "did:key:demo-output-user"
+  },
+  "packet_summary": {
+    "answered_question_count": 6,
+    "artifact_formats": [
+      "json",
+      "markdown",
+      "pdf"
+    ],
+    "complaint_readiness": {
+      "answered_questions": 6,
+      "detail": "A complaint draft already exists. Compare it against the supported facts, requested relief, and any remaining proof gaps before treating it as filing-ready.",
+      "evidence_count": 1,
+      "has_draft": true,
+      "missing_elements": 0,
+      "recommended_action": "Refine the existing draft and reconcile it with the support review.",
+      "recommended_route": "/document",
+      "score": 96,
+      "supported_elements": 5,
+      "total_questions": 6,
+      "user_id": "did:key:demo-output-user",
+      "verdict": "Draft in progress"
+    },
+    "document_items": 1,
+    "has_draft": true,
+    "missing_elements": 0,
+    "question_count": 6,
+    "supported_elements": 5,
+    "testimony_items": 0
+  },
+  "ui_feedback": {
+    "complaint_strengths": [
+      "Supported elements: 5",
+      "Evidence items: 1",
+      "Requested relief items: 3"
+    ],
+    "draft_excerpt": "Jordan Example brings this retaliation complaint against Acme Corporation.\n\nJordan Example alleges that they Reported discrimination to HR.\n\nAfter that protected activity, Jordan Example experienced Threatened termination and then terminated two days later.\n\nThe timeline shows that Reported discrimination on March 8, threat on March 9, termination on March 10.\n\nAs a result, Jordan Example suffered Lost wages, benefits, and emotional distress.\n\nRequested relief includes: Back pay; Compensatory damages; Injunctive relief.\n\nWorking case synopsis: Jordan Example alleges retaliation after reporting",
+    "issues": [],
+    "summary": "The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.",
+    "ui_suggestions": [
+      {
+        "recommendation": "The exported complaint looks coherent enough to keep the current UI flow, but continue validating navigation, evidence support, and clarity through Playwright.",
+        "target_surface": "workspace,review,document",
+        "title": "Preserve the current filing flow"
+      }
+    ]
+  }
+}

@@ -30,6 +30,7 @@ from .workspace import (
     export_complaint_markdown,
     export_complaint_pdf,
     analyze_complaint_output,
+    update_claim_type,
     generate_decentralized_id,
     generate_complaint,
     get_workflow_capabilities,
@@ -94,6 +95,7 @@ __all__ = [
     "start_session",
     "submit_intake_answers",
     "tool_list_payload",
+    "update_claim_type",
     "update_case_synopsis",
     "update_draft",
 ]

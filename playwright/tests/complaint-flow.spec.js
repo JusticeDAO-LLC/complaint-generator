@@ -330,6 +330,10 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
     await page.locator('#generate-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint/i);
+    await expect(page.locator('#draft-preview')).toContainText(/Civil Action No\./i);
+    await expect(page.locator('#draft-preview')).toContainText(/JURISDICTION AND VENUE/i);
+    await expect(page.locator('#draft-preview')).toContainText(/EVIDENTIARY SUPPORT AND NOTICE/i);
+    await expect(page.locator('#draft-preview')).toContainText(/COUNT I - RETALIATION/i);
     await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Jane Doe alleges retaliation/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Jane Doe v\. Acme Corporation Retaliation Complaint/i);
     await expect(page.locator('#draft-body')).toHaveValue(/Jane Doe brings this retaliation complaint against Acme Corporation\./i);
@@ -449,6 +453,9 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#generate-draft-button').click();
 
     await expect(page.locator('#draft-preview')).toContainText(/Taylor Smith brings this retaliation complaint/i);
+    await expect(page.locator('#draft-preview')).toContainText(/Civil Action No\./i);
+    await expect(page.locator('#draft-preview')).toContainText(/EVIDENTIARY SUPPORT AND NOTICE/i);
+    await expect(page.locator('#draft-preview')).toContainText(/COUNT I - RETALIATION/i);
     await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Taylor Smith alleges retaliation/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
 
@@ -464,10 +471,14 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#packet-export-summary')).toContainText(/"artifact_formats":/i);
     await expect(page.locator('#packet-preview')).toContainText(/Title: Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Taylor Smith brings this retaliation complaint against Acme Logistics\./i);
+    await expect(page.locator('#packet-preview')).toContainText(/Civil Action No\./i);
+    await expect(page.locator('#packet-preview')).toContainText(/COUNT I - RETALIATION/i);
 
     await page.locator('#analyze-complaint-output-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint output analysis refreshed\./i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"ui_feedback":/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"formal_sections_present":/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Tighten review-to-draft gatekeeping/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"artifact_analysis":/i);
 
@@ -479,8 +490,15 @@ test.describe('complaint generation workflow', () => {
     await markdownDownload.saveAs(markdownPath);
     const markdownBody = await fs.readFile(markdownPath, 'utf-8');
     expect(markdownDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.md$/i);
-    expect(markdownBody).toContain('# Taylor Smith v. Acme Logistics Retaliation Complaint');
+    expect(markdownBody.startsWith('IN THE UNITED STATES DISTRICT COURT')).toBeTruthy();
     expect(markdownBody).toContain('Taylor Smith brings this retaliation complaint against Acme Logistics.');
+    expect(markdownBody).toContain('Civil Action No. ________________');
+    expect(markdownBody).toContain('EVIDENTIARY SUPPORT AND NOTICE');
+    expect(markdownBody).toContain('COUNT I - RETALIATION');
+    expect(markdownBody).toContain('SIGNATURE BLOCK');
+    expect(markdownBody).toContain('Plaintiff, Pro Se');
+    expect(markdownBody).toContain('Address: ____________________');
+    expect(markdownBody).toContain('APPENDIX A - CASE SYNOPSIS');
 
     const [pdfDownload] = await Promise.all([
       page.waitForEvent('download'),
@@ -491,7 +509,8 @@ test.describe('complaint generation workflow', () => {
     const pdfBody = await fs.readFile(pdfPath);
     expect(pdfDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.pdf$/i);
     expect(pdfBody.subarray(0, 8).toString('utf-8')).toContain('%PDF-1.4');
-    expect(pdfBody.toString('utf-8')).toContain('Taylor Smith v. Acme Logistics Retaliation Complaint');
+    expect(pdfBody.toString('utf-8')).toContain('COMPLAINT FOR RETALIATION');
+    expect(pdfBody.toString('utf-8')).toContain('SIGNATURE BLOCK');
 
     await page.goto('/');
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Ready for first draft|Draft in progress/i);

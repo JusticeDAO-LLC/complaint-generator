@@ -122,3 +122,33 @@ def test_run_ui_review_workflow_loads_complaint_export_artifacts_from_screenshot
     assert report["complaint_output_feedback"]["ui_suggestions"] == [
         "Add clearer draft-readiness warnings before download."
     ]
+
+
+def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback(monkeypatch):
+    class FakeTextBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-output-review")
+            self.provider = kwargs.get("provider", "fake")
+            self.model = kwargs.get("model", "fake-model")
+
+        def __call__(self, prompt):
+            assert "formal legal complaint" in prompt
+            assert "PRAYER FOR RELIEF" in prompt
+            return (
+                '{"summary":"The complaint is closer to a filing than a memo, but still needs stronger venue and exhibit posture.",'
+                '"filing_shape_score":82,'
+                '"strengths":["Caption is present","Prayer for relief is present"],'
+                '"issues":[{"severity":"medium","finding":"Exhibit grounding is thin","complaint_impact":"The filing reads under-supported","ui_implication":"Evidence and draft surfaces are not tying exhibits into the pleading clearly enough"}],'
+                '"ui_suggestions":[{"title":"Expose exhibit references in the draft builder","target_surface":"evidence,draft","recommendation":"Show saved exhibits beside the pleading sections they support","why_it_matters":"The final complaint will read more like a supported court filing"}]}'
+            )
+
+    monkeypatch.setattr(ui_review_module, "LLMRouterBackend", FakeTextBackend)
+
+    report = ui_review_module.review_complaint_output_with_llm_router(
+        "IN THE UNITED STATES DISTRICT COURT\n\nPRAYER FOR RELIEF\nPlaintiff requests relief."
+    )
+
+    assert report["backend"]["strategy"] == "llm_router"
+    assert report["review"]["filing_shape_score"] == 82
+    assert report["review"]["issues"][0]["finding"] == "Exhibit grounding is thin"
+    assert report["review"]["ui_suggestions"][0]["target_surface"] == "evidence,draft"

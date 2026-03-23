@@ -455,23 +455,87 @@ function buildWorkspaceReview(state) {
 function buildWorkspaceDraft(state, requestedRelief) {
   const answers = state.intake_answers || {};
   const existingDraft = state.draft || {};
+  const review = buildWorkspaceReview(state);
+  const overview = review.overview || {};
+  const evidence = state.evidence || { testimony: [], documents: [] };
   const relief = requestedRelief || existingDraft.requested_relief || ['Compensatory damages', 'Back pay', 'Injunctive relief'];
   const synopsis = buildWorkspaceCaseSynopsis(state);
+  const testimonySummary = (evidence.testimony || []).slice(0, 3)
+    .map((item) => `${item.title || 'Untitled testimony'} (${item.claim_element_id || 'unmapped'})`)
+    .join('; ') || 'No witness or complainant testimony has been summarized yet';
+  const documentSummary = (evidence.documents || []).slice(0, 3)
+    .map((item) => `${item.title || 'Untitled document'} (${item.claim_element_id || 'unmapped'})`)
+    .join('; ') || 'No documentary exhibits have been summarized yet';
   return {
     title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} Retaliation Complaint`,
     requested_relief: relief,
     case_synopsis: synopsis,
     body: [
-      `${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}.`,
-      `${answers.party_name || 'Plaintiff'} alleges that they ${answers.protected_activity || 'engaged in protected activity'}.`,
-      `After that protected activity, ${answers.party_name || 'Plaintiff'} experienced ${answers.adverse_action || 'an adverse action'}.`,
-      `The timeline shows that ${answers.timeline || 'the events occurred close in time'}.`,
-      `As a result, ${answers.party_name || 'Plaintiff'} suffered ${answers.harm || 'compensable harm'}.`,
-      `Requested relief includes: ${relief.join('; ')}.`,
+      'IN THE UNITED STATES DISTRICT COURT',
+      'FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED',
+      '',
+      `${answers.party_name || 'Plaintiff'}, Plaintiff,`,
+      'v.',
+      `${answers.opposing_party || 'Defendant'}, Defendant.`,
+      '',
+      'Civil Action No. ________________',
+      'COMPLAINT FOR RETALIATION',
+      'JURY TRIAL DEMANDED',
+      '',
+      `Plaintiff ${answers.party_name || 'Plaintiff'}, by and through this Complaint, alleges upon personal knowledge as to their own acts and upon information and belief as to all other matters, as follows:`,
+      '',
+      'NATURE OF THE ACTION',
+      `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${answers.protected_activity || 'engaged in protected activity'}.`,
+      `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the retaliatory conduct, restore lost compensation, and prevent additional harm flowing from ${answers.adverse_action || 'an adverse action'}.`,
+      '',
+      'JURISDICTION AND VENUE',
+      '3. Jurisdiction is alleged in this Court because the controversy arises under retaliation law and related remedial doctrines applicable to the challenged conduct.',
+      '4. Venue is alleged to be proper because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.',
+      '',
+      'PARTIES',
+      `5. Plaintiff ${answers.party_name || 'Plaintiff'} is the person harmed by the retaliation described below.`,
+      `6. Defendant ${answers.opposing_party || 'Defendant'} is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.`,
+      '',
+      'FACTUAL ALLEGATIONS',
+      `7. ${answers.party_name || 'Plaintiff'} alleges that they ${answers.protected_activity || 'engaged in protected activity'}.`,
+      '8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.',
+      `9. After that protected activity, ${answers.party_name || 'Plaintiff'} experienced ${answers.adverse_action || 'an adverse action'}.`,
+      `10. The chronology currently available in the record shows that ${answers.timeline || 'the events occurred close in time'}.`,
+      `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${answers.harm || 'compensable harm'}.`,
+      '',
+      'EVIDENTIARY SUPPORT AND NOTICE',
+      `12. The current complaint record includes ${Number((evidence.testimony || []).length + (evidence.documents || []).length)} saved evidence items, including testimony such as ${testimonySummary}.`,
+      `13. The current documentary record includes the following summarized exhibits or records: ${documentSummary}.`,
+      `14. The present support review reflects ${Number(overview.supported_elements || 0)} supported claim elements and ${Number(overview.missing_elements || 0)} open support gaps, which Plaintiff identifies so the pleading can be refined rather than to concede any deficiency in the claim.`,
+      '',
+      'CLAIM FOR RELIEF',
+      'COUNT I - RETALIATION',
+      `15. ${answers.party_name || 'Plaintiff'} repeats and realleges the preceding paragraphs as if fully set forth herein.`,
+      `16. ${answers.party_name || 'Plaintiff'} engaged in protected activity by ${answers.protected_activity || 'engaged in protected activity'}, and Defendant knew or should have known of that protected conduct.`,
+      `17. Defendant thereafter subjected Plaintiff to materially adverse action, including ${answers.adverse_action || 'an adverse action'}, under circumstances supporting retaliatory motive and causation.`,
+      '18. The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.',
+      `19. Plaintiff has suffered damages and other losses including ${answers.harm || 'compensable harm'}.`,
+      '',
+      'PRAYER FOR RELIEF',
+      'Wherefore, Plaintiff requests judgment against Defendant and the following relief:',
+      ...relief.map((item, index) => `${index + 1}. ${item}.`),
+      '',
+      'JURY DEMAND',
+      'Plaintiff demands a trial by jury on all issues so triable.',
+      '',
+      'SIGNATURE BLOCK',
+      'Dated: ____________________',
+      '',
+      'Respectfully submitted,',
+      '',
+      `${answers.party_name || 'Plaintiff'}`,
+      'Plaintiff, Pro Se',
+      '',
+      'WORKING CASE SYNOPSIS',
       `Working case synopsis: ${synopsis}`,
     ].join('\n\n'),
     generated_at: '2026-03-22T12:00:00Z',
-    review_snapshot: buildWorkspaceReview(state),
+    review_snapshot: review,
   };
 }
 
@@ -581,13 +645,16 @@ function buildWorkspacePacketExport(state) {
   };
   const filenameRoot = slugifyWorkspaceFilename(draft.title);
   const markdown = [
-    `# ${draft.title}`,
+    draft.body,
     '',
-    '## Working Case Synopsis',
+    'APPENDIX A - CASE SYNOPSIS',
     sessionPayload.case_synopsis,
     '',
-    '## Complaint Draft',
-    draft.body,
+    'APPENDIX B - REVIEW OVERVIEW',
+    `- Supported elements: ${Number((sessionPayload.review.overview || {}).supported_elements || 0)}`,
+    `- Missing elements: ${Number((sessionPayload.review.overview || {}).missing_elements || 0)}`,
+    `- Testimony items: ${Number((sessionPayload.review.overview || {}).testimony_items || 0)}`,
+    `- Document items: ${Number((sessionPayload.review.overview || {}).document_items || 0)}`,
   ].join('\n');
   return {
     packet,
@@ -690,7 +757,7 @@ function buildWorkspaceUiOptimizationResult(state, toolArgs = {}) {
   return {
     workflow_type: 'ui_ux_closed_loop',
     rounds_executed: 1,
-    latest_validation_review: `Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')} via ${routerLabel}.`,
+    latest_validation_review: `The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels. Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')} via ${routerLabel}.`,
     changed_files: ['templates/workspace.html'],
   };
 }

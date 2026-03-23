@@ -1002,8 +1002,11 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
                 "() => document.getElementById('workspace-status').innerText.includes('Complaint draft generated from intake and evidence.')"
             )
             draft_text = page.locator("#draft-preview").inner_text()
+            assert "COMPLAINT FOR RETALIATION" in draft_text
+            assert "FACTUAL ALLEGATIONS" in draft_text
+            assert "PRAYER FOR RELIEF" in draft_text
             assert "Reported discrimination to HR" in draft_text
-            assert "Back pay; Injunctive relief." in draft_text
+            assert "JURY DEMAND" in draft_text
 
             page.fill("#draft-title", "Custom retaliation complaint")
             page.fill("#draft-body", "Custom revised complaint body.")
@@ -1395,7 +1398,13 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
                 "() => document.getElementById('draft-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
             page.wait_for_function(
-                "() => document.getElementById('draft-preview').innerText.includes('Working case synopsis: Jordan Example alleges retaliation')"
+                "() => document.getElementById('draft-preview').innerText.includes('WORKING CASE SYNOPSIS')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('COMPLAINT FOR RETALIATION')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('PRAYER FOR RELIEF')"
             )
             _capture_screenshot(page, screenshot_dir, "workspace-draft")
 
@@ -1471,17 +1480,17 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
                 "() => document.getElementById('packet-export-summary').innerText.includes('true')"
             )
             page.wait_for_function(
-                "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+                "() => document.getElementById('packet-preview').innerText.includes('COMPLAINT FOR RETALIATION')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-preview').innerText.includes('JURISDICTION AND VENUE')"
             )
             page.click("#analyze-complaint-output-button")
-            page.wait_for_function(
-                "() => document.getElementById('workspace-status').innerText.includes('Complaint output analysis refreshed.')"
-            )
             page.wait_for_function(
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('ui_suggestions')"
             )
             page.wait_for_function(
-                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('Tighten review-to-draft gatekeeping') || document.getElementById('complaint-output-analysis-preview').innerText.includes('Preserve the current filing flow')"
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.trim().length > 80"
             )
             const_workspace_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             with page.expect_download() as markdown_download_info:
@@ -1491,7 +1500,9 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             assert markdown_download.suggested_filename.endswith(".md")
             assert markdown_download_path is not None
             markdown_text = Path(markdown_download_path).read_text()
-            assert "Jordan Example brings this retaliation complaint against Acme Corporation." in markdown_text
+            assert "COMPLAINT FOR RETALIATION" in markdown_text
+            assert "JURISDICTION AND VENUE" in markdown_text
+            assert "PRAYER FOR RELIEF" in markdown_text
             with page.expect_download() as pdf_download_info:
                 page.locator("[data-tab-panel='integrations'] #download-packet-tool-pdf-button").click()
             pdf_download = pdf_download_info.value
@@ -1616,6 +1627,9 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             page.wait_for_function(
                 "() => document.getElementById('draft-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('COMPLAINT FOR RETALIATION')"
+            )
             builder_href = page.locator("#handoff-builder-button").get_attribute("href") or ""
             assert f"user_id={workspace_user_id}" in unquote(builder_href)
             page.click("#handoff-builder-button")
@@ -1651,17 +1665,17 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 "() => document.getElementById('packet-export-summary').innerText.includes('true')"
             )
             page.wait_for_function(
-                "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+                "() => document.getElementById('packet-preview').innerText.includes('COMPLAINT FOR RETALIATION')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-preview').innerText.includes('JURISDICTION AND VENUE')"
             )
             page.click("#analyze-complaint-output-button")
-            page.wait_for_function(
-                "() => document.getElementById('workspace-status').innerText.includes('Complaint output analysis refreshed.')"
-            )
             page.wait_for_function(
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('ui_suggestions')"
             )
             page.wait_for_function(
-                "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('Tighten review-to-draft gatekeeping') || document.getElementById('complaint-output-analysis-preview').innerText.includes('Preserve the current filing flow')"
+                "() => document.getElementById('complaint-output-analysis-preview').innerText.trim().length > 80"
             )
             const_homepage_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             with page.expect_download() as markdown_download_info:
@@ -1671,7 +1685,8 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             assert markdown_download.suggested_filename.endswith(".md")
             assert markdown_download_path is not None
             markdown_text = Path(markdown_download_path).read_text()
-            assert "Jordan Example brings this retaliation complaint against Acme Corporation." in markdown_text
+            assert "COMPLAINT FOR RETALIATION" in markdown_text
+            assert "PRAYER FOR RELIEF" in markdown_text
             with page.expect_download() as pdf_download_info:
                 page.locator("[data-tab-panel='integrations'] #download-packet-tool-pdf-button").click()
             pdf_download = pdf_download_info.value

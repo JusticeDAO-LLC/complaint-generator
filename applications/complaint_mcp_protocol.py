@@ -78,6 +78,11 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "items": {"type": "string"},
             },
             "title_override": {"type": "string"},
+            "use_llm": {"type": "boolean"},
+            "provider": {"type": "string"},
+            "model": {"type": "string"},
+            "config_path": {"type": "string"},
+            "backend_id": {"type": "string"},
         },
     },
     "complaint.update_draft": {
@@ -107,6 +112,14 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "complaint.analyze_complaint_output": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.update_claim_type": {
+        "type": "object",
+        "properties": {
+            "user_id": {"type": "string"},
+            "claim_type": {"type": "string"},
+        },
+        "required": ["claim_type"],
     },
     "complaint.update_case_synopsis": {
         "type": "object",

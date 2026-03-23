@@ -1,0 +1,26 @@
+diff --git a/playwright/server.js b/playwright/server.js
+index e0023c2..5be7b6a 100644
+--- a/playwright/server.js
++++ b/playwright/server.js
+@@ -683,7 +683,7 @@ function buildStubUiOptimizationResult(args = {}, userId = 'did:key:playwright-d
+       Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
+       Review: `Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+       Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
+-      'Integration Discovery': `${routerLabel} should stay discoverable from the shared dashboard shortcuts and tool panels.`,
++      'Integration Discovery': `The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels. ${routerLabel} should preserve that visibility during the closed-loop run.`,
+     },
+     actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
+     critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
+diff --git a/playwright/tests/helpers/fixtures.js b/playwright/tests/helpers/fixtures.js
+index dfa0d20..07d984a 100644
+--- a/playwright/tests/helpers/fixtures.js
++++ b/playwright/tests/helpers/fixtures.js
+@@ -690,7 +690,7 @@ function buildWorkspaceUiOptimizationResult(state, toolArgs = {}) {
+   return {
+     workflow_type: 'ui_ux_closed_loop',
+     rounds_executed: 1,
+-    latest_validation_review: `Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')} via ${routerLabel}.`,
++    latest_validation_review: `The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels. Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')} via ${routerLabel}.`,
+     changed_files: ['templates/workspace.html'],
+   };
+ }

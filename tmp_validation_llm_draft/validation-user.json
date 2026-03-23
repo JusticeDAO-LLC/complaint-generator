@@ -1,0 +1,138 @@
+{
+  "case_synopsis": "",
+  "claim_type": "retaliation",
+  "created_at": "2026-03-23T08:03:14.478882+00:00",
+  "draft": {
+    "body": "IN THE UNITED STATES DISTRICT COURT\n\nFOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED\n\n\n\nJordan Example, Plaintiff,\n\nv.\n\nAcme Corporation, Defendant.\n\n\n\nCivil Action No. ________________\n\nCOMPLAINT FOR RETALIATION\n\nJURY TRIAL DEMANDED\n\n\n\nPlaintiff Jordan Example, by and through this Complaint, alleges upon personal knowledge as to their own acts and upon information and belief as to all other matters, as follows:\n\n\n\nNATURE OF THE ACTION\n\n1. Jordan Example brings this retaliation complaint against Acme Corporation. This civil action arises from Acme Corporation's retaliatory response after Jordan Example reported discrimination to HR.\n\n2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the retaliatory conduct, restore lost compensation, and prevent additional harm flowing from was terminated two days later.\n\n\n\nJURISDICTION AND VENUE\n\n3. Jurisdiction is alleged in this Court because the controversy arises under retaliation law and related remedial doctrines applicable to the challenged conduct.\n\n4. Venue is alleged to be proper because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.\n\n\n\nPARTIES\n\n5. Plaintiff Jordan Example is the person harmed by the retaliation described below.\n\n6. Defendant Acme Corporation is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.\n\n\n\nFACTUAL ALLEGATIONS\n\n7. Jordan Example alleges that they reported discrimination to HR.\n\n8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.\n\n9. After that protected activity, Jordan Example experienced was terminated two days later.\n\n10. The chronology currently available in the record shows that Jordan reported discrimination on March 8 and was terminated on March 10..\n\n11. As a direct and proximate result of Defendant's conduct, Jordan Example suffered lost wages and emotional distress.\n\n\n\nEVIDENTIARY SUPPORT AND NOTICE\n\n12. The current complaint record includes 0 saved evidence items, including testimony such as No witness or complainant testimony has been summarized yet.\n\n13. The current documentary record includes the following summarized exhibits or records: No documentary exhibits have been summarized yet.\n\n14. The present support review reflects 5 supported claim elements and 0 open support gaps, which Plaintiff identifies so the pleading can be refined rather than to concede any deficiency in the claim.\n\n15. Plaintiff incorporates the current testimony summaries, documentary exhibits, chronology notes, and support review findings as the preliminary exhibit and notice record for this pleading.\n\n\n\nCLAIM FOR RELIEF\n\nCOUNT I - RETALIATION\n\n18. Jordan Example repeats and realleges the preceding paragraphs as if fully set forth herein.\n\n19. Jordan Example engaged in protected activity by reported discrimination to HR, and Defendant knew or should have known of that protected conduct.\n\n20. Defendant thereafter subjected Plaintiff to materially adverse action, including was terminated two days later, under circumstances supporting retaliatory motive and causation.\n\n21. The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.\n\n22. Plaintiff has suffered damages and other losses including lost wages and emotional distress.\n\n23. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.\n\n\n\nPRAYER FOR RELIEF\n\nWherefore, Plaintiff requests judgment against Defendant and the following relief:\n\n1. Back pay.\n2. Injunctive relief.\n\n\n\nJURY DEMAND\n\nPlaintiff demands a trial by jury on all issues so triable.\n\n\n\nSIGNATURE BLOCK\n\nDated: ____________________\n\n\n\nRespectfully submitted,\n\n\n\nJordan Example\n\nPlaintiff, Pro Se\n\nAddress: ____________________\n\nTelephone: ____________________\n\nEmail: ____________________\n\n\n\nWORKING CASE SYNOPSIS\n\nWorking case synopsis: Jordan Example is pursuing a retaliation complaint against Acme Corporation. The current theory is that Jordan Example reported discrimination to HR, then experienced was terminated two days later. The reported harm is lost wages and emotional distress. Timeline posture: Jordan reported discrimination on March 8 and was terminated on March 10.. Current support posture: 5 supported elements, 0 open gaps, 0 saved evidence items.",
+    "case_synopsis": "Jordan Example is pursuing a retaliation complaint against Acme Corporation. The current theory is that Jordan Example reported discrimination to HR, then experienced was terminated two days later. The reported harm is lost wages and emotional distress. Timeline posture: Jordan reported discrimination on March 8 and was terminated on March 10.. Current support posture: 5 supported elements, 0 open gaps, 0 saved evidence items.",
+    "claim_type": "retaliation",
+    "draft_strategy": "template",
+    "generated_at": "2026-03-23T08:03:14.479263+00:00",
+    "requested_relief": [
+      "Back pay",
+      "Injunctive relief"
+    ],
+    "review_snapshot": {
+      "case_synopsis": "Jordan Example is pursuing a retaliation complaint against Acme Corporation. The current theory is that Jordan Example reported discrimination to HR, then experienced was terminated two days later. The reported harm is lost wages and emotional distress. Timeline posture: Jordan reported discrimination on March 8 and was terminated on March 10.. Current support posture: 5 supported elements, 0 open gaps, 0 saved evidence items.",
+      "claim_type": "retaliation",
+      "documents": [],
+      "overview": {
+        "document_items": 0,
+        "missing_elements": 0,
+        "supported_elements": 5,
+        "testimony_items": 0
+      },
+      "recommended_actions": [
+        {
+          "detail": "All core elements have at least one support source.",
+          "title": "Collect more corroboration"
+        },
+        {
+          "detail": "Close timing between protected activity and adverse action strengthens causation.",
+          "title": "Check the timeline"
+        }
+      ],
+      "support_matrix": [
+        {
+          "document_count": 0,
+          "id": "protected_activity",
+          "intake_supported": true,
+          "label": "Protected activity",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "employer_knowledge",
+          "intake_supported": true,
+          "label": "Employer knowledge",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "adverse_action",
+          "intake_supported": true,
+          "label": "Adverse action",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "causation",
+          "intake_supported": true,
+          "label": "Causal link",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "harm",
+          "intake_supported": true,
+          "label": "Damages",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        }
+      ],
+      "testimony": []
+    },
+    "title": "Jordan Example v. Acme Corporation Retaliation Complaint"
+  },
+  "evidence": {
+    "documents": [],
+    "testimony": []
+  },
+  "intake_answers": {
+    "adverse_action": "was terminated two days later",
+    "harm": "lost wages and emotional distress",
+    "opposing_party": "Acme Corporation",
+    "party_name": "Jordan Example",
+    "protected_activity": "reported discrimination to HR",
+    "timeline": "Jordan reported discrimination on March 8 and was terminated on March 10."
+  },
+  "intake_history": [
+    {
+      "answer": "Jordan Example",
+      "captured_at": "2026-03-23T08:03:14.478914+00:00",
+      "question_id": "party_name"
+    },
+    {
+      "answer": "Acme Corporation",
+      "captured_at": "2026-03-23T08:03:14.478916+00:00",
+      "question_id": "opposing_party"
+    },
+    {
+      "answer": "reported discrimination to HR",
+      "captured_at": "2026-03-23T08:03:14.478918+00:00",
+      "question_id": "protected_activity"
+    },
+    {
+      "answer": "was terminated two days later",
+      "captured_at": "2026-03-23T08:03:14.478919+00:00",
+      "question_id": "adverse_action"
+    },
+    {
+      "answer": "Jordan reported discrimination on March 8 and was terminated on March 10.",
+      "captured_at": "2026-03-23T08:03:14.478920+00:00",
+      "question_id": "timeline"
+    },
+    {
+      "answer": "lost wages and emotional distress",
+      "captured_at": "2026-03-23T08:03:14.478921+00:00",
+      "question_id": "harm"
+    }
+  ],
+  "ui_readiness": null,
+  "updated_at": "2026-03-23T08:03:36.451523+00:00",
+  "user_id": "validation-user"
+}

@@ -478,13 +478,41 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
 function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
   const sessionPayload = workspaceSessionPayload(userId);
   const draft = sessionPayload.draft || getWorkspaceState(userId).draft || { title: 'Draft not generated', requested_relief: [], body: '' };
+  const requestedRelief = Array.isArray(draft.requested_relief) ? draft.requested_relief : [];
+  const questionLines = (sessionPayload.questions || []).map((item) => `- **${item.label || item.id || 'Question'}:** ${item.answer || 'Not answered'}`);
+  const testimonyLines = (((sessionPayload.session || {}).evidence || {}).testimony || [])
+    .map((item) => `- **${item.title || 'Testimony'}** (${item.claim_element_id || 'unmapped'}): ${item.content || ''}`.trim());
+  const documentLines = (((sessionPayload.session || {}).evidence || {}).documents || [])
+    .map((item) => `- **${item.title || 'Document'}** (${item.claim_element_id || 'unmapped'}): ${item.content || ''}`.trim());
   const markdownContent = [
-    `# ${draft.title}`,
-    '',
     draft.body || 'No complaint draft has been generated yet.',
     '',
-    '## Case Synopsis',
+    'APPENDIX A - CASE SYNOPSIS',
     String(sessionPayload.case_synopsis || '').trim() || 'No shared case synopsis saved yet.',
+    '',
+    'APPENDIX B - REQUESTED RELIEF CHECKLIST',
+    requestedRelief.length ? requestedRelief.map((item) => `- ${item}`).join('\n') : '- No requested relief recorded.',
+    '',
+    'APPENDIX C - INTAKE ANSWERS',
+    questionLines.length ? questionLines.join('\n') : '- No intake answers recorded.',
+    '',
+    'APPENDIX D - EVIDENCE SUMMARY',
+    '### Testimony',
+    testimonyLines.length ? testimonyLines.join('\n') : '- No testimony saved.',
+    '',
+    '### Documents',
+    documentLines.length ? documentLines.join('\n') : '- No documents saved.',
+    '',
+    'APPENDIX E - REVIEW OVERVIEW',
+    `- Supported elements: ${Number((sessionPayload.review.overview || {}).supported_elements || 0)}`,
+    `- Missing elements: ${Number((sessionPayload.review.overview || {}).missing_elements || 0)}`,
+    `- Testimony items: ${Number((sessionPayload.review.overview || {}).testimony_items || 0)}`,
+    `- Document items: ${Number((sessionPayload.review.overview || {}).document_items || 0)}`,
+    '',
+    'APPENDIX F - EXPORT METADATA',
+    `- Claim type: ${String(((sessionPayload.session || {}).claim_type) || 'retaliation')}`,
+    `- User ID: ${String(userId)}`,
+    '- Exported at: 2026-03-23T00:00:00+00:00',
   ].join('\n');
   return {
     packet: {
@@ -567,12 +595,38 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
   const packetPayload = exportComplaintPacketPayload(userId);
   const packetSummary = packetPayload.packet_summary || {};
   const artifactAnalysis = packetPayload.artifact_analysis || {};
+  const complaintBody = String((((packetPayload.packet || {}).draft || {}).body || ''));
+  const formalSectionsPresent = {
+    caption: complaintBody.includes('IN THE UNITED STATES DISTRICT COURT'),
+    civil_action_number: complaintBody.includes('Civil Action No. ________________'),
+    nature_of_action: complaintBody.includes('NATURE OF THE ACTION'),
+    jurisdiction_and_venue: complaintBody.includes('JURISDICTION AND VENUE'),
+    parties: complaintBody.includes('PARTIES'),
+    factual_allegations: complaintBody.includes('FACTUAL ALLEGATIONS'),
+    evidentiary_support: complaintBody.includes('EVIDENTIARY SUPPORT AND NOTICE'),
+    claim_count: complaintBody.includes('COUNT I -'),
+    prayer_for_relief: complaintBody.includes('PRAYER FOR RELIEF'),
+    jury_demand: complaintBody.includes('JURY DEMAND'),
+    signature_block: complaintBody.includes('SIGNATURE BLOCK'),
+    working_case_synopsis: complaintBody.includes('WORKING CASE SYNOPSIS'),
+  };
+  const filingShapeScore = Math.min(
+    100,
+    35
+      + (5 * Object.values(formalSectionsPresent).filter(Boolean).length)
+      + (Number(artifactAnalysis.evidence_item_count || 0) > 0 ? 10 : 0)
+      + (Number(artifactAnalysis.requested_relief_count || 0) > 0 ? 5 : 0)
+      + (Number(artifactAnalysis.draft_word_count || 0) >= 180 ? 10 : 0)
+    ,
+  );
   return {
     user_id: userId,
     packet_summary: packetSummary,
     artifact_analysis: artifactAnalysis,
     ui_feedback: {
       summary: 'The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.',
+      filing_shape_score: filingShapeScore,
+      formal_sections_present: formalSectionsPresent,
       issues: Number(packetSummary.missing_elements || 0) > 0
         ? [
             {
@@ -595,6 +649,7 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
         `Supported elements: ${Number(packetSummary.supported_elements || 0)}`,
         `Evidence items: ${Number(packetSummary.testimony_items || 0) + Number(packetSummary.document_items || 0)}`,
         `Requested relief items: ${Number(artifactAnalysis.requested_relief_count || 0)}`,
+        `Formal sections present: ${Object.values(formalSectionsPresent).filter(Boolean).length}/${Object.keys(formalSectionsPresent).length}`,
       ],
     },
   };
@@ -683,7 +738,7 @@ function buildStubUiOptimizationResult(args = {}, userId = 'did:key:playwright-d
       Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
       Review: `Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
       Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
-      'Integration Discovery': `${routerLabel} should stay discoverable from the shared dashboard shortcuts and tool panels.`,
+      'Integration Discovery': `The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels. ${routerLabel} should preserve that visibility during the closed-loop run.`,
     },
     actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
     critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
@@ -718,16 +773,90 @@ function buildStubUiOptimizationResult(args = {}, userId = 'did:key:playwright-d
 
 function generateWorkspaceDraft(workspaceState, requestedRelief) {
   const answers = workspaceState.intake_answers;
+  const review = workspaceReview(workspaceState);
+  const overview = (review || {}).overview || {};
+  const evidence = workspaceState.evidence || { testimony: [], documents: [] };
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
   const caseSynopsis = String(workspaceState.case_synopsis || '').trim();
+  const testimonySummary = (evidence.testimony || []).slice(0, 3)
+    .map((item) => `${item.title || 'Untitled testimony'} (${item.claim_element_id || 'unmapped'})`)
+    .join('; ') || 'No witness or complainant testimony has been summarized yet';
+  const documentSummary = (evidence.documents || []).slice(0, 3)
+    .map((item) => `${item.title || 'Untitled document'} (${item.claim_element_id || 'unmapped'})`)
+    .join('; ') || 'No documentary exhibits have been summarized yet';
+  const testimonyReferenceLines = (evidence.testimony || []).slice(0, 3)
+    .map((item) => `Plaintiff testimony or witness account titled '${item.title || 'Untitled testimony'}' supports ${item.claim_element_id || 'an identified claim element'}.`);
+  const documentReferenceLines = (evidence.documents || []).slice(0, 3)
+    .map((item) => `Documentary exhibit '${item.title || 'Untitled document'}' is presently tied to ${item.claim_element_id || 'an identified claim element'}.`);
   const body = [
-    `${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}.`,
-    `${answers.party_name || 'Plaintiff'} alleges that they ${answers.protected_activity || 'engaged in protected activity'}.`,
-    `After that protected activity, ${answers.party_name || 'Plaintiff'} experienced ${answers.adverse_action || 'adverse action'}.`,
-    `The timeline shows that ${answers.timeline || 'the events occurred close in time'}.`,
-    `As a result, ${answers.party_name || 'Plaintiff'} suffered ${answers.harm || 'compensable harm'}.`,
-    `Requested relief includes: ${relief.join('; ')}.`,
-    caseSynopsis ? `Working case synopsis: ${caseSynopsis}.` : '',
+    'IN THE UNITED STATES DISTRICT COURT',
+    'FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED',
+    '',
+    `${answers.party_name || 'Plaintiff'}, Plaintiff,`,
+    'v.',
+    `${answers.opposing_party || 'Defendant'}, Defendant.`,
+    '',
+    'Civil Action No. ________________',
+    'COMPLAINT FOR RETALIATION',
+    'JURY TRIAL DEMANDED',
+    '',
+    `Plaintiff ${answers.party_name || 'Plaintiff'}, by and through this Complaint, alleges upon personal knowledge as to their own acts and upon information and belief as to all other matters, as follows:`,
+    '',
+    'NATURE OF THE ACTION',
+    `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${answers.protected_activity || 'engaged in protected activity'}.`,
+    `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the retaliatory conduct, restore lost compensation, and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`,
+    '',
+    'JURISDICTION AND VENUE',
+    '3. Jurisdiction is alleged in this Court because the controversy arises under retaliation law and related remedial doctrines applicable to the challenged conduct.',
+    '4. Venue is alleged to be proper because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.',
+    '',
+    'PARTIES',
+    `5. Plaintiff ${answers.party_name || 'Plaintiff'} is the person harmed by the retaliation described below.`,
+    `6. Defendant ${answers.opposing_party || 'Defendant'} is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.`,
+    '',
+    'FACTUAL ALLEGATIONS',
+    `7. ${answers.party_name || 'Plaintiff'} alleges that they ${answers.protected_activity || 'engaged in protected activity'}.`,
+    '8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.',
+    `9. After that protected activity, ${answers.party_name || 'Plaintiff'} experienced ${answers.adverse_action || 'adverse action'}.`,
+    `10. The chronology currently available in the record shows that ${answers.timeline || 'the events occurred close in time'}.`,
+    `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${answers.harm || 'compensable harm'}.`,
+    '',
+    'EVIDENTIARY SUPPORT AND NOTICE',
+    `12. The current complaint record includes ${Number((evidence.testimony || []).length + (evidence.documents || []).length)} saved evidence items, including testimony such as ${testimonySummary}.`,
+    `13. The current documentary record includes the following summarized exhibits or records: ${documentSummary}.`,
+    `14. The present support review reflects ${Number(overview.supported_elements || 0)} supported claim elements and ${Number(overview.missing_elements || 0)} open support gaps, which Plaintiff identifies so the pleading can be refined rather than to concede any deficiency in the claim.`,
+    '15. Plaintiff incorporates the current testimony summaries, documentary exhibits, chronology notes, and support review findings as the preliminary exhibit and notice record for this pleading.',
+    ...[...testimonyReferenceLines, ...documentReferenceLines].slice(0, 2).map((line, index) => `${16 + index}. ${line}`),
+    '',
+    'CLAIM FOR RELIEF',
+    'COUNT I - RETALIATION',
+    `18. ${answers.party_name || 'Plaintiff'} repeats and realleges the preceding paragraphs as if fully set forth herein.`,
+    `19. ${answers.party_name || 'Plaintiff'} engaged in protected activity by ${answers.protected_activity || 'engaged in protected activity'}, and Defendant knew or should have known of that protected conduct.`,
+    `20. Defendant thereafter subjected Plaintiff to materially adverse action, including ${answers.adverse_action || 'adverse action'}, under circumstances supporting retaliatory motive and causation.`,
+    '21. The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.',
+    `22. Plaintiff has suffered damages and other losses including ${answers.harm || 'compensable harm'}.`,
+    "23. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.",
+    '',
+    'PRAYER FOR RELIEF',
+    'Wherefore, Plaintiff requests judgment against Defendant and the following relief:',
+    ...relief.map((item, index) => `${index + 1}. ${item}.`),
+    '',
+    'JURY DEMAND',
+    'Plaintiff demands a trial by jury on all issues so triable.',
+    '',
+    'SIGNATURE BLOCK',
+    'Dated: ____________________',
+    '',
+    'Respectfully submitted,',
+    '',
+    `${answers.party_name || 'Plaintiff'}`,
+    'Plaintiff, Pro Se',
+    'Address: ____________________',
+    'Telephone: ____________________',
+    'Email: ____________________',
+    '',
+    'WORKING CASE SYNOPSIS',
+    caseSynopsis ? `Working case synopsis: ${caseSynopsis}.` : 'Working case synopsis: No case synopsis recorded.',
   ].join('\n\n');
   workspaceState.draft = {
     title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} Retaliation Complaint`,

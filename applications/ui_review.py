@@ -128,6 +128,87 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
     }
 
 
+def _parse_complaint_output_json_response(text: str) -> Dict[str, Any]:
+    parsed = _parse_json_response(text)
+    return {
+        "summary": str(parsed.get("summary") or "No router summary returned."),
+        "filing_shape_score": int(parsed.get("filing_shape_score") or 0),
+        "strengths": [str(item) for item in list(parsed.get("strengths") or []) if str(item).strip()],
+        "issues": [dict(item) for item in list(parsed.get("issues") or []) if isinstance(item, dict)],
+        "ui_suggestions": [dict(item) for item in list(parsed.get("ui_suggestions") or []) if isinstance(item, dict)],
+        "raw_response": parsed.get("raw_response"),
+    }
+
+
+def build_complaint_output_review_prompt(
+    markdown_text: str,
+    *,
+    notes: Optional[str] = None,
+) -> str:
+    excerpt = str(markdown_text or "").strip()
+    if len(excerpt) > 12000:
+        excerpt = excerpt[:12000] + "\n...[truncated]..."
+    return (
+        "You are reviewing a generated lawsuit complaint draft and must decide whether it actually reads like a formal legal complaint.\n"
+        "Use the complaint text as the primary artifact.\n"
+        "Focus on formal complaint structure, caption quality, jurisdiction and venue allegations, party allegations, factual chronology, claim counts, prayer for relief, jury demand, signature posture, and exhibit grounding.\n"
+        "Then turn those filing-shape defects into concrete UI/UX repair suggestions for the complaint generator.\n\n"
+        f"Additional notes:\n{notes or 'No additional notes were provided.'}\n\n"
+        "Return strict JSON with this shape:\n"
+        "{\n"
+        '  "summary": "short paragraph",\n'
+        '  "filing_shape_score": 0,\n'
+        '  "strengths": ["what already feels filing-shaped"],\n'
+        '  "issues": [\n'
+        "    {\n"
+        '      "severity": "high|medium|low",\n'
+        '      "finding": "what makes the complaint feel non-formal or weak",\n'
+        '      "complaint_impact": "why this harms the filing artifact",\n'
+        '      "ui_implication": "which UI stage likely caused the weakness"\n'
+        "    }\n"
+        "  ],\n"
+        '  "ui_suggestions": [\n'
+        "    {\n"
+        '      "title": "repair title",\n'
+        '      "target_surface": "intake|evidence|review|draft|integrations",\n'
+        '      "recommendation": "what UI/UX should change to produce a stronger complaint",\n'
+        '      "why_it_matters": "how this improves the final filing"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Complaint draft:\n"
+        f"{excerpt}\n"
+    )
+
+
+def review_complaint_output_with_llm_router(
+    markdown_text: str,
+    *,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> Dict[str, Any]:
+    prompt = build_complaint_output_review_prompt(markdown_text, notes=notes)
+    backend_kwargs = _load_backend_kwargs(config_path, backend_id)
+    if provider:
+        backend_kwargs["provider"] = provider
+    if model:
+        backend_kwargs["model"] = model
+    backend = LLMRouterBackend(**backend_kwargs)
+    raw_response = backend(prompt)
+    return {
+        "review": _parse_complaint_output_json_response(raw_response),
+        "backend": {
+            "id": backend.id,
+            "provider": backend.provider,
+            "model": backend.model,
+            "strategy": "llm_router",
+        },
+    }
+
+
 def build_ui_review_prompt(
     screenshots: Iterable[Path],
     *,
