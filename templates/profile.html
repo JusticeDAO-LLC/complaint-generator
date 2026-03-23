@@ -386,12 +386,19 @@
                     status_message: 'Opened Workspace from the profile data surface.',
                 })
                 : '/workspace';
+            const traceHref = hasContext
+                ? buildProfileSurfaceUrl('/document/optimization-trace', {
+                    user_id: context.userId,
+                    source: 'profile',
+                })
+                : '/document/optimization-trace';
 
             document.getElementById('profile-open-chat').href = chatHref;
             document.getElementById('profile-open-results').href = resultsHref;
             document.getElementById('profile-open-review').href = reviewHref;
             document.getElementById('profile-open-builder').href = builderHref;
             document.getElementById('profile-open-workspace').href = workspaceHref;
+            document.getElementById('profile-open-trace').href = traceHref;
         }
 
         $(document).ready(function() {

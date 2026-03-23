@@ -346,11 +346,21 @@ test.describe('complaint generation workflow', () => {
     await expect(page).toHaveURL(/\/chat\?/);
     await expect(page.locator('#chat-context-summary')).toContainText(/Jane Doe alleges retaliation/i);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
-    await expect(page.locator('#chat-hero-workspace')).toHaveAttribute('href', /user_id=/);
-    await page.locator('#chat-hero-workspace').click();
+    await expect(page.locator('#chat-open-profile')).toHaveAttribute('href', /user_id=/);
+    await page.locator('#chat-open-profile').click();
+    await expect(page).toHaveURL(/\/profile\?/);
+    await expect(page.locator('#profile-context-card')).toBeVisible();
+    await expect(page.locator('#profile-context-summary')).toContainText(/did:key:workspace-flow-/);
+    await expect(page.locator('#profile-open-results')).toHaveAttribute('href', /user_id=/);
+    await page.locator('#profile-open-results').click();
+    await expect(page).toHaveURL(/\/results\?/);
+    await expect(page.locator('#results-context-card')).toBeVisible();
+    await expect(page.locator('#results-context-summary')).toContainText(/did:key:workspace-flow-/);
+    await expect(page.locator('#results-open-workspace')).toHaveAttribute('href', /user_id=/);
+    await page.locator('#results-open-workspace').click();
     await expect(page).toHaveURL(/\/workspace\?/);
     await expect(page).toHaveURL(/user_id=/);
-    await expect(page.locator('#workspace-status')).toContainText(/Opened Workspace from the chat narrative surface\./i);
+    await expect(page.locator('#workspace-status')).toContainText(/Opened Workspace from the results surface\./i);
     await expect(page.locator('#case-synopsis')).toHaveValue(/Jane Doe alleges retaliation/i);
 
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();

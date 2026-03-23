@@ -230,17 +230,31 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#profile-context-card')).toBeVisible();
     await expect(page.locator('#profile-context-summary')).toContainText(/did:key:chat-step-demo/);
     await expect(page.locator('#profile-open-results')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
+    await expect(page.locator('#profile-open-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
     await page.locator('#profile-open-results').click();
     await expect(page).toHaveURL(/\/results\?/);
     await expect(page.locator('#results-context-card')).toBeVisible();
     await expect(page.locator('#results-context-summary')).toContainText(/did:key:chat-step-demo/);
     await expect(page.locator('#results-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
+    await expect(page.locator('#results-open-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
 
     await page.goto(handoffUrl);
     await page.locator('#chat-open-results').click();
     await expect(page).toHaveURL(/\/results\?/);
     await expect(page.locator('#results-context-card')).toBeVisible();
     await expect(page.locator('#results-context-summary')).toContainText(/did:key:chat-step-demo/);
+
+    await page.goto(handoffUrl);
+    await page.locator('#chat-open-profile').click();
+    await page.locator('#profile-open-trace').click();
+    await expect(page).toHaveURL(/\/document\/optimization-trace\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);
+
+    await page.goto(handoffUrl);
+    await page.locator('#chat-open-results').click();
+    await page.locator('#results-open-trace').click();
+    await expect(page).toHaveURL(/\/document\/optimization-trace\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);
 
     await page.goto(handoffUrl);
     await page.locator('#chat-hero-review').click();

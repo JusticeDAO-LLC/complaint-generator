@@ -311,11 +311,18 @@
                     case_synopsis: context.caseSynopsis,
                 })
                 : '/document';
+            const traceHref = hasContext
+                ? buildResultsSurfaceUrl('/document/optimization-trace', {
+                    user_id: context.userId,
+                    source: 'results',
+                })
+                : '/document/optimization-trace';
 
             document.getElementById('results-open-chat').href = chatHref;
             document.getElementById('results-open-workspace').href = workspaceHref;
             document.getElementById('results-open-review').href = reviewHref;
             document.getElementById('results-open-builder').href = builderHref;
+            document.getElementById('results-open-trace').href = traceHref;
         }
 
         hostname = "localhost:19000";
