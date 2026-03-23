@@ -470,11 +470,11 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
     ? 'COUNT I - RETALIATION'
     : `COUNT I - ${claimType.replace(/_/g, ' ').toUpperCase()}`;
   const reliefDescription = {
-    retaliation: 'retaliatory conduct',
-    employment_discrimination: 'discriminatory employment conduct',
-    housing_discrimination: 'discriminatory housing conduct',
-    due_process_failure: 'procedural due process violations',
-    consumer_protection: 'deceptive or unfair consumer practices',
+    retaliation: 'retaliation',
+    employment_discrimination: 'employment discrimination',
+    housing_discrimination: 'housing discrimination',
+    due_process_failure: 'due process violations',
+    consumer_protection: 'consumer-protection violations',
   }[claimType] || 'unlawful conduct';
   const natureOfAction = {
     retaliation: `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${answers.protected_activity || 'engaged in protected activity'}.`,

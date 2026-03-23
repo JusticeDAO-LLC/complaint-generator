@@ -198,6 +198,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#chat-context-return-link')).toHaveAttribute('href', /\/workspace\?target_tab=review/);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
     await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    await expect(page.locator('#chat-hero-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
+    await expect(page.locator('#chat-hero-review')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-review')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-builder')).toHaveAttribute('href', /case_synopsis=Jordan\+Example/);
@@ -221,6 +223,11 @@ test.describe('website surface navigation', () => {
 
     await page.goto(handoffUrl);
     await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    await page.locator('#chat-hero-review').click();
+    await expect(page).toHaveURL(/\/claim-support-review\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);
+
+    await page.goto(handoffUrl);
     await page.locator('#chat-open-review').click();
     await expect(page).toHaveURL(/\/claim-support-review\?/);
     await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);

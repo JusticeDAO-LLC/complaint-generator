@@ -624,11 +624,11 @@ class ComplaintWorkspaceService:
         ) or "No documentary exhibits have been summarized yet"
         complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
         relief_description = {
-            "retaliation": "retaliatory conduct",
-            "employment_discrimination": "discriminatory employment conduct",
-            "housing_discrimination": "discriminatory housing conduct",
-            "due_process_failure": "procedural due process violations",
-            "consumer_protection": "deceptive or unfair consumer practices",
+            "retaliation": "retaliation",
+            "employment_discrimination": "employment discrimination",
+            "housing_discrimination": "housing discrimination",
+            "due_process_failure": "due process violations",
+            "consumer_protection": "consumer-protection violations",
         }.get(claim_type, "unlawful conduct")
         nature_of_action = {
             "retaliation": (

@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import backends
 from typer.testing import CliRunner
 
 try:
@@ -305,6 +306,84 @@ def test_package_generate_wrapper_passes_llm_generation_options(monkeypatch, tmp
     assert observed_kwargs["provider"] == "stub-provider"
     assert observed_kwargs["model"] == "stub-model"
     assert observed_kwargs["backend_id"] == "package-wrapper-backend"
+
+
+def test_package_generate_wrapper_can_salvage_near_miss_llm_complaint(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "package-llm-salvage-sessions")
+    submit_intake_answers(
+        "package-llm-salvage-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+        service=service,
+    )
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+
+        def __call__(self, prompt):
+            assert "Preferred complaint heading: COMPLAINT FOR RETALIATION" in prompt
+            return json.dumps(
+                {
+                    "title": "Jordan Example v. Acme Corporation Complaint",
+                    "body": (
+                        "IN THE UNITED STATES DISTRICT COURT\n\n"
+                        "Civil Action No. ________________\n"
+                        "COMPLAINT FOR RETALIATION OVERVIEW\n"
+                        "JURY TRIAL DEMANDED\n\n"
+                        "NATURE OF THE ACTION\n"
+                        "1. Plaintiff reported discrimination to HR.\n\n"
+                        "JURISDICTION AND VENUE\n"
+                        "2. Venue is proper in this district.\n\n"
+                        "PARTIES\n"
+                        "3. Plaintiff was employed by Defendant.\n\n"
+                        "FACTUAL ALLEGATIONS\n"
+                        "4. Plaintiff engaged in protected activity.\n"
+                        "5. Defendant terminated Plaintiff two days later.\n\n"
+                        "EVIDENTIARY SUPPORT AND NOTICE\n"
+                        "6. The current complaint record includes testimony tied to causation.\n\n"
+                        "CLAIM FOR RELIEF\n"
+                        "COUNT I - WRONG HEADING\n"
+                        "7. Defendant retaliated against Plaintiff.\n\n"
+                        "PRAYER FOR RELIEF\n"
+                        "8. Plaintiff seeks back pay.\n\n"
+                        "JURY DEMAND\n"
+                        "9. Plaintiff demands a jury trial.\n\n"
+                        "SIGNATURE BLOCK\n"
+                        "Jordan Example\n\n"
+                        "APPENDIX A - CASE SYNOPSIS\n"
+                        "Workflow summary prepared through the SDK."
+                    ),
+                    "requested_relief": ["Back pay"],
+                }
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = generate_complaint(
+        "package-llm-salvage-user",
+        requested_relief=["Back pay"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+        service=service,
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
+    assert "COUNT I - RETALIATION" in payload["draft"]["body"]
+    assert "APPENDIX A - CASE SYNOPSIS" not in payload["draft"]["body"]
+    assert "workflow summary" not in payload["draft"]["body"].lower()
 
 
 def test_package_ui_review_wrappers_delegate_to_matching_mcp_tools(tmp_path, monkeypatch):
