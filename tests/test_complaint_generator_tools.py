@@ -650,6 +650,9 @@ def test_llm_draft_can_salvage_near_miss_formal_complaint_output(monkeypatch, tm
     assert payload["draft"]["draft_strategy"] == "llm_router"
     assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
     assert payload["draft"]["draft_backend"]["model"] == "stub-model"
+    assert "trimmed_workspace_appendices" in payload["draft"]["draft_normalizations"]
+    assert "normalized_count_heading" in payload["draft"]["draft_normalizations"]
+    assert "replaced:current complaint record" in payload["draft"]["draft_normalizations"]
     assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
     assert "COUNT I - RETALIATION" in payload["draft"]["body"]
     assert "APPENDIX A - CASE SYNOPSIS" not in payload["draft"]["body"]

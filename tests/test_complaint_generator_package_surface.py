@@ -380,6 +380,7 @@ def test_package_generate_wrapper_can_salvage_near_miss_llm_complaint(monkeypatc
 
     assert payload["draft"]["draft_strategy"] == "llm_router"
     assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert "trimmed_workspace_appendices" in payload["draft"]["draft_normalizations"]
     assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
     assert "COUNT I - RETALIATION" in payload["draft"]["body"]
     assert "APPENDIX A - CASE SYNOPSIS" not in payload["draft"]["body"]

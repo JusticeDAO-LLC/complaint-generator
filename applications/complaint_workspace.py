@@ -96,6 +96,19 @@ def _split_lines(value: Optional[str]) -> List[str]:
     return [line.strip() for line in str(value or "").splitlines() if line.strip()]
 
 
+def _normalize_fragment(value: Optional[str], fallback: str) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(r"[.?!,;:]+$", "", text)
+    return text or fallback
+
+
+def _sentence_fragment(value: Optional[str], fallback: str) -> str:
+    text = _normalize_fragment(value, fallback)
+    if not text:
+        return fallback
+    return f"{text[0].lower()}{text[1:]}" if text[:1].isalpha() else text
+
+
 def _slugify_filename(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip().lower())
     return normalized.strip("-") or "complaint-packet"
@@ -242,10 +255,12 @@ def _strip_code_fences(text: str) -> str:
     return stripped
 
 
-def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -> str:
+def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -> tuple[str, List[str]]:
     normalized = str(body or "").replace("\r\n", "\n").strip()
     if not normalized:
-        return ""
+        return "", []
+
+    notes: List[str] = []
 
     # Trim obvious non-pleading appendices or workspace scaffolding that can
     # appear after an otherwise-usable complaint body.
@@ -263,6 +278,7 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
     cut_points = [normalized.find(marker) for marker in trailing_section_markers if normalized.find(marker) > 0]
     if cut_points:
         normalized = normalized[: min(cut_points)].rstrip()
+        notes.append("trimmed_workspace_appendices")
 
     replacements = {
         "current complaint record": "present evidentiary record",
@@ -274,7 +290,10 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
         "sdk": "record",
     }
     for old, new in replacements.items():
-        normalized = re.sub(re.escape(old), new, normalized, flags=re.IGNORECASE)
+        updated = re.sub(re.escape(old), new, normalized, flags=re.IGNORECASE)
+        if updated != normalized:
+            notes.append(f"replaced:{old}")
+            normalized = updated
 
     normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
 
@@ -283,20 +302,26 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
     if claim_type:
         preferred_heading = f"COMPLAINT FOR {_claim_type_display_name(claim_type).upper()}"
         preferred_count_heading = _claim_type_count_heading(claim_type)
-        normalized = re.sub(
+        updated_heading = re.sub(
             r"(?m)^COMPLAINT FOR .+$",
             preferred_heading,
             normalized,
             count=1,
         )
-        normalized = re.sub(
+        if updated_heading != normalized:
+            notes.append("normalized_complaint_heading")
+            normalized = updated_heading
+        updated_count = re.sub(
             r"(?m)^COUNT I - .+$",
             preferred_count_heading,
             normalized,
             count=1,
         )
+        if updated_count != normalized:
+            notes.append("normalized_count_heading")
+            normalized = updated_count
 
-    return normalized
+    return normalized, sorted(set(notes))
 
 
 def _parse_json_object(text: str) -> Dict[str, Any]:
@@ -592,10 +617,22 @@ class ComplaintWorkspaceService:
         claim_label = _claim_type_display_name(claim_type)
         plaintiff = answers.get("party_name") or "Plaintiff"
         defendant = answers.get("opposing_party") or "Defendant"
-        protected_activity = answers.get("protected_activity") or "engaged in protected activity"
-        adverse_action = answers.get("adverse_action") or "suffered adverse action"
-        timeline = answers.get("timeline") or "the events occurred close in time"
-        harm = answers.get("harm") or "suffered compensable harm"
+        protected_activity = _sentence_fragment(
+            answers.get("protected_activity"),
+            "engaged in protected activity",
+        )
+        adverse_action = _sentence_fragment(
+            answers.get("adverse_action"),
+            "suffered an adverse action",
+        )
+        timeline = _sentence_fragment(
+            answers.get("timeline"),
+            "the events occurred close in time",
+        )
+        harm = _sentence_fragment(
+            answers.get("harm"),
+            "suffered compensable harm",
+        )
         relief = requested_relief or existing_draft.get("requested_relief") or [
             "Compensatory damages",
             "Back pay",
@@ -1069,7 +1106,7 @@ class ComplaintWorkspaceService:
             raw_text = _strip_code_fences(raw_response)
             if _has_required_formal_complaint_markers(raw_text):
                 llm_body = raw_text
-        llm_body = _normalize_llm_complaint_body(
+        llm_body, normalization_notes = _normalize_llm_complaint_body(
             llm_body,
             base_draft.get("claim_type") or state.get("claim_type"),
         )
@@ -1097,6 +1134,7 @@ class ComplaintWorkspaceService:
                 "provider": getattr(backend, "provider", provider),
                 "model": getattr(backend, "model", model),
             },
+            "draft_normalizations": normalization_notes,
         }
 
     def _invoke_llm_draft_backend_with_timeout(self, backend: Any, prompt: str) -> str:
@@ -1625,6 +1663,7 @@ class ComplaintWorkspaceService:
                 "has_draft": bool(state.get("draft")),
                 "draft_strategy": str(draft.get("draft_strategy") or "template"),
                 "draft_fallback_reason": draft_fallback_reason,
+                "draft_normalization_count": len(list(draft.get("draft_normalizations") or [])),
                 "complaint_readiness": self.get_complaint_readiness(user_id),
                 "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
                 "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
@@ -2105,6 +2144,7 @@ class ComplaintWorkspaceService:
                 "artifact_type": "complaint_export",
                 "claim_type": str(packet_payload.get("packet", {}).get("claim_type") or ""),
                 "draft_strategy": str(draft.get("draft_strategy") or "template"),
+                "draft_normalizations": list(draft.get("draft_normalizations") or []),
                 "text_excerpt": str(draft.get("body") or "").strip()[:600],
                 "markdown_filename": str(markdown_artifact.get("filename") or ""),
                 "pdf_filename": str(pdf_artifact.get("filename") or ""),

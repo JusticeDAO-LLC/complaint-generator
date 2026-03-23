@@ -2152,8 +2152,9 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const strategyLabel = draft.draft_strategy || 'none';
             const backendParts = [backend.provider, backend.model].filter(Boolean).join(' / ');
             const fallbackReason = String(draft.draft_fallback_reason || '').trim();
+            const normalizationNotes = Array.isArray(draft.draft_normalizations) ? draft.draft_normalizations : [];
             document.getElementById('draft-generation-meta').textContent = draft.body
-                ? `Draft strategy: ${strategyLabel}${backendParts ? ` (${backendParts})` : ''}. Claim type: ${claimType.replace(/_/g, ' ')}.${fallbackReason ? ` Fallback reason: ${fallbackReason}.` : ''}`
+                ? `Draft strategy: ${strategyLabel}${backendParts ? ` (${backendParts})` : ''}. Claim type: ${claimType.replace(/_/g, ' ')}.${normalizationNotes.length ? ` LLM cleanup: ${normalizationNotes.join(', ')}.` : ''}${fallbackReason ? ` Fallback reason: ${fallbackReason}.` : ''}`
                 : 'Draft generation strategy details will appear here once a complaint is generated.';
             renderDraftReadiness(sessionPayload);
             syncSynopsisMirrors(document.getElementById('case-synopsis').value);
