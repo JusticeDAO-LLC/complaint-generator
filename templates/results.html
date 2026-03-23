@@ -1,80 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile Data</title>
-    <!-- Latest compiled and minified CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/complaint_app_shell.css">
-    <!-- jQuery library -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script defer src="/static/complaint_mcp_sdk.js"></script>
     <script defer src="/static/complaint_app_shell.js"></script>
     <style>
+        :root {
+            --bg-top: #f7efe3;
+            --bg-bottom: #efe3d1;
+            --paper: rgba(255, 251, 246, 0.95);
+            --line: rgba(92, 58, 31, 0.14);
+            --ink: #1f1711;
+            --muted: #6a5d52;
+            --accent: #9c3e14;
+            --accent-deep: #742809;
+            --shadow: 0 24px 60px rgba(57, 36, 19, 0.14);
+            --radius-xl: 30px;
+            --radius-lg: 22px;
+            --radius-md: 18px;
+            --content-width: 1120px;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            background: #f8fafc;
-            color: #0f172a;
-            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 32px 20px;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(204, 127, 77, 0.18), transparent 24%),
+                radial-gradient(circle at top right, rgba(33, 77, 60, 0.12), transparent 20%),
+                linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+            font-family: "Public Sans", "Segoe UI", sans-serif;
         }
 
-        .results-shell {
-            max-width: 960px;
+        a { color: inherit; }
+
+        .page-shell {
+            width: min(var(--content-width), calc(100% - 22px));
             margin: 0 auto;
-            background: #ffffff;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
-            padding: 28px;
+            padding: 22px 0 56px;
         }
 
+        .masthead,
+        .hero-card,
+        .results-card,
+        .panel-card {
+            border: 1px solid var(--line);
+            background: var(--paper);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+            border-radius: var(--radius-xl);
+        }
+
+        .masthead,
+        .hero-card,
+        .results-card,
+        .panel-card {
+            padding: 22px;
+        }
+
+        .topbar,
         .surface-links {
             display: flex;
-            gap: 12px;
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            gap: 10px;
         }
 
+        .topbar {
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-mark {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #8c2f0d, #d16d33);
+            color: #fff8f3;
+            font: 800 22px/1 "Segoe UI", Arial, sans-serif;
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        .brand-subtitle,
+        .lead,
+        .panel-card p {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .brand-subtitle { font-size: 14px; }
+
+        .surface-links { margin-top: 12px; }
+
         .surface-link {
-            display: inline-block;
-            padding: 10px 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 0 15px;
             border-radius: 999px;
-            background: #e2e8f0;
-            color: #0f172a;
-            font-weight: 600;
+            background: rgba(255, 249, 243, 0.9);
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            color: var(--accent-deep);
             text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .hero {
+            margin-top: 16px;
+            display: grid;
+            grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+            gap: 16px;
+        }
+
+        h1, h2 {
+            margin: 0;
+            font-family: "Iowan Old Style", Georgia, serif;
+            letter-spacing: -0.03em;
+        }
+
+        h1 {
+            margin-top: 10px;
+            font-size: clamp(2.1rem, 4vw, 3.4rem);
+            line-height: 0.96;
+            max-width: 10ch;
+        }
+
+        .lead {
+            margin-top: 14px;
+            max-width: 56ch;
+            font-size: 1rem;
         }
 
         #Err {
             display: none;
             margin-bottom: 16px;
-            padding: 12px 14px;
-            border-radius: 12px;
-            background: #fee2e2;
-            color: #991b1b;
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            background: #fce8e8;
+            color: #9f1d1d;
+            font-weight: 700;
         }
 
         #profile_data {
             white-space: pre-wrap;
             word-break: break-word;
-            font-family: "Courier New", monospace;
-            background: #f8fafc;
-            border: 1px solid #cbd5e1;
-            border-radius: 16px;
+            min-height: 320px;
             padding: 18px;
-            min-height: 240px;
+            border-radius: var(--radius-lg);
+            background: #fffdfa;
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            font-family: "IBM Plex Mono", "Courier New", monospace;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        @media (max-width: 920px) {
+            .hero {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 760px) {
+            .page-shell {
+                width: min(var(--content-width), calc(100% - 18px));
+            }
+
+            .masthead,
+            .hero-card,
+            .results-card,
+            .panel-card {
+                padding: 20px;
+                border-radius: 22px;
+            }
+
+            .topbar,
+            .surface-links {
+                flex-direction: column;
+            }
+
+            .surface-link {
+                width: 100%;
+            }
         }
     </style>
     <script>
         hostname = "localhost:19000";
 
         function load_profile(username, password, email) {
-
-            $.ajaxSetup({
-                async: false
-            }); //execute synchronously
-            var returnData = null; //define returnData outside the scope of the callback function
+            $.ajaxSetup({ async: false });
+            var returnData = null;
             $.ajax({
                 type: "POST",
                 contentType: 'application/json',
@@ -86,24 +228,13 @@
                     returnData = data;
                 }
             });
-
-            // alert(JSON.stringify(returnData));
-            $.ajaxSetup({
-                async: true
-            }); //return to default setting
-            //alert(JSON.stringify(returnData));
-            //alert(returnData[0]["body"]);
-            //data = returnData[0]["data"];
-            // alert(JSON.stringify(returnData));
+            $.ajaxSetup({ async: true });
             if ("Err" in returnData) {
-                // alert("This Login Err: " + JSON.stringify(returnData));
                 show_error(returnData["Err"]);
                 return returnData;
             } else {
-                // window.location();
                 return returnData;
             }
-            return returnData;
         }
 
         function show_error(message) {
@@ -111,7 +242,6 @@
             form_field = "<span>" + message + "</span>";
             $("#Err").html(form_field);
             $("#Err").show();
-            // alert(message)
         }
 
         $(document).ready(function() {
@@ -123,52 +253,62 @@
                 async: false,
                 data: {},
                 success: function(data) {
-                    // alert(data);
                     cookies = data;
                 }
             });
-            // alert(JSON.parse(cookies));
             hashed_username = JSON.parse(cookies)["hashed_username"];
             hashed_password = JSON.parse(cookies)["hashed_password"];
-            // alert(hashed_username);
             profile = load_profile(hashed_username, hashed_password);
             testdata = profile["data"];
             testdata = JSON.parse(testdata);
-            $("#profile_data").html(JSON.stringify(testdata));
-
+            $("#profile_data").html(JSON.stringify(testdata, null, 2));
         });
     </script>
 </head>
-
 <body>
-    <div class="results-shell">
-        <h1>Profile Data</h1>
-        <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
-            <a class="surface-link" href="/">Landing</a>
-            <a class="surface-link" href="/home">Account</a>
-            <a class="surface-link" href="/chat">Chat</a>
-            <a class="surface-link" href="/profile">Profile</a>
-            <a class="surface-link" href="/results">Results</a>
-            <a class="surface-link" href="/claim-support-review">Review</a>
-            <a class="surface-link" href="/document">Builder</a>
-            <a class="surface-link" href="/document/optimization-trace">Trace</a>
-            <a class="surface-link" href="/mlwysiwyg">Editor</a>
-            <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
-            <a class="surface-link" href="/dashboards">Dashboards</a>
-        </div>
-        <div class="Err">
-            <div id="Err">
-                <br/>
+    <div class="page-shell">
+        <header class="masthead">
+            <div class="topbar">
+                <div class="brand">
+                    <div class="brand-mark">LP</div>
+                    <div>
+                        <div class="eyebrow">Complaint Output Snapshot</div>
+                        <div class="brand-title">Results</div>
+                        <div class="brand-subtitle">A cleaner view of the stored complaint record and the data currently available to downstream surfaces.</div>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div id="profile_data">
+            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                <a class="surface-link" href="/">Landing</a>
+                <a class="surface-link" href="/home">Account</a>
+                <a class="surface-link" href="/chat">Chat</a>
+                <a class="surface-link" href="/profile">Profile</a>
+                <a class="surface-link" href="/results">Results</a>
+                <a class="surface-link" href="/claim-support-review">Review</a>
+                <a class="surface-link" href="/document">Builder</a>
+                <a class="surface-link" href="/mlwysiwyg">Editor</a>
+            </div>
+        </header>
 
-        </div>
+        <section class="hero">
+            <article class="hero-card">
+                <div class="eyebrow">Readable Stored Output</div>
+                <h1>Results without the raw-demo feel.</h1>
+                <p class="lead">This surface still exposes the stored complaint data, but it now presents it like part of a coherent legal workflow rather than a blank technical dump.</p>
+            </article>
+            <aside class="panel-card">
+                <div class="eyebrow">Why This Page Exists</div>
+                <h2 style="margin-top: 8px;">Use it to verify what the system knows</h2>
+                <p style="margin-top: 12px;">This is the page to inspect what the account has stored so far before moving into review or drafting.</p>
+            </aside>
+        </section>
+
+        <section class="results-card" style="margin-top: 18px;">
+            <div id="Err"></div>
+            <h2>Stored complaint results</h2>
+            <p style="margin-top: 10px; color: var(--muted);">The raw structured payload remains available here for verification and troubleshooting.</p>
+            <div id="profile_data"></div>
+        </section>
     </div>
-
-
-
 </body>
-
-
 </html>

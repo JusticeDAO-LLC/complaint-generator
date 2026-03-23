@@ -1,65 +1,280 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile Data</title>
-    <!-- Latest compiled and minified CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/complaint_app_shell.css">
-    <!-- jQuery library -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script defer src="/static/complaint_mcp_sdk.js"></script>
     <script defer src="/static/complaint_app_shell.js"></script>
     <style>
+        :root {
+            --bg-top: #f7efe3;
+            --bg-bottom: #efe3d1;
+            --paper: rgba(255, 251, 246, 0.95);
+            --line: rgba(92, 58, 31, 0.14);
+            --ink: #1f1711;
+            --muted: #6a5d52;
+            --accent: #9c3e14;
+            --accent-deep: #742809;
+            --accent-soft: #f7dcc8;
+            --forest: #214d3c;
+            --shadow: 0 24px 60px rgba(57, 36, 19, 0.14);
+            --radius-xl: 30px;
+            --radius-lg: 22px;
+            --radius-md: 18px;
+            --content-width: 1200px;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            padding: 1rem;
+            margin: 0;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(204, 127, 77, 0.18), transparent 24%),
+                radial-gradient(circle at top right, rgba(33, 77, 60, 0.12), transparent 20%),
+                linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+            font-family: "Public Sans", "Segoe UI", sans-serif;
+        }
+
+        a { color: inherit; }
+
+        .page-shell {
+            width: min(var(--content-width), calc(100% - 24px));
+            margin: 0 auto;
+            padding: 22px 0 56px;
+        }
+
+        .masthead,
+        .hero-card,
+        .panel-card,
+        .data-card {
+            border: 1px solid var(--line);
+            background: var(--paper);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+        }
+
+        .masthead,
+        .hero-card,
+        .panel-card,
+        .data-card {
+            border-radius: var(--radius-xl);
+        }
+
+        .masthead {
+            padding: 18px 20px;
+        }
+
+        .topbar,
+        .surface-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .topbar {
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-mark {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #8c2f0d, #d16d33);
+            color: #fff8f3;
+            font: 800 22px/1 "Segoe UI", Arial, sans-serif;
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        .brand-subtitle,
+        .lead,
+        .panel-card p,
+        .chat-history-explanation {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .brand-subtitle {
+            font-size: 14px;
+        }
+
+        .surface-links {
+            margin-top: 12px;
+        }
+
+        .surface-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 0 15px;
+            border-radius: 999px;
+            background: rgba(255, 249, 243, 0.9);
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            color: var(--accent-deep);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .hero {
+            margin-top: 16px;
+            display: grid;
+            grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+            gap: 16px;
+        }
+
+        .hero-card,
+        .panel-card,
+        .data-card {
+            padding: 24px;
+        }
+
+        h1, h2, h3 {
+            margin: 0;
+            font-family: "Iowan Old Style", Georgia, serif;
+            letter-spacing: -0.03em;
+        }
+
+        h1 {
+            margin-top: 10px;
+            font-size: clamp(2.1rem, 4vw, 3.4rem);
+            line-height: 0.96;
+            max-width: 10ch;
+        }
+
+        .lead {
+            margin-top: 14px;
+            font-size: 1rem;
+            max-width: 56ch;
+        }
+
+        .hero-grid,
+        .content-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .hero-grid {
+            margin-top: 18px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .mini-card {
+            padding: 16px;
+            border-radius: var(--radius-lg);
+            background: rgba(255, 247, 238, 0.92);
+            border: 1px solid rgba(84, 59, 37, 0.1);
+        }
+
+        .mini-card strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .mini-card span {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .content-grid {
+            margin-top: 18px;
+            grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+            align-items: start;
+        }
+
+        #Err {
+            display: none;
+            margin-bottom: 16px;
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            background: #fce8e8;
+            color: #9f1d1d;
+            font-weight: 700;
         }
 
         #profile_data {
             white-space: pre-wrap;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 0.25rem;
-            padding: 1rem;
-            margin-top: 1rem;
+            word-break: break-word;
+            min-height: 320px;
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            background: #fffdfa;
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            font-family: "IBM Plex Mono", "Courier New", monospace;
+            font-size: 13px;
+            line-height: 1.55;
         }
 
         #chat_history {
-            margin-top: 1rem;
+            display: grid;
+            gap: 12px;
         }
 
         .chat-history-entry {
-            border-bottom: 1px solid #e9ecef;
-            padding: 0.5rem 0;
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            background: rgba(255, 250, 244, 0.92);
+            border: 1px solid rgba(84, 59, 37, 0.08);
         }
 
-        .chat-history-explanation {
-            color: #6c757d;
-            margin-left: 1rem;
-            font-size: 0.9rem;
+        @media (max-width: 1020px) {
+            .hero,
+            .content-grid,
+            .hero-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
-        .surface-links {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
+        @media (max-width: 760px) {
+            .page-shell {
+                width: min(var(--content-width), calc(100% - 18px));
+            }
 
-        .surface-link {
-            display: inline-block;
-            padding: 10px 16px;
-            border-radius: 999px;
-            background: #e2e8f0;
-            color: #0f172a;
-            font-weight: 600;
-            text-decoration: none;
-        }
+            .masthead,
+            .hero-card,
+            .panel-card,
+            .data-card {
+                padding: 20px;
+                border-radius: 22px;
+            }
 
-        .profile-shell {
-            max-width: 960px;
-            margin: 0 auto;
+            .topbar,
+            .surface-links {
+                flex-direction: column;
+            }
+
+            .surface-link {
+                width: 100%;
+            }
         }
     </style>
     <script src="/static/chat_entry_utils.js"></script>
@@ -74,33 +289,73 @@
         });
     </script>
 </head>
-
 <body>
-    <div class="profile-shell">
-        <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
-            <a class="surface-link" href="/">Landing</a>
-            <a class="surface-link" href="/home">Account</a>
-            <a class="surface-link" href="/chat">Chat</a>
-            <a class="surface-link" href="/profile">Profile</a>
-            <a class="surface-link" href="/results">Results</a>
-            <a class="surface-link" href="/claim-support-review">Review</a>
-            <a class="surface-link" href="/document">Builder</a>
-            <a class="surface-link" href="/document/optimization-trace">Trace</a>
-            <a class="surface-link" href="/mlwysiwyg">Editor</a>
-            <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
-            <a class="surface-link" href="/dashboards">Dashboards</a>
-        </div>
-        <div class="Err">
-            <div id="Err">
-                <br/>
+    <div class="page-shell">
+        <header class="masthead">
+            <div class="topbar">
+                <div class="brand">
+                    <div class="brand-mark">LP</div>
+                    <div>
+                        <div class="eyebrow">Complaint Record</div>
+                        <div class="brand-title">Profile Data</div>
+                        <div class="brand-subtitle">A readable snapshot of the complaint account, stored facts, and recent guided intake history.</div>
+                    </div>
+                </div>
             </div>
-        </div>
-        <h4>Profile Data</h4>
-        <pre id="profile_data"></pre>
-        <h4>Recent Chat History</h4>
-        <div id="chat_history"></div>
+            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                <a class="surface-link" href="/">Landing</a>
+                <a class="surface-link" href="/home">Account</a>
+                <a class="surface-link" href="/chat">Chat</a>
+                <a class="surface-link" href="/profile">Profile</a>
+                <a class="surface-link" href="/results">Results</a>
+                <a class="surface-link" href="/claim-support-review">Review</a>
+                <a class="surface-link" href="/document">Builder</a>
+                <a class="surface-link" href="/mlwysiwyg">Editor</a>
+            </div>
+        </header>
+
+        <section class="hero">
+            <article class="hero-card">
+                <div class="eyebrow">Readable Complaint Snapshot</div>
+                <h1>Profile data without the clutter.</h1>
+                <p class="lead">This page should help a client or operator understand what the system has stored so far, not force them to stare at an unframed JSON blob. The raw data is still here for verification, but the page now explains what it represents.</p>
+                <div class="hero-grid">
+                    <div class="mini-card">
+                        <strong>Account state</strong>
+                        <span>The stored profile shows which complaint record is active in this browser session.</span>
+                    </div>
+                    <div class="mini-card">
+                        <strong>Intake history</strong>
+                        <span>Recent chat entries make it easier to trace how the factual record was built over time.</span>
+                    </div>
+                    <div class="mini-card">
+                        <strong>Connected workflow</strong>
+                        <span>This data feeds the review dashboard, results page, and draft builder instead of living in isolation.</span>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="panel-card">
+                <div class="eyebrow">How To Use This</div>
+                <h2 style="margin-top: 8px;">What to check here</h2>
+                <p style="margin-top: 12px;">Use this page to confirm that the right complaint account is loaded, check the saved data that will feed later stages, and compare the structured profile with the intake conversation.</p>
+            </aside>
+        </section>
+
+        <section class="content-grid">
+            <div class="data-card">
+                <div id="Err"></div>
+                <h2>Structured complaint profile</h2>
+                <p style="margin-top: 10px;">This raw record is still available for technical review, but it now sits inside a clearer presentation.</p>
+                <pre id="profile_data"></pre>
+            </div>
+
+            <div class="data-card">
+                <h2>Recent chat history</h2>
+                <p style="margin-top: 10px;">These entries show how the complaint narrative and follow-up questions were developed.</p>
+                <div id="chat_history"></div>
+            </div>
+        </section>
     </div>
 </body>
-
-
 </html>

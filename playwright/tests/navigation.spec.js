@@ -36,18 +36,19 @@ test.describe('website surface navigation', () => {
   test('homepage presents a client-safe intake entry point and captures a screenshot', async ({ page }, testInfo) => {
     await page.goto('/');
 
-    await expect(page.locator('h1').first()).toContainText(/Prepare your complaint in the order a real case should be built/i);
-    await expect(page.locator('body')).toContainText(/Resume Your Complaint/i);
-    await expect(page.locator('body')).toContainText(/How The Process Works/i);
-    await expect(page.locator('body')).toContainText(/What a client should know before using this tool/i);
+    await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
+    await expect(page.locator('body')).toContainText(/Build your complaint one step at a time/i);
+    await expect(page.locator('body')).toContainText(/Resume an existing complaint/i);
+    await expect(page.locator('body')).toContainText(/Three Simple Steps/i);
+    await expect(page.locator('body')).toContainText(/Choose Your Next Step/i);
     await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
     await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:|Unavailable/i);
     await expect(page.locator('#cg-app-shell')).toHaveCount(0);
-    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 1/i);
-    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 5/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Secure Intake/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
 
     const screenshotPath = testInfo.outputPath('homepage-overview.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -57,9 +58,31 @@ test.describe('website surface navigation', () => {
     });
   });
 
+  test('homepage remains usable on a narrow mobile viewport', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+
+    await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator|Prepare your complaint in the order a real case should be built/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toBeVisible();
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 1/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 5/i);
+    await expect(page.locator('#resume-panel')).toBeVisible();
+    await expect(page.locator('#homepage-session-status')).toContainText(/Connecting to the complaint workspace|Shared complaint session loaded/i);
+    await expect(page.locator('#homepage-next-step')).toBeVisible();
+    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+
+    const screenshotPath = testInfo.outputPath('homepage-mobile-overview.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await testInfo.attach('homepage-mobile-overview', {
+      path: screenshotPath,
+      contentType: 'image/png',
+    });
+  });
+
   test('all routed complaint surfaces load and expose expected navigation affordances', async ({ page }) => {
     const routes = [
-      ['/', /Prepare your complaint in the order a real case should be built/i],
+      ['/', /Lex Publicus Complaint Generator/i],
       ['/home', /Lex Publicus Chat App/i],
       ['/chat', /Lex Publicus Chat App/i],
       ['/profile', /Profile Data/i],
@@ -83,14 +106,14 @@ test.describe('website surface navigation', () => {
     }
 
     await page.goto('/');
-    await expect(page.locator('h1').first()).toContainText(/Prepare your complaint in the order a real case should be built/i);
+    await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
     await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:/i);
     await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
-    await expect(page.locator('body')).toContainText(/How The Process Works/i);
-    await expect(page.locator('body')).toContainText(/What a client should know before using this tool/i);
+    await expect(page.locator('body')).toContainText(/Three Simple Steps/i);
+    await expect(page.locator('body')).toContainText(/Choose Your Next Step/i);
     await expect(page.locator('#homepage-next-step')).toBeVisible();
     await expect(page.locator('#cg-app-shell')).toHaveCount(0);
 
@@ -344,7 +367,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#homepage-session-status')).toContainText(cachedDid);
     await expect(page.locator('#homepage-resume-link')).toHaveAttribute('href', '/claim-support-review');
     await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', '/claim-support-review');
-    await expect(page.locator('#homepage-open-workspace')).toContainText(/Review Claim Support/i);
+    await expect(page.locator('#homepage-open-workspace')).toContainText(/Review Claim Support|Review Support First/i);
     await expect(page.locator('#homepage-next-step')).toContainText(/Inspect missing claim elements/i);
 
     for (const path of ['/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
