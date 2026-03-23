@@ -439,13 +439,13 @@
 from complaint_generator.mcp import handle_jsonrpc_message
 
 service = ComplaintWorkspaceService()
-session = service.get_session("demo-user")</pre>
+session = service.get_session("did:key:example")</pre>
                         </div>
                         <div class="tool-card">
                             <h3>Python CLI</h3>
-                            <pre>complaint-workspace session --user-id workshop-user
-complaint-workspace answer --user-id workshop-user --question-id protected_activity --answer-text "Reported discrimination to HR"
-complaint-workspace generate --user-id workshop-user --requested-relief "Back pay|Injunctive relief"</pre>
+                            <pre>complaint-workspace session --user-id did:key:example
+complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
+complaint-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"</pre>
                         </div>
                         <div class="tool-card">
                             <h3>MCP stdio server</h3>
@@ -455,7 +455,8 @@ complaint-workspace generate --user-id workshop-user --requested-relief "Back pa
                             <h3>JavaScript MCP SDK</h3>
                             <pre>const client = new window.ComplaintMcpSdk.ComplaintMcpClient();
 await client.initialize();
-await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
+const did = await client.getOrCreateDid();
+await client.callTool('complaint.review_case', { user_id: did });</pre>
                             <div class="chip-row" id="sdk-server-info"></div>
                         </div>
                         <div class="tool-card">
@@ -474,7 +475,7 @@ await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
     <script>
         const { ComplaintMcpClient } = window.ComplaintMcpSdk;
         const client = new ComplaintMcpClient();
-        const workspaceUserId = new URLSearchParams(window.location.search).get('user_id') || 'demo-user';
+        let workspaceUserId = new URLSearchParams(window.location.search).get('user_id') || null;
         let workspaceSession = null;
 
         function setStatus(message) {
@@ -586,6 +587,7 @@ await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
             const serverInfo = (initializationPayload && initializationPayload.serverInfo) || {};
             const protocolVersion = (initializationPayload && initializationPayload.protocolVersion) || 'unknown';
             document.getElementById('sdk-server-info').innerHTML = `
+                <span class="chip good" id="did-chip">did: ${escapeHtml(workspaceUserId || 'unknown')}</span>
                 <span class="chip good">server: ${escapeHtml(serverInfo.name || 'unknown')}</span>
                 <span class="chip">version: ${escapeHtml(serverInfo.version || 'unknown')}</span>
                 <span class="chip">protocol: ${escapeHtml(protocolVersion)}</span>
@@ -669,8 +671,10 @@ await client.callTool('complaint.review_case', { user_id: 'demo-user' });</pre>
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
 
-        Promise.all([client.initialize(), refreshWorkspace(), client.listTools()]).then((results) => {
-            const initializationPayload = results[0];
+        Promise.all([client.getOrCreateDid(), client.initialize(), client.listTools()]).then(async (results) => {
+            workspaceUserId = workspaceUserId || results[0];
+            await refreshWorkspace();
+            const initializationPayload = results[1];
             const tools = results[2];
             renderTools(tools);
             renderSdkServerInfo(initializationPayload, tools);

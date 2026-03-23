@@ -196,7 +196,7 @@ const claimElements = [
 ];
 
 const workspaceState = {
-  user_id: 'demo-user',
+  user_id: 'did:key:playwright-demo',
   claim_type: 'retaliation',
   intake_answers: {},
   evidence: {
@@ -447,6 +447,14 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/api/complaint-workspace/session') {
     return sendJson(response, workspaceSessionPayload());
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/complaint-workspace/identity') {
+    return sendJson(response, {
+      did: 'did:key:playwright-demo',
+      method: 'did:key',
+      provider: 'ipfs_datasets_py.processors.auth.ucan.UCANManager',
+    });
   }
 
   if (request.method === 'GET' && url.pathname === '/api/complaint-workspace/mcp/tools') {

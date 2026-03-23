@@ -269,6 +269,8 @@ test.describe('complaint generation workflow', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
+    await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
+    await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
 
     await page.locator('#intake-party_name').fill('Jane Doe');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
@@ -300,6 +302,12 @@ test.describe('complaint generation workflow', () => {
 
     await page.locator('#draft-body').fill('Edited final complaint body.');
     await page.getByRole('button', { name: 'Save Draft Edits' }).click();
+    await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
+
+    const cachedDid = await page.evaluate(() => localStorage.getItem('complaintGenerator.did'));
+    await page.reload();
+    await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toBe(cachedDid);
+    await expect(page.locator('#did-chip')).toContainText(cachedDid);
     await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
   });
 });

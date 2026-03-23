@@ -6,7 +6,7 @@ from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel, Field
 
 from .complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from .complaint_workspace import ComplaintWorkspaceService
+from .complaint_workspace import ComplaintWorkspaceService, generate_decentralized_id
 
 
 class IntakeRequest(BaseModel):
@@ -55,6 +55,10 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
     @router.get("/api/complaint-workspace/session")
     async def get_session(user_id: Optional[str] = None) -> Dict[str, Any]:
         return workspace.get_session(user_id)
+
+    @router.post("/api/complaint-workspace/identity")
+    async def create_identity() -> Dict[str, Any]:
+        return generate_decentralized_id()
 
     @router.post("/api/complaint-workspace/intake")
     async def submit_intake(request: IntakeRequest) -> Dict[str, Any]:

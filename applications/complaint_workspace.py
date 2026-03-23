@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-DEFAULT_USER_ID = "demo-user"
+DEFAULT_USER_ID = "did:key:anonymous"
 _DATA_DIR = Path(__file__).resolve().parent.parent / ".complaint_workspace"
 _SESSION_DIR = _DATA_DIR / "sessions"
 
@@ -71,6 +72,34 @@ def _slugify_user_id(user_id: str) -> str:
 
 def _split_lines(value: Optional[str]) -> List[str]:
     return [line.strip() for line in str(value or "").splitlines() if line.strip()]
+
+
+def generate_decentralized_id() -> Dict[str, Any]:
+    try:
+        from ipfs_datasets_py.processors.auth.ucan import UCANManager
+
+        manager = UCANManager.get_instance()
+        if manager.initialize():
+            keypair = manager.generate_keypair()
+            return {
+                "did": keypair.did,
+                "method": "did:key",
+                "provider": "ipfs_datasets_py.processors.auth.ucan.UCANManager",
+            }
+    except Exception as exc:
+        return {
+            "did": f"did:key:fallback-{uuid.uuid4().hex}",
+            "method": "did:key",
+            "provider": "fallback",
+            "warning": str(exc),
+        }
+
+    return {
+        "did": f"did:key:fallback-{uuid.uuid4().hex}",
+        "method": "did:key",
+        "provider": "fallback",
+        "warning": "UCAN manager did not initialize cleanly.",
+    }
 
 
 def _default_state(user_id: str) -> Dict[str, Any]:
@@ -382,4 +411,3 @@ class ComplaintWorkspaceService:
         if tool_name == "complaint.reset_session":
             return self.reset_session(args.get("user_id"))
         raise ValueError(f"Unknown complaint MCP tool: {tool_name}")
-

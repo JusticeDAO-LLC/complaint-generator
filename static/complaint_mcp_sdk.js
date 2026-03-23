@@ -15,6 +15,7 @@
             this.origin = config.origin || (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost');
             this.fetchImpl = config.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
             this._requestId = 1;
+            this.didStorageKey = config.didStorageKey || 'complaintGenerator.did';
         }
 
         initialize() {
@@ -87,6 +88,39 @@
             return this.callTool('complaint.start_session', {
                 user_id: userId,
             });
+        }
+
+        createIdentity() {
+            return this._request(this.baseUrl + '/identity', {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+        }
+
+        getCachedDid() {
+            if (typeof localStorage === 'undefined') {
+                return null;
+            }
+            return localStorage.getItem(this.didStorageKey);
+        }
+
+        cacheDid(did) {
+            if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(this.didStorageKey, did);
+            }
+            return did;
+        }
+
+        async getOrCreateDid() {
+            const cachedDid = this.getCachedDid();
+            if (cachedDid) {
+                return cachedDid;
+            }
+            const identity = await this.createIdentity();
+            if (!identity || !identity.did) {
+                throw new Error('Identity endpoint did not return a DID.');
+            }
+            return this.cacheDid(identity.did);
         }
 
         getSession(userId) {

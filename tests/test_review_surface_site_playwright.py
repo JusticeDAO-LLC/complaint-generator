@@ -863,7 +863,8 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
             page = browser.new_page()
             try:
                 page.goto(f"{base_url}/workspace", wait_until="domcontentloaded")
-                _wait_for_text(page, "#workspace-status", "Workspace synchronized from the complaint service.")
+                _wait_for_text(page, "#workspace-status", "Workspace synchronized for ")
+                _wait_for_text(page, "#sdk-server-info", "did:key:")
                 _wait_for_text(page, "#sdk-server-info", "complaint-workspace-mcp")
                 _wait_for_text(page, "#tool-list", "complaint.generate_complaint")
 
