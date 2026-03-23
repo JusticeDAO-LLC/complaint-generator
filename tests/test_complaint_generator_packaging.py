@@ -20,7 +20,9 @@ from complaint_generator import (
 from applications import complaint_cli as complaint_cli_impl
 from complaint_generator import cli as complaint_cli_module
 from complaint_generator import entrypoints as complaint_entrypoints
+from complaint_generator import mcp as complaint_mcp_module
 from complaint_generator import mcp_server as complaint_mcp_server_module
+from complaint_generator import workspace as complaint_workspace_module
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -59,6 +61,9 @@ def test_package_exports_expose_workspace_review_and_entrypoint_helpers():
     assert create_review_surface_app is not None
     assert handle_jsonrpc_message is not None
     assert tool_list_payload is not None
+    assert ComplaintWorkspaceService is complaint_workspace_module.ComplaintWorkspaceService
+    assert handle_jsonrpc_message is complaint_mcp_module.handle_jsonrpc_message
+    assert tool_list_payload is complaint_mcp_module.tool_list_payload
     assert complaint_cli_main is complaint_cli_module.main
     assert complaint_mcp_server_main is complaint_mcp_server_module.main
     assert complaint_generator_main is complaint_entrypoints.main

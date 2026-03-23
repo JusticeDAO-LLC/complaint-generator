@@ -150,7 +150,7 @@ window.ChatPage = (function() {
         workspaceParams.set('target_tab', 'review');
         workspaceParams.set('status_message', 'Opened Workspace from the chat narrative surface.');
         const workspaceHref = `/workspace?${workspaceParams.toString()}`;
-        setHrefForIds(['chat-hero-workspace', 'chat-open-workspace'], workspaceHref);
+        setHrefForIds(['chat-meta-workspace', 'chat-hero-workspace', 'chat-open-workspace'], workspaceHref);
 
         const profileParams = new URLSearchParams();
         if (hasActiveContext) {
@@ -163,11 +163,16 @@ window.ChatPage = (function() {
             profileParams.set('source', 'chat');
         }
         const profileHref = profileParams.toString() ? `/profile?${profileParams.toString()}` : '/profile';
-        profileLink.href = profileHref;
+        setHrefForIds(['chat-nav-profile', 'chat-open-profile'], profileHref);
 
         const resultsParams = new URLSearchParams(profileParams.toString());
         const resultsHref = resultsParams.toString() ? `/results?${resultsParams.toString()}` : '/results';
-        resultsLink.href = resultsHref;
+        setHrefForIds(['chat-nav-results', 'chat-open-results'], resultsHref);
+
+        const chatHref = hasActiveContext
+            ? buildCurrentChatUrl(activeUserId, caseSynopsis, handoff)
+            : '/chat';
+        setHrefForIds(['chat-nav-chat'], chatHref);
 
         const reviewParams = new URLSearchParams();
         if (activeUserId) {
@@ -175,7 +180,7 @@ window.ChatPage = (function() {
             reviewParams.set('workspace_user_id', activeUserId);
         }
         const reviewHref = reviewParams.toString() ? `/claim-support-review?${reviewParams.toString()}` : '/claim-support-review';
-        setHrefForIds(['chat-hero-review', 'chat-open-review'], reviewHref);
+        setHrefForIds(['chat-meta-review', 'chat-hero-review', 'chat-nav-review', 'chat-open-review'], reviewHref);
 
         const builderParams = new URLSearchParams();
         if (activeUserId) {
@@ -184,7 +189,38 @@ window.ChatPage = (function() {
         if (caseSynopsis) {
             builderParams.set('case_synopsis', caseSynopsis);
         }
-        builderLink.href = builderParams.toString() ? `/document?${builderParams.toString()}` : '/document';
+        const builderHref = builderParams.toString() ? `/document?${builderParams.toString()}` : '/document';
+        setHrefForIds(['chat-meta-builder', 'chat-nav-builder', 'chat-open-builder'], builderHref);
+
+        const traceParams = new URLSearchParams();
+        if (activeUserId) {
+            traceParams.set('user_id', activeUserId);
+        }
+        if (hasActiveContext) {
+            traceParams.set('source', 'chat');
+        }
+        const traceHref = traceParams.toString() ? `/document/optimization-trace?${traceParams.toString()}` : '/document/optimization-trace';
+        setHrefForIds(['chat-nav-trace'], traceHref);
+    }
+
+    function buildCurrentChatUrl(activeUserId, caseSynopsis, handoff) {
+        const chatParams = new URLSearchParams();
+        if (activeUserId) {
+            chatParams.set('user_id', activeUserId);
+        }
+        if (caseSynopsis) {
+            chatParams.set('case_synopsis', caseSynopsis);
+        }
+        if (handoff && handoff.source) {
+            chatParams.set('source', handoff.source);
+        }
+        if (handoff && handoff.prefillMessage) {
+            chatParams.set('prefill_message', handoff.prefillMessage);
+        }
+        if (handoff && handoff.returnTo) {
+            chatParams.set('return_to', handoff.returnTo);
+        }
+        return chatParams.toString() ? `/chat?${chatParams.toString()}` : '/chat';
     }
 
     function applyWorkspaceHandoff() {

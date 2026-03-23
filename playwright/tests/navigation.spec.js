@@ -198,6 +198,9 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#chat-context-return-link')).toHaveAttribute('href', /\/workspace\?target_tab=review/);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
     await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    await expect(page.locator('#chat-meta-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
+    await expect(page.locator('#chat-nav-profile')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
+    await expect(page.locator('#chat-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-hero-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-hero-review')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
@@ -229,12 +232,16 @@ test.describe('website surface navigation', () => {
     await expect(page).toHaveURL(/\/profile\?/);
     await expect(page.locator('#profile-context-card')).toBeVisible();
     await expect(page.locator('#profile-context-summary')).toContainText(/did:key:chat-step-demo/);
+    await expect(page.locator('#profile-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
+    await expect(page.locator('#profile-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
     await expect(page.locator('#profile-open-results')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
     await expect(page.locator('#profile-open-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
-    await page.locator('#profile-open-results').click();
+    await page.locator('#profile-nav-results').click();
     await expect(page).toHaveURL(/\/results\?/);
     await expect(page.locator('#results-context-card')).toBeVisible();
     await expect(page.locator('#results-context-summary')).toContainText(/did:key:chat-step-demo/);
+    await expect(page.locator('#results-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
+    await expect(page.locator('#results-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
     await expect(page.locator('#results-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
     await expect(page.locator('#results-open-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Achat-step-demo/);
 

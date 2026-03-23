@@ -4,8 +4,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import complaint_generator
-from applications.complaint_mcp_protocol import handle_jsonrpc_message
-from applications.complaint_workspace import ComplaintWorkspaceService
+from complaint_generator.mcp import handle_jsonrpc_message
+from complaint_generator.workspace import ComplaintWorkspaceService
 
 
 def test_tools_list_uses_jsonrpc_shape(tmp_path):

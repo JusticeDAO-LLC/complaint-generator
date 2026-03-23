@@ -323,6 +323,18 @@
             document.getElementById('results-open-review').href = reviewHref;
             document.getElementById('results-open-builder').href = builderHref;
             document.getElementById('results-open-trace').href = traceHref;
+            document.getElementById('results-nav-chat').href = chatHref;
+            document.getElementById('results-nav-profile').href = hasContext
+                ? buildResultsSurfaceUrl('/profile', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: 'results',
+                })
+                : '/profile';
+            document.getElementById('results-nav-results').href = currentResultsUrl;
+            document.getElementById('results-nav-review').href = reviewHref;
+            document.getElementById('results-nav-builder').href = builderHref;
+            document.getElementById('results-nav-trace').href = traceHref;
         }
 
         hostname = "localhost:19000";
@@ -395,12 +407,12 @@
             <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                 <a class="surface-link" href="/">Landing</a>
                 <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" href="/chat">Chat</a>
-                <a class="surface-link" href="/profile">Profile</a>
-                <a class="surface-link" href="/results">Results</a>
-                <a class="surface-link" href="/claim-support-review">Review</a>
-                <a class="surface-link" href="/document">Builder</a>
-                <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" id="results-nav-chat" href="/chat">Chat</a>
+                <a class="surface-link" id="results-nav-profile" href="/profile">Profile</a>
+                <a class="surface-link" id="results-nav-results" href="/results">Results</a>
+                <a class="surface-link" id="results-nav-review" href="/claim-support-review">Review</a>
+                <a class="surface-link" id="results-nav-builder" href="/document">Builder</a>
+                <a class="surface-link" id="results-nav-trace" href="/document/optimization-trace">Trace</a>
                 <a class="surface-link" href="/mlwysiwyg">Editor</a>
             </div>
         </header>
