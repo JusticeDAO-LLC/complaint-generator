@@ -33,9 +33,30 @@ test.describe('website surface navigation', () => {
     });
   });
 
+  test('homepage presents a client-safe intake entry point and captures a screenshot', async ({ page }, testInfo) => {
+    await page.goto('/');
+
+    await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
+    await expect(page.locator('body')).toContainText(/Start with your story, organize the evidence that supports it, and move into a draft without losing your place/i);
+    await expect(page.locator('body')).toContainText(/Resume the complaint you already started/i);
+    await expect(page.locator('body')).toContainText(/Go directly to the part of the complaint generator you actually need/i);
+    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+    await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
+    await expect(page.locator('#homepage-did')).toContainText(/did:key:|Unavailable/i);
+
+    const screenshotPath = testInfo.outputPath('homepage-overview.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await testInfo.attach('homepage-overview', {
+      path: screenshotPath,
+      contentType: 'image/png',
+    });
+  });
+
   test('all routed complaint surfaces load and expose expected navigation affordances', async ({ page }) => {
     const routes = [
-      ['/', /Build a complaint like one connected case file/i],
+      ['/', /Lex Publicus Complaint Generator/i],
       ['/home', /Lex Publicus Chat App/i],
       ['/chat', /Lex Publicus Chat App/i],
       ['/profile', /Profile Data/i],
@@ -59,13 +80,16 @@ test.describe('website surface navigation', () => {
     }
 
     await page.goto('/');
-    await expect(page.locator('h1')).toContainText(/Build a complaint like one connected case file/i);
-    await expect(page.locator('#homepage-session-status')).toBeVisible();
+  await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
+  await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:/i);
     await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
-    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
+  await expect(page.locator('body')).toContainText(/What Clients Can Expect/i);
+  await expect(page.locator('body')).toContainText(/Go directly to the part of the complaint generator you actually need/i);
+  await expect(page.locator('#homepage-next-step')).toBeVisible();
+  await expect(page.locator('#cg-app-shell')).toBeVisible();
 
     await page.goto('/chat');
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
@@ -236,6 +260,10 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed/i);
     await expect(page.locator('#ux-review-summary')).toContainText(/Top Risks/i);
     await expect(page.locator('#ux-review-runs')).toContainText(/Iteration 1/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof/i);
+    await expect(page.locator('#ux-review-stage-findings')).not.toContainText(/Markdown fallback should not replace the structured intake guidance/i);
+    await expect(page.locator('#ux-review-stage-findings')).not.toContainText(/Markdown fallback should not replace the structured evidence guidance/i);
 
     await page.locator('#run-ux-closed-loop-button').click();
 
@@ -248,6 +276,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#ux-review-runs')).toContainText(/Round 1/i);
     await expect(page.locator('#ux-review-runs')).toContainText(/templates\/workspace\.html/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels/i);
+    await expect(page.locator('#ux-review-stage-findings')).not.toContainText(/Markdown fallback should not replace the structured integration-discovery guidance/i);
     await expect(page.locator('#ux-review-artifacts')).toContainText(/round-01\.patch/i);
     await expect(page.locator('#ux-review-artifacts')).toContainText(/bafyuiuxround01/i);
     await expect(page.locator('#ux-review-artifacts')).toContainText(/static\/complaint_mcp_sdk\.js/i);
@@ -308,8 +337,10 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#homepage-answered-count')).toHaveText('6');
     await expect(page.locator('#homepage-supported-count')).toHaveText('5');
     await expect(page.locator('#homepage-session-status')).toContainText(cachedDid);
-    await expect(page.locator('#homepage-open-workspace')).toBeVisible();
+    await expect(page.locator('#homepage-open-workspace')).toContainText(/Review Claim Support/i);
+    await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', '/claim-support-review');
     await expect(page.locator('#homepage-resume-review')).toBeVisible();
+    await expect(page.locator('#homepage-next-step')).toContainText(/Inspect missing claim elements/i);
 
     await page.goto('/document');
     await expect(page.locator('#cg-app-shell')).toBeVisible();
@@ -321,9 +352,9 @@ test.describe('website surface navigation', () => {
       await page.goto(path);
       await expect(page.locator('#cg-app-shell')).toBeVisible();
       await expect(page.locator('#cg-app-shell-did')).toContainText(cachedDid);
-      await expect(page.locator('#cg-app-shell a[href="/workspace"]').first()).toBeVisible();
+      await expect(page.locator('#homepage-intake-count')).toHaveText('6');
       await expect(page.locator('#cg-app-shell a[href="/document"]').first()).toBeVisible();
       await expect(page.locator('#cg-app-shell a[href="/claim-support-review"]').first()).toBeVisible();
-    }
-  });
+      await expect(page.locator('#homepage-resume-link')).toHaveAttribute('href', '/workspace');
+      await expect(page.locator('#homepage-next-step')).toContainText(/Intake complete|What did you report|Who is bringing the complaint/i);
 });

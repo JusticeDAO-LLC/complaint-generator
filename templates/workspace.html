@@ -1713,6 +1713,30 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             return statusMap[tabName] || 'Opened the requested complaint workflow action.';
         }
 
+        function applyWorkspaceIntentFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const targetTab = String(params.get('target_tab') || '').trim();
+            const focusTarget = String(params.get('focus') || '').trim();
+            const statusMessage = String(params.get('status_message') || '').trim();
+            const focusSelector = focusTarget
+                ? (focusTarget.startsWith('#') ? focusTarget : `#${focusTarget}`)
+                : (targetTab ? defaultFocusSelectorForTab(targetTab) : '');
+            if (targetTab) {
+                activateTab(targetTab);
+            }
+            if (focusSelector) {
+                window.requestAnimationFrame(() => {
+                    const node = document.querySelector(focusSelector);
+                    if (node && typeof node.focus === 'function') {
+                        node.focus();
+                    }
+                });
+            }
+            if (statusMessage) {
+                setStatus(statusMessage);
+            }
+        }
+
         function buildOptimizerGoalSuggestions(sessionPayload) {
             const review = sessionPayload.review || {};
             const overview = review.overview || {};
@@ -2757,6 +2781,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             renderQuickActions(bootstrap.session, workspaceSessionTools);
             renderSdkServerInfo(bootstrap.initialization, workspaceSessionTools);
             setStatus(`Workspace synchronized for ${workspaceUserId}.`);
+            applyWorkspaceIntentFromUrl();
         }).catch((error) => {
             setStatus(`Workspace failed to load: ${error.message}`);
         });

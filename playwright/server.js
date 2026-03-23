@@ -573,7 +573,7 @@ const server = http.createServer(async (request, response) => {
             iterations: Number(args.iterations || 0),
             screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
             output_dir: args.output_path || 'artifacts/ui-audit/reviews',
-            latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.',
+            latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.\n\n# Stage Findings\n## Intake\nMarkdown fallback should not replace the structured intake guidance.\n\n## Evidence\nMarkdown fallback should not replace the structured evidence guidance.',
             stage_findings: {
               Intake: 'First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.',
               Evidence: 'The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof.',
@@ -620,7 +620,7 @@ const server = http.createServer(async (request, response) => {
           max_rounds: Number(args.max_rounds || 2),
           rounds_executed: 1,
           stop_reason: 'validation_review_stable',
-          latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+          latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.\n\n# Stage Findings\n## Integration Discovery\nMarkdown fallback should not replace the structured integration-discovery guidance.',
           stage_findings: {
             Intake: 'The optimizer should reduce branching language and keep the first story steps calmer and more linear.',
             Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',

@@ -1236,6 +1236,9 @@
                 <div class="synopsis-banner" id="builder-synopsis-banner">
                     <strong id="builder-synopsis-title">Shared case framing</strong>
                     <span id="builder-synopsis-text">Open this builder with a shared complaint user ID to keep the case synopsis visible during drafting.</span>
+                    <div class="surface-links" style="margin-top: 12px;">
+                        <a class="surface-link" id="builder-synopsis-edit-link" href="/workspace?target_tab=intake&focus=case-synopsis">Edit case framing</a>
+                    </div>
                 </div>
 
                 <div id="previewRoot" class="empty-state">
@@ -1273,6 +1276,18 @@
             document.getElementById('builder-synopsis-text').textContent = text || 'Open this builder with a shared complaint user ID to keep the case synopsis visible during drafting.';
         }
 
+        function updateBuilderSynopsisLink(userId) {
+            const link = document.getElementById('builder-synopsis-edit-link');
+            const params = new URLSearchParams();
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            params.set('target_tab', 'intake');
+            params.set('focus', 'case-synopsis');
+            params.set('status_message', 'Opened Workspace so the shared case framing can be edited.');
+            link.href = `/workspace?${params.toString()}`;
+        }
+
         async function syncBuilderSynopsis() {
             const complaintWorkspaceClient = getComplaintWorkspaceClient();
             if (!complaintWorkspaceClient) {
@@ -1282,6 +1297,7 @@
                 || getRequestedUserId()
                 || (typeof complaintWorkspaceClient.getCachedDid === 'function' ? complaintWorkspaceClient.getCachedDid() : null)
                 || null;
+            updateBuilderSynopsisLink(userId);
             if (!userId) {
                 renderBuilderSynopsis('', 'Shared case framing');
                 return;

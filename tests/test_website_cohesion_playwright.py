@@ -4,6 +4,7 @@ import socket
 import tempfile
 import threading
 import time
+from urllib.parse import unquote
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -423,13 +424,14 @@ def _create_account_and_open_chat(page, base_url: str) -> None:
 
 
 def _create_account_from_root_iframe(page) -> None:
-    home_frame = page.frame_locator("iframe[src='/home/']")
-    home_frame.locator("#create-form button").click()
-    home_frame.locator("#create-form .username_input").fill("ExampleUser1")
-    home_frame.locator("#create-form .password_input").fill("StrongPass1!")
-    home_frame.locator("#create-form .password_verify_input").fill("StrongPass1!")
-    home_frame.locator("#create-form .email_input").fill("jordan@example.com")
-    home_frame.locator("#create-form button").click()
+    page.click("#homepage-open-intake")
+    page.wait_for_url("**/home")
+    page.click("#create-form button")
+    page.fill("#create-form .username_input", "ExampleUser1")
+    page.fill("#create-form .password_input", "StrongPass1!")
+    page.fill("#create-form .password_verify_input", "StrongPass1!")
+    page.fill("#create-form .email_input", "jordan@example.com")
+    page.click("#create-form button")
 
 
 def _artifact_dir(target_dir: Path) -> Path:
@@ -500,7 +502,15 @@ def _assert_surface_layout(page, *, min_content_height: int = 160) -> None:
 
 def _wait_for_surface(page, path: str) -> None:
     if path == "/":
-        page.wait_for_function("() => document.querySelector(\"iframe[src='/home/']\") !== null")
+        page.wait_for_function(
+            """() => {
+                const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                return bodyText.includes('lex publicus complaint generator')
+                    && bodyText.includes('what clients can expect')
+                    && bodyText.includes('one connected journey')
+                    && bodyText.includes('choose your entry');
+            }"""
+        )
         return
     if path == "/home":
         page.wait_for_function("() => document.body && document.body.innerText.trim().length > 20")
@@ -548,9 +558,21 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
             page = browser.new_page()
 
             page.goto(base_url)
+            page.wait_for_function(
+                """() => {
+                    const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                    return bodyText.includes('lex publicus complaint generator')
+                        && bodyText.includes('what clients can expect');
+                }"""
+            )
             assert page.locator("a[href='/claim-support-review']").count() >= 1
             assert page.locator("a[href='/document']").count() >= 1
-            assert page.locator("iframe[src='/home/']").count() == 1
+            assert page.locator("a[href='/workspace']").count() >= 1
+            assert page.locator("#homepage-open-intake").count() == 1
+            assert page.locator("a[href='/home']").count() >= 1
+            body_text = page.locator("body").inner_text()
+            assert "This homepage is designed to send people into the right part of the workflow immediately" in body_text
+            assert "Go directly to the part of the complaint generator you actually need" in body_text
 
             _create_account_and_open_chat(page, base_url)
 
@@ -580,7 +602,7 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
             browser.close()
 
 
-def test_root_landing_iframe_expands_into_connected_preview_workspace_after_signup():
+def test_root_landing_routes_into_secure_intake_and_connected_surfaces_after_signup():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
 
@@ -591,19 +613,25 @@ def test_root_landing_iframe_expands_into_connected_preview_workspace_after_sign
             page = browser.new_page()
 
             page.goto(base_url)
-            assert page.locator("iframe[src='/home/']").count() == 1
+            page.wait_for_function(
+                """() => {
+                    const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                    return bodyText.includes('lex publicus complaint generator')
+                        && bodyText.includes('one connected journey')
+                        && bodyText.includes('choose your entry');
+                }"""
+            )
+            assert page.locator("#homepage-open-intake").count() == 1
+            assert page.locator("a[href='/home']").count() >= 1
+            assert page.locator("a[href='/workspace']").count() >= 1
+            assert page.locator("a[href='/claim-support-review']").count() >= 1
+            assert page.locator("a[href='/document']").count() >= 1
+            assert page.locator("#homepage-resume-review").count() == 1
+            assert page.locator("#homepage-open-workspace").count() == 1
 
             _create_account_from_root_iframe(page)
 
-            page.wait_for_function(
-                "() => document.querySelector(\"#profile_box iframe[src*='/profile']\") !== null"
-            )
-            page.wait_for_function(
-                "() => document.querySelector(\"#document_box iframe[src*='/document']\") !== null"
-            )
-
-            assert page.locator("#profile_box iframe").get_attribute("src") == f"{base_url}/profile"
-            assert page.locator("#document_box iframe").get_attribute("src") == f"{base_url}/document"
+            page.wait_for_url(f"{base_url}/chat")
             assert page.locator("a[href='/claim-support-review']").count() >= 1
             assert page.locator("a[href='/document']").count() >= 1
 
@@ -755,6 +783,15 @@ def test_shared_builder_and_review_shortcuts_connect_the_site_surfaces():
                     page.wait_for_function(
                         "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
                     )
+                elif path == "/":
+                    page.wait_for_function(
+                        """() => {
+                            const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                            return bodyText.includes('lex publicus complaint generator')
+                                && bodyText.includes('one connected journey')
+                                && bodyText.includes('choose your entry');
+                        }"""
+                    )
 
                 assert page.locator("a[href='/document']").count() >= 1
                 assert page.locator("a[href='/claim-support-review']").count() >= 1
@@ -868,11 +905,23 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('shared-case-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
             )
+            review_edit_href = page.locator("#shared-case-synopsis-edit-link").get_attribute("href")
+            assert review_edit_href is not None
+            assert f"user_id={workspace_user_id}" in unquote(review_edit_href)
+            page.click("#shared-case-synopsis-edit-link")
+            page.wait_for_url(f"{base_url}/workspace**")
+            page.wait_for_function(
+                "() => document.activeElement && document.activeElement.id === 'case-synopsis'"
+            )
+            assert "Jordan Example alleges retaliation" in page.locator("#case-synopsis").input_value()
 
             page.goto(f"{base_url}/document?user_id={workspace_user_id}")
             page.wait_for_function(
                 "() => document.getElementById('builder-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
             )
+            builder_edit_href = page.locator("#builder-synopsis-edit-link").get_attribute("href")
+            assert builder_edit_href is not None
+            assert f"user_id={workspace_user_id}" in unquote(builder_edit_href)
 
             browser.close()
 

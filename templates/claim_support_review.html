@@ -723,6 +723,9 @@
                 <div class="synopsis-card" id="shared-case-synopsis-card">
                     <strong id="shared-case-synopsis-title">Shared case framing</strong>
                     <span id="shared-case-synopsis-text">Load a review payload with a shared complaint user ID to keep the case synopsis visible on this dashboard.</span>
+                    <div class="surface-links" style="margin-top: 12px;">
+                        <a class="surface-link" id="shared-case-synopsis-edit-link" href="/workspace?target_tab=intake&focus=case-synopsis">Edit case framing</a>
+                    </div>
                 </div>
                 <div class="hero-stats">
                     <div class="stat">
@@ -1251,6 +1254,18 @@
             document.getElementById('shared-case-synopsis-text').textContent = text || 'Load a review payload with a shared complaint user ID to keep the case synopsis visible on this dashboard.';
         }
 
+        function updateSharedCaseSynopsisLink(userId) {
+            const link = document.getElementById('shared-case-synopsis-edit-link');
+            const params = new URLSearchParams();
+            if (userId) {
+                params.set('user_id', userId);
+            }
+            params.set('target_tab', 'intake');
+            params.set('focus', 'case-synopsis');
+            params.set('status_message', 'Opened Workspace so the shared case framing can be edited.');
+            link.href = `/workspace?${params.toString()}`;
+        }
+
         function getComplaintWorkspaceClient() {
             return window.ComplaintMcpSdk
                 ? new window.ComplaintMcpSdk.ComplaintMcpClient()
@@ -1268,6 +1283,7 @@
                 ? complaintWorkspaceClient.getCachedDid()
                 : null;
             const userId = requestedWorkspaceUserId || explicitUserId || cachedDid || null;
+            updateSharedCaseSynopsisLink(userId);
             if (!userId) {
                 renderSharedCaseSynopsisText('', 'Shared case framing');
                 return;
