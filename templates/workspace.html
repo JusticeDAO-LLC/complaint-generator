@@ -1267,7 +1267,7 @@
 
                 <section class="tab-panel is-active" data-tab-panel="intake">
                     <h2>Intake Questions</h2>
-                    <p class="muted">Capture the facts once, then reuse them everywhere else in the workflow.</p>
+                    <p class="muted">Capture the facts once, then reuse them everywhere else in the workflow. The optional court-caption field helps the complaint open with a more realistic court header when you know the right district.</p>
                     <div class="section-intro">
                         <strong>What to do here</strong>
                         <span>Focus on who was involved, what happened, when it happened, and what harm followed. If the exact date or wording is uncertain, save the best current version and improve it later.</span>
@@ -1299,6 +1299,7 @@
                         <button class="primary" id="save-intake-button" type="button">Save and Continue</button>
                         <button class="secondary" id="refresh-session-button" type="button">Refresh Case State</button>
                     </div>
+                    <div class="status draft-preview-shell"><pre id="intake-caption-preview">Caption preview will appear here as the court and party fields are filled in.</pre></div>
                     <div class="soft-note" id="intake-soft-note">Nothing is filed from this page automatically. Saving here only updates the shared complaint workspace.</div>
                 </section>
 
@@ -1442,6 +1443,7 @@
                             <span>Before treating the draft as usable, make sure it names the parties clearly, ties the adverse action to the protected activity, describes the harm, and asks for relief that matches the record.</span>
                             <div class="soft-note" id="draft-synopsis-preview">The case synopsis will appear here as a drafting reference.</div>
                             <div class="soft-note" id="draft-generation-meta">Draft generation strategy details will appear here once a complaint is generated.</div>
+                            <div class="status draft-preview-shell"><pre id="draft-caption-preview">Caption preview will appear here once the party names and court caption are available.</pre></div>
                             <div class="status draft-preview-shell"><pre id="draft-contract-preview">Draft contract details will appear here once the complaint type and drafting path are selected.</pre></div>
                             <div class="status draft-preview-shell"><pre id="draft-readiness-preview">Filing-readiness guidance will appear here once the record is reviewed or a complaint is generated.</pre></div>
                             <div class="guidance-grid">
@@ -2070,9 +2072,50 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 <div class="interview-card">
                     <strong>${escapeHtml(question.label)}</strong>
                     <span>${escapeHtml(question.prompt)}</span>
+                    ${question.id === 'court_header'
+                        ? '<div class="helper-text">Optional. If you know the correct district, enter it here so the complaint caption uses that court header instead of the generic fallback.</div>'
+                        : ''}
                     <textarea id="intake-${escapeHtml(question.id)}" data-question-id="${escapeHtml(question.id)}" placeholder="${escapeHtml(question.placeholder || '')}">${escapeHtml(question.answer || '')}</textarea>
                 </div>
             `).join('');
+            renderCaptionPreview();
+        }
+
+        function currentIntakeValue(questionId) {
+            const field = document.getElementById(`intake-${questionId}`);
+            if (field && typeof field.value === 'string' && field.value.trim()) {
+                return field.value.trim();
+            }
+            const answers = (((workspaceSession || {}).session) || {}).intake_answers || {};
+            return String(answers[questionId] || '').trim();
+        }
+
+        function buildCaptionPreview() {
+            const plaintiff = currentIntakeValue('party_name') || 'Plaintiff';
+            const defendant = currentIntakeValue('opposing_party') || 'Defendant';
+            const courtHeader = currentIntakeValue('court_header') || 'FOR THE APPROPRIATE JUDICIAL DISTRICT';
+            return [
+                'IN THE UNITED STATES DISTRICT COURT',
+                courtHeader,
+                '',
+                `${plaintiff}, Plaintiff,`,
+                'v.',
+                `${defendant}, Defendant.`,
+                '',
+                'Civil Action No. ________________',
+            ].join('\n');
+        }
+
+        function renderCaptionPreview() {
+            const preview = buildCaptionPreview();
+            const intakeNode = document.getElementById('intake-caption-preview');
+            const draftNode = document.getElementById('draft-caption-preview');
+            if (intakeNode) {
+                intakeNode.textContent = preview;
+            }
+            if (draftNode) {
+                draftNode.textContent = preview;
+            }
         }
 
         function renderEvidence(reviewPayload) {
@@ -2172,6 +2215,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             document.getElementById('requested-relief').value = (draft.requested_relief || []).join('\n');
             document.getElementById('draft-body').value = draft.body || '';
             document.getElementById('draft-preview').textContent = draft.body || 'No complaint generated yet.';
+            renderCaptionPreview();
             document.getElementById('draft-claim-type').value = claimType;
             document.getElementById('draft-mode').value = draft.draft_strategy === 'template' ? 'template' : 'llm_router';
             const backend = draft.draft_backend || {};
@@ -3928,6 +3972,12 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('draft-mode').addEventListener('change', () => renderDraftReadiness(workspaceSession || {}));
         document.getElementById('requested-relief').addEventListener('input', () => renderDraftReadiness(workspaceSession || {}));
         document.getElementById('draft-body').addEventListener('input', () => renderDraftReadiness(workspaceSession || {}));
+        document.addEventListener('input', (event) => {
+            const target = event.target;
+            if (target && target.matches && target.matches('[data-question-id]')) {
+                renderCaptionPreview();
+            }
+        });
         document.getElementById('action-button').addEventListener('click', () => {
             const targetTab = document.getElementById('action-button').dataset.targetTab || 'intake';
             jumpToStage(

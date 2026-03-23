@@ -1,6 +1,11 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
+
+pytestmark = pytest.mark.no_auto_network
+
 
 def _load_cli_module():
     module_path = Path(__file__).resolve().parents[1] / 'scripts' / 'run_claim_support_review_regression.py'
@@ -15,9 +20,10 @@ def test_create_parser_supports_browser_mode_and_list():
     cli = _load_cli_module()
     parser = cli.create_parser()
 
-    args = parser.parse_args(['--browser', 'on', '--list'])
+    args = parser.parse_args(['--browser', 'on', '--network', 'on', '--list'])
 
     assert args.browser == 'on'
+    assert args.network == 'on'
     assert args.list is True
 
 
@@ -68,3 +74,24 @@ def test_resolve_test_targets_on_includes_all_browser_suites():
     assert targets[len(cli.BASE_TESTS):] == cli.BROWSER_TESTS
     assert 'tests/test_complaint_generator_package.py' in targets
     assert 'tests/test_complaint_generator_site_playwright.py' in targets
+
+
+def test_build_run_environment_enables_network_gate_when_requested(monkeypatch):
+    cli = _load_cli_module()
+
+    env = cli.build_run_environment(network_mode='on', environ={'PATH': '/tmp/bin'})
+
+    assert env['PATH'] == '/tmp/bin'
+    assert env['RUN_NETWORK_TESTS'] == '1'
+
+
+def test_build_run_environment_clears_network_gate_when_disabled():
+    cli = _load_cli_module()
+
+    env = cli.build_run_environment(
+        network_mode='off',
+        environ={'PATH': '/tmp/bin', 'RUN_NETWORK_TESTS': '1'},
+    )
+
+    assert env['PATH'] == '/tmp/bin'
+    assert 'RUN_NETWORK_TESTS' not in env

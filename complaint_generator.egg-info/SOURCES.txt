@@ -204,6 +204,7 @@ tests/test_complaint_generator_package_surface.py
 tests/test_complaint_generator_packaging.py
 tests/test_complaint_generator_site_playwright.py
 tests/test_complaint_generator_tools.py
+tests/test_complaint_manager_interface_docs.py
 tests/test_complaint_phases.py
 tests/test_complaint_support_context.py
 tests/test_complaint_taxonomies.py

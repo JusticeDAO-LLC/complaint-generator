@@ -134,9 +134,15 @@ jobs:
         include:
           - label: no-browser
             browser_mode: off
+            network_mode: off
             install_browser: false
           - label: browser
             browser_mode: on
+            network_mode: off
+            install_browser: true
+          - label: browser-network
+            browser_mode: on
+            network_mode: on
             install_browser: true
 
     name: claim-support-${{ matrix.label }}
@@ -168,4 +174,4 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Run claim-support regression
-        run: python scripts/run_claim_support_review_regression.py --browser ${{ matrix.browser_mode }}
+        run: python scripts/run_claim_support_review_regression.py --browser ${{ matrix.browser_mode }} --network ${{ matrix.network_mode }}

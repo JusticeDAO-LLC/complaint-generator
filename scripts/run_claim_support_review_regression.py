@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +37,12 @@ def create_parser() -> argparse.ArgumentParser:
         choices=("auto", "on", "off"),
         default="auto",
         help="Include the Playwright browser smoke automatically, always, or never.",
+    )
+    parser.add_argument(
+        "--network",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="Enable RUN_NETWORK_TESTS automatically, always, or never for the network-gated package surface.",
     )
     parser.add_argument(
         "--list",
@@ -103,6 +110,23 @@ def build_pytest_command(
     return command
 
 
+def build_run_environment(
+    *,
+    network_mode: str = "auto",
+    environ: Optional[dict[str, str]] = None,
+) -> dict[str, str]:
+    normalized_mode = str(network_mode or "auto").strip().lower()
+    if normalized_mode not in {"auto", "on", "off"}:
+        raise ValueError(f"Unsupported network mode: {network_mode}")
+
+    env = dict(environ or os.environ)
+    if normalized_mode == "on":
+        env["RUN_NETWORK_TESTS"] = "1"
+    elif normalized_mode == "off":
+        env.pop("RUN_NETWORK_TESTS", None)
+    return env
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = create_parser()
     args, passthrough = parser.parse_known_args(argv)
@@ -115,7 +139,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(" ".join(command))
         return 0
 
-    completed = subprocess.run(command, cwd=PROJECT_ROOT)
+    completed = subprocess.run(
+        command,
+        cwd=PROJECT_ROOT,
+        env=build_run_environment(network_mode=args.network),
+    )
     return int(completed.returncode)
 
 

@@ -98,11 +98,13 @@ For the full focused claim-support regression slice, use the repo-local runner:
 
 That command auto-includes the browser-backed Playwright coverage when both the Playwright package and Chromium runtime are installed. In browser mode it runs both the dashboard smoke and the cohesive site-flow suite. Use `--browser off` to force the non-browser slice or `--browser on` to require the browser lane explicitly.
 
-VS Code also exposes this runner through the workspace tasks `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)`.
+Use `--network on` when you want the same runner to opt into the network-gated package-surface tests as part of the same invocation. Keep the default `--network auto` behavior when you want the focused slice without forcing those package-surface checks.
 
-The Run and Debug panel now mirrors those entry points with `Claim Support Regression`, `Claim Support Regression (No Browser)`, and `Claim Support Regression (Require Browser)` launch configurations.
+VS Code also exposes this runner through the workspace tasks `Claim Support Regression`, `Claim Support Regression (No Browser)`, `Claim Support Regression (Require Browser)`, and `Claim Support Regression (Browser + Network)`.
 
-GitHub Actions now enforces the same focused slice in `.github/workflows/claim-support-regression.yml` with separate non-browser and browser-required lanes.
+The Run and Debug panel now mirrors those entry points with `Claim Support Regression`, `Claim Support Regression (No Browser)`, `Claim Support Regression (Require Browser)`, and `Claim Support Regression (Browser + Network)` launch configurations.
+
+GitHub Actions now enforces the same focused slice in `.github/workflows/claim-support-regression.yml` with non-browser, browser-required, and browser-plus-network lanes.
 
 ### Standard Regression Gate
 
@@ -129,6 +131,7 @@ Maintenance rule:
 ### Current Validation Guidance
 - Use `scripts/run_standard_regression.py` as the default gate for review-surface, workflow-guidance, and document-pipeline changes.
 - Use `scripts/run_claim_support_review_regression.py` when you need the narrower claim-support-focused slice.
+- Use `scripts/run_claim_support_review_regression.py --browser on --network on` when you want the browser-backed slice plus the network-gated package-surface checks as an explicit higher-confidence gate.
 - Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
 - Treat the browser-backed suites as optional for local setup and required in the browser CI lane.
 - Treat `npm test:e2e` as supplemental compatibility coverage, not as a replacement for the Python browser gate.

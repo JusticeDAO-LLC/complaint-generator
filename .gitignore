@@ -2,6 +2,8 @@ __pycache__
 statefiles/*.json
 .DS_Store
 .complaint_workspace
+.complaint_workspace*
+.complaint_workspace/sessions
 # Test artifacts
 .pytest_cache/
 .hypothesis/
@@ -37,3 +39,4 @@ test_extended_config.log
 
 # Local stray artifacts
 enhanced_daemon_manager.log
+.complaint_workspace/sessions

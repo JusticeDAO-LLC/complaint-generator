@@ -260,7 +260,7 @@ The repo also includes a separate Node Playwright compatibility suite available 
 
 Also available via:
 
-- VS Code task `Claim Support Regression` with `No Browser` and `Require Browser` variants
+- VS Code task `Claim Support Regression` with `No Browser`, `Require Browser`, and `Browser + Network` variants
 - GitHub Actions workflow `claim-support-regression.yml` for the focused claim-support slice
 
 The focused claim-support workflow now also runs the packaged console-script smoke as a separate `package-install-smoke` job before the matrix lanes.

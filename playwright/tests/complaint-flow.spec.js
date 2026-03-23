@@ -347,6 +347,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/FOR THE APPROPRIATE JUDICIAL DISTRICT/i);
 
     await page.locator('#intake-party_name').fill('Jane Doe');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
@@ -354,6 +355,7 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#intake-adverse_action').fill('Was terminated two days later');
     await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
     await page.locator('#intake-harm').fill('Lost wages and benefits');
+    await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     await page.locator('#save-intake-button').click();
 
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
@@ -523,7 +525,12 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#intake-adverse_action').fill('Was terminated three days later');
     await page.locator('#intake-timeline').fill('Report on April 2, termination on April 5');
     await page.locator('#intake-harm').fill('Lost wages, benefits, and housing stability');
+    await expect(page.locator('[data-tab-panel="intake"]')).toContainText(/optional court-caption field helps the complaint open with a more realistic court header/i);
+    await expect(page.locator('#intake-question-grid')).toContainText(/optional\. if you know the correct district, enter it here/i);
     await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
+    await expect(page.locator('#intake-caption-preview')).toContainText(/Taylor Smith, Plaintiff,/i);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/Acme Logistics, Defendant\./i);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/FOR THE NORTHERN DISTRICT OF CALIFORNIA/i);
     await page.locator('#save-intake-button').click();
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
 
@@ -699,6 +706,7 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#intake-adverse_action').fill('Was denied continued housing assistance and threatened with eviction');
     await page.locator('#intake-timeline').fill('Accommodation request on May 2, denial notice on May 5, eviction threat on May 7');
     await page.locator('#intake-harm').fill('Risked losing housing stability and incurred out-of-pocket relocation costs');
+    await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     await page.locator('#save-intake-button').click();
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
 

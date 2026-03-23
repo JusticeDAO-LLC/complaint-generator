@@ -34,6 +34,20 @@
       "cwd": "${workspaceFolder}"
     },
     {
+      "name": "Claim Support Regression (Browser + Network)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_claim_support_review_regression.py",
+      "args": [
+        "--browser",
+        "on",
+        "--network",
+        "on"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "name": "Package Install Smoke",
       "type": "debugpy",
       "request": "launch",

@@ -60,6 +60,27 @@
       }
     },
     {
+      "label": "Claim Support Regression (Browser + Network)",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/run_claim_support_review_regression.py",
+        "--browser",
+        "on",
+        "--network",
+        "on"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "Package Install Smoke",
       "type": "shell",
       "command": "${workspaceFolder}/.venv/bin/python",
