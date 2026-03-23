@@ -452,7 +452,7 @@ function buildWorkspaceReview(state) {
   };
 }
 
-function buildWorkspaceDraft(state, requestedRelief) {
+function buildWorkspaceDraft(state, requestedRelief, options = {}) {
   const answers = state.intake_answers || {};
   const existingDraft = state.draft || {};
   const review = buildWorkspaceReview(state);
@@ -540,10 +540,18 @@ function buildWorkspaceDraft(state, requestedRelief) {
   const documentSummary = (evidence.documents || []).slice(0, 3)
     .map((item) => `${item.title || 'Untitled document'} (${item.claim_element_id || 'unmapped'})`)
     .join('; ') || 'No documentary exhibits have been summarized yet';
+  const testimonyReferenceLines = (evidence.testimony || []).slice(0, 3)
+    .map((item) => `Plaintiff testimony or witness account titled '${item.title || 'Untitled testimony'}' supports ${item.claim_element_id || 'an identified claim element'}.`);
+  const documentReferenceLines = (evidence.documents || []).slice(0, 3)
+    .map((item) => `Documentary exhibit '${item.title || 'Untitled document'}' is presently tied to ${item.claim_element_id || 'an identified claim element'}.`);
+  const useLlm = Boolean(options.use_llm);
+  const provider = String(options.provider || '').trim() || 'playwright-stub';
+  const model = String(options.model || '').trim() || 'stub-formal-complaint';
   return {
     title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} ${claimTypeTitle} Complaint`,
     requested_relief: relief,
     case_synopsis: synopsis,
+    claim_type: claimType,
     body: [
       'IN THE UNITED STATES DISTRICT COURT',
       'FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED',
@@ -581,14 +589,17 @@ function buildWorkspaceDraft(state, requestedRelief) {
       `12. The current complaint record includes ${Number((evidence.testimony || []).length + (evidence.documents || []).length)} saved evidence items, including testimony such as ${testimonySummary}.`,
       `13. The current documentary record includes the following summarized exhibits or records: ${documentSummary}.`,
       `14. The present support review reflects ${Number(overview.supported_elements || 0)} supported claim elements and ${Number(overview.missing_elements || 0)} open support gaps, which Plaintiff identifies so the pleading can be refined rather than to concede any deficiency in the claim.`,
+      '15. Plaintiff incorporates the current testimony summaries, documentary exhibits, chronology notes, and support review findings as the preliminary exhibit and notice record for this pleading.',
+      ...[...testimonyReferenceLines, ...documentReferenceLines].slice(0, 2).map((line, index) => `${16 + index}. ${line}`),
       '',
       'CLAIM FOR RELIEF',
       countHeading,
-      `15. ${answers.party_name || 'Plaintiff'} repeats and realleges the preceding paragraphs as if fully set forth herein.`,
+      `18. ${answers.party_name || 'Plaintiff'} repeats and realleges the preceding paragraphs as if fully set forth herein.`,
       `19. ${claimParagraphs[0]}`,
       `20. ${claimParagraphs[1]}`,
       `21. ${claimParagraphs[2]}`,
-      `19. Plaintiff has suffered damages and other losses including ${answers.harm || 'compensable harm'}.`,
+      `22. Plaintiff has suffered damages and other losses including ${answers.harm || 'compensable harm'}.`,
+      "23. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.",
       '',
       'PRAYER FOR RELIEF',
       'Wherefore, Plaintiff requests judgment against Defendant and the following relief:',
@@ -604,12 +615,17 @@ function buildWorkspaceDraft(state, requestedRelief) {
       '',
       `${answers.party_name || 'Plaintiff'}`,
       'Plaintiff, Pro Se',
+      'Address: ____________________',
+      'Telephone: ____________________',
+      'Email: ____________________',
       '',
       'WORKING CASE SYNOPSIS',
       `Working case synopsis: ${synopsis}`,
     ].join('\n\n'),
     generated_at: '2026-03-22T12:00:00Z',
     review_snapshot: review,
+    draft_strategy: useLlm ? 'llm_router' : 'template',
+    draft_backend: useLlm ? { id: 'complaint-draft', provider, model } : undefined,
   };
 }
 
@@ -664,7 +680,6 @@ function buildWorkspaceCapabilities(state) {
       {
         id: 'mediator_prompt',
         label: 'Chat mediator handoff',
-    claim_type: claimType,
         available: true,
         detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.',
       },
@@ -707,6 +722,12 @@ function slugifyWorkspaceFilename(value) {
 function buildWorkspacePacketExport(state) {
   const sessionPayload = buildWorkspaceSessionPayload(state);
   const draft = state.draft || buildWorkspaceDraft(state, null);
+  const requestedRelief = Array.isArray(draft.requested_relief) ? draft.requested_relief : [];
+  const questionLines = (sessionPayload.questions || []).map((item) => `- **${item.label || item.id || 'Question'}:** ${item.answer || 'Not answered'}`);
+  const testimonyLines = ((state.evidence || {}).testimony || [])
+    .map((item) => `- **${item.title || 'Testimony'}** (${item.claim_element_id || 'unmapped'}): ${item.content || ''}`.trim());
+  const documentLines = ((state.evidence || {}).documents || [])
+    .map((item) => `- **${item.title || 'Document'}** (${item.claim_element_id || 'unmapped'}): ${item.content || ''}`.trim());
   const packet = {
     title: draft.title,
     user_id: state.user_id,
@@ -725,11 +746,29 @@ function buildWorkspacePacketExport(state) {
     'APPENDIX A - CASE SYNOPSIS',
     sessionPayload.case_synopsis,
     '',
-    'APPENDIX B - REVIEW OVERVIEW',
+    'APPENDIX B - REQUESTED RELIEF CHECKLIST',
+    requestedRelief.length ? requestedRelief.map((item) => `- ${item}`).join('\n') : '- No requested relief recorded.',
+    '',
+    'APPENDIX C - INTAKE ANSWERS',
+    questionLines.length ? questionLines.join('\n') : '- No intake answers recorded.',
+    '',
+    'APPENDIX D - EVIDENCE SUMMARY',
+    '### Testimony',
+    testimonyLines.length ? testimonyLines.join('\n') : '- No testimony saved.',
+    '',
+    '### Documents',
+    documentLines.length ? documentLines.join('\n') : '- No documents saved.',
+    '',
+    'APPENDIX E - REVIEW OVERVIEW',
     `- Supported elements: ${Number((sessionPayload.review.overview || {}).supported_elements || 0)}`,
     `- Missing elements: ${Number((sessionPayload.review.overview || {}).missing_elements || 0)}`,
     `- Testimony items: ${Number((sessionPayload.review.overview || {}).testimony_items || 0)}`,
     `- Document items: ${Number((sessionPayload.review.overview || {}).document_items || 0)}`,
+    '',
+    'APPENDIX F - EXPORT METADATA',
+    `- Claim type: ${String(state.claim_type || 'retaliation')}`,
+    `- User ID: ${String(state.user_id || 'did:key:playwright-demo')}`,
+    '- Exported at: 2026-03-22T12:30:00Z',
   ].join('\n');
   return {
     packet,
@@ -774,12 +813,37 @@ function buildWorkspacePacketExport(state) {
 
 function buildWorkspaceComplaintOutputAnalysis(state) {
   const payload = buildWorkspacePacketExport(state);
+  const complaintBody = String((((payload.packet || {}).draft || {}).body || ''));
+  const formalSectionsPresent = {
+    caption: complaintBody.includes('IN THE UNITED STATES DISTRICT COURT'),
+    civil_action_number: complaintBody.includes('Civil Action No. ________________'),
+    nature_of_action: complaintBody.includes('NATURE OF THE ACTION'),
+    jurisdiction_and_venue: complaintBody.includes('JURISDICTION AND VENUE'),
+    parties: complaintBody.includes('PARTIES'),
+    factual_allegations: complaintBody.includes('FACTUAL ALLEGATIONS'),
+    evidentiary_support: complaintBody.includes('EVIDENTIARY SUPPORT AND NOTICE'),
+    claim_count: complaintBody.includes('COUNT I -'),
+    prayer_for_relief: complaintBody.includes('PRAYER FOR RELIEF'),
+    jury_demand: complaintBody.includes('JURY DEMAND'),
+    signature_block: complaintBody.includes('SIGNATURE BLOCK'),
+    working_case_synopsis: complaintBody.includes('WORKING CASE SYNOPSIS'),
+  };
+  const filingShapeScore = Math.min(
+    100,
+    35
+      + (5 * Object.values(formalSectionsPresent).filter(Boolean).length)
+      + (Number((payload.artifact_analysis || {}).evidence_item_count || 0) > 0 ? 10 : 0)
+      + (Number((payload.artifact_analysis || {}).requested_relief_count || 0) > 0 ? 5 : 0)
+      + (Number((payload.artifact_analysis || {}).draft_word_count || 0) >= 180 ? 10 : 0),
+  );
   return {
     user_id: state.user_id,
     packet_summary: clone(payload.packet_summary),
     artifact_analysis: clone(payload.artifact_analysis),
     ui_feedback: {
       summary: 'The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.',
+      filing_shape_score: filingShapeScore,
+      formal_sections_present: formalSectionsPresent,
       issues: Number((payload.packet_summary || {}).missing_elements || 0) > 0
         ? [
             {
@@ -802,6 +866,7 @@ function buildWorkspaceComplaintOutputAnalysis(state) {
         `Supported elements: ${Number((payload.packet_summary || {}).supported_elements || 0)}`,
         `Evidence items: ${Number((payload.packet_summary || {}).testimony_items || 0) + Number((payload.packet_summary || {}).document_items || 0)}`,
         `Requested relief items: ${Number((payload.artifact_analysis || {}).requested_relief_count || 0)}`,
+        `Formal sections present: ${Object.values(formalSectionsPresent).filter(Boolean).length}/${Object.keys(formalSectionsPresent).length}`,
       ],
     },
   };
@@ -1024,7 +1089,11 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
         : typeof toolArgs.requested_relief === 'string'
           ? toolArgs.requested_relief.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
           : null;
-      state.draft = buildWorkspaceDraft(state, requestedRelief);
+      state.draft = buildWorkspaceDraft(state, requestedRelief, {
+        use_llm: Boolean(toolArgs.use_llm),
+        provider: toolArgs.provider,
+        model: toolArgs.model,
+      });
       if (toolArgs.title_override) {
         state.draft.title = String(toolArgs.title_override);
       }

@@ -195,6 +195,8 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert "case_synopsis" in review_payload["review"]
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
+    assert capabilities_payload["claim_type"] == "retaliation"
+    assert capabilities_payload["draft_strategy"] == "template"
 
     claim_type_payload = update_claim_type(
         "package-wrapper-user",
@@ -391,6 +393,15 @@ def test_package_workspace_generate_complaint_can_optionally_use_llm_router(tmp_
     assert draft_payload["draft"]["claim_type"] == "housing_discrimination"
     assert captured["provider"] == "stub-provider"
     assert captured["model"] == "stub-model"
+
+    capabilities_payload = get_workflow_capabilities("package-llm-user", service=service)
+    assert capabilities_payload["claim_type"] == "housing_discrimination"
+    assert capabilities_payload["draft_strategy"] == "llm_router"
+    assert any(
+        item["id"] == "formal_complaint_generation"
+        and "llm_router-backed formal complaint generation" in item["detail"]
+        for item in capabilities_payload["capabilities"]
+    )
 
 
 def test_complaint_generator_cli_wrapper_exposes_workspace_commands(tmp_path, monkeypatch):

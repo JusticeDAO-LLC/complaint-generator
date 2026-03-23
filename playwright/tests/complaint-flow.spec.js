@@ -564,8 +564,14 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-title')).toHaveValue(/Morgan Lee v\. Acme Housing Authority Housing Discrimination Complaint/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#refresh-capabilities-button').click();
+    await expect(page.locator('#workflow-capabilities-preview')).toContainText(/Claim-type drafting alignment/i);
+    await expect(page.locator('#workflow-capabilities-preview')).toContainText(/Formal complaint generation/i);
+    await expect(page.locator('#workflow-capabilities-preview')).toContainText(/housing discrimination/i);
+    await expect(page.locator('#workflow-capabilities-preview')).toContainText(/llm_router-backed formal complaint generation/i);
     await page.locator('#export-packet-tool-button').click();
     await expect(page.locator('#packet-preview')).toContainText(/COMPLAINT FOR HOUSING DISCRIMINATION/i);
+    await expect(page.locator('#packet-preview')).toContainText(/Claim type: housing_discrimination/i);
 
     await page.locator('#analyze-complaint-output-button').click();
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);

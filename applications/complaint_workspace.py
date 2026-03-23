@@ -1102,6 +1102,8 @@ class ComplaintWorkspaceService:
         review = session["review"]
         overview = dict(review.get("overview") or {})
         current_draft = (session.get("session") or {}).get("draft")
+        claim_type = str((session.get("session") or {}).get("claim_type") or "retaliation")
+        draft_strategy = str((current_draft or {}).get("draft_strategy") or "template")
         questions = list(session.get("questions") or [])
         answered_count = len([item for item in questions if item.get("is_answered")])
         total_questions = len(questions)
@@ -1138,6 +1140,22 @@ class ComplaintWorkspaceService:
                 "detail": "A draft already exists and can be edited." if current_draft else "A draft can be generated from the current complaint record.",
             },
             {
+                "id": "claim_type_alignment",
+                "label": "Claim-type drafting alignment",
+                "available": True,
+                "detail": f"The current complaint type is {_claim_type_display_name(claim_type)}.",
+            },
+            {
+                "id": "formal_complaint_generation",
+                "label": "Formal complaint generation",
+                "available": True,
+                "detail": (
+                    "The current draft uses llm_router-backed formal complaint generation."
+                    if draft_strategy == "llm_router"
+                    else "The current draft is using the deterministic template fallback."
+                ),
+            },
+            {
                 "id": "complaint_packet",
                 "label": "Complaint packet export",
                 "available": True,
@@ -1148,6 +1166,9 @@ class ComplaintWorkspaceService:
             "user_id": session["session"]["user_id"],
             "case_synopsis": session["case_synopsis"],
             "overview": overview,
+            "claim_type": claim_type,
+            "claim_type_label": _claim_type_display_name(claim_type),
+            "draft_strategy": draft_strategy,
             "complaint_readiness": readiness,
             "ui_readiness": self.get_ui_readiness(user_id),
             "capabilities": capabilities,
@@ -1520,11 +1541,14 @@ class ComplaintWorkspaceService:
                 "url": "/workspace?target_tab=integrations",
                 "title": "Unified Complaint Workspace",
                 "artifact_type": "complaint_export",
+                "claim_type": str(packet_payload.get("packet", {}).get("claim_type") or ""),
+                "draft_strategy": str(draft.get("draft_strategy") or "template"),
                 "text_excerpt": str(draft.get("body") or "").strip()[:600],
                 "markdown_filename": str(markdown_artifact.get("filename") or ""),
                 "pdf_filename": str(pdf_artifact.get("filename") or ""),
                 "markdown_excerpt": str(markdown_artifact.get("excerpt") or markdown_artifact.get("content") or "").strip()[:2000],
                 "pdf_header": str(pdf_artifact.get("content_type") or "application/pdf"),
+                "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
                 "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),
             }
         ]

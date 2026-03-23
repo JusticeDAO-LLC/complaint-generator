@@ -458,10 +458,15 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
   const overview = ((sessionPayload.review || {}).overview) || {};
   const questions = sessionPayload.questions || [];
   const answeredCount = questions.filter((item) => item.is_answered).length;
+  const claimType = String(((sessionPayload.session || {}).claim_type) || 'retaliation');
+  const draftStrategy = String(((sessionPayload.draft || {}).draft_strategy) || 'template');
   return {
     user_id: userId,
     case_synopsis: String(sessionPayload.case_synopsis || '').trim(),
     overview,
+    claim_type: claimType,
+    claim_type_label: claimType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    draft_strategy: draftStrategy,
     complaint_readiness: complaintReadinessPayload(userId),
     ui_readiness: uiReadinessPayload(userId),
     capabilities: [
@@ -470,6 +475,8 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
       { id: 'evidence_capture', label: 'Evidence capture', available: true, detail: `${(overview.testimony_items || 0) + (overview.document_items || 0)} evidence items saved.` },
       { id: 'support_review', label: 'Claim support review', available: true, detail: `${overview.supported_elements || 0} supported elements, ${overview.missing_elements || 0} gaps remaining.` },
       { id: 'complaint_draft', label: 'Complaint draft', available: true, detail: sessionPayload.draft ? 'A draft already exists and can be edited.' : 'A draft can be generated from the current complaint record.' },
+      { id: 'claim_type_alignment', label: 'Claim-type drafting alignment', available: true, detail: `The current complaint type is ${claimType.replace(/_/g, ' ')}.` },
+      { id: 'formal_complaint_generation', label: 'Formal complaint generation', available: true, detail: draftStrategy === 'llm_router' ? 'The current draft uses llm_router-backed formal complaint generation.' : 'The current draft is using the deterministic template fallback.' },
       { id: 'complaint_packet', label: 'Complaint packet export', available: true, detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.' },
     ],
   };
