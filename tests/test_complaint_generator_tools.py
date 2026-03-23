@@ -748,6 +748,41 @@ def test_llm_draft_normalizes_claim_specific_headings_for_housing_output(monkeyp
     assert "present evidentiary record" in payload["draft"]["body"].lower()
 
 
+def test_template_draft_deduplicates_repeated_evidence_references(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "dedupe-evidence-sessions")
+    service.submit_intake_answers(
+        "dedupe-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR and requested corrective action",
+            "adverse_action": "Was sidelined, threatened with termination, and then terminated",
+            "timeline": "Reported discrimination on March 8, was threatened on March 9, and terminated on March 10",
+            "harm": "Lost wages, benefits, professional standing, and suffered emotional distress",
+        },
+    )
+    for _ in range(3):
+        service.save_evidence(
+            "dedupe-user",
+            kind="document",
+            claim_element_id="causation",
+            title="Termination email",
+            content="The termination email followed within two days of the HR complaint.",
+            source="Inbox export",
+        )
+
+    payload = service.generate_complaint(
+        "dedupe-user",
+        requested_relief=["Back pay", "Compensatory damages", "Injunctive relief"],
+    )
+    body = payload["draft"]["body"]
+
+    assert body.count("Termination email (causation)") == 1
+    assert body.count("Documentary exhibit 'Termination email'") == 1
+    assert "16. Documentary exhibit 'Termination email'" in body
+    assert "17. Jordan Example repeats and realleges" in body
+
+
 def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "prompt-sessions")
     service.submit_intake_answers(

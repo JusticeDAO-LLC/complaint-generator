@@ -1076,6 +1076,87 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             browser.close()
 
 
+def test_workspace_surfaces_llm_cleanup_metadata_for_salvaged_drafts():
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as handle:
+        db_path = handle.name
+    workspace_root = Path(tempfile.mkdtemp(prefix="complaint-workspace-salvage-browser-"))
+
+    mediator, _hook = _build_hook_backed_browser_mediator(db_path)
+    mediator.build_formal_complaint_document_package.side_effect = _build_document_payload
+    profile_store = _FixtureProfileStore()
+    workspace_service = ComplaintWorkspaceService(root_dir=workspace_root)
+    workspace_service.submit_intake_answers(
+        "llm-browser-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+    workspace_service.save_evidence(
+        "llm-browser-user",
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="The termination email followed within two days of the HR complaint.",
+        source="Inbox export",
+    )
+    generated = workspace_service.generate_complaint(
+        "llm-browser-user",
+        requested_relief=["Back pay", "Compensatory damages"],
+        title_override="Jordan Example v. Acme Corporation Complaint",
+        use_llm=False,
+    )
+    state = workspace_service._load_state("llm-browser-user")
+    draft = dict(generated.get("draft") or {})
+    draft["draft_strategy"] = "llm_router"
+    draft["draft_backend"] = {"provider": "stub-provider", "model": "stub-model"}
+    draft["draft_normalizations"] = [
+        "trimmed_workspace_appendices",
+        "normalized_count_heading",
+        "replaced:current complaint record",
+    ]
+    state["draft"] = draft
+    workspace_service._save_state(state)
+
+    app = _build_fixture_app(mediator, profile_store, workspace_service)
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            context = browser.new_context(viewport=LAYOUT_AUDIT_VIEWPORT)
+            page = context.new_page()
+
+            page.goto(f"{base_url}/workspace?user_id=llm-browser-user&target_tab=draft")
+            _wait_for_surface(page, "/workspace")
+            page.wait_for_function(
+                "() => document.getElementById('draft-generation-meta').innerText.includes('LLM cleanup:')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('draft-generation-meta').innerText.includes('trimmed_workspace_appendices')"
+            )
+            page.click("button[data-tab-target='integrations']")
+            page.click("#export-packet-tool-button")
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('draft_normalization_count')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.includes('draft_normalizations')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.includes('trimmed_workspace_appendices')"
+            )
+
+            context.close()
+            browser.close()
+
+
 def test_workspace_connected_handoffs_preserve_case_context_and_capture_screenshot(tmp_path):
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

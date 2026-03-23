@@ -354,18 +354,18 @@
             <div class="toolbar">
                 <input id="traceCidInput" type="text" placeholder="Enter optimization trace CID" aria-label="Optimization trace CID">
                 <button id="loadTraceButton" type="button">Load Trace</button>
-                <a class="link-button" href="/document">Back to Builder</a>
+                <a class="link-button" id="trace-open-builder" href="/document">Back to Builder</a>
             </div>
             <div class="toolbar-secondary" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                 <a class="link-button" href="/">Landing</a>
                 <a class="link-button" href="/home">Account</a>
-                <a class="link-button" href="/chat">Chat</a>
-                <a class="link-button" href="/profile">Profile</a>
-                <a class="link-button" href="/results">Results</a>
-                <a class="link-button" href="/claim-support-review">Review</a>
-                <a class="link-button" href="/document">Builder</a>
-                <a class="link-button" href="/document/optimization-trace">Trace</a>
-                <a class="link-button" href="/mlwysiwyg">Editor</a>
+                <a class="link-button" id="trace-nav-chat" href="/chat">Chat</a>
+                <a class="link-button" id="trace-nav-profile" href="/profile">Profile</a>
+                <a class="link-button" id="trace-nav-results" href="/results">Results</a>
+                <a class="link-button" id="trace-nav-review" href="/claim-support-review">Review</a>
+                <a class="link-button" id="trace-nav-builder" href="/document">Builder</a>
+                <a class="link-button" id="trace-nav-trace" href="/document/optimization-trace">Trace</a>
+                <a class="link-button" id="trace-nav-editor" href="/mlwysiwyg">Editor</a>
                 <a class="link-button" href="/ipfs-datasets/sdk-playground">SDK</a>
                 <a class="link-button" href="/dashboards">Dashboards</a>
                 <button id="exportTraceButton" type="button" disabled>Export Trace Bundle</button>
@@ -1031,6 +1031,60 @@
             }
             const query = params.toString();
             return query ? `/claim-support-review?${query}` : '/claim-support-review';
+        }
+
+        function readTraceNavigationContext() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                userId: String(params.get('user_id') || '').trim(),
+                caseSynopsis: String(params.get('case_synopsis') || '').trim(),
+                claimType: String(params.get('claim_type') || '').trim(),
+                cid: String(params.get('cid') || '').trim(),
+            };
+        }
+
+        function buildTraceSurfaceUrl(path, context) {
+            const params = new URLSearchParams();
+            if (context && context.userId) {
+                params.set('user_id', context.userId);
+            }
+            if (context && context.caseSynopsis) {
+                params.set('case_synopsis', context.caseSynopsis);
+            }
+            if (context && context.claimType && path === '/claim-support-review') {
+                params.set('claim_type', context.claimType);
+            }
+            if (context && context.cid && path === '/document/optimization-trace') {
+                params.set('cid', context.cid);
+            }
+            const query = params.toString();
+            return query ? `${path}?${query}` : path;
+        }
+
+        function setHrefForIds(ids, href) {
+            ids.forEach((id) => {
+                const node = document.getElementById(id);
+                if (node) {
+                    node.href = href;
+                }
+            });
+        }
+
+        function updateTraceNavigationLinks(userId, claimType) {
+            const context = readTraceNavigationContext();
+            if (userId) {
+                context.userId = String(userId || '').trim();
+            }
+            if (claimType) {
+                context.claimType = String(claimType || '').trim();
+            }
+            setHrefForIds(['trace-open-builder', 'trace-nav-builder'], buildTraceSurfaceUrl('/document', context));
+            setHrefForIds(['trace-nav-chat'], buildTraceSurfaceUrl('/chat', context));
+            setHrefForIds(['trace-nav-profile'], buildTraceSurfaceUrl('/profile', context));
+            setHrefForIds(['trace-nav-results'], buildTraceSurfaceUrl('/results', context));
+            setHrefForIds(['trace-nav-review'], buildTraceSurfaceUrl('/claim-support-review', context));
+            setHrefForIds(['trace-nav-trace'], buildTraceSurfaceUrl('/document/optimization-trace', context));
+            setHrefForIds(['trace-nav-editor'], buildTraceSurfaceUrl('/mlwysiwyg', context));
         }
 
         function normalizeIntakeSummaryConfirmation(value) {
@@ -1759,6 +1813,7 @@
             );
             const topClaimType = String(candidateClaimSummary.top_claim_type || '').trim();
             const traceDashboardUrl = buildTraceDashboardUrl(traceUserId, topClaimType);
+            updateTraceNavigationLinks(traceUserId, topClaimType);
             const intakeSections = intakeCaseSummary.intake_sections && typeof intakeCaseSummary.intake_sections === 'object' ? intakeCaseSummary.intake_sections : {};
             const canonicalFactSummary = intakeCaseSummary.canonical_fact_summary && typeof intakeCaseSummary.canonical_fact_summary === 'object' ? intakeCaseSummary.canonical_fact_summary : {};
             const canonicalFactIntentSummary = intakeCaseSummary.canonical_fact_intent_summary && typeof intakeCaseSummary.canonical_fact_intent_summary === 'object' ? intakeCaseSummary.canonical_fact_intent_summary : {};
@@ -2337,6 +2392,8 @@
                     .catch((error) => setStatus(`Proof explanation copy failed: ${error.message}`, 'status-danger'));
             }
         });
+
+        updateTraceNavigationLinks();
 
         const initialCid = new URLSearchParams(window.location.search).get('cid') || '';
         if (initialCid) {

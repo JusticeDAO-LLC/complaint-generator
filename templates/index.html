@@ -468,11 +468,11 @@
             </div>
 
             <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint process menu">
-                <a class="surface-link" href="/home">Secure Intake</a>
-                <a class="surface-link" href="/workspace">Workspace</a>
-                <a class="surface-link" href="/claim-support-review">Review</a>
-                <a class="surface-link" href="/document">Builder</a>
-                <a class="surface-link" href="/chat">Chat</a>
+                <a class="surface-link" id="homepage-nav-intake" href="/home">Secure Intake</a>
+                <a class="surface-link" id="homepage-nav-workspace" href="/workspace">Workspace</a>
+                <a class="surface-link" id="homepage-nav-review" href="/claim-support-review">Review</a>
+                <a class="surface-link" id="homepage-nav-builder" href="/document">Builder</a>
+                <a class="surface-link" id="homepage-nav-chat" href="/chat">Chat</a>
             </nav>
         </header>
 
@@ -487,7 +487,7 @@
                 <div class="cta-row">
                     <a class="primary-cta" id="homepage-open-intake" href="/home">Start Secure Intake</a>
                     <a class="secondary-cta" id="homepage-open-workspace" href="/workspace">Resume Complaint</a>
-                    <a class="secondary-cta" href="/claim-support-review">Review Support First</a>
+                    <a class="secondary-cta" id="homepage-open-review" href="/claim-support-review">Review Support First</a>
                 </div>
                 <div class="hero-points">
                     <div class="hero-point">
@@ -551,7 +551,7 @@
                 <div class="resume-actions">
                     <a class="resume-link" id="homepage-resume-link" href="/workspace">Open Workspace</a>
                     <a class="resume-link" id="homepage-resume-review" href="/claim-support-review">Open Review</a>
-                    <a class="resume-link" href="/document">Open Builder</a>
+                    <a class="resume-link" id="homepage-resume-builder" href="/document">Open Builder</a>
                 </div>
             </aside>
         </section>
@@ -599,17 +599,17 @@
                     <article class="route-card">
                         <h3>Returning client</h3>
                         <p>Resume the complaint session and continue the guided workflow.</p>
-                        <a class="route-link" href="/workspace">Open workspace</a>
+                        <a class="route-link" id="homepage-route-workspace" href="/workspace">Open workspace</a>
                     </article>
                     <article class="route-card">
                         <h3>Operator review</h3>
                         <p>Inspect support gaps and complaint readiness before drafting.</p>
-                        <a class="route-link" href="/claim-support-review">Open review</a>
+                        <a class="route-link" id="homepage-route-review" href="/claim-support-review">Open review</a>
                     </article>
                     <article class="route-card">
                         <h3>Drafting</h3>
                         <p>Generate or revise the formal complaint when the record is ready.</p>
-                        <a class="route-link" href="/document">Open builder</a>
+                        <a class="route-link" id="homepage-route-builder" href="/document">Open builder</a>
                     </article>
                 </div>
             </div>
@@ -647,6 +647,38 @@
 
             function overview(payload) {
                 return payload && payload.review && payload.review.overview ? payload.review.overview : {};
+            }
+
+            function buildHomepageSurfaceUrl(path, context, extraParams) {
+                const params = new URLSearchParams();
+                if (context && context.userId) {
+                    params.set('user_id', context.userId);
+                }
+                if (context && context.caseSynopsis) {
+                    params.set('case_synopsis', context.caseSynopsis);
+                }
+                if (context && context.claimType && path === '/claim-support-review') {
+                    params.set('claim_type', context.claimType);
+                }
+                if (extraParams && typeof extraParams === 'object') {
+                    Object.entries(extraParams).forEach(([key, value]) => {
+                        if (value === null || value === undefined || value === '') {
+                            return;
+                        }
+                        params.set(key, String(value));
+                    });
+                }
+                const query = params.toString();
+                return query ? `${path}?${query}` : path;
+            }
+
+            function setHrefForIds(ids, href) {
+                ids.forEach((id) => {
+                    const node = document.getElementById(id);
+                    if (node) {
+                        node.href = href;
+                    }
+                });
             }
 
             function nextHomepageRoute(payload) {
@@ -747,6 +779,12 @@
                     const complaintReadiness = await client.getComplaintReadiness(did);
                     const summary = overview(payload);
                     const action = nextHomepageRoute(payload);
+                    const context = {
+                        userId: did,
+                        caseSynopsis: String(payload.case_synopsis || ((payload.session || {}).case_synopsis) || '').trim(),
+                        claimType: String(payload.claim_type || ((payload.session || {}).claim_type) || '').trim(),
+                    };
+                    const actionHref = buildHomepageSurfaceUrl(action.href, context);
                     const nextQuestion = payload && payload.next_question && payload.next_question.prompt
                         ? payload.next_question.prompt
                         : action.detail;
@@ -764,14 +802,19 @@
                     if (badge) {
                         badge.textContent = 'Connected';
                     }
+                    setHrefForIds(['homepage-nav-intake', 'homepage-open-intake'], buildHomepageSurfaceUrl('/home', context));
+                    setHrefForIds(['homepage-nav-workspace', 'homepage-route-workspace'], buildHomepageSurfaceUrl('/workspace', context));
+                    setHrefForIds(['homepage-nav-review', 'homepage-open-review', 'homepage-resume-review', 'homepage-route-review'], buildHomepageSurfaceUrl('/claim-support-review', context));
+                    setHrefForIds(['homepage-nav-builder', 'homepage-resume-builder', 'homepage-route-builder'], buildHomepageSurfaceUrl('/document', context));
+                    setHrefForIds(['homepage-nav-chat'], buildHomepageSurfaceUrl('/chat', context));
                     if (workspaceLink) {
-                        workspaceLink.href = action.href;
+                        workspaceLink.href = actionHref;
                         workspaceLink.textContent = action.label;
                     }
                     if (resumeLink) {
                         resumeLink.href = action.href === '/claim-support-review' || action.href === '/document'
-                            ? action.href
-                            : '/workspace';
+                            ? actionHref
+                            : buildHomepageSurfaceUrl('/workspace', context);
                     }
                 } catch (error) {
                     setText('homepage-did', 'Unavailable');

@@ -1729,6 +1729,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                             <div class="feature-grid" id="ux-review-scorecard"></div>
                             <div class="status"><pre id="ux-review-summary">No UI review has been run yet.</pre></div>
                             <div class="list" id="ux-review-actor-critic"></div>
+                            <div class="list" id="ux-review-repair-brief"></div>
                             <div class="list" id="ux-review-stage-findings"></div>
                             <div class="list" id="ux-review-issues"></div>
                             <div class="list" id="ux-review-runs"></div>
@@ -2625,6 +2626,40 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 claimAlignmentNode.textContent = 'No claim-alignment review run yet.';
             }
             renderDraftReadiness(workspaceSession || {});
+            renderOptimizerRepairBrief();
+        }
+
+        function renderOptimizerRepairBrief() {
+            const container = document.getElementById('ux-review-repair-brief');
+            if (!container) {
+                return;
+            }
+            const exportCritic = (latestComplaintOutputAnalysis || {}).export_critic || null;
+            const aggregate = exportCritic && exportCritic.aggregate ? exportCritic.aggregate : {};
+            const brief = aggregate && aggregate.optimizer_repair_brief ? aggregate.optimizer_repair_brief : null;
+            if (!brief) {
+                container.innerHTML = '<div class="item"><strong>No complaint-output repair brief yet.</strong><div class="muted">Run Export Critic after generating a complaint to see the top filing defects and the UI surfaces the optimizer should repair first.</div></div>';
+                return;
+            }
+            const formalGaps = Array.isArray(brief.top_formal_section_gaps) ? brief.top_formal_section_gaps : [];
+            const issueFindings = Array.isArray(brief.top_issue_findings) ? brief.top_issue_findings : [];
+            const surfaceTargets = Array.isArray(brief.recommended_surface_targets) ? brief.recommended_surface_targets : [];
+            const actorRiskSummary = String(brief.actor_risk_summary || '').trim();
+            const criticGateVerdict = String(brief.critic_gate_verdict || '').trim();
+            container.innerHTML = `
+                <div class="item">
+                    <strong>Complaint-output optimizer repair brief</strong>
+                    <div class="chip-row">
+                        ${criticGateVerdict ? `<span class="chip ${criticGateVerdict === 'pass' ? 'good' : 'warn'}">critic gate: ${escapeHtml(criticGateVerdict)}</span>` : ''}
+                        ${formalGaps.length ? `<span class="chip warn">formal gaps: ${escapeHtml(String(formalGaps.length))}</span>` : '<span class="chip good">no formal gaps reported</span>'}
+                        ${surfaceTargets.length ? `<span class="chip">surface targets: ${escapeHtml(String(surfaceTargets.length))}</span>` : ''}
+                    </div>
+                    <div class="muted">${escapeHtml(actorRiskSummary || 'The export critic did not return an actor-risk summary.')}</div>
+                    ${formalGaps.length ? `<p><strong>Top formal section gaps:</strong> ${escapeHtml(formalGaps.join(', '))}</p>` : ''}
+                    ${surfaceTargets.length ? `<p><strong>Recommended UI surfaces:</strong> ${escapeHtml(surfaceTargets.join(', '))}</p>` : ''}
+                    ${issueFindings.length ? `<p><strong>Top filing defects:</strong> ${escapeHtml(issueFindings.join(' | '))}</p>` : ''}
+                </div>
+            `;
         }
 
         function syncPacketDownloadState() {
@@ -3418,6 +3453,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const metadata = document.getElementById('ux-review-metadata');
             const summary = document.getElementById('ux-review-summary');
             const actorCritic = document.getElementById('ux-review-actor-critic');
+            const repairBrief = document.getElementById('ux-review-repair-brief');
             const stageFindings = document.getElementById('ux-review-stage-findings');
             const issues = document.getElementById('ux-review-issues');
             const runs = document.getElementById('ux-review-runs');
@@ -3453,6 +3489,9 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                     <div class="muted">This audit exercises the same complaint manager flow through chat testimony, intake, evidence capture, review, draft generation, and builder handoff.</div>
                 </div>
             `;
+            if (repairBrief) {
+                repairBrief.innerHTML = '<div class="item"><strong>Complaint-output repair brief unchanged.</strong><div class="muted">Run Export Critic after generating a complaint to refresh the filing-specific optimizer guidance.</div></div>';
+            }
 
             stageFindings.innerHTML = `
                 <div class="walkthrough-item">

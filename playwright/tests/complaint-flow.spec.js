@@ -603,6 +603,9 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"export_critic":/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"average_filing_shape_score":\s*[7-9]\d|"average_filing_shape_score":\s*100/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"average_claim_type_alignment_score":\s*[7-9]\d|"average_claim_type_alignment_score":\s*100/i);
+    await expect(page.locator('#ux-review-repair-brief')).toContainText(/Complaint-output optimizer repair brief/i);
+    await expect(page.locator('#ux-review-repair-brief')).toContainText(/critic gate:/i);
+    await expect(page.locator('#ux-review-repair-brief')).toContainText(/Recommended UI surfaces:/i);
 
     const [markdownDownload] = await Promise.all([
       page.waitForEvent('download'),

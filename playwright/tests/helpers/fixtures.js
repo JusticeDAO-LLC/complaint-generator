@@ -1232,6 +1232,9 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     }
     if (name === 'complaint.review_generated_exports') {
       const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+      const formalSectionGaps = Object.entries(analysis.ui_feedback.formal_sections_present || {})
+        .filter(([, present]) => !present)
+        .map(([name]) => name);
       return {
         artifact_count: 1,
         complaint_output_feedback: {
@@ -1239,13 +1242,40 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
           claim_types: [state.claim_type],
           draft_strategies: [state.draft && state.draft.draft_strategy ? state.draft.draft_strategy : 'template'],
           filing_shape_scores: [analysis.ui_feedback.filing_shape_score || 0],
+          release_gate_verdicts: [((analysis.ui_feedback.release_gate || {}).verdict || 'warning')],
+          formal_section_gaps: formalSectionGaps,
           ui_suggestions: (analysis.ui_feedback.ui_suggestions || []).map((item) => item.title || item.recommendation).filter(Boolean),
         },
         aggregate: {
           average_filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
           average_claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
           issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean),
+          missing_formal_sections: formalSectionGaps,
           ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+          ui_priority_repairs: [
+            {
+              priority: 'high',
+              target_surface: 'draft,review,integrations',
+              repair: 'Keep filing-shape warnings and export blockers visible until the complaint looks like a formal pleading.',
+              filing_benefit: 'The actor sees exactly which UI surfaces to revisit before trusting the export.',
+            },
+          ],
+          actor_risk_summaries: [
+            'The actor can generate and download a complaint before understanding which filing-shape gaps or support warnings still need attention.',
+          ],
+          critic_gates: [
+            {
+              verdict: ((analysis.ui_feedback.release_gate || {}).verdict || 'warning'),
+              blocking_reason: ((analysis.ui_feedback.release_gate || {}).reason || 'Formal complaint posture still needs visible validation.'),
+            },
+          ],
+          optimizer_repair_brief: {
+            top_formal_section_gaps: formalSectionGaps.slice(0, 6),
+            top_issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean).slice(0, 6),
+            recommended_surface_targets: ['draft,review,integrations'],
+            actor_risk_summary: 'The actor can export a complaint without clear UI guidance about whether the filing is truly ready.',
+            critic_gate_verdict: ((analysis.ui_feedback.release_gate || {}).verdict || 'warning'),
+          },
         },
         reviews: [
           {
@@ -1257,8 +1287,23 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
               summary: analysis.ui_feedback.summary,
               filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
               claim_type_alignment_score: analysis.ui_feedback.claim_type_alignment_score || 0,
+              missing_formal_sections: formalSectionGaps,
               issues: analysis.ui_feedback.issues || [],
               ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+              ui_priority_repairs: [
+                {
+                  priority: 'high',
+                  target_surface: 'draft,review,integrations',
+                  repair: 'Keep filing-shape warnings and export blockers visible until the complaint reads like a formal pleading.',
+                  filing_benefit: 'Helps the exported complaint preserve formal structure and clear gatekeeping.',
+                },
+              ],
+              actor_risk_summary: 'The actor needs clearer filing-readiness signals before relying on the exported complaint.',
+              critic_gate: {
+                verdict: ((analysis.ui_feedback.release_gate || {}).verdict || 'warning'),
+                blocking_reason: ((analysis.ui_feedback.release_gate || {}).reason || 'Formal complaint posture still needs visible validation.'),
+                required_repairs: ['Keep filing-shape guidance visible in the draft and export surfaces.'],
+              },
             },
           },
         ],

@@ -391,6 +391,16 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#editor-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
     await expect(page.locator('#editor-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
     await expect(page.locator('#editor-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-open-workspace')).toHaveAttribute('href', /target_tab=draft/);
+    await expect(page.locator('#editor-open-tools')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-open-tools')).toHaveAttribute('href', /target_tab=integrations/);
+    await expect(page.locator('#editor-open-review')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-open-review')).toHaveAttribute('href', /claim_type=retaliation/);
+    await expect(page.locator('#editor-open-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-open-builder')).toHaveAttribute('href', /claim_type=retaliation/);
+    await expect(page.locator('#editor-open-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-open-trace')).toHaveAttribute('href', /claim_type=retaliation/);
     await page.locator('#editor-nav-workspace').click();
 
     await expect(page).toHaveURL(/\/workspace/);
@@ -705,11 +715,24 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#homepage-evidence-count')).toHaveText('0');
     await expect(page.locator('#homepage-tool-count')).not.toHaveText('0');
     await expect(page.locator('#homepage-session-status')).toContainText(cachedDid);
-    await expect(page.locator('#homepage-resume-link')).toHaveAttribute('href', '/claim-support-review');
-    await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', '/claim-support-review');
+    await expect(page.locator('#homepage-resume-link')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
     await expect(page.locator('#homepage-open-workspace')).toContainText(/Review Claim Support|Review Support First/i);
+    await expect(page.locator('#homepage-nav-builder')).toHaveAttribute('href', new RegExp(`/document\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#homepage-nav-chat')).toHaveAttribute('href', new RegExp(`/chat\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
     await expect(page.locator('#homepage-next-step')).toContainText(/Inspect missing claim elements/i);
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Still building the record|Ready for first draft|Draft in progress/i);
+
+    await page.goto(`/home?user_id=${encodeURIComponent(cachedDid)}&case_synopsis=${encodeURIComponent('Jordan Rivera reported patient safety violations before termination.')}`);
+    await expect(page.locator('#intake-nav-chat')).toHaveAttribute('href', new RegExp(`/chat\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#intake-open-review')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#intake-nav-trace')).toHaveAttribute('href', new RegExp(`/document/optimization-trace\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+
+    await page.goto(`/document/optimization-trace?user_id=${encodeURIComponent(cachedDid)}&claim_type=retaliation&cid=trace-demo-cid`);
+    await expect(page.locator('#trace-nav-review')).toHaveAttribute('href', new RegExp(`/claim-support-review\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#trace-open-builder')).toHaveAttribute('href', new RegExp(`/document\\?[^\"]*user_id=${encodeURIComponent(cachedDid)}`));
+    await expect(page.locator('#trace-nav-trace')).toHaveAttribute('href', /cid=trace-demo-cid/);
+    await expect(page.locator('#cg-app-shell a[href*="user_id="]').first()).toBeVisible();
 
     for (const path of ['/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
       await page.goto(path);
@@ -719,9 +742,9 @@ test.describe('website surface navigation', () => {
       await expect(page.locator('#cg-app-shell-supported-count')).toHaveText('5');
       await expect(page.locator('#cg-app-shell-complaint-readiness')).toContainText(/Not ready to draft|Still building the record|Ready for first draft|Draft in progress/i);
       await expect(page.locator('#cg-app-shell-complaint-readiness')).toContainText(/Answered intake:/i);
-      await expect(page.locator('#cg-app-shell a[href="/workspace"]').first()).toBeVisible();
-      await expect(page.locator('#cg-app-shell a[href="/document"]').first()).toBeVisible();
-      await expect(page.locator('#cg-app-shell a[href="/claim-support-review"]').first()).toBeVisible();
+      await expect(page.locator(`#cg-app-shell a[href*="/workspace?"][href*="user_id=${encodeURIComponent(cachedDid)}"]`).first()).toBeVisible();
+      await expect(page.locator(`#cg-app-shell a[href*="/document?"][href*="user_id=${encodeURIComponent(cachedDid)}"]`).first()).toBeVisible();
+      await expect(page.locator(`#cg-app-shell a[href*="/claim-support-review?"][href*="user_id=${encodeURIComponent(cachedDid)}"]`).first()).toBeVisible();
     }
   });
 });

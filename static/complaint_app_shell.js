@@ -93,6 +93,44 @@
         }
     }
 
+    function readShellContext(state) {
+        const params = new URLSearchParams(window.location.search);
+        const sessionPayload = state && state.sessionPayload ? state.sessionPayload : {};
+        const session = sessionPayload && sessionPayload.session ? sessionPayload.session : {};
+        return {
+            userId: String(params.get('user_id') || state.did || '').trim(),
+            caseSynopsis: String(params.get('case_synopsis') || sessionPayload.case_synopsis || session.case_synopsis || '').trim(),
+            claimType: String(params.get('claim_type') || sessionPayload.claim_type || session.claim_type || '').trim(),
+            returnTo: window.location.pathname + window.location.search,
+        };
+    }
+
+    function buildShellSurfaceUrl(path, context, extraParams) {
+        const params = new URLSearchParams();
+        if (context && context.userId) {
+            params.set('user_id', context.userId);
+        }
+        if (context && context.caseSynopsis) {
+            params.set('case_synopsis', context.caseSynopsis);
+        }
+        if (context && context.claimType && path === '/claim-support-review') {
+            params.set('claim_type', context.claimType);
+        }
+        if (context && context.returnTo && path === '/chat') {
+            params.set('return_to', context.returnTo);
+        }
+        if (extraParams && typeof extraParams === 'object') {
+            Object.entries(extraParams).forEach(([key, value]) => {
+                if (value === null || value === undefined || value === '') {
+                    return;
+                }
+                params.set(key, String(value));
+            });
+        }
+        const query = params.toString();
+        return query ? path + '?' + query : path;
+    }
+
     function renderShell(state) {
         const existing = document.getElementById('cg-app-shell');
         if (existing) {
@@ -105,9 +143,11 @@
         shell.className = 'cg-app-shell';
         shell.setAttribute('aria-label', 'Complaint Generator Application Sidebar');
 
+        const context = readShellContext(state);
+
         const navHtml = navItems.map(([label, href]) => {
             const active = window.location.pathname === href ? ' is-active' : '';
-            return '<a class="cg-app-shell__nav-link' + active + '" href="' + href + '">' + label + '</a>';
+            return '<a class="cg-app-shell__nav-link' + active + '" href="' + buildShellSurfaceUrl(href, context) + '">' + label + '</a>';
         }).join('');
         const readiness = state.uiReadiness || loadCachedReadiness();
         const readinessVerdict = readiness && readiness.verdict ? readiness.verdict : 'No UI verdict cached';
@@ -155,7 +195,7 @@
             '<div class="cg-app-shell__readiness-header"><strong>' + safeText(complaintReadiness.verdict, 'Not reviewed') + '</strong><span>' + safeText(String(complaintReadiness.score) + '/100', 'pending') + '</span></div>',
             '<div class="cg-app-shell__readiness-copy">' + safeText(complaintReadiness.detail, 'Load the complaint session to estimate readiness.') + '</div>',
             '<div class="cg-app-shell__readiness-meta">Answered intake: ' + safeText(complaintReadiness.answered_questions, summary.answeredQuestions) + '. Supported elements: ' + safeText(complaintReadiness.supported_elements, summary.supportedElements) + '. Evidence items: ' + safeText(complaintReadiness.evidence_count, summary.evidenceCount) + '.</div>',
-            '<a class="cg-app-shell__action" href="/workspace">Continue complaint workflow</a>',
+            '<a class="cg-app-shell__action" href="' + buildShellSurfaceUrl('/workspace', context) + '">Continue complaint workflow</a>',
             '</div>',
             '<div class="cg-app-shell__section-title">UI Readiness</div>',
             '<div class="cg-app-shell__readiness' + readinessTone + '" id="cg-app-shell-readiness">',
@@ -164,14 +204,14 @@
             '<div class="cg-app-shell__readiness-meta">' + (readinessStages.length ? ('Stages: ' + readinessStages.join(', ')) : 'Stages: not reviewed yet') + '</div>',
             '<div class="cg-app-shell__readiness-meta">' + (readinessTools.length ? ('Shared tools: ' + readinessTools.slice(0, 3).join(', ')) : 'Shared tools: not cached yet') + '</div>',
             (readinessUpdated ? '<div class="cg-app-shell__readiness-meta">Updated: ' + safeText(readinessUpdated, '') + '</div>' : ''),
-            '<a class="cg-app-shell__action" href="/workspace?target_tab=ux-review">Open UX Audit</a>',
+            '<a class="cg-app-shell__action" href="' + buildShellSurfaceUrl('/workspace', context, { target_tab: 'ux-review' }) + '">Open UX Audit</a>',
             '</div>',
             '<div class="cg-app-shell__section-title">Next Actions</div>',
             '<div class="cg-app-shell__actions">',
-            '<a class="cg-app-shell__action" href="/workspace">Open Workspace</a>',
-            '<a class="cg-app-shell__action" href="/document">Open Builder</a>',
-            '<a class="cg-app-shell__action" href="/claim-support-review">Open Review</a>',
-            '<a class="cg-app-shell__action" href="/mlwysiwyg">Edit Draft</a>',
+            '<a class="cg-app-shell__action" href="' + buildShellSurfaceUrl('/workspace', context) + '">Open Workspace</a>',
+            '<a class="cg-app-shell__action" href="' + buildShellSurfaceUrl('/document', context) + '">Open Builder</a>',
+            '<a class="cg-app-shell__action" href="' + buildShellSurfaceUrl('/claim-support-review', context) + '">Open Review</a>',
+            '<a class="cg-app-shell__action" href="' + buildShellSurfaceUrl('/mlwysiwyg', context) + '">Edit Draft</a>',
             '</div>',
             '<div class="cg-app-shell__meta">This sidebar is backed by the same cached DID and complaint workspace session used by the CLI, MCP tools, and browser SDK.</div>',
             '</div>',

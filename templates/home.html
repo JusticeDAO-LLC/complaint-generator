@@ -685,22 +685,22 @@
                 </div>
                 <div class="topbar-links">
                     <a class="meta-pill" href="/">Landing</a>
-                    <a class="meta-pill" href="/workspace">Workspace</a>
-                    <a class="meta-pill" href="/claim-support-review">Review</a>
-                    <a class="meta-pill" href="/document">Builder</a>
+                    <a class="meta-pill" id="intake-meta-workspace" href="/workspace">Workspace</a>
+                    <a class="meta-pill" id="intake-meta-review" href="/claim-support-review">Review</a>
+                    <a class="meta-pill" id="intake-meta-builder" href="/document">Builder</a>
                 </div>
             </div>
 
             <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                 <a class="surface-link" href="/">Landing</a>
                 <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" href="/chat">Chat</a>
-                <a class="surface-link" href="/profile">Profile</a>
-                <a class="surface-link" href="/results">Results</a>
-                <a class="surface-link" href="/claim-support-review">Review</a>
-                <a class="surface-link" href="/document">Builder</a>
-                <a class="surface-link" href="/mlwysiwyg">Editor</a>
-                <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" id="intake-nav-chat" href="/chat">Chat</a>
+                <a class="surface-link" id="intake-nav-profile" href="/profile">Profile</a>
+                <a class="surface-link" id="intake-nav-results" href="/results">Results</a>
+                <a class="surface-link" id="intake-nav-review" href="/claim-support-review">Review</a>
+                <a class="surface-link" id="intake-nav-builder" href="/document">Builder</a>
+                <a class="surface-link" id="intake-nav-editor" href="/mlwysiwyg">Editor</a>
+                <a class="surface-link" id="intake-nav-trace" href="/document/optimization-trace">Trace</a>
                 <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                 <a class="surface-link" href="/dashboards">Dashboards</a>
             </nav>
@@ -716,7 +716,7 @@
                 <div class="cta-row">
                     <a class="cta-primary" href="#create-form">Create account</a>
                     <a class="cta-secondary" href="#login-form">Sign in</a>
-                    <a class="cta-secondary" href="/workspace">Open workspace instead</a>
+                    <a class="cta-secondary" id="intake-hero-workspace" href="/workspace">Open workspace instead</a>
                 </div>
                 <div class="summary-grid">
                     <div class="summary-card">
@@ -843,6 +843,64 @@
             </aside>
         </section>
     </div>
+
+    <script>
+        (function () {
+            function readIntakeContext() {
+                const params = new URLSearchParams(window.location.search);
+                return {
+                    userId: String(params.get('user_id') || window.localStorage.getItem('complaintGenerator.did') || '').trim(),
+                    caseSynopsis: String(params.get('case_synopsis') || '').trim(),
+                    claimType: String(params.get('claim_type') || '').trim(),
+                };
+            }
+
+            function buildIntakeSurfaceUrl(path, context) {
+                const params = new URLSearchParams();
+                if (context.userId) {
+                    params.set('user_id', context.userId);
+                }
+                if (context.caseSynopsis) {
+                    params.set('case_synopsis', context.caseSynopsis);
+                }
+                if (context.claimType && path === '/claim-support-review') {
+                    params.set('claim_type', context.claimType);
+                }
+                const query = params.toString();
+                return query ? `${path}?${query}` : path;
+            }
+
+            function setHrefForIds(ids, href) {
+                ids.forEach((id) => {
+                    const node = document.getElementById(id);
+                    if (node) {
+                        node.href = href;
+                    }
+                });
+            }
+
+            function updateIntakeWorkflowLinks() {
+                const context = readIntakeContext();
+                if (!context.userId && !context.caseSynopsis) {
+                    return;
+                }
+                setHrefForIds(['intake-meta-workspace', 'intake-hero-workspace', 'intake-open-workspace'], buildIntakeSurfaceUrl('/workspace', context));
+                setHrefForIds(['intake-meta-review', 'intake-nav-review', 'intake-open-review'], buildIntakeSurfaceUrl('/claim-support-review', context));
+                setHrefForIds(['intake-meta-builder', 'intake-nav-builder', 'intake-open-builder'], buildIntakeSurfaceUrl('/document', context));
+                setHrefForIds(['intake-nav-chat'], buildIntakeSurfaceUrl('/chat', context));
+                setHrefForIds(['intake-nav-profile'], buildIntakeSurfaceUrl('/profile', context));
+                setHrefForIds(['intake-nav-results'], buildIntakeSurfaceUrl('/results', context));
+                setHrefForIds(['intake-nav-editor', 'intake-open-editor'], buildIntakeSurfaceUrl('/mlwysiwyg', context));
+                setHrefForIds(['intake-nav-trace'], buildIntakeSurfaceUrl('/document/optimization-trace', context));
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateIntakeWorkflowLinks);
+            } else {
+                updateIntakeWorkflowLinks();
+            }
+        })();
+    </script>
 </body>
 
 </html>
