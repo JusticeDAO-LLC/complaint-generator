@@ -119,7 +119,7 @@
             font: 14px/1.45 "Segoe UI", Arial, sans-serif;
         }
 
-        .topbar-links,
+        .topbar-meta,
         .surface-links,
         .cta-row,
         .status-actions,
@@ -131,9 +131,13 @@
 
         .surface-links {
             margin-top: 12px;
+            padding: 12px 14px;
+            border: 1px solid rgba(79, 51, 27, 0.1);
+            border-radius: 999px;
+            background: rgba(255, 248, 240, 0.72);
         }
 
-        .topbar-link,
+        .meta-pill,
         .surface-link,
         .cta-primary,
         .cta-secondary,
@@ -149,7 +153,7 @@
             font: 700 14px/1.2 "Segoe UI", Arial, sans-serif;
         }
 
-        .topbar-link {
+        .meta-pill {
             background: rgba(255, 247, 238, 0.9);
             border: 1px solid rgba(161, 63, 20, 0.15);
             color: var(--accent-deep);
@@ -544,7 +548,7 @@
                 grid-template-columns: 1fr;
             }
 
-            .topbar-links,
+            .topbar-meta,
             .surface-links,
             .cta-row,
             .status-actions,
@@ -552,7 +556,7 @@
                 flex-direction: column;
             }
 
-            .topbar-link,
+            .meta-pill,
             .surface-link,
             .cta-primary,
             .cta-secondary,
@@ -575,12 +579,10 @@
                         <span class="brand-subtitle">One connected workflow for story intake, evidence review, and complaint drafting.</span>
                     </div>
                 </div>
-                <div class="topbar-links">
-                    <a class="topbar-link" href="/home">Secure Intake</a>
-                    <a class="topbar-link" href="/workspace">Workspace</a>
-                    <a class="topbar-link" href="/claim-support-review">Support Review</a>
-                    <a class="topbar-link" href="/document">Draft Builder</a>
-                    <a class="topbar-link" href="/mlwysiwyg">Editor</a>
+                <div class="topbar-meta">
+                    <span class="meta-pill">Save progress on this device</span>
+                    <span class="meta-pill">Connect facts to evidence</span>
+                    <span class="meta-pill">Hand off to review or draft</span>
                 </div>
             </div>
 

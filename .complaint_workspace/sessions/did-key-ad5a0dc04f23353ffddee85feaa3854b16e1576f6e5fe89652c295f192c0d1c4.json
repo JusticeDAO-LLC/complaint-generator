@@ -1,0 +1,14 @@
+{
+  "case_synopsis": "",
+  "claim_type": "retaliation",
+  "created_at": "2026-03-23T04:22:34.758088+00:00",
+  "draft": null,
+  "evidence": {
+    "documents": [],
+    "testimony": []
+  },
+  "intake_answers": {},
+  "intake_history": [],
+  "updated_at": "2026-03-23T04:22:34.758093+00:00",
+  "user_id": "did:key:ad5a0dc04f23353ffddee85feaa3854b16e1576f6e5fe89652c295f192c0d1c4"
+}
