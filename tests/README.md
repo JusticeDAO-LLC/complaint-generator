@@ -242,6 +242,7 @@ For the HACC grounding workflow, use the focused helper:
 ```bash
 python scripts/run_hacc_grounding_regression.py --list
 python scripts/run_hacc_grounding_regression.py --skip-smoke
+make hacc-adversarial-runner HACC_REPO_DIR=../HACC
 ```
 
 For an existing grounded run directory, you can inspect the current workflow state without rerunning the full pipeline:
@@ -287,16 +288,21 @@ The same HACC slice is also available through editor and shell tooling:
 - VS Code task:
   - `HACC Grounding Regression`
   - `HACC Grounded History`
+  - `HACC Adversarial Runner Tests`
 - Run and Debug:
   - `HACC Grounding Regression`
   - `HACC Grounding Regression (No Smoke)`
   - `HACC Grounded History`
+  - `HACC Adversarial Runner Tests`
 - Make targets:
   - `make hacc-grounding`
   - `make hacc-grounding-no-smoke`
   - `make hacc-grounded-history HACC_GROUNDED_RUN_DIR=output/hacc_grounded/<run_id>`
+  - `make hacc-adversarial-runner HACC_REPO_DIR=../HACC`
 - GitHub Actions:
   - `.github/workflows/hacc-grounding-regression.yml` as a manual workflow, defaulting to `--skip-smoke`
+
+Use the sibling-repo adversarial runner test when you want to validate the HACC-side CLI surface itself: parser defaults, JSON mode, stdout summaries, and workflow-phase autopatch flag handling in `../HACC/tests/test_hacc_adversarial_runner.py`.
 
 For a faster HACC-only unit slice, use:
 

@@ -135,12 +135,55 @@ Knowledge-graph-powered document analysis and reasoning:
 git clone https://github.com/endomorphosis/complaint-generator.git
 cd complaint-generator
 git submodule update --init --recursive
+python3 -m venv .venv
+. .venv/bin/activate
 pip install -r requirements.txt
 
 # (Optional) Configure API keys
 export OPENAI_API_KEY="your-key"
 export BRAVE_SEARCH_API_KEY="your-key"
 ```
+
+### Package, CLI, MCP, and SDK Surfaces
+
+After installation, the complaint workspace is available through package imports, installed console scripts, a stdio MCP server, and the browser SDK used by the unified workspace page.
+
+**Python package imports:**
+
+```python
+from complaint_generator import ComplaintWorkspaceService, create_review_surface_app
+from complaint_generator.mcp import handle_jsonrpc_message
+
+service = ComplaintWorkspaceService()
+session = service.get_session("did:key:example")
+```
+
+**Installed console scripts:**
+
+```bash
+complaint-generator --help
+complaint-workspace session --user-id did:key:example
+complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
+complaint-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"
+
+# Backward-compatible aliases are also installed
+complaint-generator-workspace session --user-id did:key:example
+```
+
+**MCP stdio server:**
+
+```bash
+complaint-mcp-server
+
+# Backward-compatible alias
+complaint-generator-mcp
+```
+
+**Browser SDK and unified workspace page:**
+
+- The browser SDK is served from `/static/complaint_mcp_sdk.js`
+- The unified workspace is available at `/workspace`
+- The workspace page uses the same complaint service contract exposed by the package, CLI, and MCP server
 
 ### Running
 
@@ -195,7 +238,15 @@ Also available via:
 - VS Code task `Claim Support Regression` with `No Browser` and `Require Browser` variants
 - GitHub Actions workflow `claim-support-regression.yml` for the focused claim-support slice
 
-When browser coverage is enabled, the focused slice runs both `tests/test_claim_support_review_playwright_smoke.py` and `tests/test_complaint_generator_site_playwright.py`.
+When browser coverage is enabled, the focused slice runs the current template, real-browser, and stub-browser surfaces together so route registration, workspace SDK behavior, and unified navigation stay aligned.
+
+The current focused review/browser coverage is centered on:
+
+- `tests/test_claim_support_review_template.py`
+- `tests/test_review_surface_site_playwright.py`
+- `playwright/tests/navigation.spec.js`
+
+The package/import/entrypoint coverage for the install surface is in `tests/test_complaint_generator_package_surface.py`.
 
 If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
 
@@ -222,6 +273,13 @@ The dry run reports legacy testimony rows that can be canonically linked to regi
 
 The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path.
 The lightweight slice also covers adversarial session intake-prompt regressions that shape HACC-specific questioning and recovery behavior.
+For the sibling HACC repository's adversarial runner CLI contracts, you can also run:
+
+```bash
+make hacc-adversarial-runner HACC_REPO_DIR=../HACC
+```
+
+That validates the HACC-side runner parser, JSON mode, stdout summaries, workflow-phase autopatch CLI flags, and operator-facing output contracts in `../HACC/tests/test_hacc_adversarial_runner.py`.
 
 To inspect an existing grounded HACC run without rerunning research, upload, or synthesis, use:
 
@@ -256,8 +314,9 @@ Grounded follow-up answers: 3
 Also available via:
 
 - VS Code tasks `HACC Unit Regression`, `HACC Grounding Regression`, and `HACC Grounded History`
-- Run and Debug entries `HACC Unit Regression`, `HACC Grounding Regression`, `HACC Grounding Regression (No Smoke)`, and `HACC Grounded History`
-- Make targets `hacc-unit`, `hacc-grounding`, `hacc-grounding-no-smoke`, and `hacc-grounded-history`
+- VS Code task `HACC Adversarial Runner Tests`
+- Run and Debug entries `HACC Unit Regression`, `HACC Grounding Regression`, `HACC Grounding Regression (No Smoke)`, `HACC Grounded History`, and `HACC Adversarial Runner Tests`
+- Make targets `hacc-unit`, `hacc-grounding`, `hacc-grounding-no-smoke`, `hacc-grounded-history`, and `hacc-adversarial-runner`
 - GitHub Actions workflow `hacc-unit-regression.yml`
 - Manual workflow `hacc-grounding-regression.yml`
 

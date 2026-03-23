@@ -107,6 +107,18 @@
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "HACC Adversarial Runner Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "${workspaceFolder}/../HACC/tests/test_hacc_adversarial_runner.py",
+        "-q"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/../HACC"
     }
   ]
 }

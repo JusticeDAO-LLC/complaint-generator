@@ -195,18 +195,29 @@ const claimElements = [
   { id: 'harm', label: 'Damages' },
 ];
 
-const workspaceState = {
-  user_id: 'did:key:playwright-demo',
-  claim_type: 'retaliation',
-  intake_answers: {},
-  evidence: {
-    testimony: [],
-    documents: [],
-  },
-  draft: null,
-};
+function createWorkspaceState(userId = 'did:key:playwright-demo') {
+  return {
+    user_id: userId,
+    claim_type: 'retaliation',
+    intake_answers: {},
+    evidence: {
+      testimony: [],
+      documents: [],
+    },
+    draft: null,
+  };
+}
 
-function workspaceReview() {
+const workspaceSessions = new Map();
+
+function getWorkspaceState(userId = 'did:key:playwright-demo') {
+  if (!workspaceSessions.has(userId)) {
+    workspaceSessions.set(userId, createWorkspaceState(userId));
+  }
+  return workspaceSessions.get(userId);
+}
+
+function workspaceReview(workspaceState) {
   const answers = workspaceState.intake_answers;
   const testimony = workspaceState.evidence.testimony;
   const documents = workspaceState.evidence.documents;
@@ -251,7 +262,8 @@ function workspaceReview() {
   };
 }
 
-function workspaceSessionPayload() {
+function workspaceSessionPayload(userId = 'did:key:playwright-demo') {
+  const workspaceState = getWorkspaceState(userId);
   const nextQuestion = workspaceQuestions.find((question) => !workspaceState.intake_answers[question.id]) || null;
   return {
     session: JSON.parse(JSON.stringify(workspaceState)),
@@ -260,11 +272,11 @@ function workspaceSessionPayload() {
       answer: workspaceState.intake_answers[question.id] || '',
     })),
     next_question: nextQuestion,
-    review: workspaceReview(),
+    review: workspaceReview(workspaceState),
   };
 }
 
-function generateWorkspaceDraft(requestedRelief) {
+function generateWorkspaceDraft(workspaceState, requestedRelief) {
   const answers = workspaceState.intake_answers;
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
   const body = [
@@ -446,7 +458,7 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/complaint-workspace/session') {
-    return sendJson(response, workspaceSessionPayload());
+    return sendJson(response, workspaceSessionPayload(url.searchParams.get('user_id') || 'did:key:playwright-demo'));
   }
 
   if (request.method === 'POST' && url.pathname === '/api/complaint-workspace/identity') {
@@ -499,11 +511,13 @@ const server = http.createServer(async (request, response) => {
     if (method === 'tools/call') {
       const toolName = params.name;
       const args = params.arguments || {};
+      const userId = args.user_id || 'did:key:playwright-demo';
+      const workspaceState = getWorkspaceState(userId);
       let structuredContent = null;
 
       if (toolName === 'complaint.submit_intake') {
         Object.assign(workspaceState.intake_answers, args.answers || {});
-        structuredContent = workspaceSessionPayload();
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.save_evidence') {
         const collection = args.kind === 'document' ? workspaceState.evidence.documents : workspaceState.evidence.testimony;
         collection.push({
@@ -514,26 +528,24 @@ const server = http.createServer(async (request, response) => {
           content: args.content,
           source: args.source || '',
         });
-        structuredContent = workspaceSessionPayload();
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.review_case' || toolName === 'complaint.start_session') {
-        structuredContent = workspaceSessionPayload();
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.generate_complaint') {
-        generateWorkspaceDraft(args.requested_relief || []);
+        generateWorkspaceDraft(workspaceState, args.requested_relief || []);
         if (args.title_override) {
           workspaceState.draft.title = args.title_override;
         }
-        structuredContent = workspaceSessionPayload();
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.update_draft') {
         workspaceState.draft = workspaceState.draft || { title: '', requested_relief: [], body: '' };
         if (typeof args.title === 'string') workspaceState.draft.title = args.title;
         if (typeof args.body === 'string') workspaceState.draft.body = args.body;
         if (Array.isArray(args.requested_relief)) workspaceState.draft.requested_relief = args.requested_relief;
-        structuredContent = workspaceSessionPayload();
+        structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.reset_session') {
-        workspaceState.intake_answers = {};
-        workspaceState.evidence = { testimony: [], documents: [] };
-        workspaceState.draft = null;
-        structuredContent = workspaceSessionPayload();
+        workspaceSessions.set(userId, createWorkspaceState(userId));
+        structuredContent = workspaceSessionPayload(userId);
       } else {
         return sendJson(response, {
           jsonrpc: '2.0',
@@ -588,10 +600,12 @@ const server = http.createServer(async (request, response) => {
     const parsed = rawBody ? JSON.parse(rawBody) : {};
     const toolName = parsed.tool_name;
     const args = parsed.arguments || {};
+    const userId = args.user_id || 'did:key:playwright-demo';
+    const workspaceState = getWorkspaceState(userId);
 
     if (toolName === 'complaint.submit_intake') {
       Object.assign(workspaceState.intake_answers, args.answers || {});
-      return sendJson(response, workspaceSessionPayload());
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.save_evidence') {
       const collection = args.kind === 'document' ? workspaceState.evidence.documents : workspaceState.evidence.testimony;
@@ -603,30 +617,28 @@ const server = http.createServer(async (request, response) => {
         content: args.content,
         source: args.source || '',
       });
-      return sendJson(response, workspaceSessionPayload());
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.review_case' || toolName === 'complaint.start_session') {
-      return sendJson(response, workspaceSessionPayload());
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.generate_complaint') {
-      generateWorkspaceDraft(args.requested_relief || []);
+      generateWorkspaceDraft(workspaceState, args.requested_relief || []);
       if (args.title_override) {
         workspaceState.draft.title = args.title_override;
       }
-      return sendJson(response, workspaceSessionPayload());
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.update_draft') {
       workspaceState.draft = workspaceState.draft || { title: '', requested_relief: [], body: '' };
       if (typeof args.title === 'string') workspaceState.draft.title = args.title;
       if (typeof args.body === 'string') workspaceState.draft.body = args.body;
       if (Array.isArray(args.requested_relief)) workspaceState.draft.requested_relief = args.requested_relief;
-      return sendJson(response, workspaceSessionPayload());
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.reset_session') {
-      workspaceState.intake_answers = {};
-      workspaceState.evidence = { testimony: [], documents: [] };
-      workspaceState.draft = null;
-      return sendJson(response, workspaceSessionPayload());
+      workspaceSessions.set(userId, createWorkspaceState(userId));
+      return sendJson(response, workspaceSessionPayload(userId));
     }
     response.writeHead(400);
     response.end('Unknown MCP tool');

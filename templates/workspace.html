@@ -553,7 +553,7 @@ await client.callTool('complaint.review_case', { user_id: did });</pre>
         }
 
         function renderDraft(sessionPayload) {
-            const draft = (sessionPayload.session || {}).draft || {};
+            const draft = sessionPayload.draft || (sessionPayload.session || {}).draft || {};
             document.getElementById('draft-title').value = draft.title || '';
             document.getElementById('requested-relief').value = (draft.requested_relief || []).join('\n');
             document.getElementById('draft-body').value = draft.body || '';
@@ -564,7 +564,7 @@ await client.callTool('complaint.review_case', { user_id: did });</pre>
             const nextQuestion = sessionPayload.next_question || null;
             const review = sessionPayload.review || {};
             const overview = review.overview || {};
-            const draft = (sessionPayload.session || {}).draft || null;
+            const draft = sessionPayload.draft || (sessionPayload.session || {}).draft || null;
             document.getElementById('next-question-count').textContent = nextQuestion ? '1' : '0';
             document.getElementById('next-question-label').textContent = nextQuestion ? nextQuestion.prompt : 'Intake complete.';
             document.getElementById('supported-count').textContent = String(overview.supported_elements || 0);

@@ -141,9 +141,14 @@ test.describe('website surface navigation', () => {
   });
 
   test('workspace page uses the browser MCP SDK to drive intake, evidence, draft, and tool discovery', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-workspace-flow');
+    });
     await page.goto('/workspace');
-
-    await expect(page.locator('#workspace-status')).toContainText(/Workspace synchronized/i);
+    await page.getByRole('button', { name: 'Draft' }).click();
+    await page.locator('#reset-session-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/reset to a clean state/i);
+    await page.getByRole('button', { name: 'Intake', exact: true }).click();
     await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
 
@@ -181,5 +186,70 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('body')).toContainText(/complaint-workspace session/i);
     await expect(page.locator('body')).toContainText(/complaint-mcp-server/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.review_case/i);
+  });
+
+  test('first-class pages share the same DID-backed application sidebar and session summary', async ({ page, request }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-shared-shell');
+    });
+    await page.goto('/');
+
+    const cachedDid = await page.evaluate(() => window.localStorage.getItem('complaintGenerator.did'));
+    expect(cachedDid).toMatch(/^did:key:/);
+
+    await request.post('/api/complaint-workspace/mcp/rpc', {
+      data: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'complaint.reset_session',
+          arguments: {
+            user_id: cachedDid,
+          },
+        },
+      },
+    });
+
+    await request.post('/api/complaint-workspace/mcp/rpc', {
+      data: {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'complaint.submit_intake',
+          arguments: {
+            user_id: cachedDid,
+            answers: {
+              party_name: 'Jordan Rivera',
+              opposing_party: 'Acme Health Systems',
+              protected_activity: 'Reported patient safety violations',
+              adverse_action: 'Termination',
+              timeline: 'Reported in January and was fired in March',
+              harm: 'Lost wages and emotional distress',
+            },
+          },
+        },
+      },
+    });
+
+    const seededSession = await request.get(`/api/complaint-workspace/session?user_id=${encodeURIComponent(cachedDid)}`);
+    const seededJson = await seededSession.json();
+    expect(Object.keys(seededJson.session.intake_answers)).toHaveLength(6);
+
+    await page.goto('/document');
+    await expect(page.locator('#cg-app-shell')).toBeVisible();
+    await expect(page.locator('#cg-app-shell-did')).toContainText(cachedDid);
+    await expect(page.locator('#cg-app-shell-intake-count')).toHaveText('6');
+    await expect(page.locator('#cg-app-shell-supported-count')).toHaveText('5');
+
+    for (const path of ['/', '/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
+      await page.goto(path);
+      await expect(page.locator('#cg-app-shell')).toBeVisible();
+      await expect(page.locator('#cg-app-shell-did')).toContainText(cachedDid);
+      await expect(page.locator('#cg-app-shell a[href="/workspace"]').first()).toBeVisible();
+      await expect(page.locator('#cg-app-shell a[href="/document"]').first()).toBeVisible();
+      await expect(page.locator('#cg-app-shell a[href="/claim-support-review"]').first()).toBeVisible();
+    }
   });
 });

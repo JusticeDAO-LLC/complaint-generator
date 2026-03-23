@@ -170,6 +170,23 @@
       }
     },
     {
+      "label": "HACC Adversarial Runner Tests",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "-m",
+        "pytest",
+        "${workspaceFolder}/../HACC/tests/test_hacc_adversarial_runner.py",
+        "-q"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/../HACC"
+      }
+    },
+    {
       "label": "HACC Preset Matrix Smoke",
       "type": "shell",
       "command": "${workspaceFolder}/.venv/bin/python",

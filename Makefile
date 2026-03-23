@@ -1,6 +1,7 @@
-.PHONY: canary-validate canary-smoke canary-sample regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit
+.PHONY: canary-validate canary-smoke canary-sample regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit hacc-adversarial-runner
 
 HACC_GROUNDED_RUN_DIR ?= output/hacc_grounded/latest
+HACC_REPO_DIR ?= ../HACC
 
 regression: regression-full
 
@@ -24,6 +25,9 @@ hacc-grounded-history:
 
 hacc-unit:
 	.venv/bin/python scripts/run_hacc_unit_regression.py
+
+hacc-adversarial-runner:
+	python3 -m pytest "$(HACC_REPO_DIR)/tests/test_hacc_adversarial_runner.py" -q
 
 canary-validate:
 	.venv/bin/python scripts/validate_canary_ops.py

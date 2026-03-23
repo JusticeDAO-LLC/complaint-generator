@@ -510,6 +510,7 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
                 "() => document.getElementById('workspace-status').textContent.includes('Intake answers saved.')"
             )
 
+            page.get_by_role('button', name='Evidence').click()
             page.locator('#evidence-title').fill('HR complaint email')
             page.locator('#evidence-content').fill('Email confirming the protected report and management response.')
             page.locator('#save-evidence-button').click()
@@ -517,6 +518,7 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
                 "() => document.getElementById('workspace-status').textContent.includes('Evidence saved')"
             )
 
+            page.get_by_role('button', name='Draft').click()
             page.locator('#generate-draft-button').click()
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').textContent.includes('Complaint draft generated')"

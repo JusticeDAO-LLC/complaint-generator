@@ -123,6 +123,8 @@ mediator/integrations/settings.py
 mediator/integrations/vector_tools.py
 static/chat.js
 static/chat_entry_utils.js
+static/complaint_app_shell.css
+static/complaint_app_shell.js
 static/complaint_mcp_sdk.js
 static/complaint_mcp_sdk.mjs
 static/profile_data.js

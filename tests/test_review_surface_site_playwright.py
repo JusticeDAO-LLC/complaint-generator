@@ -556,7 +556,7 @@ def test_review_surface_site_navigation_serves_all_operator_pages(monkeypatch: p
                 assert page.locator("a[href='/document']").first.is_visible()
 
                 page.goto(f"{base_url}/mlwysiwyg", wait_until="domcontentloaded")
-                assert page.get_by_role("heading", name="Complaint Editor Workshop").is_visible()
+                assert page.locator("h1").filter(has_text="Complaint Editor Workshop").is_visible()
                 assert page.locator("a[href='/dashboards']").first.is_visible()
 
                 page.goto(f"{base_url}/ipfs-datasets/sdk-playground", wait_until="domcontentloaded")
