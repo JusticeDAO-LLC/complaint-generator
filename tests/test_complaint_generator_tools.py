@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from applications import complaint_cli as complaint_cli_impl
 from applications.complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from complaint_generator import ComplaintWorkspaceService
+from complaint_generator import ComplaintWorkspaceService, optimize_ui, review_ui, run_browser_audit
 
 
 pytestmark = [pytest.mark.no_auto_network]
@@ -553,3 +553,44 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
     assert captured["pytest_target"].endswith(
         "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
     )
+
+
+def test_package_wrappers_delegate_to_matching_ui_review_and_browser_tools(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "package-wrapper-sessions")
+    captured_calls = []
+
+    def fake_call_mcp_tool(tool_name, arguments=None):
+        captured_calls.append((tool_name, dict(arguments or {})))
+        return {"tool_name": tool_name, "arguments": dict(arguments or {})}
+
+    monkeypatch.setattr(service, "call_mcp_tool", fake_call_mcp_tool)
+
+    review_payload = review_ui(
+        screenshot_dir=tmp_path / "screens",
+        user_id="package-user",
+        iterations=2,
+        goals=["Repair broken buttons", "Keep the full complaint flow connected"],
+        service=service,
+    )
+    optimize_payload = optimize_ui(
+        screenshot_dir=tmp_path / "screens",
+        user_id="package-user",
+        max_rounds=3,
+        iterations=2,
+        service=service,
+    )
+    audit_payload = run_browser_audit(
+        screenshot_dir=tmp_path / "screens",
+        service=service,
+    )
+
+    assert review_payload["tool_name"] == "complaint.review_ui"
+    assert review_payload["arguments"]["iterations"] == 2
+    assert optimize_payload["tool_name"] == "complaint.optimize_ui"
+    assert optimize_payload["arguments"]["max_rounds"] == 3
+    assert audit_payload["tool_name"] == "complaint.run_browser_audit"
+    assert [tool_name for tool_name, _arguments in captured_calls] == [
+        "complaint.review_ui",
+        "complaint.optimize_ui",
+        "complaint.run_browser_audit",
+    ]

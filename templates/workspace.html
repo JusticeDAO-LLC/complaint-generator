@@ -1477,6 +1477,7 @@
                         <button class="primary" id="generate-draft-button" type="button">Generate First Draft</button>
                         <button class="secondary" id="save-draft-button" type="button">Save Draft Changes</button>
                         <button class="secondary" id="export-packet-button" type="button">Export Complaint Packet</button>
+                        <button class="secondary" id="download-packet-button" type="button" disabled>Download Exported Complaint</button>
                         <button class="secondary" id="reset-session-button" type="button">Reset Workspace</button>
                     </div>
                     <div class="soft-note" id="draft-soft-note">Treat the first draft as a working document. Review is still the place to decide whether the record behind it feels strong enough.</div>
@@ -1533,6 +1534,7 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div class="button-row">
                                 <button class="secondary" id="refresh-capabilities-button" type="button">Refresh Capabilities</button>
                                 <button class="secondary" id="refresh-complaint-readiness-button" type="button">Refresh Complaint Readiness</button>
+                                <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
                             </div>
@@ -1549,6 +1551,10 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>Complaint Readiness</label>
                                 <div class="status draft-preview-shell"><pre id="complaint-readiness-preview">No complaint-readiness payload loaded yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>UI Readiness</label>
+                                <div class="status draft-preview-shell"><pre id="ui-readiness-preview">No UI-readiness payload loaded yet.</pre></div>
                             </div>
                             <div>
                                 <label>Packet Export Summary</label>
@@ -1692,7 +1698,9 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceCapabilities = null;
         let workspaceMediatorPrompt = null;
         let workspaceComplaintReadiness = null;
+        let workspaceUiReadiness = null;
         let latestPacketExport = null;
+        let latestPacketDownloadUrl = null;
         let sdkPrimitiveSnapshot = null;
         const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
@@ -1715,6 +1723,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function slugifyFilename(value) {
+            return String(value || 'complaint-packet')
+                .toLowerCase()
+                .replace(/[^a-z0-9._-]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'complaint-packet';
         }
 
         function synopsisStorageKey() {
@@ -2354,6 +2369,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const mediatorNode = document.getElementById('mediator-prompt-preview');
             const capabilitiesNode = document.getElementById('workflow-capabilities-preview');
             const complaintReadinessNode = document.getElementById('complaint-readiness-preview');
+            const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
 
             if (workspaceMediatorPrompt && workspaceMediatorPrompt.prefill_message) {
@@ -2380,11 +2396,36 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 complaintReadinessNode.textContent = 'No complaint-readiness payload loaded yet.';
             }
 
+            if (workspaceUiReadiness) {
+                uiReadinessNode.textContent = JSON.stringify(workspaceUiReadiness, null, 2);
+            } else {
+                uiReadinessNode.textContent = 'No UI-readiness payload loaded yet.';
+            }
+
             if (latestPacketExport && latestPacketExport.packet_summary) {
                 packetSummaryNode.textContent = JSON.stringify(latestPacketExport.packet_summary, null, 2);
             } else {
                 packetSummaryNode.textContent = 'No packet export run yet.';
             }
+        }
+
+        function syncPacketDownloadState() {
+            const downloadButton = document.getElementById('download-packet-button');
+            if (latestPacketDownloadUrl) {
+                URL.revokeObjectURL(latestPacketDownloadUrl);
+                latestPacketDownloadUrl = null;
+            }
+            if (!latestPacketExport || !latestPacketExport.packet) {
+                downloadButton.disabled = true;
+                downloadButton.dataset.downloadFilename = '';
+                return;
+            }
+            const packet = latestPacketExport.packet;
+            const packetBlob = new Blob([JSON.stringify(packet, null, 2)], { type: 'application/json' });
+            latestPacketDownloadUrl = URL.createObjectURL(packetBlob);
+            const suggestedName = `${slugifyFilename(packet.title || 'complaint-packet')}.json`;
+            downloadButton.disabled = false;
+            downloadButton.dataset.downloadFilename = suggestedName;
         }
 
         function renderSdkDiagnostics() {
@@ -2657,6 +2698,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             workspaceCapabilities = await client.getWorkflowCapabilities(workspaceUserId);
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
             workspaceComplaintReadiness = await client.getComplaintReadiness(workspaceUserId);
+            workspaceUiReadiness = await client.getUiReadiness(workspaceUserId);
             renderWorkflowOperations();
         }
 
@@ -3325,9 +3367,30 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const packetPayload = await client.exportComplaintPacket(workspaceUserId);
             latestPacketExport = packetPayload;
             const summary = packetPayload.packet_summary || {};
-            document.getElementById('packet-preview').textContent = JSON.stringify(summary, null, 2);
+            const packet = packetPayload.packet || {};
+            const draft = packet.draft || {};
+            const exportedComplaint = [
+                draft.title ? `Title: ${draft.title}` : '',
+                draft.body ? `\n${draft.body}` : '',
+            ].filter(Boolean).join('\n');
+            document.getElementById('packet-preview').textContent = exportedComplaint || JSON.stringify(summary, null, 2);
+            syncPacketDownloadState();
             renderWorkflowOperations();
             setStatus('Complaint packet exported.');
+        }
+
+        function downloadPacket() {
+            if (!latestPacketExport || !latestPacketDownloadUrl) {
+                setStatus('Export the complaint packet before downloading it.');
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = latestPacketDownloadUrl;
+            link.download = document.getElementById('download-packet-button').dataset.downloadFilename || 'complaint-packet.json';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setStatus('Complaint packet download started.');
         }
 
         async function refreshCapabilitiesPanel() {
@@ -3341,6 +3404,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             workspaceComplaintReadiness = await client.getComplaintReadiness(workspaceUserId);
             renderWorkflowOperations();
             setStatus('Complaint readiness refreshed.');
+        }
+
+        async function refreshUiReadinessPanel() {
+            setBusyStatus('Refreshing UI readiness through the MCP tools…');
+            workspaceUiReadiness = await client.getUiReadiness(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('UI readiness refreshed.');
         }
 
         async function previewMediatorBrief() {
@@ -3463,8 +3533,10 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('export-packet-button').addEventListener('click', exportPacket);
+        document.getElementById('download-packet-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
         document.getElementById('refresh-complaint-readiness-button').addEventListener('click', refreshComplaintReadinessPanel);
+        document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
         document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);

@@ -17,8 +17,10 @@ from complaint_generator import (
     build_mediator_prompt,
     build_ui_ux_review_prompt,
     create_identity,
+    review_ui,
     run_closed_loop_ui_ux_improvement,
     run_end_to_end_complaint_browser_audit,
+    run_browser_audit,
     create_review_dashboard_app,
     create_ui_review_report,
     create_review_surface_app,
@@ -30,6 +32,7 @@ from complaint_generator import (
     list_claim_elements,
     list_intake_questions,
     list_mcp_tools,
+    optimize_ui,
     reset_session,
     review_case,
     run_iterative_ui_ux_workflow,
@@ -94,6 +97,9 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(build_ui_ux_review_prompt)
     assert callable(create_ui_review_report)
     assert callable(create_review_dashboard_app)
+    assert callable(review_ui)
+    assert callable(optimize_ui)
+    assert callable(run_browser_audit)
     assert callable(run_closed_loop_ui_ux_improvement)
     assert callable(run_end_to_end_complaint_browser_audit)
     assert callable(run_iterative_ui_ux_workflow)
@@ -206,6 +212,47 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
 
     reset_payload = reset_session("package-wrapper-user", service=service)
     assert reset_payload["session"]["intake_answers"] == {}
+
+
+def test_package_ui_review_wrappers_delegate_to_matching_mcp_tools(tmp_path, monkeypatch):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "package-ui-wrapper-sessions")
+    captured_calls = []
+
+    def fake_call_mcp_tool(tool_name, arguments=None):
+        captured_calls.append((tool_name, dict(arguments or {})))
+        return {"tool_name": tool_name, "arguments": dict(arguments or {})}
+
+    monkeypatch.setattr(service, "call_mcp_tool", fake_call_mcp_tool)
+
+    review_payload = review_ui(
+        screenshot_dir=tmp_path / "screens",
+        user_id="package-ui-user",
+        iterations=2,
+        goals=["Repair broken buttons", "Preserve the full complaint journey"],
+        service=service,
+    )
+    optimize_payload = optimize_ui(
+        screenshot_dir=tmp_path / "screens",
+        user_id="package-ui-user",
+        max_rounds=3,
+        iterations=2,
+        service=service,
+    )
+    audit_payload = run_browser_audit(
+        screenshot_dir=tmp_path / "screens",
+        service=service,
+    )
+
+    assert review_payload["tool_name"] == "complaint.review_ui"
+    assert review_payload["arguments"]["iterations"] == 2
+    assert optimize_payload["tool_name"] == "complaint.optimize_ui"
+    assert optimize_payload["arguments"]["max_rounds"] == 3
+    assert audit_payload["tool_name"] == "complaint.run_browser_audit"
+    assert [item[0] for item in captured_calls] == [
+        "complaint.review_ui",
+        "complaint.optimize_ui",
+        "complaint.run_browser_audit",
+    ]
 
 
 def test_complaint_generator_cli_wrapper_exposes_workspace_commands(tmp_path, monkeypatch):

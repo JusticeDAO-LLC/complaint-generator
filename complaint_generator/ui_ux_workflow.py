@@ -200,6 +200,9 @@ def build_ui_ux_review_prompt(
                 "complaint_generator.update_draft, "
                 "complaint_generator.export_complaint_packet, "
                 "complaint_generator.update_case_synopsis, "
+                "complaint_generator.review_ui, "
+                "complaint_generator.optimize_ui, "
+                "complaint_generator.run_browser_audit, "
                 "complaint_generator.handle_jsonrpc_message, "
                 "complaint_generator.run_iterative_ui_ux_workflow, "
                 "complaint_generator.run_closed_loop_ui_ux_improvement, "
@@ -225,6 +228,9 @@ def build_ui_ux_review_prompt(
             ),
             (
                 "Under `Actor Journey Findings`, explicitly state whether a user can complete intake, save a shared synopsis for the mediator path, add testimony, upload or attach evidence, review claim support, generate a complaint, and revise the final draft from the shared MCP SDK-driven workspace."
+            ),
+            (
+                "Under `Actor Journey Findings`, explicitly flag any button, tab, link, or MCP invocation path that appears broken, misleading, duplicated, or disconnected from the actual complaint-generation workflow."
             ),
             (
                 "Under `Critic Test Obligations`, list the exact Playwright end-to-end checks that should fail if buttons, navigation, shared state, SDK invocations, or stage transitions break."

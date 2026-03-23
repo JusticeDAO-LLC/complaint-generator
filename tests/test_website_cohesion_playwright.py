@@ -912,6 +912,13 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('ready') || document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('building')"
             )
+            page.click("#refresh-ui-readiness-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('UI readiness refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('ui-readiness-preview').innerText.toLowerCase().includes('verdict')"
+            )
             page.click("#build-mediator-prompt-button")
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').innerText.includes('Mediator brief refreshed.')"
@@ -975,6 +982,9 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             )
             page.wait_for_function(
                 "() => document.getElementById('packet-export-summary').innerText.includes('has_draft')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('true')"
             )
 
             page.goto(f"{base_url}/claim-support-review?claim_type=retaliation&workspace_user_id={workspace_user_id}")
@@ -1221,7 +1231,8 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
     with _serve_app(app) as base_url:
         with sync_playwright() as playwright_context:
             browser = playwright_context.chromium.launch()
-            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+            context = browser.new_context(viewport=LAYOUT_AUDIT_VIEWPORT, accept_downloads=True)
+            page = context.new_page()
 
             _create_account_and_open_chat(page, base_url)
             _assert_surface_layout(page, min_content_height=320)
@@ -1369,6 +1380,10 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('ready') || document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('building')"
             )
+            page.click("#refresh-ui-readiness-button")
+            page.wait_for_function(
+                "() => document.getElementById('ui-readiness-preview').innerText.toLowerCase().includes('verdict')"
+            )
             page.click("#build-mediator-prompt-button")
             page.wait_for_function(
                 "() => document.getElementById('mediator-prompt-preview').innerText.includes('Mediator, help turn this into testimony-ready narrative')"
@@ -1404,16 +1419,38 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             _capture_screenshot(page, screenshot_dir, "builder-review-links")
 
             page.goto(f"{base_url}/workspace?user_id={workspace_user_id}&target_tab=integrations")
+            page.click("#refresh-complaint-readiness-button")
+            page.wait_for_function(
+                "() => document.getElementById('complaint-readiness-preview').innerText.includes('Draft in progress')"
+            )
             page.click("#export-packet-tool-button")
             page.wait_for_function(
                 "() => document.getElementById('packet-export-summary').innerText.includes('has_draft')"
             )
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('Draft in progress')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('true')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+            )
+            with page.expect_download() as download_info:
+                page.click("#download-packet-button")
+            download = download_info.value
+            download_path = download.path()
+            assert download.suggested_filename.endswith(".json")
+            assert download_path is not None
+            exported_packet = json.loads(Path(download_path).read_text())
+            assert exported_packet["draft"]["body"].startswith("Jordan Example brings this retaliation complaint against Acme Corporation.")
             _capture_screenshot(page, screenshot_dir, "workspace-operations")
 
             artifact_paths = sorted(screenshot_dir.glob("*.png"))
             assert len(artifact_paths) >= 8
             assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 
+            context.close()
             browser.close()
 
 
@@ -1427,7 +1464,8 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
     with _serve_app(app) as base_url:
         with sync_playwright() as playwright_context:
             browser = playwright_context.chromium.launch()
-            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+            context = browser.new_context(viewport=LAYOUT_AUDIT_VIEWPORT, accept_downloads=True)
+            page = context.new_page()
 
             page.goto(base_url)
             _wait_for_surface(page, "/")
@@ -1531,8 +1569,37 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             )
             _capture_screenshot(page, screenshot_dir, "builder-filing")
 
+            page.goto(f"{base_url}/workspace?user_id={workspace_user_id}&target_tab=integrations")
+            page.click("#refresh-complaint-readiness-button")
+            page.wait_for_function(
+                "() => document.getElementById('complaint-readiness-preview').innerText.includes('Draft in progress')"
+            )
+            page.click("#export-packet-tool-button")
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('has_draft')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('Draft in progress')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-export-summary').innerText.includes('true')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+            )
+            with page.expect_download() as download_info:
+                page.click("#download-packet-button")
+            download = download_info.value
+            download_path = download.path()
+            assert download.suggested_filename.endswith(".json")
+            assert download_path is not None
+            exported_packet = json.loads(Path(download_path).read_text())
+            assert exported_packet["draft"]["body"].startswith("Jordan Example brings this retaliation complaint against Acme Corporation.")
+            _capture_screenshot(page, screenshot_dir, "workspace-final-packet")
+
             artifact_paths = sorted(screenshot_dir.glob("*.png"))
-            assert len(artifact_paths) >= 6
+            assert len(artifact_paths) >= 7
             assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 
+            context.close()
             browser.close()

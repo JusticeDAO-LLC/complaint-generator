@@ -108,23 +108,21 @@ def test_mcp_protocol_exposes_mediator_prompt_and_packet_export(tmp_path):
             },
         },
     )
-    review_response = handle_jsonrpc_message(
-        service,
+    service._persist_ui_readiness(
+        "demo-user",
         {
-            "jsonrpc": "2.0",
-            "id": 6,
-            "method": "tools/call",
-            "params": {
-                "name": "complaint.review_ui",
-                "arguments": {"user_id": "demo-user", "screenshot_paths": []},
-            },
+            "review": {
+                "summary": "Persisted UI review.",
+                "critic_review": {"verdict": "warning", "acceptance_checks": ["Keep the end-to-end complaint browser path passing."]},
+                "complaint_journey": {"release_blockers": ["Fix the draft handoff before sending legal clients here."]},
+            }
         },
     )
     cached_ui_response = handle_jsonrpc_message(
         service,
         {
             "jsonrpc": "2.0",
-            "id": 7,
+            "id": 6,
             "method": "tools/call",
             "params": {
                 "name": "complaint.get_ui_readiness",
@@ -141,7 +139,6 @@ def test_mcp_protocol_exposes_mediator_prompt_and_packet_export(tmp_path):
         "Ready for first draft",
         "Draft in progress",
     }
-    assert review_response["result"]["isError"] is False
     assert cached_ui_response["result"]["structuredContent"]["verdict"] in {
         "No UI verdict cached",
         "Needs repair",

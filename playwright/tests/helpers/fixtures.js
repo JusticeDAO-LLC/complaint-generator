@@ -340,6 +340,8 @@ const workspaceToolList = [
   { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.' },
   { name: 'complaint.review_case', description: 'Return the current support matrix and evidence review.' },
   { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.' },
+  { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.' },
+  { name: 'complaint.get_ui_readiness', description: 'Return the latest UI readiness and client-safety posture for the shared complaint workflow.' },
   { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.' },
   { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.' },
   { name: 'complaint.update_draft', description: 'Persist edits to the generated complaint draft.' },
@@ -552,6 +554,88 @@ function buildWorkspaceCapabilities(state) {
   };
 }
 
+function buildWorkspaceComplaintReadiness(state) {
+  const sessionPayload = buildWorkspaceSessionPayload(state);
+  const review = sessionPayload.review || {};
+  const overview = review.overview || {};
+  const questions = sessionPayload.questions || [];
+  const answeredCount = questions.filter((question) => question.is_answered).length;
+  const totalQuestions = questions.length;
+  const supportedElements = Number(overview.supported_elements || 0);
+  const missingElements = Number(overview.missing_elements || 0);
+  const evidenceCount = Number(overview.testimony_items || 0) + Number(overview.document_items || 0);
+
+  let score = 10;
+  if (totalQuestions > 0) {
+    score += Math.round((answeredCount / totalQuestions) * 35);
+  }
+  score += Math.round((supportedElements / Math.max(supportedElements + missingElements, 1)) * 35);
+  if (evidenceCount > 0) {
+    score += Math.min(12, evidenceCount * 4);
+  }
+  if (state.draft) {
+    score += 12;
+  }
+  score = Math.max(0, Math.min(100, score));
+
+  let verdict = 'Not ready to draft';
+  let detail = 'Finish intake and add support before relying on generated complaint text.';
+  let recommendedRoute = '/workspace';
+  let recommendedAction = 'Continue the guided complaint workflow to complete intake and collect support.';
+
+  if (state.draft) {
+    verdict = 'Draft in progress';
+    detail = 'A complaint draft already exists. Compare it against the supported facts, requested relief, and any remaining proof gaps before treating it as filing-ready.';
+    recommendedRoute = '/document';
+    recommendedAction = 'Refine the existing draft and reconcile it with the support review.';
+  } else if (totalQuestions > 0 && answeredCount === totalQuestions && missingElements === 0 && evidenceCount > 0) {
+    verdict = 'Ready for first draft';
+    detail = 'The intake record and support posture are coherent enough to generate a first complaint draft.';
+    recommendedRoute = '/document';
+    recommendedAction = 'Generate the first complaint draft from the current record.';
+  } else if (answeredCount > 0) {
+    verdict = 'Still building the record';
+    detail = `${missingElements} claim elements still need support and ${Math.max(totalQuestions - answeredCount, 0)} intake answers may still be missing.`;
+    recommendedRoute = missingElements > 0 ? '/claim-support-review' : '/workspace';
+    recommendedAction = missingElements > 0
+      ? 'Use the review dashboard to close the remaining support gaps.'
+      : 'Keep completing the intake and case synopsis before drafting.';
+  }
+
+  return {
+    user_id: state.user_id,
+    score,
+    verdict,
+    detail,
+    recommended_route: recommendedRoute,
+    recommended_action: recommendedAction,
+    answered_question_count: answeredCount,
+    total_question_count: totalQuestions,
+    supported_elements: supportedElements,
+    missing_elements: missingElements,
+    evidence_items: evidenceCount,
+    has_draft: Boolean(state.draft),
+  };
+}
+
+function buildWorkspaceUiReadiness(state) {
+  const complaintReadiness = buildWorkspaceComplaintReadiness(state);
+  const verdict = state.draft ? 'Client-safe' : 'Needs repair';
+  const releaseBlockers = state.draft
+    ? []
+    : ['Generate a complaint draft before treating the workflow as filing-ready.'];
+  return {
+    user_id: state.user_id,
+    verdict,
+    summary: state.draft
+      ? 'The browser complaint workflow can generate, edit, and export a draft through the shared MCP tool path.'
+      : 'The browser workflow still needs a generated complaint draft before the full filing path feels complete.',
+    release_blockers: releaseBlockers,
+    sdk_tooling_ready: true,
+    complaint_readiness: complaintReadiness,
+  };
+}
+
 async function installCommonMocks(page, recorder = {}, options = {}) {
   const documentResponses = Array.isArray(options.documentResponses) && options.documentResponses.length
     ? options.documentResponses.map((item) => clone(item))
@@ -641,6 +725,12 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     }
     if (name === 'complaint.build_mediator_prompt') {
       return buildWorkspaceMediatorPrompt(state);
+    }
+    if (name === 'complaint.get_complaint_readiness') {
+      return buildWorkspaceComplaintReadiness(state);
+    }
+    if (name === 'complaint.get_ui_readiness') {
+      return buildWorkspaceUiReadiness(state);
     }
     if (name === 'complaint.get_workflow_capabilities') {
       return buildWorkspaceCapabilities(state);

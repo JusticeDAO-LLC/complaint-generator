@@ -10,8 +10,12 @@ from typing import Any, Dict, List, Optional
 
 
 DEFAULT_USER_ID = "did:key:anonymous"
-DEFAULT_UI_UX_OPTIMIZER_METHOD = "adversarial"
+DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
+DEFAULT_UI_UX_SCREENSHOT_TARGET = (
+    "tests/test_website_cohesion_playwright.py::"
+    "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
+)
 _DATA_DIR = Path(__file__).resolve().parent.parent / ".complaint_workspace"
 _SESSION_DIR = _DATA_DIR / "sessions"
 
@@ -819,7 +823,7 @@ class ComplaintWorkspaceService:
                         goals=args.get("goals"),
                         pytest_target=str(pytest_target)
                         if pytest_target
-                        else "tests/test_website_cohesion_playwright.py::test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs",
+                        else DEFAULT_UI_UX_SCREENSHOT_TARGET,
                     )
                     self._persist_ui_readiness(args.get("user_id"), result)
                     return result
@@ -845,7 +849,7 @@ class ComplaintWorkspaceService:
             result = run_closed_loop_ui_ux_improvement(
                 screenshot_dir=str(screenshot_dir),
                 output_dir=str(args.get("output_path") or Path(str(screenshot_dir)).expanduser().resolve() / "closed-loop"),
-                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"),
+                pytest_target=str(args.get("pytest_target") or DEFAULT_UI_UX_SCREENSHOT_TARGET),
                 max_rounds=int(args.get("max_rounds") or 2),
                 review_iterations=int(args.get("iterations") or 1),
                 provider=args.get("provider"),
@@ -865,6 +869,6 @@ class ComplaintWorkspaceService:
                 raise ValueError("complaint.run_browser_audit requires screenshot_dir.")
             return run_end_to_end_complaint_browser_audit(
                 screenshot_dir=str(screenshot_dir),
-                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"),
+                pytest_target=str(args.get("pytest_target") or DEFAULT_UI_UX_SCREENSHOT_TARGET),
             )
         raise ValueError(f"Unknown complaint MCP tool: {tool_name}")

@@ -208,6 +208,94 @@ def list_mcp_tools(
 ) -> dict[str, Any]:
     return _resolve_service(service, root_dir=root_dir).list_mcp_tools()
 
+
+def review_ui(
+    *,
+    screenshot_paths: Optional[list[str]] = None,
+    screenshot_dir: Optional[str | Path] = None,
+    user_id: Optional[str] = None,
+    notes: Optional[str] = None,
+    goals: Optional[list[str]] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
+    output_path: Optional[str | Path] = None,
+    iterations: int = 0,
+    pytest_target: Optional[str] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    arguments: dict[str, Any] = {
+        "user_id": user_id,
+        "notes": notes,
+        "goals": goals,
+        "provider": provider,
+        "model": model,
+        "config_path": config_path,
+        "backend_id": backend_id,
+        "iterations": iterations,
+        "pytest_target": pytest_target,
+    }
+    if screenshot_paths is not None:
+        arguments["screenshot_paths"] = screenshot_paths
+    if screenshot_dir is not None:
+        arguments["screenshot_dir"] = str(screenshot_dir)
+    if output_path is not None:
+        arguments["output_path"] = str(output_path)
+    return _resolve_service(service, root_dir=root_dir).call_mcp_tool("complaint.review_ui", arguments)
+
+
+def optimize_ui(
+    *,
+    screenshot_dir: str | Path,
+    user_id: Optional[str] = None,
+    output_path: Optional[str | Path] = None,
+    max_rounds: int = 2,
+    iterations: int = 1,
+    notes: Optional[str] = None,
+    goals: Optional[list[str]] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    method: Optional[str] = None,
+    priority: Optional[int] = None,
+    pytest_target: Optional[str] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    arguments: dict[str, Any] = {
+        "screenshot_dir": str(screenshot_dir),
+        "user_id": user_id,
+        "max_rounds": max_rounds,
+        "iterations": iterations,
+        "notes": notes,
+        "goals": goals,
+        "provider": provider,
+        "model": model,
+        "method": method,
+        "priority": priority,
+        "pytest_target": pytest_target,
+    }
+    if output_path is not None:
+        arguments["output_path"] = str(output_path)
+    return _resolve_service(service, root_dir=root_dir).call_mcp_tool("complaint.optimize_ui", arguments)
+
+
+def run_browser_audit(
+    *,
+    screenshot_dir: str | Path,
+    pytest_target: Optional[str] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).call_mcp_tool(
+        "complaint.run_browser_audit",
+        {
+            "screenshot_dir": str(screenshot_dir),
+            "pytest_target": pytest_target,
+        },
+    )
+
 __all__ = [
     "ComplaintWorkspaceService",
     "DEFAULT_CLAIM_ELEMENTS",
@@ -225,8 +313,11 @@ __all__ = [
     "list_claim_elements",
     "list_intake_questions",
     "list_mcp_tools",
+    "optimize_ui",
     "reset_session",
+    "review_ui",
     "review_case",
+    "run_browser_audit",
     "run_closed_loop_ui_ux_improvement",
     "run_end_to_end_complaint_browser_audit",
     "run_iterative_ui_ux_workflow",

@@ -264,10 +264,16 @@ test.describe('complaint generation workflow', () => {
   });
 
   test('workspace unifies intake, evidence, support review, draft editing, and MCP tool visibility', async ({ page }) => {
+    const did = `did:key:workspace-flow-${Date.now()}`;
+    await page.addInitScript((did) => {
+      window.localStorage.setItem('complaintGenerator.did', did);
+    }, did);
     await page.goto('/workspace');
 
     await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.get_complaint_readiness/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.run_browser_audit/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
 
@@ -322,17 +328,96 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#generate-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint/i);
     await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Jane Doe alleges retaliation/i);
+    await expect(page.locator('#draft-title')).toHaveValue(/Jane Doe v\. Acme Corporation Retaliation Complaint/i);
+    await expect(page.locator('#draft-body')).toHaveValue(/Jane Doe brings this retaliation complaint against Acme Corporation\./i);
+
+    await page.locator('#refresh-complaint-readiness-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint readiness refreshed/i);
+    await expect(page.locator('#complaint-readiness-preview')).toContainText(/"verdict":\s*"Draft in progress"/i);
+    await expect(page.locator('#complaint-readiness-preview')).toContainText(/"has_draft":\s*true/i);
 
     await page.locator('#draft-body').fill('Edited final complaint body.');
     await page.locator('#save-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
     await page.locator('#export-packet-button').click();
-    await expect(page.locator('#packet-preview')).toContainText(/"has_draft": true/i);
+    await expect(page.locator('#packet-preview')).toContainText(/Title: Jane Doe v\. Acme Corporation Retaliation Complaint/i);
+    await expect(page.locator('#packet-preview')).toContainText(/Edited final complaint body\./i);
 
     const cachedDid = await page.evaluate(() => localStorage.getItem('complaintGenerator.did'));
     await page.reload();
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toBe(cachedDid);
     await expect(page.locator('#did-chip')).toContainText(cachedDid);
     await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
+  });
+
+  test('homepage to workspace journey ends with an actual generated complaint and exported lawsuit packet', async ({ page }) => {
+    const did = `did:key:workspace-homepage-flow-${Date.now()}`;
+    await page.addInitScript((did) => {
+      window.localStorage.setItem('complaintGenerator.did', did);
+    }, did);
+    await page.goto('/');
+
+    await expect(page.locator('#homepage-open-intake')).toBeVisible();
+    await expect(page.locator('#homepage-open-workspace')).toBeVisible();
+    await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Not ready to draft|Still building the record|Ready for first draft|Draft in progress/i);
+    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
+
+    await page.locator('a[href="/workspace"]').first().click();
+    await expect(page).toHaveURL(/\/workspace/);
+    await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
+
+    await page.locator('#intake-party_name').fill('Taylor Smith');
+    await page.locator('#intake-opposing_party').fill('Acme Logistics');
+    await page.locator('#intake-protected_activity').fill('Reported wage-and-hour violations to HR');
+    await page.locator('#intake-adverse_action').fill('Was terminated three days later');
+    await page.locator('#intake-timeline').fill('Report on April 2, termination on April 5');
+    await page.locator('#intake-harm').fill('Lost wages, benefits, and housing stability');
+    await page.locator('#save-intake-button').click();
+    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+
+    await page.locator('#case-synopsis').fill('Taylor Smith alleges retaliation after reporting wage-and-hour violations, and the central question is whether the timing and employer motive can be corroborated well enough for filing.');
+    await page.locator('#save-synopsis-button').click();
+    await expect(page.locator('#review-synopsis-preview')).toContainText(/Taylor Smith alleges retaliation/i);
+
+    await page.locator('#handoff-chat-button').click();
+    await expect(page).toHaveURL(/\/chat\?/);
+    await expect(page.locator('#chat-context-summary')).toContainText(/Taylor Smith alleges retaliation/i);
+    await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
+
+    await page.goto('/workspace');
+    await page.getByRole('button', { name: 'Evidence', exact: true }).click();
+    await page.locator('#evidence-kind').selectOption('document');
+    await page.locator('#evidence-claim-element').selectOption('causation');
+    await page.locator('#evidence-title').fill('Termination timeline email');
+    await page.locator('#evidence-source').fill('Email archive');
+    await page.locator('#evidence-content').fill('Email records show Taylor Smith was terminated immediately after reporting wage-and-hour violations.');
+    await page.locator('#evidence-attachment').setInputFiles({
+      name: 'termination-email.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('April 2: HR report. April 5: termination notice.'),
+    });
+    await page.locator('#save-evidence-button').click();
+    await expect(page.locator('#evidence-list')).toContainText(/Termination timeline email/i);
+    await expect(page.locator('#evidence-list')).toContainText(/termination-email\.txt/i);
+
+    await page.getByRole('button', { name: 'Review', exact: true }).click();
+    await expect(page.locator('#support-grid')).toContainText(/Protected activity/i);
+    await expect(page.locator('#review-synopsis-preview')).toContainText(/Taylor Smith alleges retaliation/i);
+
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await page.locator('#requested-relief').fill('Back pay\nFront pay\nAttorney fees');
+    await page.locator('#generate-draft-button').click();
+
+    await expect(page.locator('#draft-preview')).toContainText(/Taylor Smith brings this retaliation complaint/i);
+    await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Taylor Smith alleges retaliation/i);
+    await expect(page.locator('#draft-title')).toHaveValue(/Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
+
+    await page.locator('#export-packet-button').click();
+    await expect(page.locator('#packet-preview')).toContainText(/Title: Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
+    await expect(page.locator('#packet-preview')).toContainText(/Taylor Smith brings this retaliation complaint against Acme Logistics\./i);
+
+    await page.goto('/');
+    await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Ready for first draft|Draft in progress/i);
+    await expect(page.locator('#homepage-next-step')).toContainText(/draft|builder|revis/i);
   });
 });
