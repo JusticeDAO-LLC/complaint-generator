@@ -36,16 +36,18 @@ test.describe('website surface navigation', () => {
   test('homepage presents a client-safe intake entry point and captures a screenshot', async ({ page }, testInfo) => {
     await page.goto('/');
 
-    await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
-    await expect(page.locator('body')).toContainText(/Start with your story, organize the evidence that supports it, and move into a draft without losing your place/i);
-    await expect(page.locator('body')).toContainText(/Resume the complaint you already started/i);
-    await expect(page.locator('body')).toContainText(/Go directly to the part of the complaint generator you actually need/i);
+    await expect(page.locator('h1').first()).toContainText(/Prepare your complaint in the order a real case should be built/i);
+    await expect(page.locator('body')).toContainText(/Resume Your Complaint/i);
+    await expect(page.locator('body')).toContainText(/How The Process Works/i);
+    await expect(page.locator('body')).toContainText(/What a client should know before using this tool/i);
     await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
     await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:|Unavailable/i);
-    await expect(page.locator('#cg-app-shell')).toBeVisible();
+    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 1/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Step 5/i);
 
     const screenshotPath = testInfo.outputPath('homepage-overview.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -57,7 +59,7 @@ test.describe('website surface navigation', () => {
 
   test('all routed complaint surfaces load and expose expected navigation affordances', async ({ page }) => {
     const routes = [
-      ['/', /Lex Publicus Complaint Generator/i],
+      ['/', /Prepare your complaint in the order a real case should be built/i],
       ['/home', /Lex Publicus Chat App/i],
       ['/chat', /Lex Publicus Chat App/i],
       ['/profile', /Profile Data/i],
@@ -81,16 +83,16 @@ test.describe('website surface navigation', () => {
     }
 
     await page.goto('/');
-    await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
+    await expect(page.locator('h1').first()).toContainText(/Prepare your complaint in the order a real case should be built/i);
     await expect(page.locator('#homepage-session-badge')).toContainText(/Connected|Offline/i);
     await expect(page.locator('#homepage-did')).toContainText(/did:key:/i);
     await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
-    await expect(page.locator('body')).toContainText(/What Clients Can Expect/i);
-    await expect(page.locator('body')).toContainText(/Go directly to the part of the complaint generator you actually need/i);
+    await expect(page.locator('body')).toContainText(/How The Process Works/i);
+    await expect(page.locator('body')).toContainText(/What a client should know before using this tool/i);
     await expect(page.locator('#homepage-next-step')).toBeVisible();
-    await expect(page.locator('#cg-app-shell')).toBeVisible();
+    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
 
     await page.goto('/chat');
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
@@ -333,15 +335,17 @@ test.describe('website surface navigation', () => {
     expect(Object.keys(seededJson.session.intake_answers)).toHaveLength(6);
 
     await page.goto('/');
-    await expect(page.locator('#cg-app-shell')).toBeVisible();
+    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
     await expect(page.locator('#homepage-did')).toContainText(cachedDid);
     await expect(page.locator('#homepage-intake-count')).toHaveText('6');
     await expect(page.locator('#homepage-supported-count')).toHaveText('5');
     await expect(page.locator('#homepage-evidence-count')).toHaveText('0');
     await expect(page.locator('#homepage-tool-count')).not.toHaveText('0');
     await expect(page.locator('#homepage-session-status')).toContainText(cachedDid);
-    await expect(page.locator('#homepage-resume-link')).toHaveAttribute('href', '/workspace');
-    await expect(page.locator('#homepage-next-step')).toContainText(/Intake complete|What did you report|Who is bringing the complaint/i);
+    await expect(page.locator('#homepage-resume-link')).toHaveAttribute('href', '/claim-support-review');
+    await expect(page.locator('#homepage-open-workspace')).toHaveAttribute('href', '/claim-support-review');
+    await expect(page.locator('#homepage-open-workspace')).toContainText(/Review Claim Support/i);
+    await expect(page.locator('#homepage-next-step')).toContainText(/Inspect missing claim elements/i);
 
     for (const path of ['/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
       await page.goto(path);

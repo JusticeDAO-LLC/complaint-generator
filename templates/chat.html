@@ -1,99 +1,386 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <title>Lex Publicus ChatApp</title>
-    <!-- Latest compiled and minified CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lex Publicus Chat App</title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/complaint_app_shell.css">
-    <!-- jQuery library -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
-        .card {
-            position: absolute;
-            width: 95%;
-            height: 80%;
-            box-shadow: 0px 0px 5px gray;
-            left: 2.5%;
-            top: 5%;
+        :root {
+            --bg-top: #f7efe3;
+            --bg-bottom: #efe3d1;
+            --paper: rgba(255, 251, 246, 0.95);
+            --paper-strong: #fffaf4;
+            --ink: #1f1711;
+            --muted: #6a5d52;
+            --line: rgba(92, 58, 31, 0.14);
+            --accent: #9c3e14;
+            --accent-deep: #742809;
+            --accent-soft: #f7dcc8;
+            --forest: #214d3c;
+            --forest-soft: #dff0e7;
+            --danger-bg: #fce8e8;
+            --danger-ink: #9f1d1d;
+            --shadow: 0 24px 60px rgba(57, 36, 19, 0.14);
+            --radius-xl: 30px;
+            --radius-lg: 22px;
+            --radius-md: 18px;
+            --content-width: 1320px;
         }
-        
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(204, 127, 77, 0.18), transparent 24%),
+                radial-gradient(circle at top right, rgba(33, 77, 60, 0.12), transparent 20%),
+                linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+            font-family: "Public Sans", "Segoe UI", sans-serif;
+        }
+
+        a { color: inherit; }
+
+        .page-shell {
+            width: min(var(--content-width), calc(100% - 30px));
+            margin: 0 auto;
+            padding: 24px 0 56px;
+        }
+
+        .masthead,
+        .hero-card,
+        .chat-card,
+        .support-card,
+        .panel-card {
+            border: 1px solid var(--line);
+            background: var(--paper);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+        }
+
+        .masthead {
+            border-radius: 28px;
+            padding: 20px 22px;
+        }
+
+        .topbar,
+        .surface-links,
+        .cta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .topbar {
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 54px;
+            height: 54px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #7b2f0e, #bc6333);
+            color: #fff7f1;
+            font: 700 1.35rem/1 "Newsreader", Georgia, serif;
+        }
+
+        .brand-copy {
+            display: grid;
+            gap: 3px;
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 0.76rem;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .brand-title {
+            font: 700 1.55rem/1 "Newsreader", Georgia, serif;
+        }
+
+        .brand-subtitle {
+            color: var(--muted);
+            font-size: 0.96rem;
+        }
+
+        .surface-link,
+        .meta-pill,
+        .action-link {
+            padding: 11px 16px;
+            border-radius: 999px;
+            border: 1px solid rgba(116, 40, 9, 0.12);
+            background: rgba(255, 248, 241, 0.92);
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .hero {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+            gap: 22px;
+        }
+
+        .hero-card,
+        .chat-card,
+        .support-card,
+        .panel-card {
+            border-radius: var(--radius-xl);
+            padding: 30px;
+        }
+
+        h1, h2, h3 {
+            margin: 0;
+            font-family: "Newsreader", Georgia, serif;
+            letter-spacing: -0.03em;
+        }
+
+        h1 {
+            margin-top: 10px;
+            max-width: 11ch;
+            font-size: clamp(2.4rem, 4vw, 3.9rem);
+            line-height: 0.98;
+        }
+
+        .hero-copy,
+        .status-copy,
+        .summary-card span,
+        .panel-card p,
+        .support-list li,
+        .chat-explanation,
         #Err {
-            background-color: lightcoral;
-            color: crimson;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .hero-copy {
+            margin: 18px 0 0;
+            max-width: 64ch;
+            font-size: 1.04rem;
+        }
+
+        .cta-primary,
+        .cta-secondary {
+            min-height: 52px;
+            padding: 0 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 800;
+        }
+
+        .cta-primary {
+            background: linear-gradient(135deg, #8d3511, #be6735);
+            color: #fffaf5;
+            box-shadow: 0 14px 34px rgba(141, 53, 17, 0.24);
+        }
+
+        .cta-secondary {
+            border: 1px solid var(--line);
+            background: rgba(255, 251, 246, 0.88);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .summary-card {
+            padding: 18px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(116, 40, 9, 0.1);
+            background: rgba(255, 250, 244, 0.92);
+        }
+
+        .summary-card strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 1.02rem;
+        }
+
+        .workspace-grid {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+            gap: 22px;
+            align-items: start;
+        }
+
+        .chat-card {
+            display: grid;
+            gap: 18px;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        #profile {
+            display: inline-flex;
+            align-items: center;
+            min-height: 36px;
+            padding: 0 12px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent-deep);
+            font-weight: 800;
+        }
+
+        #Err {
             display: none;
-            padding-bottom: 20px;
-            padding-top: 20px;
-            width: 93%;
-            margin: auto;
-            padding: auto;
-            width: 200px;
-            text-align: center;
+            padding: 16px 18px;
+            border-radius: var(--radius-md);
+            background: var(--danger-bg);
+            color: var(--danger-ink);
+            font-weight: 700;
         }
-        
-        #chat-form {
-            position: absolute;
-            top: 90%;
-            transform: translateY(-90%);
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
+
         #messages {
-            padding-bottom: 10%;
-            padding-left: 20px;
-            padding-top: 20px;
-            max-height: 80%;
+            min-height: 460px;
+            max-height: 620px;
             overflow: auto;
+            padding: 20px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--line);
+            background:
+                linear-gradient(180deg, rgba(255, 252, 248, 0.96), rgba(250, 243, 235, 0.96));
         }
 
         .chat-message {
-            margin-bottom: 0.75rem;
+            margin-bottom: 14px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(116, 40, 9, 0.08);
+            background: rgba(255, 255, 255, 0.82);
+        }
+
+        .chat-message p {
+            margin: 0;
+            line-height: 1.65;
         }
 
         .chat-explanation {
-            color: #6c757d;
-            font-size: 0.9rem;
-            margin-left: 1.25rem;
-        }
-        
-        #chat-form input {
-            width: 400px;
-            padding-right: 20%;
-        }
-        
-        #chat-form button {
-            position: absolute;
-            left: 85%;
-        }
-        
-        #profile {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-        }
-        
-        body {
-            background-color: transparent;
+            margin-top: 8px;
+            font-size: 0.92rem;
+            padding-left: 2px;
         }
 
-        .surface-links {
-            display: flex;
+        #chat-form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             gap: 12px;
-            justify-content: center;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
+            align-items: center;
+            margin: 0;
         }
 
-        .surface-link {
-            display: inline-block;
-            padding: 8px 14px;
+        #chat-form .form-control {
+            min-height: 56px;
+            border-radius: 18px;
+            border: 1px solid rgba(116, 40, 9, 0.18);
+            padding: 0 18px;
+            background: #fffdfa;
+            font-size: 1rem;
+        }
+
+        #chat-form button {
+            min-width: 138px;
+            min-height: 56px;
             border-radius: 999px;
-            background-color: #f3f4f6;
-            color: #1f2937;
-            text-decoration: none;
-            font-weight: 600;
+            border: 0;
+            background: linear-gradient(135deg, #214d3c, #2e6b54);
+            font-weight: 800;
+        }
+
+        .support-card {
+            display: grid;
+            gap: 18px;
+            align-content: start;
+        }
+
+        .support-list {
+            margin: 0;
+            padding-left: 20px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .panel-card {
+            padding: 20px 22px;
+        }
+
+        .action-stack {
+            display: grid;
+            gap: 12px;
+        }
+
+        @media (max-width: 1120px) {
+            .hero,
+            .workspace-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 760px) {
+            .page-shell {
+                width: min(var(--content-width), calc(100% - 20px));
+            }
+
+            .masthead,
+            .hero-card,
+            .chat-card,
+            .support-card,
+            .panel-card {
+                padding: 22px;
+            }
+
+            .topbar,
+            .surface-links,
+            .cta-row {
+                flex-direction: column;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            #chat-form {
+                grid-template-columns: 1fr;
+            }
+
+            #chat-form button {
+                width: 100%;
+            }
+
+            .chat-header {
+                flex-direction: column;
+            }
         }
     </style>
     <script defer src="/static/complaint_mcp_sdk.js"></script>
@@ -101,13 +388,27 @@
     <script src="/static/chat_entry_utils.js"></script>
     <script src="/static/chat.js"></script>
 </head>
+<body>
+    <div class="page-shell">
+        <header class="masthead">
+            <div class="topbar">
+                <div class="brand">
+                    <div class="brand-mark">LP</div>
+                    <div class="brand-copy">
+                        <span class="eyebrow">Guided Complaint Intake</span>
+                        <span class="brand-title">Lex Publicus Chat App</span>
+                        <span class="brand-subtitle">Use the guided chat to build the factual record before moving into review, drafting, or editing.</span>
+                    </div>
+                </div>
+                <div class="topbar-links">
+                    <a class="meta-pill" href="/">Landing</a>
+                    <a class="meta-pill" href="/workspace">Workspace</a>
+                    <a class="meta-pill" href="/claim-support-review">Review</a>
+                    <a class="meta-pill" href="/document">Builder</a>
+                </div>
+            </div>
 
-<body style="background-color: transparent;">
-    <div class="chat-body card">
-        <div class="card-body">
-            <strong id="profile"></strong>
-            <h4 class="card-title text-center"> Lex Publicus Chat App </h4>
-            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+            <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                 <a class="surface-link" href="/">Landing</a>
                 <a class="surface-link" href="/home">Account</a>
                 <a class="surface-link" href="/chat">Chat</a>
@@ -119,21 +420,94 @@
                 <a class="surface-link" href="/mlwysiwyg">Editor</a>
                 <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                 <a class="surface-link" href="/dashboards">Dashboards</a>
-            </div>
-            <hr>
-            <div class="Err">
-                <div id="Err">
-                    <br/>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <article class="hero-card">
+                <span class="eyebrow">Plain-Language Interview</span>
+                <h1>Tell the story before the pleading.</h1>
+                <p class="hero-copy">
+                    This surface should feel like a guided legal intake, not a bare chat box. It now frames the conversation as the place where the complaint record is built: what happened, who was involved, what proof exists, and what still needs to be clarified.
+                </p>
+                <div class="cta-row">
+                    <a class="cta-primary" href="#chat-form">Continue the interview</a>
+                    <a class="cta-secondary" href="/workspace">Switch to workspace</a>
+                    <a class="cta-secondary" href="/claim-support-review">Open review surface</a>
                 </div>
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <strong>Capture the narrative</strong>
+                        <span>The chat helps collect the basic timeline, parties, protected activity, adverse action, harm, and next questions.</span>
+                    </div>
+                    <div class="summary-card">
+                        <strong>Keep the intake human-readable</strong>
+                        <span>Clients can explain events in plain language here before anyone asks them to think in legal-element terms.</span>
+                    </div>
+                    <div class="summary-card">
+                        <strong>Stay connected to the rest of the system</strong>
+                        <span>What is collected here flows into profile, results, review, and the draft builder instead of getting stranded in chat.</span>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="support-card">
+                <span class="eyebrow">How To Use This Step</span>
+                <h2>What to focus on in the interview</h2>
+                <ul class="support-list">
+                    <li>Describe the core event sequence in the order it happened.</li>
+                    <li>Name the people, employer, agency, or entity involved.</li>
+                    <li>Flag any documents, messages, screenshots, or witnesses that support key points.</li>
+                    <li>Explain the harm suffered and any relief that may be requested later.</li>
+                </ul>
+                <div class="panel-card">
+                    <h3>Why this matters</h3>
+                    <p>The strongest complaint workflow starts with a clean factual record. This page now makes that purpose obvious instead of looking like a generic chat client.</p>
+                </div>
+            </aside>
+        </section>
+
+        <section class="workspace-grid">
+            <div class="chat-card">
+                <div class="chat-header">
+                    <div>
+                        <span class="eyebrow">Live Intake Conversation</span>
+                        <h2>Complaint narrative chat</h2>
+                    </div>
+                    <strong id="profile"></strong>
+                </div>
+
+                <div id="Err"></div>
+
+                <div id="messages" aria-live="polite"></div>
+
+                <form class="form-inline" id="chat-form">
+                    <input type="text" class="form-control" placeholder="Add the next fact, clarification, or supporting detail">
+                    <button id="send" type="submit" class="btn btn-primary">Send</button>
+                </form>
             </div>
-            <div id="messages">
-            </div>
-            <form class="form-inline" id="chat-form">
-                <input type="text" class="form-control" placeholder="Write your message">
-                <button id="send" type="submit" class="btn btn-primary">Send</button>
-            </form>
-        </div>
+
+            <aside class="support-card">
+                <span class="eyebrow">Next Connected Steps</span>
+                <div class="action-stack">
+                    <div class="panel-card">
+                        <h3>Profile and results</h3>
+                        <p>Use these surfaces to inspect what the intake has already captured and how the complaint record is being structured.</p>
+                        <a class="action-link" href="/profile">Open profile</a>
+                    </div>
+                    <div class="panel-card">
+                        <h3>Support review</h3>
+                        <p>Move here when you need to see whether the available facts and proof actually support the legal elements.</p>
+                        <a class="action-link" href="/claim-support-review">Open review</a>
+                    </div>
+                    <div class="panel-card">
+                        <h3>Draft builder</h3>
+                        <p>Use the builder once the story is organized enough to justify a formal complaint draft.</p>
+                        <a class="action-link" href="/document">Open builder</a>
+                    </div>
+                </div>
+            </aside>
+        </section>
     </div>
 </body>
-
 </html>

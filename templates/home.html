@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Lex Publicus</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lex Publicus | Secure Intake</title>
     <!-- Latest compiled and minified CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/complaint_app_shell.css">
@@ -12,111 +13,377 @@
     <script defer src="/static/complaint_mcp_sdk.js"></script>
     <script defer src="/static/complaint_app_shell.js"></script>
     <style>
-        .form-inline .form_fields {
-            display: none;
-        }
-        
-        #login-form .form_fields {
-            display: block;
-        }
-        
-        #login-form .form_fields input {
-            margin-bottom: 0.5em;
-        }
-        
-        .form-inline .submit_button {
-            text-align: center;
-            margin: 0px;
-            padding: 0px;
-            padding-bottom: 0px;
-            line-height: 1em;
-            padding-bottom: .5em;
-        }
-        
-        .form-inline .submit_button .Err {
-            display: none;
-        }
-        
-        .form-inline .submit_button button {
-            width: 200px;
-        }
-        
-        #Err {
-            background-color: lightcoral;
-            color: crimson;
-            display: none;
-            padding-bottom: 20px;
-            padding-top: 20px;
-            width: 93%;
-            margin: auto;
-            padding: auto;
-            width: 200px;
-            text-align: center;
-        }
-        
-        #submit_button {
-            display: block;
-        }
-        
-        #submit_button button {
-            margin-top: .5em;
-        }
-        
-        .card {
-            position: absolute;
-            width: 95%;
-            height: 80%;
-            box-shadow: 0px 0px 5px gray;
-            left: 2.5%;
-            top: 5%;
-        }
-        
-        #user-form {
-            position: absolute;
-            /* top: 20%; */
-            /* left: 50%; */
-            /* transform: translateX(-50%); */
-            padding: auto;
-            text-align: center;
-            align-content: center;
-            margin: auto;
-            width: 100%;
-        }
-        
-        .row {
-            margin: auto;
-            display: block;
-        }
-        
-        #user-form input {
-            width: 400px;
-            margin-top: .5em;
+        :root {
+            --bg-top: #f7efe3;
+            --bg-bottom: #efe3d1;
+            --paper: rgba(255, 251, 246, 0.95);
+            --paper-strong: #fffaf4;
+            --ink: #1f1711;
+            --muted: #6a5d52;
+            --line: rgba(92, 58, 31, 0.14);
+            --accent: #9c3e14;
+            --accent-deep: #742809;
+            --accent-soft: #f7dcc8;
+            --forest: #214d3c;
+            --forest-soft: #dff0e7;
+            --danger-bg: #fce8e8;
+            --danger-ink: #9f1d1d;
+            --shadow: 0 24px 60px rgba(57, 36, 19, 0.14);
+            --radius-xl: 30px;
+            --radius-lg: 22px;
+            --radius-md: 18px;
+            --content-width: 1280px;
         }
 
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(204, 127, 77, 0.18), transparent 24%),
+                radial-gradient(circle at top right, rgba(33, 77, 60, 0.12), transparent 20%),
+                linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+            font-family: "Public Sans", "Segoe UI", sans-serif;
+        }
+
+        a {
+            color: inherit;
+        }
+
+        .page-shell {
+            width: min(var(--content-width), calc(100% - 32px));
+            margin: 0 auto;
+            padding: 24px 0 72px;
+        }
+
+        .masthead,
+        .hero-card,
+        .intake-card,
+        .guidance-card,
+        .panel-card {
+            border: 1px solid var(--line);
+            background: var(--paper);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+        }
+
+        .masthead {
+            border-radius: 28px;
+            padding: 20px 22px;
+        }
+
+        .topbar,
+        .surface-links,
+        .cta-row,
         .operator-shortcut {
-            margin-top: 1em;
-            text-align: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
+        .topbar {
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 54px;
+            height: 54px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #7b2f0e, #bc6333);
+            color: #fff7f1;
+            font: 700 1.35rem/1 "Newsreader", Georgia, serif;
+        }
+
+        .brand-copy {
+            display: grid;
+            gap: 3px;
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 0.76rem;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .brand-title {
+            font: 700 1.55rem/1 "Newsreader", Georgia, serif;
+        }
+
+        .brand-subtitle {
+            color: var(--muted);
+            font-size: 0.96rem;
+        }
+
+        .meta-pill,
+        .surface-link,
         .operator-shortcut a {
-            display: inline-block;
-            padding: 0.7em 1.2em;
+            padding: 11px 16px;
             border-radius: 999px;
-            border: 1px solid #fdba74;
-            background-color: #fff7ed;
-            color: #9a3412;
-            font-weight: bold;
+            border: 1px solid rgba(116, 40, 9, 0.12);
+            background: rgba(255, 248, 241, 0.92);
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .hero {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+            gap: 22px;
+        }
+
+        .hero-card,
+        .intake-card,
+        .guidance-card,
+        .panel-card {
+            border-radius: var(--radius-xl);
+            padding: 32px;
+        }
+
+        h1,
+        h2,
+        h3 {
+            margin: 0;
+            font-family: "Newsreader", Georgia, serif;
+            letter-spacing: -0.03em;
+        }
+
+        h1 {
+            margin-top: 10px;
+            max-width: 10ch;
+            font-size: clamp(2.5rem, 4vw, 4.1rem);
+            line-height: 0.98;
+        }
+
+        .hero-copy,
+        .summary-card span,
+        .guidance-list li,
+        .form-intro,
+        .panel-card p,
+        .credentials-note,
+        #Err {
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .hero-copy {
+            margin: 18px 0 0;
+            max-width: 64ch;
+            font-size: 1.05rem;
+        }
+
+        .cta-primary,
+        .cta-secondary,
+        .form-inline .submit_button button {
+            min-height: 52px;
+            border-radius: 999px;
+            font-weight: 800;
+        }
+
+        .cta-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 22px;
+            background: linear-gradient(135deg, #8d3511, #be6735);
+            color: #fffaf5;
+            text-decoration: none;
+            box-shadow: 0 14px 34px rgba(141, 53, 17, 0.24);
+        }
+
+        .cta-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 22px;
+            border: 1px solid var(--line);
+            background: rgba(255, 251, 246, 0.88);
             text-decoration: none;
         }
 
-        .operator-shortcut a + a {
-            margin-left: 0.75em;
+        .summary-grid,
+        .credentials-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            margin-top: 24px;
         }
-        
-        #user-form button {
-            /* position: absolute; */
-            margin-left: 2px;
-            width: 400px;
+
+        .summary-card,
+        .credential-card {
+            padding: 18px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(116, 40, 9, 0.1);
+            background: rgba(255, 250, 244, 0.92);
+        }
+
+        .summary-card strong,
+        .credential-card h3 {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 1.02rem;
+        }
+
+        .intake-grid {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+            gap: 22px;
+        }
+
+        .form-stack {
+            display: grid;
+            gap: 16px;
+        }
+
+        .form-inline {
+            display: block;
+            margin: 0;
+            padding: 22px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--line);
+            background: var(--paper-strong);
+        }
+
+        .form-header {
+            margin-bottom: 16px;
+        }
+
+        .form-header h2 {
+            font-size: 1.7rem;
+            line-height: 1.08;
+        }
+
+        .form-inline .form_fields {
+            display: none;
+            margin-top: 16px;
+        }
+
+        #login-form .form_fields {
+            display: block;
+        }
+
+        .row {
+            margin: 0;
+            display: block;
+        }
+
+        .form-inline .form-control {
+            width: 100%;
+            margin-top: 0.8em;
+            min-height: 52px;
+            border-radius: 16px;
+            border: 1px solid rgba(116, 40, 9, 0.18);
+            background: #fffdfa;
+            padding: 0 16px;
+            font-size: 1rem;
+        }
+
+        .form-inline .submit_button {
+            margin-top: 16px;
+            text-align: left;
+        }
+
+        .form-inline .submit_button button {
+            width: 100%;
+            border: 0;
+            background: linear-gradient(135deg, #8d3511, #be6735);
+        }
+
+        #login-form .submit_button button {
+            background: linear-gradient(135deg, #214d3c, #2e6b54);
+        }
+
+        #reset-form .submit_button button {
+            background: linear-gradient(135deg, #475569, #64748b);
+        }
+
+        #Err {
+            display: none;
+            margin-top: 18px;
+            padding: 16px 18px;
+            border-radius: var(--radius-md);
+            background: var(--danger-bg);
+            color: var(--danger-ink);
+            font-weight: 700;
+        }
+
+        .guidance-card {
+            display: grid;
+            gap: 18px;
+            align-content: start;
+        }
+
+        .guidance-list {
+            margin: 0;
+            padding-left: 20px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .operator-shortcut {
+            margin-top: 22px;
+        }
+
+        .panel-grid {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 22px;
+        }
+
+        @media (max-width: 1100px) {
+            .hero,
+            .intake-grid,
+            .panel-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid,
+            .credentials-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 760px) {
+            .page-shell {
+                width: min(var(--content-width), calc(100% - 22px));
+            }
+
+            .masthead,
+            .hero-card,
+            .intake-card,
+            .guidance-card,
+            .panel-card {
+                padding: 22px;
+            }
+
+            .topbar,
+            .surface-links,
+            .cta-row,
+            .operator-shortcut {
+                flex-direction: column;
+            }
+
+            .summary-grid,
+            .credentials-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -404,74 +671,178 @@
     });
 </script>
 
-<body style="background-color: transparent; overflow: hidden;">
-    <div class="chat-body card">
-        <div class="card-body">
-            <h4 class="card-title text-center">Lex Publicus Chat Bot</h4>
-            <h4 class="card-title text-center">Complaint Generator </h4>
-            <hr>
-            <form class="form-inline" id="login-form" onsubmit="return returnFalse(event);">
-                <div class="row">
-                    <div class="col form_fields">
-                        <input type="text" class="form-control username_input" placeholder="Enter your username ">
-                        <br/>
-                        <input type="password" class="form-control password_input" placeholder="Enter your password ">
-                        <br/>
-                    </div>
-                    <div class="submit_button">
-                        <button type="submit" class="btn btn-primary start">Start Chat</button>
+<body>
+    <div class="page-shell">
+        <header class="masthead">
+            <div class="topbar">
+                <div class="brand">
+                    <div class="brand-mark">LP</div>
+                    <div class="brand-copy">
+                        <span class="eyebrow">Secure Client Intake</span>
+                        <span class="brand-title">Lex Publicus</span>
+                        <span class="brand-subtitle">Create an account, return to an existing complaint, or reconnect a client with the rest of the complaint workflow.</span>
                     </div>
                 </div>
-            </form>
-            <form class="form-inline" id="create-form" onsubmit="return returnFalse(event);">
-                <div class="row">
-                    <div class="col form_fields">
-                        <input type="text" class="form-control username_input" placeholder="Enter your username ">
-                        <br/>
-                        <input type="password" class="form-control password_input" placeholder="Enter your password ">
-                        <br/>
-                        <input type="password" class="form-control password_verify_input" placeholder="Verify your password ">
-                        <br/>
-                        <input type="text" class="form-control email_input" placeholder="Enter your email ">
-                        <br/>
-                    </div>
-                    <div class="submit_button">
-                        <button type="submit" class="btn btn-primary start">Create Account</button>
-                    </div>
-                </div>
-            </form>
-            <form class="form-inline" id="reset-form" onsubmit="return returnFalse(event);">
-                <div class="row ">
-                    <div class="col form_fields">
-                        <input type="text " class="form-control username_input" placeholder="Enter your username ">
-                        <br/> OR
-                        <br/>
-                        <input type="password " class="form-control email_input" placeholder="Enter your email address ">
-                        <br/>
-                    </div>
-                    <div class="submit_button">
-                        <button type="submit" class="btn btn-primary start">Reset Password</button>
-                    </div>
-                </div>
-            </form>
-            <div class="Err">
-                <div id="Err">
-                    <br/>
+                <div class="topbar-links">
+                    <a class="meta-pill" href="/">Landing</a>
+                    <a class="meta-pill" href="/workspace">Workspace</a>
+                    <a class="meta-pill" href="/claim-support-review">Review</a>
+                    <a class="meta-pill" href="/document">Builder</a>
                 </div>
             </div>
-            <div class="operator-shortcut" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
-                <a href="/">Landing</a>
-                <a href="/home">Account</a>
-                <a href="/chat">Chat</a>
-                <a href="/profile">Profile</a>
-                <a href="/results">Results</a>
-                <a href="/claim-support-review">Review</a>
-                <a href="/document">Builder</a>
-                <a href="/document/optimization-trace">Trace</a>
-                <a href="/mlwysiwyg">Editor</a>
-                <a href="/ipfs-datasets/sdk-playground">SDK</a>
-                <a href="/dashboards">Dashboards</a>
+
+            <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                <a class="surface-link" href="/">Landing</a>
+                <a class="surface-link" href="/home">Account</a>
+                <a class="surface-link" href="/chat">Chat</a>
+                <a class="surface-link" href="/profile">Profile</a>
+                <a class="surface-link" href="/results">Results</a>
+                <a class="surface-link" href="/claim-support-review">Review</a>
+                <a class="surface-link" href="/document">Builder</a>
+                <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                <a class="surface-link" href="/dashboards">Dashboards</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <article class="hero-card">
+                <span class="eyebrow">Protected Entry Point</span>
+                <h1>Secure intake for complaint preparation.</h1>
+                <p class="hero-copy">
+                    This page is where a client should begin if they need a protected account before sharing facts. It now explains the intake path clearly instead of dropping people into a floating form with no context.
+                </p>
+                <div class="cta-row">
+                    <a class="cta-primary" href="#create-form">Create account</a>
+                    <a class="cta-secondary" href="#login-form">Sign in</a>
+                    <a class="cta-secondary" href="/workspace">Open workspace instead</a>
+                </div>
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <strong>Start securely</strong>
+                        <span>Create an account before entering sensitive facts if this is a new complaint.</span>
+                    </div>
+                    <div class="summary-card">
+                        <strong>Resume cleanly</strong>
+                        <span>Returning users can sign in and go directly back to the connected complaint chat and workspace.</span>
+                    </div>
+                    <div class="summary-card">
+                        <strong>Stay in one system</strong>
+                        <span>Account setup, chat, review, drafting, and editing all remain connected across the same complaint generator.</span>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="guidance-card">
+                <span class="eyebrow">Before You Begin</span>
+                <h2>What a client should have ready</h2>
+                <ul class="guidance-list">
+                    <li>A working email address for account recovery and case continuity.</li>
+                    <li>A short description of what happened, who was involved, and when the key events occurred.</li>
+                    <li>Any documents, screenshots, notes, or messages that may support the complaint later.</li>
+                    <li>An idea of the harm suffered and what relief may be requested.</li>
+                </ul>
+                <div class="panel-card">
+                    <h3>Why this page matters</h3>
+                    <p>The homepage now routes new clients here first because this is the appropriate starting point for a secure legal intake. Operators and returning users can still jump to Workspace, Review, or Builder from the navigation above.</p>
+                </div>
+            </aside>
+        </section>
+
+        <section class="intake-grid">
+            <div class="intake-card">
+                <span class="eyebrow">Account Access</span>
+                <h2>Create, reopen, or recover a complaint account</h2>
+                <p class="form-intro">The original account flow is preserved underneath these forms, but the layout now explains what each action is for and makes the next step obvious.</p>
+
+                <div class="form-stack">
+                    <form class="form-inline" id="create-form" onsubmit="return returnFalse(event);">
+                        <div class="form-header">
+                            <span class="eyebrow">For New Clients</span>
+                            <h2>Create Account</h2>
+                            <p class="credentials-note">Use this first if you are starting a new complaint and need a secure account before entering facts.</p>
+                        </div>
+                        <div class="row">
+                            <div class="col form_fields">
+                                <input type="text" class="form-control username_input" placeholder="Choose a username">
+                                <input type="password" class="form-control password_input" placeholder="Create a password">
+                                <input type="password" class="form-control password_verify_input" placeholder="Verify your password">
+                                <input type="text" class="form-control email_input" placeholder="Enter your email">
+                            </div>
+                            <div class="submit_button">
+                                <button type="submit" class="btn btn-primary start">Create Account</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <form class="form-inline" id="login-form" onsubmit="return returnFalse(event);">
+                        <div class="form-header">
+                            <span class="eyebrow">For Returning Clients</span>
+                            <h2>Sign In</h2>
+                            <p class="credentials-note">Use this if you already have an account and want to return directly to the complaint chat.</p>
+                        </div>
+                        <div class="row">
+                            <div class="col form_fields">
+                                <input type="text" class="form-control username_input" placeholder="Enter your username">
+                                <input type="password" class="form-control password_input" placeholder="Enter your password">
+                            </div>
+                            <div class="submit_button">
+                                <button type="submit" class="btn btn-primary start">Start Chat</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <form class="form-inline" id="reset-form" onsubmit="return returnFalse(event);">
+                        <div class="form-header">
+                            <span class="eyebrow">Recovery</span>
+                            <h2>Reset Password</h2>
+                            <p class="credentials-note">Use your username or email if you need to recover access before continuing the complaint process.</p>
+                        </div>
+                        <div class="row ">
+                            <div class="col form_fields">
+                                <input type="text" class="form-control username_input" placeholder="Enter your username">
+                                <input type="password" class="form-control email_input" placeholder="Enter your email address">
+                            </div>
+                            <div class="submit_button">
+                                <button type="submit" class="btn btn-primary start">Reset Password</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="Err">
+                    <div id="Err"></div>
+                </div>
             </div>
+
+            <aside class="guidance-card">
+                <span class="eyebrow">Connected Complaint Flow</span>
+                <h2>Where this account step leads next</h2>
+                <div class="credentials-grid">
+                    <div class="credential-card">
+                        <h3>Chat intake</h3>
+                        <p>After sign-in or account creation, the client returns to chat to tell the story in plain language.</p>
+                    </div>
+                    <div class="credential-card">
+                        <h3>Profile and results</h3>
+                        <p>The same session feeds the profile and results surfaces so facts are not re-entered from scratch.</p>
+                    </div>
+                    <div class="credential-card">
+                        <h3>Review and builder</h3>
+                        <p>Operators and advanced users can move into evidence review and formal drafting when the intake is ready.</p>
+                    </div>
+                </div>
+
+                <div class="operator-shortcut" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                    <a href="/workspace">Open Workspace</a>
+                    <a href="/claim-support-review">Open Review</a>
+                    <a href="/document">Open Builder</a>
+                    <a href="/mlwysiwyg">Open Editor</a>
+                </div>
+            </aside>
+        </section>
+    </div>
 </body>
 
 </html>

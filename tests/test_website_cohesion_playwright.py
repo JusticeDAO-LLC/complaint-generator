@@ -506,9 +506,8 @@ def _wait_for_surface(page, path: str) -> None:
             """() => {
                 const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
                 return bodyText.includes('lex publicus complaint generator')
-                    && bodyText.includes('what clients can expect')
-                    && bodyText.includes('one connected journey')
-                    && bodyText.includes('choose your entry');
+                    && bodyText.includes('three simple steps')
+                    && bodyText.includes('choose your next step');
             }"""
         )
         return
@@ -562,7 +561,7 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
                 """() => {
                     const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
                     return bodyText.includes('lex publicus complaint generator')
-                        && bodyText.includes('what clients can expect');
+                        && bodyText.includes('three simple steps');
                 }"""
             )
             assert page.locator("a[href='/claim-support-review']").count() >= 1
@@ -571,8 +570,8 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
             assert page.locator("#homepage-open-intake").count() == 1
             assert page.locator("a[href='/home']").count() >= 1
             body_text = page.locator("body").inner_text()
-            assert "This homepage is designed to send people into the right part of the workflow immediately" in body_text
-            assert "Go directly to the part of the complaint generator you actually need" in body_text
+            assert "Build your complaint one step at a time." in body_text
+            assert "A guided path through the complaint process" in body_text
 
             _create_account_and_open_chat(page, base_url)
 
@@ -617,8 +616,8 @@ def test_root_landing_routes_into_secure_intake_and_connected_surfaces_after_sig
                 """() => {
                     const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
                     return bodyText.includes('lex publicus complaint generator')
-                        && bodyText.includes('one connected journey')
-                        && bodyText.includes('choose your entry');
+                        && bodyText.includes('three simple steps')
+                        && bodyText.includes('choose your next step');
                 }"""
             )
             assert page.locator("#homepage-open-intake").count() == 1
@@ -788,8 +787,8 @@ def test_shared_builder_and_review_shortcuts_connect_the_site_surfaces():
                         """() => {
                             const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
                             return bodyText.includes('lex publicus complaint generator')
-                                && bodyText.includes('one connected journey')
-                                && bodyText.includes('choose your entry');
+                                && bodyText.includes('three simple steps')
+                                && bodyText.includes('choose your next step');
                         }"""
                     )
 
