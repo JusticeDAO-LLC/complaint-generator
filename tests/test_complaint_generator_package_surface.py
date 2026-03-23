@@ -14,11 +14,14 @@ except ModuleNotFoundError:
 
 from complaint_generator import (
     ComplaintWorkspaceService,
+    build_ui_ux_review_prompt,
+    create_review_dashboard_app,
     create_ui_review_report,
     create_review_surface_app,
     generate_decentralized_id,
     handle_jsonrpc_message,
     run_iterative_ui_ux_workflow,
+    run_playwright_screenshot_audit,
     tool_list_payload,
 )
 from complaint_generator import cli as cli_module
@@ -68,13 +71,21 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert any(tool["name"] == "complaint.review_ui" for tool in tool_payload["tools"])
     assert initialize_payload["result"]["serverInfo"]["name"] == "complaint-workspace-mcp"
     assert callable(generate_decentralized_id)
+    assert callable(build_ui_ux_review_prompt)
     assert callable(create_ui_review_report)
+    assert callable(create_review_dashboard_app)
     assert callable(run_iterative_ui_ux_workflow)
+    assert callable(run_playwright_screenshot_audit)
     if HAS_MULTIPART:
         app = create_review_surface_app(mediator=object())
         assert any(
             getattr(route, "path", None) == "/workspace"
             for route in app.routes
+        )
+        dashboard_app = create_review_dashboard_app()
+        assert any(
+            getattr(route, "path", None) == "/claim-support-review"
+            for route in dashboard_app.routes
         )
     else:
         assert callable(create_review_surface_app)
@@ -99,6 +110,7 @@ def test_installed_console_scripts_expose_cli_and_mcp_entrypoints(tmp_path):
     generator_script = _script_path("complaint-generator")
     mcp_script = _script_path("complaint-mcp-server")
     mcp_alias_script = _script_path("complaint-generator-mcp")
+    workflow_script = _script_path("complaint-ui-ux-workflow")
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(REPO_ROOT)
@@ -123,6 +135,15 @@ def test_installed_console_scripts_expose_cli_and_mcp_entrypoints(tmp_path):
     )
     generator_help_result = subprocess.run(
         [str(generator_script), "--help"],
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    workflow_help_result = subprocess.run(
+        [str(workflow_script), "--help"],
         cwd=REPO_ROOT,
         env=env,
         check=True,
@@ -161,8 +182,10 @@ def test_installed_console_scripts_expose_cli_and_mcp_entrypoints(tmp_path):
     assert generator_script.exists()
     assert mcp_script.exists()
     assert mcp_alias_script.exists()
+    assert workflow_script.exists()
     assert workspace_payload["session"]["user_id"] == "installed-script-user"
     assert workspace_alias_payload["session"]["user_id"] == "alias-script-user"
     assert "Complaint Generator" in generator_help_result.stdout
+    assert "screenshot audit" in workflow_help_result.stdout.lower()
     assert mcp_initialize_payload["result"]["serverInfo"]["name"] == "complaint-workspace-mcp"
     assert mcp_alias_initialize_payload["result"]["serverInfo"]["name"] == "complaint-workspace-mcp"

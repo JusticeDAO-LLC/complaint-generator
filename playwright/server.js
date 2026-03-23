@@ -481,6 +481,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
+        { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI.', inputSchema: { type: 'object' } },
       ],
     });
   }
@@ -507,6 +508,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
+            { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI.', inputSchema: { type: 'object' } },
           ],
         },
       });
@@ -557,11 +559,67 @@ const server = http.createServer(async (request, response) => {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.review_ui') {
+        if ((Number(args.iterations || 0)) > 0) {
+          structuredContent = {
+            iterations: Number(args.iterations || 0),
+            screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
+            output_dir: args.output_path || 'artifacts/ui-audit/reviews',
+            latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.',
+            latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
+            runs: [
+              {
+                iteration: 1,
+                artifact_count: 1,
+                review_excerpt: 'Evidence capture guidance is still too easy to miss for first-time complainants.',
+                review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
+                review_json_path: 'artifacts/ui-audit/reviews/iteration-01-review.json',
+              },
+            ],
+          };
+        } else {
+          structuredContent = {
+            generated_at: '2026-03-23T00:00:00+00:00',
+            backend: { strategy: 'playwright-stub' },
+            screenshots: [],
+            review: {
+              summary: 'Stub UI review completed.',
+              issues: [
+                {
+                  severity: 'medium',
+                  surface: '/workspace',
+                  problem: 'The intake-to-evidence transition needs more explicit guidance for real complainants.',
+                  user_impact: 'Users may not know what kind of support to add next.',
+                },
+              ],
+            },
+          };
+        }
+      } else if (toolName === 'complaint.optimize_ui') {
         structuredContent = {
-          generated_at: '2026-03-23T00:00:00+00:00',
-          backend: { strategy: 'playwright-stub' },
-          screenshots: [],
-          review: { summary: 'Stub UI review completed.' },
+          workflow_type: 'ui_ux_closed_loop',
+          max_rounds: Number(args.max_rounds || 2),
+          rounds_executed: 1,
+          stop_reason: 'validation_review_stable',
+          latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+          cycles: [
+            {
+              round: 1,
+              task: {
+                target_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
+                metadata: { workflow_type: 'ui_ux_autopatch' },
+              },
+              optimizer_result: {
+                success: true,
+                status: 'applied',
+                patch_path: 'artifacts/ui-audit/round-01.patch',
+                changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
+                metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
+              },
+              validation_review: {
+                latest_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+              },
+            },
+          ],
         };
       } else {
         return sendJson(response, {
@@ -665,11 +723,67 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.review_ui') {
+      if ((Number(args.iterations || 0)) > 0) {
+        return sendJson(response, {
+          iterations: Number(args.iterations || 0),
+          screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
+          output_dir: args.output_path || 'artifacts/ui-audit/reviews',
+          latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.',
+          latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
+          runs: [
+            {
+              iteration: 1,
+              artifact_count: 1,
+              review_excerpt: 'Evidence capture guidance is still too easy to miss for first-time complainants.',
+              review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
+              review_json_path: 'artifacts/ui-audit/reviews/iteration-01-review.json',
+            },
+          ],
+        });
+      }
       return sendJson(response, {
         generated_at: '2026-03-23T00:00:00+00:00',
         backend: { strategy: 'playwright-stub' },
         screenshots: [],
-        review: { summary: 'Stub UI review completed.' },
+        review: {
+          summary: 'Stub UI review completed.',
+          issues: [
+            {
+              severity: 'medium',
+              surface: '/workspace',
+              problem: 'The intake-to-evidence transition needs more explicit guidance for real complainants.',
+              user_impact: 'Users may not know what kind of support to add next.',
+            },
+          ],
+        },
+      });
+    }
+    if (toolName === 'complaint.optimize_ui') {
+      return sendJson(response, {
+        workflow_type: 'ui_ux_closed_loop',
+        max_rounds: Number(args.max_rounds || 2),
+        rounds_executed: 1,
+        stop_reason: 'validation_review_stable',
+        latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+        cycles: [
+          {
+            round: 1,
+            task: {
+              target_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
+              metadata: { workflow_type: 'ui_ux_autopatch' },
+            },
+            optimizer_result: {
+              success: true,
+              status: 'applied',
+              patch_path: 'artifacts/ui-audit/round-01.patch',
+              changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
+              metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
+            },
+            validation_review: {
+              latest_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
+            },
+          },
+        ],
       });
     }
     response.writeHead(400);

@@ -8,6 +8,7 @@ import typer
 
 from .complaint_workspace import ComplaintWorkspaceService
 from .ui_review import run_ui_review_workflow
+from .ui_review import run_ui_review_workflow
 
 
 app = typer.Typer(help="Unified complaint workspace CLI.")
@@ -119,6 +120,7 @@ def review_ui(
                 provider=provider,
                 model=model,
                 pytest_target=pytest_target,
+                notes=notes,
             )
         )
         return
@@ -131,6 +133,37 @@ def review_ui(
             config_path=config_path,
             backend_id=backend_id,
             output_path=artifact_path,
+        )
+    )
+
+
+@app.command("optimize-ui")
+def optimize_ui(
+    screenshot_dir: str,
+    output_path: str = "artifacts/ui_review/closed-loop",
+    max_rounds: int = 2,
+    iterations: int = 1,
+    notes: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    method: str = "actor_critic",
+    priority: int = 80,
+    pytest_target: str = "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+) -> None:
+    from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement
+
+    _print(
+        run_closed_loop_ui_ux_improvement(
+            screenshot_dir=screenshot_dir,
+            output_dir=output_path,
+            pytest_target=pytest_target,
+            max_rounds=max_rounds,
+            review_iterations=iterations,
+            provider=provider,
+            model=model,
+            method=method,
+            priority=priority,
+            notes=notes,
         )
     )
 

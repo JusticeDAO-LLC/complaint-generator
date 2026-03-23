@@ -225,6 +225,12 @@ The helper now defaults to the browser-inclusive `full` slice so the review, tem
 
 The browser coverage in that full slice now includes both the claim-support dashboard smoke and the cohesive site-flow suite that exercises landing, account, chat, profile, results, builder, review, and optimization-trace navigation under one FastAPI surface.
 
+The review and full slices also gate the packaged complaint workspace surface:
+
+- `tests/test_complaint_generator_package.py` validates the importable package API, JSON-RPC tool calls, and fresh-session complaint generation.
+- `tests/test_complaint_generator_package_surface.py` validates the installed console scripts and broader package exports.
+- `tests/test_complaint_generator_site_playwright.py` validates the `/workspace` page using the shared browser MCP SDK against the real FastAPI review surface.
+
 The repo also includes a separate Node Playwright compatibility suite available through `npm test:e2e`, but that path runs against a stubbed server for browser-level compatibility checks. The Python regression runners remain the authoritative browser gate for the real FastAPI site surface.
 
 **Claim Support Regression:**

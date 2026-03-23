@@ -5,13 +5,12 @@ from complaint_generator import (
     complaint_mcp_server_main,
     complaint_workspace_cli_main,
     create_complaint_workspace_router,
-    create_review_dashboard_app,
-    create_review_surface_app,
     handle_jsonrpc_message,
     tool_list_payload,
 )
 from complaint_generator.cli import app as complaint_workspace_cli_app
 from complaint_generator.entrypoints import main as complaint_generator_main
+from complaint_generator.review import create_review_dashboard_app, create_review_surface_app
 
 
 def test_package_exports_unified_workspace_and_review_helpers():

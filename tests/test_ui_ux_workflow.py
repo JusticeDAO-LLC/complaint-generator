@@ -6,6 +6,7 @@ import pytest
 from complaint_generator import (
     build_ui_ux_review_prompt,
     review_screenshot_audit_with_llm_router,
+    run_closed_loop_ui_ux_improvement,
     run_iterative_ui_ux_workflow,
     run_playwright_screenshot_audit,
 )
@@ -144,3 +145,25 @@ def test_review_workflow_falls_back_to_text_router_when_multimodal_review_fails(
     review = review_screenshot_audit_with_llm_router(screenshot_dir=screenshot_dir, iteration=1)
 
     assert "Fallback text review" in review["review"]
+
+
+def test_closed_loop_ui_ux_improvement_delegates_to_optimizer(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_feedback_loop(self, **kwargs):
+        captured.update(kwargs)
+        return {"workflow_type": "ui_ux_closed_loop", "rounds_executed": 1}
+
+    monkeypatch.setattr("adversarial_harness.optimizer.Optimizer.run_agentic_ui_ux_feedback_loop", fake_feedback_loop)
+
+    result = run_closed_loop_ui_ux_improvement(
+        screenshot_dir=tmp_path / "screens",
+        output_dir=tmp_path / "reviews",
+        max_rounds=2,
+        review_iterations=1,
+        notes="Focus on calmer intake wording.",
+    )
+
+    assert result["workflow_type"] == "ui_ux_closed_loop"
+    assert captured["max_rounds"] == 2
+    assert captured["notes"] == "Focus on calmer intake wording."

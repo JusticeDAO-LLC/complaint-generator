@@ -3230,6 +3230,11 @@ SUGGESTIONS:
         assert any(path.endswith(".js") for path in bundle.target_files)
 
     def test_run_adversarial_autopatch_batch_includes_ui_review_lane_when_screenshots_exist(self, tmp_path, monkeypatch):
+        review_output_dir = tmp_path / "reviews"
+        review_output_dir.mkdir(parents=True, exist_ok=True)
+        review_json_path = review_output_dir / "iteration-01-review.json"
+        review_json_path.write_text(json.dumps({"review": "# High-Impact UX Fixes\n- Keep the MCP SDK path obvious."}))
+
         monkeypatch.setattr(
             "applications.ui_review.run_ui_review_workflow",
             lambda *args, **kwargs: _fake_ui_review_report(tmp_path),
@@ -3239,6 +3244,21 @@ SUGGESTIONS:
             "run_ui_review_workflow",
             lambda *args, **kwargs: _fake_ui_review_report(tmp_path),
             raising=False,
+        )
+        monkeypatch.setattr(
+            "complaint_generator.ui_ux_workflow.run_iterative_ui_ux_workflow",
+            lambda *args, **kwargs: {
+                "iterations": 1,
+                "screenshot_dir": str(tmp_path),
+                "output_dir": str(review_output_dir),
+                "runs": [
+                    {
+                        "iteration": 1,
+                        "review_markdown_path": str(review_output_dir / "iteration-01-review.md"),
+                        "review_json_path": str(review_json_path),
+                    }
+                ],
+            },
         )
 
         payload = run_adversarial_autopatch_batch(
@@ -3261,6 +3281,9 @@ SUGGESTIONS:
         assert payload["ui_phase_tasks"][0]["phase"] == "ui_ux_review"
         assert "templates/workspace.html" in payload["ui_phase_tasks"][0]["target_files"]
         assert Path(payload["ui_phase_tasks"][0]["patch_path"]).is_file()
+        assert payload["ui_ux_workflow_result"]["iterations"] == 1
+        assert "templates/workspace.html" in payload["ui_ux_optimization_bundle"]["target_files"]
+        assert payload["ui_ux_phase_task"]["workflow_type"] == "ui_ux_autopatch"
         summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
         assert summary["ui_optimization_bundle"]["artifact_count"] == 1
 

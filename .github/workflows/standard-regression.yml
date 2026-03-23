@@ -9,11 +9,18 @@ on:
       - README.md
       - tests/README.md
       - applications/cli.py
+      - applications/__init__.py
+      - applications/complaint_cli.py
+      - applications/complaint_mcp_protocol.py
+      - applications/complaint_mcp_server.py
+      - applications/complaint_workspace.py
+      - applications/complaint_workspace_api.py
       - applications/document_api.py
       - applications/review_api.py
       - applications/review_ui.py
       - applications/site_ui.py
       - claim_support_review.py
+      - complaint_generator/**
       - complaint_analysis/**
       - complaint_phases/**
       - document_optimization.py
@@ -24,17 +31,23 @@ on:
       - mediator/formal_document.py
       - mediator/mediator.py
       - scripts/backfill_claim_testimony_links.py
+      - static/complaint_mcp_sdk.js
       - templates/index.html
       - templates/home.html
       - templates/chat.html
       - templates/profile.html
       - templates/results.html
+      - templates/workspace.html
       - templates/claim_support_review.html
       - templates/document.html
       - templates/optimization_trace.html
       - workflow_phase_guidance.py
       - scripts/run_standard_regression.py
+      - pyproject.toml
+      - setup.py
       - tests/test_cli_commands.py
+      - tests/test_complaint_generator_package.py
+      - tests/test_complaint_generator_package_surface.py
       - tests/test_complaint_phases.py
       - tests/test_intake_status.py
       - tests/test_mediator.py
@@ -62,11 +75,18 @@ on:
       - README.md
       - tests/README.md
       - applications/cli.py
+      - applications/__init__.py
+      - applications/complaint_cli.py
+      - applications/complaint_mcp_protocol.py
+      - applications/complaint_mcp_server.py
+      - applications/complaint_workspace.py
+      - applications/complaint_workspace_api.py
       - applications/document_api.py
       - applications/review_api.py
       - applications/review_ui.py
       - applications/site_ui.py
       - claim_support_review.py
+      - complaint_generator/**
       - complaint_analysis/**
       - complaint_phases/**
       - document_optimization.py
@@ -77,17 +97,23 @@ on:
       - mediator/formal_document.py
       - mediator/mediator.py
       - scripts/backfill_claim_testimony_links.py
+      - static/complaint_mcp_sdk.js
       - templates/index.html
       - templates/home.html
       - templates/chat.html
       - templates/profile.html
       - templates/results.html
+      - templates/workspace.html
       - templates/claim_support_review.html
       - templates/document.html
       - templates/optimization_trace.html
       - workflow_phase_guidance.py
       - scripts/run_standard_regression.py
+      - pyproject.toml
+      - setup.py
       - tests/test_cli_commands.py
+      - tests/test_complaint_generator_package.py
+      - tests/test_complaint_generator_package_surface.py
       - tests/test_complaint_phases.py
       - tests/test_intake_status.py
       - tests/test_mediator.py

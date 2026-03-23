@@ -21,6 +21,7 @@ REGRESSION_SLICES = {
         "tests/test_mediator.py",
     ],
     "review": [
+        "tests/test_complaint_generator_package.py",
         "tests/test_complaint_generator_package_surface.py",
         "tests/test_review_api.py",
         "tests/test_claim_support_review_dashboard_flow.py",
@@ -32,6 +33,7 @@ REGRESSION_SLICES = {
         "tests/test_formal_document_pipeline.py",
     ],
     "full": [
+        "tests/test_complaint_generator_package.py",
         "tests/test_complaint_generator_package_surface.py",
         "tests/test_review_api.py",
         "tests/test_claim_support_review_dashboard_flow.py",
@@ -42,7 +44,7 @@ REGRESSION_SLICES = {
         "tests/test_document_pipeline_fallbacks.py",
         "tests/test_formal_document_pipeline.py",
         "tests/test_claim_support_review_playwright_smoke.py",
-        "tests/test_review_surface_site_playwright.py",
+        "tests/test_complaint_generator_site_playwright.py",
         "tests/test_phase_manager_temporal_registry.py",
     ],
 }

@@ -176,6 +176,10 @@ class ComplaintMcpClient {
     reviewUiArtifacts(payload) {
         return this.callTool('complaint.review_ui', payload || {});
     }
+
+    optimizeUiArtifacts(payload) {
+        return this.callTool('complaint.optimize_ui', payload || {});
+    }
 }
 
 export { ComplaintMcpClient };

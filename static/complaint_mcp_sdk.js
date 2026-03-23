@@ -186,6 +186,14 @@
         reviewUiArtifacts(payload) {
             return this.callTool('complaint.review_ui', payload || {});
         }
+
+        optimizeUiArtifacts(payload) {
+            return this.callTool('complaint.optimize_ui', payload || {});
+        }
+
+        runUiUxWorkflow(payload) {
+            return this.reviewUiArtifacts(payload);
+        }
     }
 
     return {

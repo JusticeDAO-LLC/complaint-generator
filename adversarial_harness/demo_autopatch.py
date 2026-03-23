@@ -311,6 +311,7 @@ def _run_ui_review_lane(
         return {}
 
     from applications.ui_review import run_ui_review_workflow
+    from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
 
     ui_review_report = run_ui_review_workflow(
         screenshot_dir,
@@ -320,10 +321,33 @@ def _run_ui_review_lane(
         backend_id=ui_review_backend_id,
         output_path=ui_review_output_path,
     )
+    ui_ux_output_dir = Path(ui_review_output_path).expanduser().resolve().parent if ui_review_output_path else Path(screenshot_dir).expanduser().resolve() / "reviews"
+    ui_ux_workflow_result = run_iterative_ui_ux_workflow(
+        screenshot_dir=screenshot_dir,
+        output_dir=ui_ux_output_dir,
+        iterations=1,
+        provider=ui_review_provider,
+        model=ui_review_model,
+    )
     ui_bundle = optimizer.build_ui_optimization_bundle(ui_review_report=ui_review_report)
+    ui_ux_bundle = optimizer.build_ui_ux_optimization_bundle(
+        screenshot_dir=screenshot_dir,
+        output_dir=ui_ux_output_dir,
+        pytest_target="tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+        iterations=1,
+        workflow_result=ui_ux_workflow_result,
+    )
     ui_tasks = optimizer.build_ui_patch_tasks(
         ui_review_report=ui_review_report,
         method="test_driven",
+    )
+    ui_ux_task = optimizer.build_ui_ux_optimization_task(
+        screenshot_dir=screenshot_dir,
+        output_dir=ui_ux_output_dir,
+        pytest_target="tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+        iterations=int(ui_ux_workflow_result.get("iterations") or 1),
+        method="test_driven",
+        review_runs=list(ui_ux_workflow_result.get("runs") or []),
     )
     ui_phase_payloads: list[Dict[str, Any]] = []
     for task in ui_tasks:
@@ -338,11 +362,25 @@ def _run_ui_review_lane(
             }
         )
         ui_phase_payloads.append(phase_payload)
+    ui_ux_result = patch_optimizer.optimize(ui_ux_task)
+    ui_ux_phase_payload = _serialize_autopatch_result(ui_ux_result)
+    ui_ux_phase_payload.update(
+        {
+            "phase": "ui_ux_review",
+            "phase_status": "warning",
+            "phase_priority": 1,
+            "target_files": [str(path) for path in list(getattr(ui_ux_task, "target_files", []) or [])],
+            "workflow_type": "ui_ux_autopatch",
+        }
+    )
 
     return {
         "ui_review_report": ui_review_report,
         "ui_optimization_bundle": ui_bundle.to_dict(),
         "ui_phase_tasks": ui_phase_payloads,
+        "ui_ux_workflow_result": ui_ux_workflow_result,
+        "ui_ux_optimization_bundle": ui_ux_bundle.to_dict(),
+        "ui_ux_phase_task": ui_ux_phase_payload,
     }
 
 

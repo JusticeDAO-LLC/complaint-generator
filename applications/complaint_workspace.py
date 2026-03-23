@@ -366,7 +366,8 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
-                {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts and produce an llm_router-backed UI critique."},
+                {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
+                {"name": "complaint.optimize_ui", "description": "Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI."},
             ]
         }
 
@@ -417,9 +418,12 @@ class ComplaintWorkspaceService:
             return self.reset_session(args.get("user_id"))
         if tool_name == "complaint.review_ui":
             from .ui_review import create_ui_review_report, run_ui_review_workflow
+            from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
 
             screenshot_paths = args.get("screenshot_paths")
             screenshot_dir = args.get("screenshot_dir")
+            iterations = int(args.get("iterations") or 0)
+            pytest_target = args.get("pytest_target")
             if isinstance(screenshot_paths, list):
                 return create_ui_review_report(
                     [str(item) for item in screenshot_paths],
@@ -432,6 +436,18 @@ class ComplaintWorkspaceService:
                     output_path=args.get("output_path"),
                 )
             if screenshot_dir:
+                if iterations > 0:
+                    return run_iterative_ui_ux_workflow(
+                        screenshot_dir=str(screenshot_dir),
+                        output_dir=args.get("output_path"),
+                        iterations=iterations,
+                        provider=args.get("provider"),
+                        model=args.get("model"),
+                        notes=args.get("notes"),
+                        pytest_target=str(pytest_target)
+                        if pytest_target
+                        else "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+                    )
                 return run_ui_review_workflow(
                     str(screenshot_dir),
                     notes=args.get("notes"),
@@ -443,4 +459,23 @@ class ComplaintWorkspaceService:
                     output_path=args.get("output_path"),
                 )
             raise ValueError("complaint.review_ui requires screenshot_paths or screenshot_dir.")
+        if tool_name == "complaint.optimize_ui":
+            from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement
+
+            screenshot_dir = args.get("screenshot_dir")
+            if not screenshot_dir:
+                raise ValueError("complaint.optimize_ui requires screenshot_dir.")
+            return run_closed_loop_ui_ux_improvement(
+                screenshot_dir=str(screenshot_dir),
+                output_dir=str(args.get("output_path") or Path(str(screenshot_dir)).expanduser().resolve() / "closed-loop"),
+                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout"),
+                max_rounds=int(args.get("max_rounds") or 2),
+                review_iterations=int(args.get("iterations") or 1),
+                provider=args.get("provider"),
+                model=args.get("model"),
+                method=str(args.get("method") or "actor_critic"),
+                priority=int(args.get("priority") or 80),
+                notes=args.get("notes"),
+                goals=args.get("goals"),
+            )
         raise ValueError(f"Unknown complaint MCP tool: {tool_name}")

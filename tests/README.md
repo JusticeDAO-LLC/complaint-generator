@@ -64,11 +64,14 @@ For the claim-support review workflow, the focused regression slice is:
 
 ```bash
 .venv/bin/pytest -q \
+  tests/test_complaint_generator_package.py \
     tests/test_claim_support_hooks.py \
     tests/test_review_api.py \
     tests/test_claim_support_review_dashboard_flow.py \
     tests/test_backfill_claim_testimony_links_cli.py \
-    tests/test_claim_support_review_playwright_smoke.py
+  tests/test_claim_support_review_template.py \
+  tests/test_claim_support_review_playwright_smoke.py \
+  tests/test_complaint_generator_site_playwright.py
 ```
 
 The equivalent repo-local helper auto-detects whether the browser smoke should be included:
@@ -199,14 +202,17 @@ pytest -q \
 
 # Full review/browser regression: requires the optional browser/web stack
 pytest -q \
+    tests/test_complaint_generator_package.py \
+    tests/test_complaint_generator_package_surface.py \
     tests/test_review_api.py \
     tests/test_claim_support_review_dashboard_flow.py \
     tests/test_claim_support_hooks.py \
     tests/test_backfill_claim_testimony_links_cli.py \
-  tests/test_claim_support_review_template.py \
-  tests/test_document_pipeline.py \
-  tests/test_formal_document_pipeline.py \
-    tests/test_claim_support_review_playwright_smoke.py
+    tests/test_claim_support_review_template.py \
+    tests/test_document_pipeline.py \
+    tests/test_formal_document_pipeline.py \
+    tests/test_claim_support_review_playwright_smoke.py \
+    tests/test_complaint_generator_site_playwright.py
 ```
 
 The repo-local helper exposes the same slices without copy-pasting long commands:

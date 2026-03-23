@@ -12,18 +12,31 @@ on:
       - applications/review_api.py
       - applications/review_ui.py
       - applications/site_ui.py
+      - applications/complaint_workspace.py
+      - applications/complaint_workspace_api.py
+      - applications/complaint_cli.py
+      - applications/complaint_mcp_protocol.py
+      - applications/complaint_mcp_server.py
+      - applications/__init__.py
       - claim_support_review.py
+      - complaint_generator/**
+      - static/complaint_mcp_sdk.js
       - templates/index.html
       - templates/home.html
       - templates/chat.html
       - templates/profile.html
       - templates/results.html
+      - templates/workspace.html
       - templates/claim_support_review.html
       - templates/document.html
       - templates/optimization_trace.html
       - scripts/run_claim_support_review_regression.py
       - scripts/backfill_claim_testimony_links.py
+      - pyproject.toml
+      - setup.py
       - tests/test_claim_support_hooks.py
+      - tests/test_complaint_generator_package.py
+      - tests/test_complaint_generator_package_surface.py
       - tests/test_review_api.py
       - tests/test_claim_support_review_dashboard_flow.py
       - tests/test_claim_support_review_playwright_smoke.py
@@ -44,18 +57,31 @@ on:
       - applications/review_api.py
       - applications/review_ui.py
       - applications/site_ui.py
+      - applications/complaint_workspace.py
+      - applications/complaint_workspace_api.py
+      - applications/complaint_cli.py
+      - applications/complaint_mcp_protocol.py
+      - applications/complaint_mcp_server.py
+      - applications/__init__.py
       - claim_support_review.py
+      - complaint_generator/**
+      - static/complaint_mcp_sdk.js
       - templates/index.html
       - templates/home.html
       - templates/chat.html
       - templates/profile.html
       - templates/results.html
+      - templates/workspace.html
       - templates/claim_support_review.html
       - templates/document.html
       - templates/optimization_trace.html
       - scripts/run_claim_support_review_regression.py
       - scripts/backfill_claim_testimony_links.py
+      - pyproject.toml
+      - setup.py
       - tests/test_claim_support_hooks.py
+      - tests/test_complaint_generator_package.py
+      - tests/test_complaint_generator_package_surface.py
       - tests/test_review_api.py
       - tests/test_claim_support_review_dashboard_flow.py
       - tests/test_claim_support_review_playwright_smoke.py

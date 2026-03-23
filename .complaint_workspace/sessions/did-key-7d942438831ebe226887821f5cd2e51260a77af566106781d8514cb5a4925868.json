@@ -1,0 +1,13 @@
+{
+  "claim_type": "retaliation",
+  "created_at": "2026-03-23T02:59:11.256156+00:00",
+  "draft": null,
+  "evidence": {
+    "documents": [],
+    "testimony": []
+  },
+  "intake_answers": {},
+  "intake_history": [],
+  "updated_at": "2026-03-23T02:59:11.256170+00:00",
+  "user_id": "did:key:7d942438831ebe226887821f5cd2e51260a77af566106781d8514cb5a4925868"
+}

@@ -56,6 +56,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.update_draft",
         "complaint.reset_session",
         "complaint.review_ui",
+        "complaint.optimize_ui",
     ]
     assert all("inputSchema" in tool for tool in payload["tools"])
 
@@ -74,6 +75,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
 
     tools_payload = _invoke_cli(runner, "tools")
     assert any(tool["name"] == "complaint.review_ui" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.optimize_ui" for tool in tools_payload["tools"])
 
     answer_payload = _invoke_cli(
         runner,
@@ -258,3 +260,79 @@ def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path
         {"screenshot_dir": str(tmp_path)},
     )
     assert mcp_payload["review"]["summary"] == "Review completed."
+
+
+def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-review-sessions")
+
+    def fake_iterative(**kwargs):
+        assert kwargs["iterations"] == 2
+        assert str(kwargs["screenshot_dir"]) == str(tmp_path)
+        return {
+            "iterations": 2,
+            "screenshot_dir": str(tmp_path),
+            "output_dir": str(tmp_path / "reviews"),
+            "runs": [
+                {
+                    "iteration": 1,
+                    "review_markdown_path": str(tmp_path / "reviews" / "iteration-01-review.md"),
+                    "review_json_path": str(tmp_path / "reviews" / "iteration-01-review.json"),
+                }
+            ],
+        }
+
+    monkeypatch.setattr("complaint_generator.ui_ux_workflow.run_iterative_ui_ux_workflow", fake_iterative)
+
+    mcp_payload = _call_mcp_tool(
+        service,
+        12,
+        "complaint.review_ui",
+        {"screenshot_dir": str(tmp_path), "iterations": 2, "output_path": str(tmp_path / "reviews")},
+    )
+
+    assert mcp_payload["iterations"] == 2
+    assert mcp_payload["runs"][0]["iteration"] == 1
+
+
+def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-optimize-sessions")
+
+    def fake_closed_loop(**kwargs):
+        return {
+            "workflow_type": "ui_ux_closed_loop",
+            "max_rounds": kwargs["max_rounds"],
+            "rounds_executed": 1,
+            "stop_reason": "validation_review_stable",
+            "cycles": [
+                {
+                    "round": 1,
+                    "task": {"target_files": ["templates/workspace.html"]},
+                    "optimizer_result": {"changed_files": ["templates/workspace.html"]},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+    monkeypatch.setattr("complaint_generator.ui_ux_workflow.run_closed_loop_ui_ux_improvement", fake_closed_loop)
+
+    cli_payload = _invoke_cli(
+        runner,
+        "optimize-ui",
+        str(tmp_path),
+        "--output-path",
+        str(tmp_path / "closed-loop"),
+        "--max-rounds",
+        "2",
+    )
+    assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
+    assert cli_payload["max_rounds"] == 2
+
+    mcp_payload = _call_mcp_tool(
+        service,
+        13,
+        "complaint.optimize_ui",
+        {"screenshot_dir": str(tmp_path), "max_rounds": 2, "output_path": str(tmp_path / "closed-loop")},
+    )
+    assert mcp_payload["workflow_type"] == "ui_ux_closed_loop"
+    assert mcp_payload["cycles"][0]["optimizer_result"]["changed_files"] == ["templates/workspace.html"]

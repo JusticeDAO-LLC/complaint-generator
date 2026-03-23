@@ -800,6 +800,12 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('supported-count').innerText !== '0'"
             )
+            page.wait_for_function(
+                "() => document.getElementById('action-button').innerText.includes('Go to draft')"
+            )
+            assert "Generate the complaint draft" in page.locator("#action-title").inner_text()
+            page.click("#action-button")
+            assert "is-active" in page.locator("button[data-tab-target='draft']").get_attribute("class")
 
             page.click("button[data-tab-target='integrations']")
             integrations_text = page.locator("[data-tab-panel='integrations']").inner_text()

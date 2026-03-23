@@ -560,7 +560,7 @@ def test_review_surface_site_navigation_serves_all_operator_pages(monkeypatch: p
                 assert page.locator("a[href='/dashboards']").first.is_visible()
 
                 page.goto(f"{base_url}/ipfs-datasets/sdk-playground", wait_until="domcontentloaded")
-                assert page.get_by_role("heading", name="🎮 SDK Playground").is_visible()
+                assert page.locator("h1").filter(has_text="🎮 SDK Playground").is_visible()
                 assert page.locator("a[href='/dashboards']").first.is_visible()
 
                 page.goto(f"{base_url}/dashboards", wait_until="domcontentloaded")
@@ -854,6 +854,25 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
         "ComplaintWorkspaceService",
         lambda: complaint_workspace_module.ComplaintWorkspaceService(root_dir=workspace_root),
     )
+    monkeypatch.setattr(
+        "complaint_generator.ui_ux_workflow.run_iterative_ui_ux_workflow",
+        lambda **kwargs: {
+            "iterations": int(kwargs.get("iterations") or 1),
+            "screenshot_dir": str(kwargs.get("screenshot_dir") or workspace_root / "screens"),
+            "output_dir": str(kwargs.get("output_dir") or workspace_root / "reviews"),
+            "latest_review": "# Top Risks\n- Intake language needs calmer guidance for first-time complainants.",
+            "latest_review_markdown_path": str(workspace_root / "reviews" / "iteration-01-review.md"),
+            "runs": [
+                {
+                    "iteration": 1,
+                    "artifact_count": 1,
+                    "review_excerpt": "Intake language needs calmer guidance for first-time complainants.",
+                    "review_markdown_path": str(workspace_root / "reviews" / "iteration-01-review.md"),
+                    "review_json_path": str(workspace_root / "reviews" / "iteration-01-review.json"),
+                }
+            ],
+        },
+    )
 
     app = create_review_surface_app(mediator=object())
 
@@ -878,7 +897,7 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                 _wait_for_text(page, "#workspace-status", "Intake answers saved.")
                 _wait_for_text(page, "#next-question-label", "Intake complete.")
 
-                page.get_by_role("button", name="Evidence").click()
+                page.get_by_role("button", name="Evidence", exact=True).click()
                 page.locator("#evidence-kind").select_option("document")
                 page.locator("#evidence-claim-element").select_option("causation")
                 page.locator("#evidence-title").fill("Termination email")
@@ -888,7 +907,7 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                 _wait_for_text(page, "#workspace-status", "Evidence saved and support review refreshed.")
                 _wait_for_text(page, "#evidence-list", "Termination email")
 
-                page.get_by_role("button", name="Draft").click()
+                page.get_by_role("button", name="Draft", exact=True).click()
                 page.locator("#draft-title").fill("Jane Doe v. Acme Corporation Complaint")
                 page.locator("#requested-relief").fill("Back pay\nInjunctive relief")
                 page.locator("#generate-draft-button").click()
@@ -898,9 +917,18 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                     "Jane Doe brings this retaliation complaint against Acme Corporation."
                 )
 
-                page.get_by_role("button", name="CLI + MCP").click()
+                page.get_by_role("button", name="CLI + MCP", exact=True).click()
                 _wait_for_text(page, "#tool-list", "complaint.review_case")
                 assert "complaint-workspace session" in page.locator("body").inner_text()
                 assert "complaint-mcp-server" in page.locator("body").inner_text()
+
+                page.get_by_role("button", name="UX Review", exact=True).click()
+                page.locator("#ux-review-screenshot-dir").fill(str(workspace_root / "screens"))
+                page.locator("#ux-review-output-path").fill(str(workspace_root / "reviews"))
+                page.locator("#ux-review-iterations").fill("2")
+                page.locator("#run-ux-review-button").click()
+                _wait_for_text(page, "#workspace-status", "Iterative UI/UX review completed.")
+                _wait_for_text(page, "#ux-review-summary", "Top Risks")
+                _wait_for_text(page, "#ux-review-runs", "Iteration 1")
             finally:
                 browser.close()

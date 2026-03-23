@@ -86,7 +86,29 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "config_path": {"type": "string"},
             "backend_id": {"type": "string"},
             "output_path": {"type": "string"},
+            "iterations": {"type": "integer"},
+            "pytest_target": {"type": "string"},
         },
+    },
+    "complaint.optimize_ui": {
+        "type": "object",
+        "properties": {
+            "screenshot_dir": {"type": "string"},
+            "output_path": {"type": "string"},
+            "notes": {"type": "string"},
+            "goals": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "provider": {"type": "string"},
+            "model": {"type": "string"},
+            "iterations": {"type": "integer"},
+            "max_rounds": {"type": "integer"},
+            "method": {"type": "string"},
+            "priority": {"type": "integer"},
+            "pytest_target": {"type": "string"},
+        },
+        "required": ["screenshot_dir"],
     },
 }
 

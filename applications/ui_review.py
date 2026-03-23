@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from backends.llm_router_backend import LLMRouterBackend
+from backends import LLMRouterBackend, MultimodalRouterBackend
 
 
 def _utc_now() -> str:
@@ -89,11 +89,17 @@ def build_ui_review_prompt(
         "Make the intake, evidence, support review, and draft editing journey feel linear and trustworthy.",
     ]
     return (
-        "You are reviewing the UI/UX of a complaint-generator web application.\n"
+        "You are reviewing the UI/UX of a complaint-generator web application for real complainants.\n"
         "The screenshots below were created by Playwright during regression testing.\n"
-        "Treat the screenshot file paths and names as the source artifacts for review.\n\n"
+        "Use the screenshots as the primary source artifacts for review.\n"
+        "Pay special attention to trauma-informed language, complaint-intake clarity, evidence capture, next-step guidance, layout coherence, and whether the site visibly uses a shared JavaScript MCP SDK workflow.\n\n"
         f"Goals:\n- " + "\n- ".join(goal_lines) + "\n\n"
         f"Additional notes:\n{notes or 'No additional notes were provided.'}\n\n"
+        "Contract surfaces that must remain coherent:\n"
+        "- Package exports in complaint_generator\n"
+        "- CLI tools like complaint-generator and complaint-workspace\n"
+        "- MCP server tools such as complaint.start_session and complaint.review_ui\n"
+        "- Browser SDK usage through window.ComplaintMcpSdk.ComplaintMcpClient\n\n"
         "Screenshot artifacts:\n"
         f"{json.dumps(screenshot_list, indent=2, sort_keys=True)}\n\n"
         "Return strict JSON with this shape:\n"
@@ -151,6 +157,50 @@ def _load_backend_kwargs(config_path: Optional[str], backend_id: Optional[str]) 
     return config
 
 
+def _review_with_multimodal_router(
+    *,
+    screenshots: List[Path],
+    prompt: str,
+    backend_kwargs: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    backend = MultimodalRouterBackend(**backend_kwargs)
+    raw_response = backend(
+        prompt,
+        image_paths=screenshots,
+        system_prompt=(
+            "Review complaint UI screenshots and produce strict JSON. "
+            "Prioritize actionable fixes that preserve the shared MCP JavaScript SDK workflow."
+        ),
+    )
+    return (
+        _parse_json_response(raw_response),
+        {
+            "id": backend.id,
+            "provider": backend.provider,
+            "model": backend.model,
+            "strategy": "multimodal_router",
+        },
+    )
+
+
+def _review_with_text_router(
+    *,
+    prompt: str,
+    backend_kwargs: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    backend = LLMRouterBackend(**backend_kwargs)
+    raw_response = backend(prompt)
+    return (
+        _parse_json_response(raw_response),
+        {
+            "id": backend.id,
+            "provider": backend.provider,
+            "model": backend.model,
+            "strategy": "llm_router",
+        },
+    )
+
+
 def create_ui_review_report(
     screenshot_paths: Iterable[str],
     *,
@@ -177,49 +227,54 @@ def create_ui_review_report(
         backend_kwargs["model"] = model
 
     try:
-        backend = LLMRouterBackend(**backend_kwargs)
-        raw_response = backend(prompt)
-        review_payload = _parse_json_response(raw_response)
-        backend_metadata = {
-            "id": backend.id,
-            "provider": backend.provider,
-            "model": backend.model,
-            "strategy": "llm_router",
-        }
-    except Exception as exc:
-        review_payload = {
-            "summary": "LLM router review was unavailable, so a fallback implementation report was created.",
-            "issues": [
-                {
-                    "severity": "medium",
-                    "surface": "shared complaint workflow",
-                    "problem": "No live llm_router critique was available for the screenshots.",
-                    "user_impact": "UI review can stall unless there is a safe fallback path.",
-                    "recommended_fix": "Restore llm_router access or provide page snapshots alongside the screenshots for richer review.",
-                }
-            ],
-            "recommended_changes": [
-                {
-                    "title": "Keep the review loop artifact-driven",
-                    "implementation_notes": "Continue generating Playwright screenshots and route them through this workflow so UI changes stay evidence-based.",
-                    "shared_code_path": "applications/ui_review.py",
-                    "sdk_considerations": "Preserve MCP SDK usage in the first-class app surfaces while the visuals evolve.",
-                }
-            ],
-            "workflow_gaps": [
-                "No automated visual critic response was returned from llm_router.",
-            ],
-            "playwright_followups": [
-                "Capture screenshots for workspace, document builder, review dashboard, and editor after each UI pass.",
-            ],
-        }
-        backend_metadata = {
-            "id": backend_kwargs.get("id", "ui-review"),
-            "provider": backend_kwargs.get("provider"),
-            "model": backend_kwargs.get("model"),
-            "strategy": "fallback",
-            "error": str(exc),
-        }
+        review_payload, backend_metadata = _review_with_multimodal_router(
+            screenshots=screenshots,
+            prompt=prompt,
+            backend_kwargs=backend_kwargs,
+        )
+    except Exception as multimodal_exc:
+        try:
+            review_payload, backend_metadata = _review_with_text_router(
+                prompt=prompt,
+                backend_kwargs=backend_kwargs,
+            )
+            backend_metadata["fallback_from"] = "multimodal_router"
+            backend_metadata["fallback_error"] = str(multimodal_exc)
+        except Exception as exc:
+            review_payload = {
+                "summary": "Router-driven UI review was unavailable, so a fallback implementation report was created.",
+                "issues": [
+                    {
+                        "severity": "medium",
+                        "surface": "shared complaint workflow",
+                        "problem": "No live router critique was available for the screenshots.",
+                        "user_impact": "UI review can stall unless there is a safe fallback path.",
+                        "recommended_fix": "Restore multimodal router access or provide richer page context so screenshot review remains actionable.",
+                    }
+                ],
+                "recommended_changes": [
+                    {
+                        "title": "Keep the review loop artifact-driven",
+                        "implementation_notes": "Continue generating Playwright screenshots and route them through this workflow so UI changes stay evidence-based.",
+                        "shared_code_path": "applications/ui_review.py",
+                        "sdk_considerations": "Preserve MCP SDK usage in the first-class app surfaces while the visuals evolve.",
+                    }
+                ],
+                "workflow_gaps": [
+                    "No automated multimodal or text router response was returned for the screenshot set.",
+                ],
+                "playwright_followups": [
+                    "Capture screenshots for workspace, document builder, review dashboard, and editor after each UI pass.",
+                ],
+            }
+            backend_metadata = {
+                "id": backend_kwargs.get("id", "ui-review"),
+                "provider": backend_kwargs.get("provider"),
+                "model": backend_kwargs.get("model"),
+                "strategy": "fallback",
+                "multimodal_error": str(multimodal_exc),
+                "fallback_error": str(exc),
+            }
 
     report = {
         "generated_at": _utc_now(),

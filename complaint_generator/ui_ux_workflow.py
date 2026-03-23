@@ -84,6 +84,8 @@ def build_ui_ux_review_prompt(
     iteration: int,
     artifacts: list[dict[str, Any]],
     previous_review: str | None = None,
+    notes: str | None = None,
+    goals: list[str] | None = None,
 ) -> str:
     workspace_html = _read_text(REPO_ROOT / "templates" / "workspace.html", limit=14000)
     sdk_source = _read_text(REPO_ROOT / "static" / "complaint_mcp_sdk.js", limit=8000)
@@ -110,6 +112,20 @@ def build_ui_ux_review_prompt(
         "Also check that the complaint generator functionality remains legible as package exports, CLI tools, MCP server tools, and a JavaScript MCP SDK workflow.",
         f"Iteration: {iteration}",
     ]
+    if goals:
+        prompt_sections.extend(
+            [
+                "Additional workflow goals:",
+                "\n".join(f"- {goal}" for goal in goals),
+            ]
+        )
+    if notes:
+        prompt_sections.extend(
+            [
+                "Additional review notes:",
+                notes,
+            ]
+        )
     if previous_review:
         prompt_sections.extend(
             [
@@ -126,10 +142,11 @@ def build_ui_ux_review_prompt(
                 "Package exports: complaint_generator.ComplaintWorkspaceService, "
                 "complaint_generator.handle_jsonrpc_message, "
                 "complaint_generator.run_iterative_ui_ux_workflow, "
+                "complaint_generator.run_closed_loop_ui_ux_improvement, "
                 "complaint_generator.create_ui_review_report\n"
-                "CLI tools: complaint-generator, complaint-workspace, complaint-generator-workspace, complaint-mcp-server\n"
-                "MCP server tools: complaint.create_identity, complaint.start_session, complaint.submit_intake, complaint.save_evidence, complaint.review_case, complaint.generate_complaint, complaint.update_draft, complaint.reset_session, complaint.review_ui\n"
-                "Browser SDK: window.ComplaintMcpSdk.ComplaintMcpClient with bootstrapWorkspace(), getOrCreateDid(), and callTool()"
+                "CLI tools: complaint-generator, complaint-workspace, complaint-generator-workspace, complaint-mcp-server, complaint-workspace optimize-ui\n"
+                "MCP server tools: complaint.create_identity, complaint.start_session, complaint.submit_intake, complaint.save_evidence, complaint.review_case, complaint.generate_complaint, complaint.update_draft, complaint.reset_session, complaint.review_ui, complaint.optimize_ui\n"
+                "Browser SDK: window.ComplaintMcpSdk.ComplaintMcpClient with bootstrapWorkspace(), getOrCreateDid(), callTool(), and optimizeUiArtifacts()"
             ),
             "Current workspace HTML:",
             workspace_html,
@@ -152,12 +169,16 @@ def review_screenshot_audit_with_llm_router(
     provider: str | None = None,
     model: str | None = None,
     previous_review: str | None = None,
+    notes: str | None = None,
+    goals: list[str] | None = None,
 ) -> dict[str, Any]:
     artifacts = collect_screenshot_artifacts(screenshot_dir)
     prompt = build_ui_ux_review_prompt(
         iteration=iteration,
         artifacts=artifacts,
         previous_review=previous_review,
+        notes=notes,
+        goals=goals,
     )
     image_paths = _artifact_image_paths(artifacts)
     backend = MultimodalRouterBackend(
@@ -197,11 +218,14 @@ def run_iterative_ui_ux_workflow(
     model: str | None = None,
     output_dir: str | Path | None = None,
     pytest_target: str = DEFAULT_SCREENSHOT_TEST,
+    notes: str | None = None,
+    goals: list[str] | None = None,
+    initial_previous_review: str | None = None,
 ) -> dict[str, Any]:
     target_output_dir = Path(output_dir or (Path(screenshot_dir) / "reviews"))
     target_output_dir.mkdir(parents=True, exist_ok=True)
 
-    previous_review: str | None = None
+    previous_review: str | None = initial_previous_review
     run_reports: list[dict[str, Any]] = []
 
     for iteration in range(1, max(1, iterations) + 1):
@@ -221,6 +245,8 @@ def run_iterative_ui_ux_workflow(
             provider=provider,
             model=model,
             previous_review=previous_review,
+            notes=notes,
+            goals=goals,
         )
         markdown_path = target_output_dir / f"iteration-{iteration:02d}-review.md"
         json_path = target_output_dir / f"iteration-{iteration:02d}-review.json"
@@ -231,6 +257,8 @@ def run_iterative_ui_ux_workflow(
             {
                 "iteration": iteration,
                 "audit": audit,
+                "artifact_count": review["artifact_count"],
+                "review_excerpt": str(review["review"] or "")[:600],
                 "review_markdown_path": str(markdown_path),
                 "review_json_path": str(json_path),
             }
@@ -240,8 +268,60 @@ def run_iterative_ui_ux_workflow(
         "iterations": len(run_reports),
         "screenshot_dir": str(screenshot_dir),
         "output_dir": str(target_output_dir),
+        "latest_review": previous_review,
+        "latest_review_markdown_path": str(target_output_dir / f"iteration-{len(run_reports):02d}-review.md") if run_reports else None,
+        "latest_review_json_path": str(target_output_dir / f"iteration-{len(run_reports):02d}-review.json") if run_reports else None,
         "runs": run_reports,
     }
+
+
+def run_closed_loop_ui_ux_improvement(
+    *,
+    screenshot_dir: str | Path,
+    output_dir: str | Path,
+    pytest_target: str = DEFAULT_SCREENSHOT_TEST,
+    max_rounds: int = 2,
+    review_iterations: int = 1,
+    provider: str | None = None,
+    model: str | None = None,
+    method: str = "actor_critic",
+    priority: int = 80,
+    notes: str | None = None,
+    goals: list[str] | None = None,
+    constraints: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+    llm_router: Any = None,
+    patch_optimizer: Any = None,
+    optimizer: Any = None,
+    agent_id: str = "complaint-ui-ux-optimizer",
+    components: dict[str, Any] | None = None,
+    stop_when_review_stable: bool = True,
+    break_on_no_changes: bool = True,
+) -> dict[str, Any]:
+    from adversarial_harness import Optimizer
+
+    resolved_optimizer = optimizer or Optimizer()
+    return resolved_optimizer.run_agentic_ui_ux_feedback_loop(
+        screenshot_dir=screenshot_dir,
+        output_dir=output_dir,
+        pytest_target=pytest_target,
+        max_rounds=max_rounds,
+        review_iterations=review_iterations,
+        provider=provider,
+        model=model,
+        method=method,
+        priority=priority,
+        notes=notes,
+        goals=goals,
+        constraints=constraints,
+        metadata=metadata,
+        llm_router=llm_router,
+        optimizer=patch_optimizer,
+        agent_id=agent_id,
+        components=components,
+        stop_when_review_stable=stop_when_review_stable,
+        break_on_no_changes=break_on_no_changes,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -254,16 +334,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", default=None)
     parser.add_argument("--model", default=None)
     parser.add_argument("--pytest-target", default=DEFAULT_SCREENSHOT_TEST)
+    parser.add_argument("--notes", default=None)
+    parser.add_argument("--max-rounds", type=int, default=0)
     args = parser.parse_args(argv)
 
-    result = run_iterative_ui_ux_workflow(
-        screenshot_dir=args.screenshot_dir,
-        output_dir=args.output_dir,
-        iterations=args.iterations,
-        provider=args.provider,
-        model=args.model,
-        pytest_target=args.pytest_target,
-    )
+    if args.max_rounds > 0:
+        result = run_closed_loop_ui_ux_improvement(
+            screenshot_dir=args.screenshot_dir,
+            output_dir=args.output_dir,
+            pytest_target=args.pytest_target,
+            max_rounds=args.max_rounds,
+            review_iterations=args.iterations,
+            provider=args.provider,
+            model=args.model,
+            notes=args.notes,
+        )
+    else:
+        result = run_iterative_ui_ux_workflow(
+            screenshot_dir=args.screenshot_dir,
+            output_dir=args.output_dir,
+            iterations=args.iterations,
+            provider=args.provider,
+            model=args.model,
+            pytest_target=args.pytest_target,
+            notes=args.notes,
+        )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
@@ -273,6 +368,7 @@ __all__ = [
     "build_ui_ux_review_prompt",
     "collect_screenshot_artifacts",
     "review_screenshot_audit_with_llm_router",
+    "run_closed_loop_ui_ux_improvement",
     "run_iterative_ui_ux_workflow",
     "run_playwright_screenshot_audit",
     "main",

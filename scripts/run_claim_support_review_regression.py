@@ -12,6 +12,7 @@ from typing import Optional, Sequence
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 BASE_TESTS = [
+    "tests/test_complaint_generator_package.py",
     "tests/test_complaint_generator_package_surface.py",
     "tests/test_claim_support_hooks.py",
     "tests/test_review_api.py",
@@ -22,7 +23,7 @@ BASE_TESTS = [
 
 BROWSER_TESTS = [
     "tests/test_claim_support_review_playwright_smoke.py",
-    "tests/test_review_surface_site_playwright.py",
+    "tests/test_complaint_generator_site_playwright.py",
 ]
 
 

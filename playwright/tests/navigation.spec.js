@@ -145,7 +145,7 @@ test.describe('website surface navigation', () => {
       window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-workspace-flow');
     });
     await page.goto('/workspace');
-    await page.getByRole('button', { name: 'Draft' }).click();
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#reset-session-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/reset to a clean state/i);
     await page.getByRole('button', { name: 'Intake', exact: true }).click();
@@ -163,7 +163,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
 
-    await page.getByRole('button', { name: 'Evidence' }).click();
+    await page.getByRole('button', { name: 'Evidence', exact: true }).click();
     await page.locator('#evidence-kind').selectOption('document');
     await page.locator('#evidence-claim-element').selectOption('causation');
     await page.locator('#evidence-title').fill('Termination email');
@@ -174,7 +174,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Evidence saved and support review refreshed/i);
     await expect(page.locator('#evidence-list')).toContainText(/Termination email/i);
 
-    await page.getByRole('button', { name: 'Draft' }).click();
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#draft-title').fill('Jane Doe v. Acme Corporation Complaint');
     await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
     await page.locator('#generate-draft-button').click();
@@ -182,10 +182,20 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Complaint draft generated from intake and evidence/i);
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint against Acme Corporation/i);
 
-    await page.getByRole('button', { name: 'CLI + MCP' }).click();
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await expect(page.locator('body')).toContainText(/complaint-workspace session/i);
     await expect(page.locator('body')).toContainText(/complaint-mcp-server/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.review_case/i);
+
+    await page.getByRole('button', { name: 'UX Review', exact: true }).click();
+    await page.locator('#ux-review-screenshot-dir').fill('artifacts/ui-audit/screenshots');
+    await page.locator('#ux-review-output-path').fill('artifacts/ui-audit/reviews');
+    await page.locator('#ux-review-iterations').fill('2');
+    await page.locator('#run-ux-review-button').click();
+
+    await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed/i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/Top Risks/i);
+    await expect(page.locator('#ux-review-runs')).toContainText(/Iteration 1/i);
   });
 
   test('first-class pages share the same DID-backed application sidebar and session summary', async ({ page, request }) => {

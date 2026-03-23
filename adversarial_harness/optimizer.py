@@ -2846,6 +2846,174 @@ class Optimizer:
             "generation_diagnostics": list(self._last_agentic_generation_diagnostics or []),
         }
 
+    def run_agentic_ui_ux_feedback_loop(
+        self,
+        *,
+        screenshot_dir: str | Path,
+        output_dir: str | Path,
+        pytest_target: str,
+        max_rounds: int = 2,
+        review_iterations: int = 1,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        method: str = "actor_critic",
+        priority: int = 80,
+        notes: Optional[str] = None,
+        goals: Optional[List[str]] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        llm_router: Any = None,
+        optimizer: Any = None,
+        agent_id: str = "complaint-ui-ux-optimizer",
+        components: Optional[Dict[str, Any]] = None,
+        stop_when_review_stable: bool = True,
+        break_on_no_changes: bool = True,
+    ) -> Dict[str, Any]:
+        from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
+
+        def _latest_review_text(workflow_result: Dict[str, Any]) -> str:
+            latest_review = str(workflow_result.get("latest_review") or "").strip()
+            if latest_review:
+                return latest_review
+            latest_json_path = str(workflow_result.get("latest_review_json_path") or "").strip()
+            if latest_json_path:
+                payload = self._read_ui_ux_review_json(Path(latest_json_path))
+                return str(payload.get("review") or payload.get("summary") or "").strip()
+            return ""
+
+        def _serialize_optimizer_result(result: Any) -> Dict[str, Any]:
+            metadata_payload = dict(getattr(result, "metadata", {}) or {})
+            return {
+                "success": bool(getattr(result, "success", False)),
+                "status": str(getattr(result, "status", "")),
+                "patch_path": str(getattr(result, "patch_path", "")),
+                "patch_cid": str(getattr(result, "patch_cid", "")),
+                "metadata": metadata_payload,
+                "changed_files": list(metadata_payload.get("changed_files") or []),
+            }
+
+        components = components or self._resolve_agentic_optimizer_components()
+        router_cls = components["OptimizerLLMRouter"]
+        optimizer_classes = components["optimizer_classes"]
+        normalized_method = str(method or "actor_critic").strip().lower().replace("-", "_")
+
+        resolved_router = llm_router
+        if resolved_router is None and router_cls is not None:
+            resolved_router = router_cls(enable_tracking=False, enable_caching=True)
+
+        resolved_optimizer = optimizer
+        if resolved_optimizer is None:
+            if normalized_method not in optimizer_classes:
+                raise ValueError(f"Unsupported agentic optimization method: {method}")
+            resolved_optimizer = optimizer_classes[normalized_method](
+                agent_id=agent_id,
+                llm_router=resolved_router,
+            )
+
+        root_output_dir = Path(output_dir)
+        root_output_dir.mkdir(parents=True, exist_ok=True)
+        cycles: List[Dict[str, Any]] = []
+        previous_validation_review = ""
+        stop_reason = "max_rounds_reached"
+
+        for round_index in range(1, max(1, int(max_rounds)) + 1):
+            round_dir = root_output_dir / f"round-{round_index:02d}"
+            round_dir.mkdir(parents=True, exist_ok=True)
+
+            pre_workflow = run_iterative_ui_ux_workflow(
+                screenshot_dir=screenshot_dir,
+                output_dir=round_dir / "pre-review",
+                iterations=max(1, int(review_iterations)),
+                provider=provider,
+                model=model,
+                pytest_target=pytest_target,
+                notes=notes,
+                goals=goals,
+                initial_previous_review=previous_validation_review or None,
+            )
+            bundle = self.build_ui_ux_optimization_bundle(
+                screenshot_dir=screenshot_dir,
+                output_dir=round_dir / "pre-review",
+                pytest_target=pytest_target,
+                iterations=max(1, int(review_iterations)),
+                method=method,
+                priority=priority,
+                constraints=constraints,
+                metadata=metadata,
+                components=components,
+                workflow_result=pre_workflow,
+            )
+            task = self.build_ui_ux_optimization_task(
+                screenshot_dir=screenshot_dir,
+                output_dir=round_dir / "pre-review",
+                pytest_target=pytest_target,
+                iterations=max(1, int(review_iterations)),
+                method=method,
+                priority=priority,
+                constraints=constraints,
+                metadata=metadata,
+                components=components,
+                review_runs=list(bundle.review_runs or []),
+                target_files=list(bundle.target_files or []),
+            )
+
+            self._last_agentic_optimizer = resolved_optimizer
+            self._last_agentic_generation_diagnostics = []
+            optimize_result = resolved_optimizer.optimize(task)
+            diagnostics = getattr(resolved_optimizer, "_last_generation_diagnostics", None)
+            if isinstance(diagnostics, list):
+                self._last_agentic_generation_diagnostics = list(diagnostics)
+
+            validation_workflow = run_iterative_ui_ux_workflow(
+                screenshot_dir=screenshot_dir,
+                output_dir=round_dir / "validation-review",
+                iterations=max(1, int(review_iterations)),
+                provider=provider,
+                model=model,
+                pytest_target=pytest_target,
+                notes=notes,
+                goals=goals,
+                initial_previous_review=_latest_review_text(pre_workflow) or previous_validation_review or None,
+            )
+            validation_review = _latest_review_text(validation_workflow)
+            serialized_result = _serialize_optimizer_result(optimize_result)
+            cycles.append(
+                {
+                    "round": round_index,
+                    "bundle": bundle.to_dict(),
+                    "task": {
+                        "task_id": str(getattr(task, "task_id", "")),
+                        "description": str(getattr(task, "description", "")),
+                        "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+                        "constraints": dict(getattr(task, "constraints", {}) or {}),
+                        "metadata": dict(getattr(task, "metadata", {}) or {}),
+                    },
+                    "optimizer_result": serialized_result,
+                    "generation_diagnostics": list(self._last_agentic_generation_diagnostics or []),
+                    "pre_review": pre_workflow,
+                    "validation_review": validation_workflow,
+                }
+            )
+
+            if break_on_no_changes and not serialized_result["changed_files"] and not serialized_result["patch_path"]:
+                stop_reason = "no_changes_reported"
+                break
+            if stop_when_review_stable and previous_validation_review and validation_review == previous_validation_review:
+                stop_reason = "validation_review_stable"
+                break
+            previous_validation_review = validation_review
+
+        return {
+            "workflow_type": "ui_ux_closed_loop",
+            "max_rounds": max(1, int(max_rounds)),
+            "rounds_executed": len(cycles),
+            "stop_reason": stop_reason,
+            "cycles": cycles,
+            "latest_validation_review": previous_validation_review or (
+                cycles[-1]["validation_review"].get("latest_review") if cycles else ""
+            ),
+        }
+
     def build_phase_patch_tasks(
         self,
         results: List[Any],
