@@ -336,6 +336,16 @@
             gap: 12px;
         }
 
+        .action-stack .panel-card h3 {
+            margin-bottom: 8px;
+        }
+
+        .action-stack .action-link {
+            margin-top: 12px;
+            display: inline-flex;
+            width: fit-content;
+        }
+
         @media (max-width: 1120px) {
             .hero,
             .workspace-grid {
@@ -496,21 +506,26 @@
 
             <aside class="support-card">
                 <span class="eyebrow">Next Connected Steps</span>
-                <div class="action-stack">
+                <div class="action-stack" aria-label="Chat next steps">
+                    <div class="panel-card">
+                        <h3>Workspace</h3>
+                        <p>Return to the complaint workspace when the narrative is clear enough to save the shared synopsis, attach evidence, or move into draft generation.</p>
+                        <a class="action-link" id="chat-open-workspace" href="/workspace">Open workspace</a>
+                    </div>
                     <div class="panel-card">
                         <h3>Profile and results</h3>
                         <p>Use these surfaces to inspect what the intake has already captured and how the complaint record is being structured.</p>
-                        <a class="action-link" href="/profile">Open profile</a>
+                        <a class="action-link" id="chat-open-profile" href="/profile">Open profile</a>
                     </div>
                     <div class="panel-card">
                         <h3>Support review</h3>
                         <p>Move here when you need to see whether the available facts and proof actually support the legal elements.</p>
-                        <a class="action-link" href="/claim-support-review">Open review</a>
+                        <a class="action-link" id="chat-open-review" href="/claim-support-review">Open review</a>
                     </div>
                     <div class="panel-card">
                         <h3>Draft builder</h3>
                         <p>Use the builder once the story is organized enough to justify a formal complaint draft.</p>
-                        <a class="action-link" href="/document">Open builder</a>
+                        <a class="action-link" id="chat-open-builder" href="/document">Open builder</a>
                     </div>
                 </div>
             </aside>

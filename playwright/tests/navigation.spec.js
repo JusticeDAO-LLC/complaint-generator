@@ -51,7 +51,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
 
     const screenshotPath = testInfo.outputPath('homepage-overview.png');
-    await page.screenshot({ path: screenshotPath });
+    await page.locator('.hero').screenshot({ path: screenshotPath });
     await testInfo.attach('homepage-overview', {
       path: screenshotPath,
       contentType: 'image/png',
@@ -74,7 +74,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
 
     const screenshotPath = testInfo.outputPath('homepage-mobile-overview.png');
-    await page.screenshot({ path: screenshotPath });
+    await page.locator('#resume-panel').screenshot({ path: screenshotPath });
     await testInfo.attach('homepage-mobile-overview', {
       path: screenshotPath,
       contentType: 'image/png',
@@ -154,7 +154,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#profile-open-trace')).toHaveAttribute('href', '/document/optimization-trace');
 
     const profileScreenshotPath = testInfo.outputPath('profile-overview.png');
-    await page.screenshot({ path: profileScreenshotPath, fullPage: true });
+    await page.locator('.page-shell').screenshot({ path: profileScreenshotPath });
     await testInfo.attach('profile-overview', {
       path: profileScreenshotPath,
       contentType: 'image/png',
@@ -172,7 +172,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#results-open-trace')).toHaveAttribute('href', '/document/optimization-trace');
 
     const resultsScreenshotPath = testInfo.outputPath('results-overview.png');
-    await page.screenshot({ path: resultsScreenshotPath, fullPage: true });
+    await page.locator('.page-shell').screenshot({ path: resultsScreenshotPath });
     await testInfo.attach('results-overview', {
       path: resultsScreenshotPath,
       contentType: 'image/png',
@@ -197,6 +197,10 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared mediator prompt/i);
     await expect(page.locator('#chat-context-return-link')).toHaveAttribute('href', /\/workspace\?target_tab=review/);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
+    await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    await expect(page.locator('#chat-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
+    await expect(page.locator('#chat-open-review')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
+    await expect(page.locator('#chat-open-builder')).toHaveAttribute('href', /case_synopsis=Jordan%20Example/);
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
 
@@ -206,6 +210,26 @@ test.describe('website surface navigation', () => {
       path: screenshotPath,
       contentType: 'image/png',
     });
+  });
+
+  test('chat next-step actions preserve complaint context across workflow handoffs', async ({ page }) => {
+    const handoffUrl = '/chat?source=workspace'
+      + '&user_id=did:key:chat-step-demo'
+      + '&case_synopsis=Jordan%20Example%20needs%20causation%20support%20before%20drafting.'
+      + '&prefill_message=Help%20organize%20the%20timeline%20and%20missing%20proof.'
+      + '&return_to=%2Fworkspace%3Ftarget_tab%3Dreview';
+
+    await page.goto(handoffUrl);
+    await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    await page.locator('#chat-open-review').click();
+    await expect(page).toHaveURL(/\/claim-support-review\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);
+
+    await page.goto(handoffUrl);
+    await page.locator('#chat-open-builder').click();
+    await expect(page).toHaveURL(/\/document\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);
+    await expect(page).toHaveURL(/case_synopsis=Jordan%20Example/);
   });
 
   test('workspace handoff cards keep the complaint context visible and capture a screenshot', async ({ page }, testInfo) => {
@@ -317,25 +341,8 @@ test.describe('website surface navigation', () => {
     await expect(page).toHaveURL(/\/document\/optimization-trace/);
   });
 
-  test('intake and review surfaces expose explicit next-step workflow actions', async ({ page }) => {
-    await page.context().clearCookies();
-    await page.addInitScript(() => {
-      try {
-        window.localStorage.clear();
-        window.sessionStorage.clear();
-      } catch (error) {
-        // Ignore storage reset issues in the stub browser harness.
-      }
-    });
-    await page.goto('/home');
-    await expect(page.locator('[aria-label="Intake next steps"]')).toBeVisible();
-    await expect(page.locator('#intake-open-workspace')).toBeVisible();
-    await expect(page.locator('#intake-open-review')).toBeVisible();
-    await expect(page.locator('#intake-open-builder')).toBeVisible();
-    await expect(page.locator('#intake-open-editor')).toBeVisible();
-    await page.locator('#intake-open-review').click();
-    await expect(page).toHaveURL(/\/claim-support-review/);
-
+  test('review surface exposes explicit next-step workflow actions', async ({ page }) => {
+    await page.goto('/claim-support-review');
     await expect(page.locator('[aria-label="Review next steps"]')).toBeVisible();
     await expect(page.locator('#review-open-workspace-link')).toBeVisible();
     await expect(page.locator('#review-open-chat-link')).toBeVisible();

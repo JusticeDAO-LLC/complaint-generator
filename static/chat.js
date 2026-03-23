@@ -111,8 +111,59 @@ window.ChatPage = (function() {
         };
     }
 
+    function getActiveComplaintUserId(handoff) {
+        if (handoff && handoff.userId) {
+            return String(handoff.userId).trim();
+        }
+        try {
+            const cachedDid = window.localStorage.getItem('complaintGenerator.did');
+            return String(cachedDid || '').trim();
+        } catch (error) {
+            return '';
+        }
+    }
+
+    function updateChatNextStepLinks(handoff) {
+        const activeUserId = getActiveComplaintUserId(handoff);
+        const caseSynopsis = String((handoff && handoff.caseSynopsis) || '').trim();
+        const workspaceLink = document.getElementById('chat-open-workspace');
+        const profileLink = document.getElementById('chat-open-profile');
+        const reviewLink = document.getElementById('chat-open-review');
+        const builderLink = document.getElementById('chat-open-builder');
+        if (!workspaceLink || !profileLink || !reviewLink || !builderLink) {
+            return;
+        }
+
+        const workspaceParams = new URLSearchParams();
+        if (activeUserId) {
+            workspaceParams.set('user_id', activeUserId);
+        }
+        workspaceParams.set('target_tab', 'review');
+        workspaceParams.set('status_message', 'Opened Workspace from the chat narrative surface.');
+        workspaceLink.href = `/workspace?${workspaceParams.toString()}`;
+
+        profileLink.href = '/profile';
+
+        const reviewParams = new URLSearchParams();
+        if (activeUserId) {
+            reviewParams.set('user_id', activeUserId);
+            reviewParams.set('workspace_user_id', activeUserId);
+        }
+        reviewLink.href = reviewParams.toString() ? `/claim-support-review?${reviewParams.toString()}` : '/claim-support-review';
+
+        const builderParams = new URLSearchParams();
+        if (activeUserId) {
+            builderParams.set('user_id', activeUserId);
+        }
+        if (caseSynopsis) {
+            builderParams.set('case_synopsis', caseSynopsis);
+        }
+        builderLink.href = builderParams.toString() ? `/document?${builderParams.toString()}` : '/document';
+    }
+
     function applyWorkspaceHandoff() {
         const handoff = readWorkspaceHandoff();
+        updateChatNextStepLinks(handoff);
         if (!handoff) {
             return;
         }
