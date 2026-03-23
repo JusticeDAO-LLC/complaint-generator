@@ -348,13 +348,26 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#export-packet-button').click();
     await expect(page.locator('#packet-preview')).toContainText(/Title: Jane Doe v\. Acme Corporation Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Edited final complaint body\./i);
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#analyze-complaint-output-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint output analysis refreshed\./i);
 
     await page.getByRole('button', { name: 'UX Audit', exact: true }).click();
+    await page.locator('#ux-review-provider').fill('llm_router');
+    await page.locator('#ux-review-model').fill('multimodal_router');
     await page.locator('#run-ux-review-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed\./i);
-    await expect(page.locator('#ux-review-summary')).toContainText(/Evidence capture guidance is still too easy to miss/i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/llm_router/i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/multimodal_router/i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/Tighten review-to-draft gatekeeping/i);
     await expect(page.locator('#ux-review-actor-critic')).toContainText(/actor/i);
     await expect(page.locator('#ux-review-actor-critic')).toContainText(/critic/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/Complaint-output suggestion carried into router review/i);
+
+    await page.locator('#run-ux-closed-loop-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Closed-loop UI\/UX optimization completed\./i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/Tighten review-to-draft gatekeeping/i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/Complaint-output suggestion carried into optimization/i);
 
     await page.locator('#run-browser-audit-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/End-to-end complaint browser audit completed\./i);

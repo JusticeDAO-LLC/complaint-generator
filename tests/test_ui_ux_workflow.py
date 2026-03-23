@@ -100,6 +100,7 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "exportComplaintMarkdown()" in prompt
     assert "exportComplaintPdf()" in prompt
     assert "analyzeComplaintOutput()" in prompt
+    assert "Use the screenshot evidence together with any complaint-output analysis excerpts" in prompt
 
 
 def test_build_ui_ux_review_prompt_uses_default_goals_and_notes_when_not_supplied(tmp_path):
@@ -208,6 +209,91 @@ def test_review_and_iterative_workflow_return_llm_router_output(monkeypatch, tmp
     assert (output_dir / "iteration-02-review.json").exists()
 
 
+def test_review_workflow_routes_complaint_output_analysis_into_multimodal_prompt(monkeypatch, tmp_path):
+    screenshot_dir = tmp_path / "screens"
+    _write_artifact(screenshot_dir, "workspace")
+    (screenshot_dir / "workspace-export-artifacts.json").write_text(
+        json.dumps(
+            {
+                "name": "workspace-export-artifacts",
+                "artifact_type": "complaint_export",
+                "markdown_filename": "complaint.md",
+                "pdf_filename": "complaint.pdf",
+                "markdown_excerpt": "Jordan Example brings this retaliation complaint against Acme Corporation.",
+                "pdf_header": "%PDF-1.4",
+                "ui_suggestions_excerpt": "Promote the unsupported-elements warning before export.",
+            }
+        )
+    )
+
+    class FakeMultimodalBackend:
+        def __init__(self, id, provider=None, model=None):
+            self.id = id
+
+        def __call__(self, prompt, *, image_paths=None, system_prompt=None):
+            assert "Promote the unsupported-elements warning before export." in prompt
+            assert "Jordan Example brings this retaliation complaint against Acme Corporation." in prompt
+            assert "Use the screenshot evidence together with any complaint-output analysis excerpts" in prompt
+            assert image_paths
+            assert system_prompt
+            return "# Top Risks\n- Export warnings are still too easy to miss."
+
+    monkeypatch.setattr(workflow_module, "MultimodalRouterBackend", FakeMultimodalBackend)
+
+    review = review_screenshot_audit_with_llm_router(screenshot_dir=screenshot_dir, iteration=1)
+
+    assert "Export warnings are still too easy to miss." in review["review"]
+
+
+def test_iterative_workflow_routes_supplemental_complaint_output_artifacts_into_prompt(monkeypatch, tmp_path):
+    screenshot_dir = tmp_path / "screens"
+    output_dir = tmp_path / "reviews"
+    _write_artifact(screenshot_dir, "workspace")
+
+    def fake_audit(**kwargs):
+        _write_artifact(screenshot_dir, "workspace")
+        return {
+            "command": ["pytest"],
+            "returncode": 0,
+            "stdout": "1 passed",
+            "stderr": "",
+            "artifact_count": 1,
+            "artifacts": workflow_module.collect_screenshot_artifacts(screenshot_dir),
+            "screenshot_dir": str(screenshot_dir),
+        }
+
+    class FakeMultimodalBackend:
+        def __init__(self, id, provider=None, model=None):
+            self.id = id
+
+        def __call__(self, prompt, *, image_paths=None, system_prompt=None):
+            assert "Tighten review-to-draft gatekeeping" in prompt
+            assert "Add stronger blocker language" in prompt
+            assert image_paths
+            assert system_prompt
+            return "# Top Risks\n- Review picked up complaint-output suggestions."
+
+    monkeypatch.setattr(workflow_module, "run_playwright_screenshot_audit", fake_audit)
+    monkeypatch.setattr(workflow_module, "MultimodalRouterBackend", FakeMultimodalBackend)
+
+    result = run_iterative_ui_ux_workflow(
+        screenshot_dir=screenshot_dir,
+        output_dir=output_dir,
+        iterations=1,
+        supplemental_artifacts=[
+            {
+                "name": "workspace-export-artifacts",
+                "artifact_type": "complaint_export",
+                "markdown_excerpt": "Jordan Example brings this retaliation complaint against Acme Corporation.",
+                "ui_suggestions_excerpt": "- Tighten review-to-draft gatekeeping: Add stronger blocker language before export.",
+            }
+        ],
+    )
+
+    assert result["iterations"] == 1
+    assert (output_dir / "iteration-01-review.md").exists()
+
+
 def test_review_workflow_falls_back_to_text_router_when_multimodal_review_fails(monkeypatch, tmp_path):
     screenshot_dir = tmp_path / "screens"
     _write_artifact(screenshot_dir, "workspace")
@@ -253,6 +339,7 @@ def test_closed_loop_ui_ux_improvement_delegates_to_optimizer(monkeypatch, tmp_p
         goals=["keep the full complaint flow visible", "make the intake calmer"],
         method="adversarial",
         priority=92,
+        supplemental_artifacts=[{"artifact_type": "complaint_export", "ui_suggestions_excerpt": "Keep export blockers visible."}],
     )
 
     assert result["workflow_type"] == "ui_ux_closed_loop"
@@ -261,6 +348,7 @@ def test_closed_loop_ui_ux_improvement_delegates_to_optimizer(monkeypatch, tmp_p
     assert captured["goals"] == ["keep the full complaint flow visible", "make the intake calmer"]
     assert captured["method"] == "adversarial"
     assert captured["priority"] == 92
+    assert captured["metadata"]["supplemental_artifacts"][0]["artifact_type"] == "complaint_export"
 
 
 def test_closed_loop_ui_ux_improvement_uses_default_brief_when_none_is_supplied(monkeypatch, tmp_path):

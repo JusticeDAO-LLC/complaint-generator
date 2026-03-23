@@ -186,6 +186,7 @@ def review_ui(
     if iterations > 0:
         from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
 
+        supplemental_artifacts = service._build_complaint_output_review_artifacts(user_id)
         result = run_iterative_ui_ux_workflow(
             screenshot_dir=screenshot_dir,
             output_dir=str(Path(artifact_path).expanduser().resolve().parent),
@@ -195,6 +196,7 @@ def review_ui(
             pytest_target=pytest_target,
             notes=notes,
             goals=goal_items,
+            supplemental_artifacts=supplemental_artifacts,
         )
         service._persist_ui_readiness(user_id, result)
         _print(result)
@@ -231,6 +233,7 @@ def optimize_ui(
     from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement
 
     goal_items = _split_multiline_values(goals)
+    supplemental_artifacts = service._build_complaint_output_review_artifacts(user_id)
     result = run_closed_loop_ui_ux_improvement(
         screenshot_dir=screenshot_dir,
         output_dir=output_path,
@@ -243,6 +246,7 @@ def optimize_ui(
         priority=priority,
         notes=notes,
         goals=goal_items,
+        supplemental_artifacts=supplemental_artifacts,
     )
     service._persist_ui_readiness(user_id, result)
     _print(result)

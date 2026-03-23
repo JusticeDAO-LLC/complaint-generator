@@ -600,6 +600,122 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
   };
 }
 
+function buildStubUiReviewResult(args = {}, userId = 'did:key:playwright-demo') {
+  const analysis = buildComplaintOutputAnalysis(userId);
+  const suggestion = (((analysis.ui_feedback || {}).ui_suggestions || [])[0]) || {};
+  const routerLabel = [args.provider, args.model].filter(Boolean).join(' / ') || 'default llm_router multimodal_router path';
+  if (Number(args.iterations || 0) > 0) {
+    return {
+      iterations: Number(args.iterations || 0),
+      screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
+      output_dir: args.output_path || 'artifacts/ui-audit/reviews',
+      latest_review: `# Top Risks\n- ${routerLabel} should keep complaint-output guidance visible while reviewing screenshots.\n\n# High-Impact UX Fixes\n- ${String(suggestion.title || 'Promote complaint-output blockers')} so unsupported claim elements stay visible before export.\n- ${String(suggestion.recommendation || 'Use complaint-output suggestions to tighten review and draft guidance.')}\n\n# Stage Findings\n## Intake\nFirst-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.\n\n## Evidence\nEvidence capture guidance is still too easy to miss for first-time complainants.\n\n## Review\nComplaint-output suggestion carried into router review: ${String(suggestion.title || 'Promote complaint-output blockers')}.\n\n## Draft\nDraft generation should feel like the direct continuation of the case theory, not a separate document tool.\n\n## Integration Discovery\n${routerLabel} should stay visible from the shared dashboard shortcuts and tool panels.`,
+      stage_findings: {
+        Intake: 'First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.',
+        Evidence: 'The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof.',
+        Review: `Complaint-output suggestion carried into router review: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+        Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
+        'Integration Discovery': `${routerLabel} should stay visible so operators do not miss the shared complaint-generator tooling.`,
+      },
+      actor_summary: 'The actor can stay on one DID-backed complaint path, but still needs clearer guidance for synopsis, evidence upload, review, and draft transitions.',
+      critic_summary: 'The critic expects hard end-to-end assertions around testimony, evidence attachment, support review, and final complaint generation.',
+      actor_path_breaks: [
+        'Users can still miss the moment when they should save a shared synopsis before moving into review and draft.',
+      ],
+      critic_test_obligations: [
+        'Verify the full workspace journey from intake through mediator synopsis, evidence upload, review, and final complaint draft.',
+      ],
+      latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
+      runs: [
+        {
+          iteration: 1,
+          artifact_count: 1,
+          review_excerpt: `Complaint-output suggestion carried into router review: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+          review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
+          review_json_path: 'artifacts/ui-audit/reviews/iteration-01-review.json',
+        },
+      ],
+    };
+  }
+  return {
+    generated_at: '2026-03-23T00:00:00+00:00',
+    backend: { strategy: 'playwright-stub' },
+    screenshots: [],
+    review: {
+      summary: `Stub UI review completed with ${routerLabel}. Complaint-output suggestion: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+      stage_findings: {
+        Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
+        Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
+        Review: `Complaint-output suggestion carried into router review: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+      },
+      actor_summary: 'The actor can start the complaint, but the transition into evidence and review still needs clearer guidance.',
+      critic_summary: 'The critic wants explicit regression checks for buttons and the MCP SDK-backed journey.',
+      actor_path_breaks: [
+        'The user may not understand when to move from intake to evidence.',
+      ],
+      critic_test_obligations: [
+        'Keep an end-to-end Playwright flow that verifies the MCP SDK path through every complaint stage.',
+      ],
+      issues: [
+        {
+          severity: 'medium',
+          surface: '/workspace',
+          problem: 'The intake-to-evidence transition needs more explicit guidance for real complainants.',
+          user_impact: 'Users may not know what kind of support to add next.',
+        },
+      ],
+    },
+  };
+}
+
+function buildStubUiOptimizationResult(args = {}, userId = 'did:key:playwright-demo') {
+  const analysis = buildComplaintOutputAnalysis(userId);
+  const suggestion = (((analysis.ui_feedback || {}).ui_suggestions || [])[0]) || {};
+  const routerLabel = [args.provider, args.model].filter(Boolean).join(' / ') || 'default llm_router multimodal_router path';
+  return {
+    workflow_type: 'ui_ux_closed_loop',
+    max_rounds: Number(args.max_rounds || 2),
+    rounds_executed: 1,
+    stop_reason: 'validation_review_stable',
+    latest_validation_review: `# Top Risks\n- ${routerLabel} should preserve complaint-output blockers through the closed-loop run.\n\n# Stage Findings\n## Review\nComplaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+    stage_findings: {
+      Intake: 'The optimizer should reduce branching language and keep the first story steps calmer and more linear.',
+      Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
+      Review: `Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+      Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
+      'Integration Discovery': `${routerLabel} should stay discoverable from the shared dashboard shortcuts and tool panels.`,
+    },
+    actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
+    critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
+    actor_path_breaks: [
+      'Evidence collection and support review still need to feel like one continuous action rather than separate tasks.',
+    ],
+    critic_test_obligations: [
+      'Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft.',
+    ],
+    cycles: [
+      {
+        round: 1,
+        task: {
+          target_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
+          metadata: { workflow_type: 'ui_ux_autopatch' },
+        },
+        optimizer_result: {
+          success: true,
+          status: 'applied',
+          patch_path: 'artifacts/ui-audit/round-01.patch',
+          patch_cid: 'bafyuiuxround01',
+          changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
+          metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
+        },
+        validation_review: {
+          latest_review: `# Top Risks\n- ${routerLabel} kept complaint-output blockers visible during validation.`,
+        },
+      },
+    ],
+  };
+}
+
 function generateWorkspaceDraft(workspaceState, requestedRelief) {
   const answers = workspaceState.intake_answers;
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
@@ -969,113 +1085,10 @@ const server = http.createServer(async (request, response) => {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.review_ui') {
-        if ((Number(args.iterations || 0)) > 0) {
-          structuredContent = {
-            iterations: Number(args.iterations || 0),
-            screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
-            output_dir: args.output_path || 'artifacts/ui-audit/reviews',
-            latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.\n\n# Stage Findings\n## Intake\nMarkdown fallback should not replace the structured intake guidance.\n\n## Evidence\nMarkdown fallback should not replace the structured evidence guidance.',
-            stage_findings: {
-              Intake: 'First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.',
-              Evidence: 'The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof.',
-              Review: 'Support-gap guidance should tell the operator what missing element to close next instead of only showing counts.',
-              Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
-              'Integration Discovery': 'The MCP SDK and optimizer path need to stay visible so operators do not miss the shared complaint-generator tooling.',
-            },
-            actor_summary: 'The actor can stay on one DID-backed complaint path, but still needs clearer guidance for synopsis, evidence upload, review, and draft transitions.',
-            critic_summary: 'The critic expects hard end-to-end assertions around testimony, evidence attachment, support review, and final complaint generation.',
-            actor_path_breaks: [
-              'Users can still miss the moment when they should save a shared synopsis before moving into review and draft.',
-            ],
-            critic_test_obligations: [
-              'Verify the full workspace journey from intake through mediator synopsis, evidence upload, review, and final complaint draft.',
-            ],
-            latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
-            runs: [
-              {
-                iteration: 1,
-                artifact_count: 1,
-                review_excerpt: 'Evidence capture guidance is still too easy to miss for first-time complainants.',
-                review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
-                review_json_path: 'artifacts/ui-audit/reviews/iteration-01-review.json',
-              },
-            ],
-          };
-          persistUiReadiness(userId, structuredContent);
-        } else {
-          structuredContent = {
-            generated_at: '2026-03-23T00:00:00+00:00',
-            backend: { strategy: 'playwright-stub' },
-            screenshots: [],
-            review: {
-              summary: 'Stub UI review completed.',
-              stage_findings: {
-                Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
-                Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
-              },
-              actor_summary: 'The actor can start the complaint, but the transition into evidence and review still needs clearer guidance.',
-              critic_summary: 'The critic wants explicit regression checks for buttons and the MCP SDK-backed journey.',
-              actor_path_breaks: [
-                'The user may not understand when to move from intake to evidence.',
-              ],
-              critic_test_obligations: [
-                'Keep an end-to-end Playwright flow that verifies the MCP SDK path through every complaint stage.',
-              ],
-              issues: [
-                {
-                  severity: 'medium',
-                  surface: '/workspace',
-                  problem: 'The intake-to-evidence transition needs more explicit guidance for real complainants.',
-                  user_impact: 'Users may not know what kind of support to add next.',
-                },
-              ],
-            },
-          };
-          persistUiReadiness(userId, structuredContent);
-        }
+        structuredContent = buildStubUiReviewResult(args, userId);
+        persistUiReadiness(userId, structuredContent);
       } else if (toolName === 'complaint.optimize_ui') {
-        structuredContent = {
-          workflow_type: 'ui_ux_closed_loop',
-          max_rounds: Number(args.max_rounds || 2),
-          rounds_executed: 1,
-          stop_reason: 'validation_review_stable',
-          latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.\n\n# Stage Findings\n## Integration Discovery\nMarkdown fallback should not replace the structured integration-discovery guidance.',
-          stage_findings: {
-            Intake: 'The optimizer should reduce branching language and keep the first story steps calmer and more linear.',
-            Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
-            Review: 'The review panel should turn missing support counts into next-step instructions.',
-            Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
-            'Integration Discovery': 'The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels.',
-          },
-          actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
-          critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
-          actor_path_breaks: [
-            'Evidence collection and support review still need to feel like one continuous action rather than separate tasks.',
-          ],
-          critic_test_obligations: [
-            'Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft.',
-          ],
-          cycles: [
-            {
-              round: 1,
-              task: {
-                target_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
-                metadata: { workflow_type: 'ui_ux_autopatch' },
-              },
-              optimizer_result: {
-                success: true,
-                status: 'applied',
-                patch_path: 'artifacts/ui-audit/round-01.patch',
-                patch_cid: 'bafyuiuxround01',
-                changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
-                metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
-              },
-              validation_review: {
-                latest_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
-              },
-            },
-          ],
-        };
+        structuredContent = buildStubUiOptimizationResult(args, userId);
         persistUiReadiness(userId, structuredContent);
       } else if (toolName === 'complaint.run_browser_audit') {
         structuredContent = {
@@ -1243,115 +1256,12 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.review_ui') {
-      if ((Number(args.iterations || 0)) > 0) {
-        const result = {
-          iterations: Number(args.iterations || 0),
-          screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
-          output_dir: args.output_path || 'artifacts/ui-audit/reviews',
-          latest_review: '# Top Risks\n- Evidence capture guidance is still too easy to miss for first-time complainants.\n\n# High-Impact UX Fixes\n- Keep the intake, evidence, review, and draft journey visible above the fold.\n- Surface the MCP SDK contract directly inside the workspace so operators understand the shared workflow.',
-          stage_findings: {
-            Intake: 'First-time complainants need clearer reassurance that incomplete dates and imperfect wording can still be saved.',
-            Evidence: 'The evidence step should explain which documents help prove causation before users are asked to upload or summarize proof.',
-            Review: 'Support-gap guidance should tell the operator what missing element to close next instead of only showing counts.',
-            Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
-            'Integration Discovery': 'The MCP SDK and optimizer path need to stay visible so operators do not miss the shared complaint-generator tooling.',
-          },
-          actor_summary: 'The actor can stay on one DID-backed complaint path, but still needs clearer guidance for synopsis, evidence upload, review, and draft transitions.',
-          critic_summary: 'The critic expects hard end-to-end assertions around testimony, evidence attachment, support review, and final complaint generation.',
-          actor_path_breaks: [
-            'Users can still miss the moment when they should save a shared synopsis before moving into review and draft.',
-          ],
-          critic_test_obligations: [
-            'Verify the full workspace journey from intake through mediator synopsis, evidence upload, review, and final complaint draft.',
-          ],
-          latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
-          runs: [
-            {
-              iteration: 1,
-              artifact_count: 1,
-              review_excerpt: 'Evidence capture guidance is still too easy to miss for first-time complainants.',
-              review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
-              review_json_path: 'artifacts/ui-audit/reviews/iteration-01-review.json',
-            },
-          ],
-        };
-        persistUiReadiness(userId, result);
-        return sendJson(response, result);
-      }
-      const result = {
-        generated_at: '2026-03-23T00:00:00+00:00',
-        backend: { strategy: 'playwright-stub' },
-        screenshots: [],
-        review: {
-          summary: 'Stub UI review completed.',
-          stage_findings: {
-            Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
-            Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
-          },
-          actor_summary: 'The actor can start the complaint, but the transition into evidence and review still needs clearer guidance.',
-          critic_summary: 'The critic wants explicit regression checks for buttons and the MCP SDK-backed journey.',
-          actor_path_breaks: [
-            'The user may not understand when to move from intake to evidence.',
-          ],
-          critic_test_obligations: [
-            'Keep an end-to-end Playwright flow that verifies the MCP SDK path through every complaint stage.',
-          ],
-          issues: [
-            {
-              severity: 'medium',
-              surface: '/workspace',
-              problem: 'The intake-to-evidence transition needs more explicit guidance for real complainants.',
-              user_impact: 'Users may not know what kind of support to add next.',
-            },
-          ],
-        },
-      };
+      const result = buildStubUiReviewResult(args, userId);
       persistUiReadiness(userId, result);
       return sendJson(response, result);
     }
     if (toolName === 'complaint.optimize_ui') {
-      const result = {
-        workflow_type: 'ui_ux_closed_loop',
-        max_rounds: Number(args.max_rounds || 2),
-        rounds_executed: 1,
-        stop_reason: 'validation_review_stable',
-        latest_validation_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
-        stage_findings: {
-          Intake: 'The optimizer should reduce branching language and keep the first story steps calmer and more linear.',
-          Evidence: 'The evidence panel still needs stronger claim-element guidance after optimization.',
-          Review: 'The review panel should turn missing support counts into next-step instructions.',
-          Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
-          'Integration Discovery': 'The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels.',
-        },
-        actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
-        critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
-        actor_path_breaks: [
-          'Evidence collection and support review still need to feel like one continuous action rather than separate tasks.',
-        ],
-        critic_test_obligations: [
-          'Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft.',
-        ],
-        cycles: [
-          {
-            round: 1,
-            task: {
-              target_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
-              metadata: { workflow_type: 'ui_ux_autopatch' },
-            },
-            optimizer_result: {
-              success: true,
-              status: 'applied',
-              patch_path: 'artifacts/ui-audit/round-01.patch',
-              patch_cid: 'bafyuiuxround01',
-              changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'],
-              metadata: { changed_files: ['templates/workspace.html', 'static/complaint_mcp_sdk.js'] },
-            },
-            validation_review: {
-              latest_review: '# Top Risks\n- Keep the intake flow calmer and more linear.',
-            },
-          },
-        ],
-      };
+      const result = buildStubUiOptimizationResult(args, userId);
       persistUiReadiness(userId, result);
       return sendJson(response, result);
     }

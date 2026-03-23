@@ -38,7 +38,13 @@ def test_build_ui_ux_optimization_bundle_wraps_iterative_review_workflow(monkeyp
     monkeypatch.setattr(
         optimizer,
         "_read_ui_ux_review_json",
-        lambda path: {"review": "# Top Risks\n- Improve evidence affordances."},
+        lambda path: {
+            "review": "# Top Risks\n- Improve evidence affordances.",
+            "complaint_output_feedback": {
+                "export_artifact_count": 2,
+                "ui_suggestions": ["Warn before export when support gaps remain."],
+            },
+        },
     )
 
     bundle = optimizer.build_ui_ux_optimization_bundle(
@@ -57,6 +63,7 @@ def test_build_ui_ux_optimization_bundle_wraps_iterative_review_workflow(monkeyp
     payload = bundle.to_dict()
     assert payload["iterations"] == 2
     assert payload["review_runs"]
+    assert payload["complaint_output_feedback"]["export_artifact_count"] == 2
     assert payload["task"]["target_files"]
     assert "templates/workspace.html" in payload["target_files"]
 
@@ -85,6 +92,7 @@ def test_run_agentic_ui_ux_autopatch_executes_optimizer_against_ui_task(monkeypa
             ],
             latest_review_markdown_path=str(output_dir / "iteration-01-review.md"),
             latest_review_json_path=str(output_dir / "iteration-01-review.json"),
+            complaint_output_feedback={"export_artifact_count": 1, "ui_suggestions": ["Keep export warnings visible."]},
             task={},
         ),
     )
@@ -116,6 +124,7 @@ def test_run_agentic_ui_ux_autopatch_executes_optimizer_against_ui_task(monkeypa
     )
 
     assert result["bundle"]["target_files"] == ["templates/workspace.html"]
+    assert result["bundle"]["complaint_output_feedback"]["export_artifact_count"] == 1
     assert result["task"]["target_files"] == ["templates/workspace.html"]
     assert captured["task"].metadata["workflow_type"] == "ui_ux_autopatch"
 
@@ -138,7 +147,13 @@ def test_run_agentic_ui_ux_feedback_loop_revalidates_and_stops_when_reviews_stab
             review_text = "# Top Risks\n- Calmer intake language still needed."
         else:
             review_text = f"# Top Risks\n- Review pass {round_index}."
-        review_by_path[str(review_json_path)] = {"review": review_text}
+        review_by_path[str(review_json_path)] = {
+            "review": review_text,
+            "complaint_output_feedback": {
+                "export_artifact_count": 1,
+                "ui_suggestions": [f"Suggestion from pass {round_index}"],
+            },
+        }
         return {
             "iterations": 1,
             "screenshot_dir": str(kwargs["screenshot_dir"]),
@@ -188,4 +203,6 @@ def test_run_agentic_ui_ux_feedback_loop_revalidates_and_stops_when_reviews_stab
     assert result["rounds_executed"] == 2
     assert result["stop_reason"] == "validation_review_stable"
     assert result["cycles"][0]["optimizer_result"]["changed_files"]
+    assert result["cycles"][0]["complaint_output_pre_review"]["export_artifact_count"] == 1
+    assert result["complaint_output_feedback"]["export_artifact_count"] == 1
     assert "actor_critic_summary" in result

@@ -85,3 +85,40 @@ def test_create_ui_review_report_falls_back_to_text_router(monkeypatch, tmp_path
     assert report["backend"]["strategy"] == "llm_router"
     assert report["backend"]["fallback_from"] == "multimodal_router"
     assert report["review"]["summary"] == "Fallback review."
+
+
+def test_run_ui_review_workflow_loads_complaint_export_artifacts_from_screenshot_dir(monkeypatch, tmp_path: Path):
+    screenshot = tmp_path / "workspace.png"
+    screenshot.write_bytes(b"fake-png")
+    (tmp_path / "workspace-export-artifacts.json").write_text(
+        (
+            '{'
+            '"artifact_type":"complaint_export",'
+            '"markdown_filename":"complaint.md",'
+            '"pdf_filename":"complaint.pdf",'
+            '"ui_suggestions_excerpt":"Add clearer draft-readiness warnings before download."'
+            '}'
+        )
+    )
+
+    class FakeMultimodalBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "ui-review")
+            self.provider = kwargs.get("provider")
+            self.model = kwargs.get("model")
+
+        def __call__(self, prompt, *, image_paths=None, system_prompt=None):
+            assert "Complaint export artifacts" in prompt
+            assert "Add clearer draft-readiness warnings before download." in prompt
+            return '{"summary":"Workflow review.","issues":[],"recommended_changes":[],"workflow_gaps":[],"playwright_followups":[]}'
+
+    monkeypatch.setattr(ui_review_module, "MultimodalRouterBackend", FakeMultimodalBackend)
+
+    report = ui_review_module.run_ui_review_workflow(str(tmp_path))
+
+    assert report["backend"]["strategy"] == "multimodal_router"
+    assert report["complaint_output_feedback"]["export_artifact_count"] == 1
+    assert report["complaint_output_feedback"]["markdown_filenames"] == ["complaint.md"]
+    assert report["complaint_output_feedback"]["ui_suggestions"] == [
+        "Add clearer draft-readiness warnings before download."
+    ]

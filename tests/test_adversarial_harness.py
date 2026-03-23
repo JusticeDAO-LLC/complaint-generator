@@ -3268,6 +3268,25 @@ SUGGESTIONS:
         assert bundle.broken_controls[0]["control"] == "Next Best Action card"
         assert bundle.complaint_output_feedback["export_artifact_count"] == 1
         assert "Add stronger export warnings when support gaps remain." in bundle.complaint_output_feedback["ui_suggestions"]
+        assert any(
+            item.get("implementation_notes") == "Add stronger export warnings when support gaps remain."
+            for item in bundle.recommended_changes
+        )
+
+    def test_ui_patch_task_metadata_includes_complaint_output_suggestions(self, tmp_path):
+        optimizer = Optimizer()
+        report = _fake_ui_review_report(tmp_path)
+
+        tasks = optimizer.build_ui_patch_tasks(ui_review_report=report, components=optimizer._fallback_agentic_optimizer_components())
+
+        assert len(tasks) == 1
+        task = tasks[0]
+        summary = dict(task.metadata.get("report_summary") or {})
+        assert "Add stronger export warnings when support gaps remain." in summary.get("complaint_output_suggestions", [])
+        assert any(
+            recommendation == "Complaint output feedback"
+            for recommendation in summary.get("recommendations", [])
+        )
 
     def test_run_adversarial_autopatch_batch_includes_ui_review_lane_when_screenshots_exist(self, tmp_path, monkeypatch):
         review_output_dir = tmp_path / "reviews"

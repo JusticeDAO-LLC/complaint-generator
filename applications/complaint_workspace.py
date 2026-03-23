@@ -858,6 +858,41 @@ class ComplaintWorkspaceService:
             "ui_feedback": deepcopy(payload.get("ui_feedback") or {}),
         }
 
+    def _build_complaint_output_review_artifacts(self, user_id: Optional[str]) -> List[Dict[str, Any]]:
+        if not user_id:
+            return []
+        packet_payload = self.export_complaint_packet(user_id)
+        artifacts = dict(packet_payload.get("artifacts") or {})
+        markdown_artifact = dict(artifacts.get("markdown") or {})
+        pdf_artifact = dict(artifacts.get("pdf") or {})
+        ui_feedback = dict(packet_payload.get("ui_feedback") or {})
+        draft = dict((packet_payload.get("packet") or {}).get("draft") or {})
+        suggestions = list(ui_feedback.get("ui_suggestions") or [])
+        suggestion_lines = [str(ui_feedback.get("summary") or "").strip()]
+        for item in suggestions[:5]:
+            title = str((item or {}).get("title") or "").strip()
+            recommendation = str((item or {}).get("recommendation") or "").strip()
+            if title and recommendation:
+                suggestion_lines.append(f"- {title}: {recommendation}")
+            elif title:
+                suggestion_lines.append(f"- {title}")
+            elif recommendation:
+                suggestion_lines.append(f"- {recommendation}")
+        return [
+            {
+                "name": "workspace-export-artifacts",
+                "url": "/workspace?target_tab=integrations",
+                "title": "Unified Complaint Workspace",
+                "artifact_type": "complaint_export",
+                "text_excerpt": str(draft.get("body") or "").strip()[:600],
+                "markdown_filename": str(markdown_artifact.get("filename") or ""),
+                "pdf_filename": str(pdf_artifact.get("filename") or ""),
+                "markdown_excerpt": str(markdown_artifact.get("excerpt") or markdown_artifact.get("content") or "").strip()[:2000],
+                "pdf_header": str(pdf_artifact.get("content_type") or "application/pdf"),
+                "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),
+            }
+        ]
+
     def export_complaint_markdown(self, user_id: Optional[str]) -> Dict[str, Any]:
         artifact = self.build_export_artifact(user_id, "markdown")
         packet_payload = self.export_complaint_packet(user_id)
@@ -1134,6 +1169,7 @@ class ComplaintWorkspaceService:
             screenshot_dir = args.get("screenshot_dir")
             iterations = int(args.get("iterations") or 0)
             pytest_target = args.get("pytest_target")
+            supplemental_artifacts = self._build_complaint_output_review_artifacts(args.get("user_id"))
             if isinstance(screenshot_paths, list):
                 return create_ui_review_report(
                     [str(item) for item in screenshot_paths],
@@ -1155,6 +1191,7 @@ class ComplaintWorkspaceService:
                         model=args.get("model"),
                         notes=args.get("notes"),
                         goals=args.get("goals"),
+                        supplemental_artifacts=supplemental_artifacts,
                         pytest_target=str(pytest_target)
                         if pytest_target
                         else DEFAULT_UI_UX_SCREENSHOT_TARGET,
@@ -1180,6 +1217,7 @@ class ComplaintWorkspaceService:
             screenshot_dir = args.get("screenshot_dir")
             if not screenshot_dir:
                 raise ValueError("complaint.optimize_ui requires screenshot_dir.")
+            supplemental_artifacts = self._build_complaint_output_review_artifacts(args.get("user_id"))
             result = run_closed_loop_ui_ux_improvement(
                 screenshot_dir=str(screenshot_dir),
                 output_dir=str(args.get("output_path") or Path(str(screenshot_dir)).expanduser().resolve() / "closed-loop"),
@@ -1192,6 +1230,7 @@ class ComplaintWorkspaceService:
                 priority=int(args.get("priority") or DEFAULT_UI_UX_OPTIMIZER_PRIORITY),
                 notes=args.get("notes"),
                 goals=args.get("goals"),
+                supplemental_artifacts=supplemental_artifacts,
             )
             self._persist_ui_readiness(args.get("user_id"), result)
             return result

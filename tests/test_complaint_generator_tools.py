@@ -410,11 +410,18 @@ def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path
 
 def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-review-sessions")
+    service.update_case_synopsis(
+        "iter-user",
+        "Jordan Example alleges retaliation after protected complaints about safety and scheduling.",
+    )
+    service.generate_complaint("iter-user", requested_relief=["Back pay"])
 
     def fake_iterative(**kwargs):
         assert kwargs["iterations"] == 2
         assert str(kwargs["screenshot_dir"]) == str(tmp_path)
         assert kwargs["goals"] == ["reduce intake friction", "keep evidence and draft connected"]
+        assert kwargs["supplemental_artifacts"][0]["artifact_type"] == "complaint_export"
+        assert "Tighten review-to-draft gatekeeping" in kwargs["supplemental_artifacts"][0]["ui_suggestions_excerpt"]
         return {
             "iterations": 2,
             "screenshot_dir": str(tmp_path),
@@ -452,11 +459,18 @@ def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp
 def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monkeypatch, tmp_path):
     runner = CliRunner()
     service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-optimize-sessions")
+    service.update_case_synopsis(
+        "mcp-user",
+        "Jordan Example alleges retaliation after reporting payroll fraud and safety violations.",
+    )
+    service.generate_complaint("mcp-user", requested_relief=["Back pay"])
 
     def fake_closed_loop(**kwargs):
         assert kwargs["method"] == "adversarial"
         assert kwargs["priority"] == 91
         assert kwargs["goals"] == ["make intake calmer", "surface every complaint-generator feature"]
+        assert kwargs["supplemental_artifacts"][0]["artifact_type"] == "complaint_export"
+        assert "Tighten review-to-draft gatekeeping" in kwargs["supplemental_artifacts"][0]["ui_suggestions_excerpt"]
         return {
             "workflow_type": "ui_ux_closed_loop",
             "max_rounds": kwargs["max_rounds"],

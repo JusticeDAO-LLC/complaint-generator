@@ -665,6 +665,36 @@ function buildWorkspaceComplaintOutputAnalysis(state) {
   };
 }
 
+function buildWorkspaceUiReviewResult(state, toolArgs = {}) {
+  const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+  const suggestion = (((analysis.ui_feedback || {}).ui_suggestions || [])[0]) || {};
+  const routerLabel = [toolArgs.provider, toolArgs.model].filter(Boolean).join(' / ') || 'default llm_router multimodal_router path';
+  return {
+    latest_review: `Complaint-output suggestion carried into router review: ${String(suggestion.title || 'Promote complaint-output blockers')} via ${routerLabel}.`,
+    review: {
+      summary: `Workspace mock review completed with ${routerLabel}. Complaint-output suggestion: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+      issues: [],
+      playwright_followups: [],
+      stage_findings: {
+        Review: `Complaint-output suggestion carried into router review: ${String(suggestion.title || 'Promote complaint-output blockers')}.`,
+        'Integration Discovery': `${routerLabel} should stay visible from the workspace shortcuts and tool panels.`,
+      },
+    },
+  };
+}
+
+function buildWorkspaceUiOptimizationResult(state, toolArgs = {}) {
+  const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+  const suggestion = (((analysis.ui_feedback || {}).ui_suggestions || [])[0]) || {};
+  const routerLabel = [toolArgs.provider, toolArgs.model].filter(Boolean).join(' / ') || 'default llm_router multimodal_router path';
+  return {
+    workflow_type: 'ui_ux_closed_loop',
+    rounds_executed: 1,
+    latest_validation_review: `Complaint-output suggestion carried into optimization: ${String(suggestion.title || 'Promote complaint-output blockers')} via ${routerLabel}.`,
+    changed_files: ['templates/workspace.html'],
+  };
+}
+
 function buildWorkspaceComplaintReadiness(state) {
   const sessionPayload = buildWorkspaceSessionPayload(state);
   const review = sessionPayload.review || {};
@@ -929,20 +959,10 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
       return buildWorkspaceSessionPayload(freshState);
     }
     if (name === 'complaint.review_ui') {
-      return {
-        latest_review: 'Workspace mock review completed.',
-        review: {
-          summary: 'Workspace mock review completed.',
-          issues: [],
-          playwright_followups: [],
-        },
-      };
+      return buildWorkspaceUiReviewResult(state, toolArgs);
     }
     if (name === 'complaint.optimize_ui') {
-      return {
-        latest_validation_review: 'Workspace mock optimization completed.',
-        changed_files: ['templates/workspace.html'],
-      };
+      return buildWorkspaceUiOptimizationResult(state, toolArgs);
     }
     if (name === 'complaint.run_browser_audit') {
       return {

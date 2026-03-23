@@ -56,6 +56,17 @@ def collect_screenshot_artifacts(screenshot_dir: str | Path) -> list[dict[str, A
     return artifacts
 
 
+def collect_review_artifacts(
+    screenshot_dir: str | Path,
+    supplemental_artifacts: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    artifacts = collect_screenshot_artifacts(screenshot_dir)
+    for artifact in supplemental_artifacts or []:
+        if isinstance(artifact, dict):
+            artifacts.append(dict(artifact))
+    return artifacts
+
+
 def _artifact_image_paths(artifacts: list[dict[str, Any]]) -> list[str]:
     image_paths: list[str] = []
     for artifact in artifacts:
@@ -256,6 +267,9 @@ def build_ui_ux_review_prompt(
             (
                 "If complaint-output-informed UI suggestions are present, use them to propose concrete changes to buttons, validation, warnings, panel hierarchy, and handoff copy that would make the generated complaint stronger before export."
             ),
+            (
+                "Use the screenshot evidence together with any complaint-output analysis excerpts as a single actor/critic review context: the multimodal router should reason across both when images are available, and the llm_router fallback should still preserve those complaint-output suggestions in the review."
+            ),
         ]
     )
     return "\n\n".join(prompt_sections)
@@ -270,8 +284,9 @@ def review_screenshot_audit_with_llm_router(
     previous_review: str | None = None,
     notes: str | None = None,
     goals: list[str] | None = None,
+    supplemental_artifacts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    artifacts = collect_screenshot_artifacts(screenshot_dir)
+    artifacts = collect_review_artifacts(screenshot_dir, supplemental_artifacts=supplemental_artifacts)
     prompt = build_ui_ux_review_prompt(
         iteration=iteration,
         artifacts=artifacts,
@@ -320,6 +335,7 @@ def run_iterative_ui_ux_workflow(
     notes: str | None = None,
     goals: list[str] | None = None,
     initial_previous_review: str | None = None,
+    supplemental_artifacts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     resolved_goals = _resolve_review_goals(goals)
     resolved_notes = _resolve_review_notes(notes)
@@ -348,6 +364,7 @@ def run_iterative_ui_ux_workflow(
             previous_review=previous_review,
             notes=resolved_notes,
             goals=resolved_goals,
+            supplemental_artifacts=supplemental_artifacts,
         )
         markdown_path = target_output_dir / f"iteration-{iteration:02d}-review.md"
         json_path = target_output_dir / f"iteration-{iteration:02d}-review.json"
@@ -391,6 +408,7 @@ def run_closed_loop_ui_ux_improvement(
     goals: list[str] | None = None,
     constraints: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
+    supplemental_artifacts: list[dict[str, Any]] | None = None,
     llm_router: Any = None,
     patch_optimizer: Any = None,
     optimizer: Any = None,
@@ -404,6 +422,9 @@ def run_closed_loop_ui_ux_improvement(
     resolved_goals = _resolve_review_goals(goals)
     resolved_notes = _resolve_review_notes(notes)
     resolved_optimizer = optimizer or Optimizer()
+    resolved_metadata = dict(metadata or {})
+    if supplemental_artifacts:
+        resolved_metadata["supplemental_artifacts"] = [dict(item) for item in supplemental_artifacts if isinstance(item, dict)]
     return resolved_optimizer.run_agentic_ui_ux_feedback_loop(
         screenshot_dir=screenshot_dir,
         output_dir=output_dir,
@@ -417,7 +438,7 @@ def run_closed_loop_ui_ux_improvement(
         notes=resolved_notes,
         goals=resolved_goals,
         constraints=constraints,
-        metadata=metadata,
+        metadata=resolved_metadata or None,
         llm_router=llm_router,
         optimizer=patch_optimizer,
         agent_id=agent_id,

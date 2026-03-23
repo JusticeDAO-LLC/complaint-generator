@@ -196,6 +196,7 @@ class UIUXOptimizationBundle:
     pytest_target: str
     target_files: List[str]
     review_runs: List[Dict[str, Any]]
+    complaint_output_feedback: Dict[str, Any]
     latest_review_markdown_path: Optional[str] = None
     latest_review_json_path: Optional[str] = None
     task: Optional[Dict[str, Any]] = None
@@ -209,6 +210,7 @@ class UIUXOptimizationBundle:
             "pytest_target": self.pytest_target,
             "target_files": list(self.target_files or []),
             "review_runs": list(self.review_runs or []),
+            "complaint_output_feedback": dict(self.complaint_output_feedback or {}),
             "latest_review_markdown_path": self.latest_review_markdown_path,
             "latest_review_json_path": self.latest_review_json_path,
             "task": dict(self.task or {}),
@@ -2716,6 +2718,7 @@ class Optimizer:
                     "window.ComplaintMcpSdk browser SDK",
                 ],
                 "actor_critic_review": self._extract_actor_critic_review_summary(latest_review_payload, latest_review_excerpt),
+                "complaint_output_feedback": self._extract_complaint_output_feedback(latest_review_payload),
                 **dict(metadata or {}),
             },
         )
@@ -2766,6 +2769,19 @@ class Optimizer:
             "critic_test_obligations": critic_test_obligations,
         }
 
+    @staticmethod
+    def _extract_complaint_output_feedback(review_payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        payload = dict(review_payload or {})
+        feedback = payload.get("complaint_output_feedback")
+        if isinstance(feedback, dict):
+            return dict(feedback)
+        review_section = payload.get("review")
+        if isinstance(review_section, dict):
+            nested_feedback = review_section.get("complaint_output_feedback")
+            if isinstance(nested_feedback, dict):
+                return dict(nested_feedback)
+        return {}
+
     def build_ui_ux_optimization_bundle(
         self,
         *,
@@ -2783,14 +2799,18 @@ class Optimizer:
         if workflow_result is None:
             from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
 
+            supplemental_artifacts = list((metadata or {}).get("supplemental_artifacts") or [])
             workflow_result = run_iterative_ui_ux_workflow(
                 screenshot_dir=screenshot_dir,
                 output_dir=output_dir,
                 iterations=iterations,
                 pytest_target=pytest_target,
+                supplemental_artifacts=supplemental_artifacts,
             )
 
         review_runs = list(workflow_result.get("runs") or [])
+        latest_review_json_path = str((review_runs[-1] or {}).get("review_json_path") or "") if review_runs else ""
+        latest_review_payload = self._read_ui_ux_review_json(Path(latest_review_json_path)) if latest_review_json_path else {}
         task = self.build_ui_ux_optimization_task(
             screenshot_dir=screenshot_dir,
             output_dir=output_dir,
@@ -2813,8 +2833,9 @@ class Optimizer:
             pytest_target=str(pytest_target),
             target_files=[str(path) for path in self._default_ui_ux_target_files()],
             review_runs=review_runs,
+            complaint_output_feedback=self._extract_complaint_output_feedback(latest_review_payload),
             latest_review_markdown_path=str((review_runs[-1] or {}).get("review_markdown_path") or "") or None,
-            latest_review_json_path=str((review_runs[-1] or {}).get("review_json_path") or "") or None,
+            latest_review_json_path=latest_review_json_path or None,
             task={
                 "task_id": str(getattr(task, "task_id", "")),
                 "description": str(getattr(task, "description", "")),
@@ -2973,6 +2994,7 @@ class Optimizer:
         cycles: List[Dict[str, Any]] = []
         previous_validation_review = ""
         stop_reason = "max_rounds_reached"
+        supplemental_artifacts = list((metadata or {}).get("supplemental_artifacts") or [])
 
         for round_index in range(1, max(1, int(max_rounds)) + 1):
             round_dir = root_output_dir / f"round-{round_index:02d}"
@@ -2988,11 +3010,15 @@ class Optimizer:
                 notes=notes,
                 goals=goals,
                 initial_previous_review=previous_validation_review or None,
+                supplemental_artifacts=supplemental_artifacts,
             )
-            pre_review_summary = self._extract_actor_critic_review_summary(
+            pre_review_payload = (
                 self._read_ui_ux_review_json(Path(str(pre_workflow.get("latest_review_json_path") or "")))
                 if str(pre_workflow.get("latest_review_json_path") or "").strip()
-                else {},
+                else {}
+            )
+            pre_review_summary = self._extract_actor_critic_review_summary(
+                pre_review_payload,
                 _latest_review_text(pre_workflow),
             )
             bundle = self.build_ui_ux_optimization_bundle(
@@ -3038,12 +3064,16 @@ class Optimizer:
                 notes=notes,
                 goals=goals,
                 initial_previous_review=_latest_review_text(pre_workflow) or previous_validation_review or None,
+                supplemental_artifacts=supplemental_artifacts,
             )
             validation_review = _latest_review_text(validation_workflow)
-            validation_review_summary = self._extract_actor_critic_review_summary(
+            validation_review_payload = (
                 self._read_ui_ux_review_json(Path(str(validation_workflow.get("latest_review_json_path") or "")))
                 if str(validation_workflow.get("latest_review_json_path") or "").strip()
-                else {},
+                else {}
+            )
+            validation_review_summary = self._extract_actor_critic_review_summary(
+                validation_review_payload,
                 validation_review,
             )
             serialized_result = _serialize_optimizer_result(optimize_result)
@@ -3062,6 +3092,8 @@ class Optimizer:
                     "generation_diagnostics": list(self._last_agentic_generation_diagnostics or []),
                     "actor_critic_pre_review": pre_review_summary,
                     "actor_critic_validation_review": validation_review_summary,
+                    "complaint_output_pre_review": self._extract_complaint_output_feedback(pre_review_payload),
+                    "complaint_output_validation_review": self._extract_complaint_output_feedback(validation_review_payload),
                     "pre_review": pre_workflow,
                     "validation_review": validation_workflow,
                 }
@@ -3082,6 +3114,7 @@ class Optimizer:
             "stop_reason": stop_reason,
             "cycles": cycles,
             "actor_critic_summary": cycles[-1]["actor_critic_validation_review"] if cycles else {},
+            "complaint_output_feedback": cycles[-1]["complaint_output_validation_review"] if cycles else {},
             "latest_validation_review": previous_validation_review or (
                 cycles[-1]["validation_review"].get("latest_review") if cycles else ""
             ),
@@ -3503,16 +3536,27 @@ class Optimizer:
     ) -> UIOptimizationBundle:
         report = dict(ui_review_report or {})
         review = dict(report.get("review") or {})
+        complaint_output_feedback = dict(report.get("complaint_output_feedback") or review.get("complaint_output_feedback") or {})
         target_files = [str(path) for path in self._ui_target_files_from_review(report)]
+        recommended_changes = [
+            dict(item) for item in list(review.get("recommended_changes") or []) if isinstance(item, dict)
+        ]
+        for suggestion in [str(item).strip() for item in list(complaint_output_feedback.get("ui_suggestions") or []) if str(item).strip()]:
+            recommended_changes.append(
+                {
+                    "title": "Complaint output feedback",
+                    "implementation_notes": suggestion,
+                    "shared_code_path": "templates/workspace.html",
+                    "sdk_considerations": "Preserve the shared ComplaintMcpClient export, analysis, and optimizer path while improving filing guidance.",
+                }
+            )
         return UIOptimizationBundle(
             timestamp=datetime.now(UTC).isoformat(),
             screenshot_dir=str(report.get("screenshot_dir") or ""),
             artifact_count=int(len(list(report.get("screenshots") or []))),
             summary=str(review.get("summary") or ""),
             issues=[dict(item) for item in list(review.get("issues") or []) if isinstance(item, dict)],
-            recommended_changes=[
-                dict(item) for item in list(review.get("recommended_changes") or []) if isinstance(item, dict)
-            ],
+            recommended_changes=recommended_changes,
             broken_controls=[
                 dict(item) for item in list(review.get("broken_controls") or []) if isinstance(item, dict)
             ],
@@ -3520,7 +3564,7 @@ class Optimizer:
             actor_plan=dict(review.get("actor_plan") or {}),
             critic_review=dict(review.get("critic_review") or {}),
             playwright_followups=[str(item) for item in list(review.get("playwright_followups") or []) if str(item)],
-            complaint_output_feedback=dict(report.get("complaint_output_feedback") or review.get("complaint_output_feedback") or {}),
+            complaint_output_feedback=complaint_output_feedback,
             target_files=target_files,
         )
 
@@ -3577,6 +3621,7 @@ class Optimizer:
                     "critic_review": dict(bundle.critic_review or {}),
                     "playwright_followups": list(bundle.playwright_followups or []),
                     "complaint_output_feedback": dict(bundle.complaint_output_feedback or {}),
+                    "complaint_output_suggestions": list((bundle.complaint_output_feedback or {}).get("ui_suggestions") or []),
                     "recommended_target_files": list(bundle.target_files or []),
                 },
                 "ui_review_report": dict(ui_review_report or {}),
