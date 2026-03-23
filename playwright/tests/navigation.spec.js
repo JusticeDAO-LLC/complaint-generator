@@ -140,6 +140,27 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('a[href="/dashboards"]').first()).toBeVisible();
   });
 
+  test('profile and results surfaces explain stored complaint state clearly', async ({ page }) => {
+    await page.goto('/profile');
+    await expect(page).toHaveTitle(/Profile Data/i);
+    await expect(page.locator('h1').first()).toContainText(/Profile data without the clutter/i);
+    await expect(page.locator('body')).toContainText(/A readable snapshot of the complaint account, stored facts, and recent guided intake history/i);
+    await expect(page.locator('body')).toContainText(/Connected workflow/i);
+    await expect(page.locator('#profile_data')).toBeVisible();
+    await expect(page.locator('#chat_history')).toBeVisible();
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Profile/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Results/i);
+
+    await page.goto('/results');
+    await expect(page).toHaveTitle(/Complaint Results/i);
+    await expect(page.locator('h1').first()).toContainText(/Results without the raw-demo feel/i);
+    await expect(page.locator('body')).toContainText(/stored complaint data/i);
+    await expect(page.locator('body')).toContainText(/Stored complaint results/i);
+    await expect(page.locator('#profile_data')).toBeVisible();
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Review/i);
+    await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
+  });
+
   test('document and dashboard remain mutually navigable as one website', async ({ page }) => {
     await page.goto('/document');
     await page.locator('a[href="/claim-support-review"]').first().click();
@@ -208,12 +229,14 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Intake workflow/i);
-    await expect(page.locator('#feature-coverage-list')).toContainText(/Adversarial UI optimizer/i);
+    await expect(page.locator('#feature-coverage-list')).toContainText(/Mediator testimony handoff/i);
+    await expect(page.locator('#feature-coverage-list')).toContainText(/Actor\/Critic UI optimizer/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/available/i);
     await expect(page.locator('#feature-walkthrough-list')).toContainText(/1\. Finish intake/i);
-    await expect(page.locator('#feature-walkthrough-list')).toContainText(/5\. Improve the UI with the optimizer/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/4\. Coach testimony with the mediator/i);
+    await expect(page.locator('#feature-walkthrough-list')).toContainText(/6\. Improve the UI with the optimizer/i);
     await expect(page.locator('#quick-action-grid')).toContainText(/Finish intake/i);
-    await expect(page.locator('#quick-action-grid')).toContainText(/Run the adversarial optimizer/i);
+    await expect(page.locator('#quick-action-grid')).toContainText(/Run the actor\/critic optimizer/i);
     await page.locator('#shortcut-optimizer-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Opened UX Audit/i);
     await expect(page.locator('#ux-review-notes')).toBeFocused();
@@ -239,6 +262,17 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
     await expect(page.locator('#feature-walkthrough-list')).toContainText(/The core story has been captured/i);
+    await page.locator('#case-synopsis').fill('Jane Doe alleges retaliation after reporting discrimination to HR, with the timeline already captured and the main remaining need being corroboration.');
+    await page.locator('#save-synopsis-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Shared case synopsis saved/i);
+    await page.locator('#handoff-chat-button').click();
+    await expect(page).toHaveURL(/\/chat\?/);
+    await expect(page.locator('#chat-context-card')).toBeVisible();
+    await expect(page.locator('#chat-context-summary')).toContainText(/Jane Doe alleges retaliation/i);
+    await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared mediator prompt/i);
+    await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
+    await page.goto('/workspace');
+    await expect(page.locator('#case-synopsis')).toHaveValue(/Jane Doe alleges retaliation/i);
     await page.locator('#shortcut-evidence-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Opened Evidence so support can be attached to the case theory/i);
     await expect(page.locator('#evidence-title')).toBeFocused();
@@ -270,7 +304,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#tool-list')).toContainText(/complaint.optimize_ui/i);
 
     await page.locator('#quick-action-grid').getByRole('button', { name: 'Open UX Audit' }).click();
-    await expect(page.locator('#workspace-status')).toContainText(/Opened UX Audit so the adversarial optimizer workflow can be used/i);
+    await expect(page.locator('#workspace-status')).toContainText(/Opened UX Audit so the actor\/critic optimizer workflow can be used/i);
     await expect(page.locator('#ux-review-goals')).toContainText(/JavaScript SDK paths visibly connected/i);
     await expect(page.locator('#ux-review-notes')).toContainText(/complaint workflow/i);
 
@@ -279,7 +313,7 @@ test.describe('website surface navigation', () => {
     await page.locator('#ux-review-output-path').fill('artifacts/ui-audit/reviews');
     await page.locator('#ux-review-iterations').fill('2');
     await page.locator('#ux-review-max-rounds').fill('3');
-    await page.locator('#ux-review-method').selectOption('test_driven');
+    await expect(page.locator('#ux-review-method')).toHaveValue('actor_critic');
     await page.locator('#ux-review-priority').fill('91');
     await page.locator('#ux-review-goals').fill('Make the complaint workspace easier for first-time users.\nKeep every feature reachable through the shared MCP SDK.');
     await page.locator('#run-ux-review-button').click();

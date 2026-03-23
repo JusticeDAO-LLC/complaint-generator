@@ -36,6 +36,15 @@ def _parse_json_response(text: str) -> Dict[str, Any]:
         "summary": "The UI review response was not valid JSON.",
         "issues": [],
         "recommended_changes": [],
+        "broken_controls": [],
+        "complaint_journey": {},
+        "actor_plan": {},
+        "critic_review": {},
+        "actor_summary": "",
+        "critic_summary": "",
+        "actor_path_breaks": [],
+        "critic_test_obligations": [],
+        "stage_findings": {},
         "raw_response": stripped,
     }
 
@@ -93,6 +102,9 @@ def build_ui_review_prompt(
         "The screenshots below were created by Playwright during regression testing.\n"
         "Use the screenshots as the primary source artifacts for review.\n"
         "Pay special attention to trauma-informed language, complaint-intake clarity, evidence capture, next-step guidance, layout coherence, and whether the site visibly uses a shared JavaScript MCP SDK workflow.\n\n"
+        "Apply an explicit actor / critic method.\n"
+        "Actor: a real complainant or complaint operator trying to complete intake, provide testimony, upload evidence, review claims, and finish the complaint.\n"
+        "Critic: a hostile QA reviewer looking for broken buttons, dead navigation, hidden MCP SDK flows, and missing Playwright assertions.\n\n"
         f"Goals:\n- " + "\n- ".join(goal_lines) + "\n\n"
         f"Additional notes:\n{notes or 'No additional notes were provided.'}\n\n"
         "Contract surfaces that must remain coherent:\n"
@@ -122,6 +134,42 @@ def build_ui_review_prompt(
         '      "sdk_considerations": "how to keep or improve MCP SDK usage"\n'
         "    }\n"
         "  ],\n"
+        '  "broken_controls": [\n'
+        "    {\n"
+        '      "surface": "page or route guess",\n'
+        '      "control": "button, link, form control, or panel",\n'
+        '      "failure_mode": "what appears broken, misleading, or disconnected",\n'
+        '      "repair": "what to change in code or behavior"\n'
+        "    }\n"
+        "  ],\n"
+        '  "complaint_journey": {\n'
+        '    "tested_stages": ["chat|intake|evidence|review|draft|integrations|optimizer"],\n'
+        '    "journey_gaps": ["where a user can fail or lose context"],\n'
+        '    "sdk_tool_invocations": ["which MCP SDK tool calls should remain visible in the UI"],\n'
+        '    "release_blockers": ["what must be fixed before sending legal clients here"]\n'
+        "  },\n"
+        '  "actor_plan": {\n'
+        '    "primary_objective": "highest-value UI objective",\n'
+        '    "repair_sequence": ["ordered UI/UX repairs"],\n'
+        '    "playwright_objectives": ["browser assertions to prove the flow works"],\n'
+        '    "mcp_sdk_expectations": ["which SDK-backed actions must stay first-class"]\n'
+        "  },\n"
+        '  "critic_review": {\n'
+        '    "verdict": "pass|warning|fail",\n'
+        '    "blocking_findings": ["what still blocks a real complaint journey"],\n'
+        '    "acceptance_checks": ["what must pass before the UI is acceptable"]\n'
+        "  },\n"
+        '  "actor_summary": "how the actor experiences the overall complaint journey",\n'
+        '  "critic_summary": "the critic verdict on structural UX risk",\n'
+        '  "actor_path_breaks": ["specific points where the actor gets stuck or loses context"],\n'
+        '  "critic_test_obligations": ["specific end-to-end assertions Playwright must enforce"],\n'
+        '  "stage_findings": {\n'
+        '    "Intake": "actor/critic finding",\n'
+        '    "Evidence": "actor/critic finding",\n'
+        '    "Review": "actor/critic finding",\n'
+        '    "Draft": "actor/critic finding",\n'
+        '    "Integration Discovery": "actor/critic finding"\n'
+        "  },\n"
         '  "workflow_gaps": ["list of missing workflow affordances"],\n'
         '  "playwright_followups": ["tests or screenshots to add next"]\n'
         "}\n"
@@ -260,6 +308,58 @@ def create_ui_review_report(
                         "sdk_considerations": "Preserve MCP SDK usage in the first-class app surfaces while the visuals evolve.",
                     }
                 ],
+                "broken_controls": [
+                    {
+                        "surface": "shared complaint workflow",
+                        "control": "UI review automation",
+                        "failure_mode": "No live router critique was returned for the screenshot set.",
+                        "repair": "Restore multimodal or text router access so screenshot-driven actor/critic review can run.",
+                    }
+                ],
+                "complaint_journey": {
+                    "tested_stages": ["optimizer"],
+                    "journey_gaps": ["No live router response was available to assess the end-to-end complaint journey."],
+                    "sdk_tool_invocations": ["complaint.review_ui", "complaint.optimize_ui"],
+                    "release_blockers": ["Restore screenshot review routing before trusting the automated UI gate."],
+                },
+                "actor_plan": {
+                    "primary_objective": "Keep the screenshot-driven UI loop alive with artifact-backed reviews.",
+                    "repair_sequence": [
+                        "Restore multimodal router access.",
+                        "Fallback to text router when images are unavailable.",
+                        "Keep Playwright screenshot artifacts attached to each review cycle.",
+                    ],
+                    "playwright_objectives": [
+                        "Capture landing, chat, workspace, review, and builder screens after each UI pass.",
+                    ],
+                    "mcp_sdk_expectations": [
+                        "Preserve the complaint.review_ui and complaint.optimize_ui MCP SDK path.",
+                    ],
+                },
+                "actor_summary": "The actor journey cannot be validated from screenshots until router-backed review returns.",
+                "critic_summary": "The critic sees the missing router response itself as a release blocker for the UI optimization loop.",
+                "actor_path_breaks": [
+                    "The review loop cannot confirm that a user can move from intake to evidence to review to draft without getting lost.",
+                ],
+                "critic_test_obligations": [
+                    "Keep a Playwright journey that covers testimony, evidence upload, support review, and final complaint generation.",
+                ],
+                "stage_findings": {
+                    "Intake": "No live actor/critic screenshot review was available for intake.",
+                    "Evidence": "No live actor/critic screenshot review was available for evidence handling.",
+                    "Review": "No live actor/critic screenshot review was available for support review.",
+                    "Draft": "No live actor/critic screenshot review was available for drafting.",
+                    "Integration Discovery": "No live actor/critic screenshot review was available for the shared MCP SDK tooling surfaces.",
+                },
+                "critic_review": {
+                    "verdict": "warning",
+                    "blocking_findings": [
+                        "The actor/critic optimizer cannot fully evaluate the complaint UI until router review is restored.",
+                    ],
+                    "acceptance_checks": [
+                        "A screenshot set can be reviewed through multimodal or text router fallback.",
+                    ],
+                },
                 "workflow_gaps": [
                     "No automated multimodal or text router response was returned for the screenshot set.",
                 ],

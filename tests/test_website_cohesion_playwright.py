@@ -352,6 +352,34 @@ def _build_fixture_app(
         except WebSocketDisconnect:
             return
 
+    @app.post("/api/chat/fallback")
+    async def chat_fallback(request: Request) -> JSONResponse:
+        payload = await request.json()
+        sender = str(payload.get("sender") or FIXTURE_HASHED_USERNAME)
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return JSONResponse({"messages": []})
+
+        user_message = {"sender": sender, "message": message}
+        bot_message = {
+            "sender": "Bot:",
+            "message": "Recorded your latest intake note for the complaint workflow.",
+            "explanation": {
+                "summary": "This keeps the chat, dashboard, and document builder working from the same complaint record.",
+            },
+        }
+        profile_store.append_chat_message(
+            sender,
+            message,
+            "The chat transcript stays attached to the complaint profile.",
+        )
+        profile_store.append_chat_message(
+            "Bot:",
+            "Recorded your latest intake note for the complaint workflow.",
+            "This keeps the chat, dashboard, and document builder working from the same complaint record.",
+        )
+        return JSONResponse({"messages": [user_message, bot_message]})
+
     return app
 
 
@@ -1051,7 +1079,7 @@ def test_workspace_feature_flow_captures_screenshots_for_full_complaint_generato
 
             page.get_by_role("button", name="UX Audit", exact=True).click()
             page.wait_for_function(
-                "() => document.getElementById('ux-review-pytest-target').value.includes('test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey')"
+                "() => document.getElementById('ux-review-pytest-target').value.includes('test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer')"
             )
             feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-ux-review"))
 
@@ -1068,5 +1096,175 @@ def test_workspace_feature_flow_captures_screenshots_for_full_complaint_generato
 
             assert len(feature_screenshots) == 10
             assert all(path.exists() and path.stat().st_size > 0 for path in feature_screenshots)
+
+            browser.close()
+
+
+def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer(tmp_path):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    screenshot_dir = tmp_path / "playwright-dashboard-e2e"
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+
+            _create_account_and_open_chat(page, base_url)
+            _assert_surface_layout(page, min_content_height=320)
+            _capture_screenshot(page, screenshot_dir, "chat-initial")
+
+            page.fill("#chat-form input", "My supervisor threatened termination after I reported discrimination to HR.")
+            page.click("#send")
+            page.wait_for_function(
+                "() => document.getElementById('messages').innerText.includes('My supervisor threatened termination after I reported discrimination to HR.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('messages').innerText.includes('Recorded your latest intake note for the complaint workflow.')"
+            )
+            _capture_screenshot(page, screenshot_dir, "chat-testimony")
+
+            page.goto(f"{base_url}/workspace")
+            _wait_for_surface(page, "/workspace")
+            _assert_surface_layout(page, min_content_height=320)
+            page.fill("#intake-party_name", "Jordan Example")
+            page.fill("#intake-opposing_party", "Acme Corporation")
+            page.fill("#intake-protected_activity", "Reported discrimination to HR")
+            page.fill("#intake-adverse_action", "Termination two days later")
+            page.fill("#intake-timeline", "Reported discrimination on March 8 and the termination came on March 10")
+            page.fill("#intake-harm", "Lost wages, benefits, and emotional distress")
+            page.click("#save-intake-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"
+            )
+            page.fill(
+                "#case-synopsis",
+                "Jordan Example alleges retaliation after reporting discrimination, with direct testimony in chat, a targeted review record, and a timeline-supported draft path.",
+            )
+            page.click("#save-synopsis-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Shared case synopsis saved.')"
+            )
+            workspace_user_id = page.locator("#did-chip").inner_text().replace("did: ", "").strip()
+            page.click("#handoff-chat-button")
+            page.wait_for_url(f"{base_url}/chat**")
+            page.wait_for_function(
+                "() => !document.getElementById('chat-context-card').hidden"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('chat-context-summary').innerText.includes('Jordan Example alleges retaliation')"
+            )
+            page.wait_for_function(
+                "() => document.querySelector('#chat-form input').value.includes('Mediator, help turn this into testimony-ready narrative')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('chat-context-return-link').getAttribute('href').includes('/workspace')"
+            )
+            _capture_screenshot(page, screenshot_dir, "chat-handoff")
+
+            page.goto(f"{base_url}/workspace?user_id={workspace_user_id}")
+            page.wait_for_function(
+                "() => document.getElementById('case-synopsis').value.includes('Jordan Example alleges retaliation')"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-intake")
+
+            page.get_by_role("button", name="Review", exact=True).click()
+            page.wait_for_function(
+                "() => document.getElementById('support-grid').innerText.toLowerCase().includes('causal link')"
+            )
+            page.click("#shortcut-evidence-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Opened Evidence so support can be attached to the case theory.')"
+            )
+            assert "is-active" in page.locator("button[data-tab-target='evidence']").get_attribute("class")
+            page.select_option("#evidence-claim-element", "causation")
+            page.fill("#evidence-title", "Termination email")
+            page.select_option("#evidence-kind", "document")
+            page.fill("#evidence-source", "Inbox export")
+            page.fill("#evidence-content", "Termination email sent within two days of the HR complaint.")
+            page.click("#save-evidence-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Evidence saved and support review refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('evidence-list').innerText.includes('Termination email')"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-evidence")
+
+            page.goto(
+                f"{base_url}/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}&workspace_user_id={workspace_user_id}"
+            )
+            _wait_for_surface(page, f"/claim-support-review?claim_type=retaliation&user_id={FIXTURE_HASHED_USERNAME}")
+            _assert_surface_layout(page, min_content_height=320)
+            page.fill("#testimony-element-id", "retaliation:1")
+            page.fill("#testimony-element-text", "Protected activity")
+            page.fill("#testimony-event-date", "2026-03-08")
+            page.fill("#testimony-actor", "Supervisor")
+            page.fill("#testimony-act", "Threatened termination")
+            page.fill("#testimony-target", "Jordan Example")
+            page.fill("#testimony-harm", "Retaliatory pressure and job loss")
+            page.fill("#testimony-confidence", "0.92")
+            page.select_option("#testimony-firsthand-status", "firsthand")
+            page.fill(
+                "#testimony-narrative",
+                "I reported discrimination to HR, and my supervisor threatened termination before I was fired two days later.",
+            )
+            page.click("#save-testimony-button")
+            page.wait_for_function(
+                "() => document.getElementById('testimony-list').innerText.includes('Protected activity')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('raw-output').innerText.includes('retaliation:1')"
+            )
+            assert page.locator("#shared-case-synopsis-card").count() == 1
+            _capture_screenshot(page, screenshot_dir, "review-testimony")
+
+            page.goto(f"{base_url}/workspace?user_id={workspace_user_id}&target_tab=draft")
+            page.wait_for_function(
+                "() => document.getElementById('draft-synopsis-preview').innerText.includes('Jordan Example alleges retaliation')"
+            )
+            page.fill("#draft-title", "Jordan Example v. Acme Corporation Complaint")
+            page.fill("#requested-relief", "Back pay\nCompensatory damages\nInjunctive relief")
+            page.click("#generate-draft-button")
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('Working case synopsis: Jordan Example alleges retaliation')"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-draft")
+
+            page.get_by_role("button", name="UX Audit", exact=True).click()
+            page.wait_for_function(
+                "() => document.getElementById('ux-review-pytest-target').value.includes('test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('ux-review-method').value === 'actor_critic'"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-optimizer")
+
+            page.goto(f"{base_url}/document?user_id={workspace_user_id}")
+            _wait_for_surface(page, "/document")
+            _assert_surface_layout(page)
+            page.fill("#district", "Northern District of California")
+            page.fill("#plaintiffs", "Jordan Example")
+            page.fill("#defendants", "Acme Corporation")
+            page.fill("#requestedRelief", "Back pay\nCompensatory damages")
+            page.fill("#signerName", "Jordan Example")
+            page.fill("#signerTitle", "Plaintiff, Pro Se")
+            page.click("#generateButton")
+            page.wait_for_function(
+                "() => document.getElementById('previewRoot').innerText.includes('Plaintiff alleges retaliation')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('builder-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
+            )
+            _capture_screenshot(page, screenshot_dir, "builder-generated")
+
+            artifact_paths = sorted(screenshot_dir.glob("*.png"))
+            assert len(artifact_paths) >= 7
+            assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 
             browser.close()

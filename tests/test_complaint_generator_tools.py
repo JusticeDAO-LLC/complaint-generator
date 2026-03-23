@@ -416,7 +416,7 @@ def test_optimize_ui_defaults_to_feature_complete_audit_and_adversarial_method(m
     assert captured["method"] == "adversarial"
     assert captured["priority"] == 90
     assert captured["pytest_target"].endswith(
-        "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
     )
 
     captured.clear()
@@ -432,5 +432,5 @@ def test_optimize_ui_defaults_to_feature_complete_audit_and_adversarial_method(m
     assert captured["method"] == "adversarial"
     assert captured["priority"] == 90
     assert captured["pytest_target"].endswith(
-        "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
     )

@@ -416,6 +416,38 @@ class SERVER:
                     response['message'] = "left"
                     await manager.broadcast(response)
 
+        @app.post("/api/chat/fallback")
+        async def chat_fallback(request: Request):
+            payload = await request.json()
+            token = request.cookies.get("token")
+            hashed_username = request.cookies.get("hashed_username")
+            hashed_password = request.cookies.get("hashed_password")
+            message_text = str(payload.get("message") or payload.get("content") or "").strip()
+            if not token or not message_text:
+                return {"messages": []}
+
+            profile_request = {
+                "results": {
+                    "hashed_username": hashed_username,
+                    "hashed_password": hashed_password,
+                }
+            }
+            mediator.state.load_profile(profile_request)
+            reply = mediator.io(message_text)
+            mediator.state.store_profile(profile_request)
+            return {
+                "messages": [
+                    {
+                        "sender": hashed_username,
+                        "message": message_text,
+                    },
+                    {
+                        "sender": "Bot:",
+                        "message": reply,
+                    },
+                ]
+            }
+
 
         uvicorn.run(app, host="0.0.0.0", port=19000)
         

@@ -13,15 +13,16 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SCREENSHOT_TEST = (
     "tests/test_website_cohesion_playwright.py::"
-    "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+    "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
 )
-DEFAULT_OPTIMIZER_METHOD = "adversarial"
+DEFAULT_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_OPTIMIZER_PRIORITY = 90
 DEFAULT_UI_UX_REVIEW_GOALS = [
     "Make the complaint generator easier for first-time complainants to complete without legal coaching.",
     "Keep intake, evidence, review, draft, package, CLI, MCP, and JavaScript SDK paths visibly connected as one workflow.",
     "Expose every major complaint-generator capability with clearer next-step guidance so users can actually use the full system.",
     "Prefer calmer, trauma-informed language and remove friction that makes evidence capture or draft completion feel risky or confusing.",
+    "Make the end-to-end actor journey work cleanly from testimony and intake through evidence upload, claim review, complaint generation, and final draft revision.",
 ]
 DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES = [
     "Intake questions can be understood and completed without legal coaching.",
@@ -30,7 +31,7 @@ DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES = [
     "Draft generation and editing feel like the natural continuation of intake and review.",
     "The workspace makes progress, readiness, and next-step guidance legible under stress.",
     "Package, CLI, MCP server, and JavaScript SDK entry points remain discoverable as first-class capabilities.",
-    "The adversarial optimizer path is clearly available and does not feel detached from the main complaint workflow.",
+    "The actor/critic optimizer path is clearly available, while adversarial pressure-testing remains discoverable as a secondary stress lane.",
 ]
 DEFAULT_UI_UX_REVIEW_NOTES = (
     "Review the interface as if a stressed first-time complainant and a complaint operator both need to succeed without hand-holding. "
@@ -144,7 +145,9 @@ def build_ui_ux_review_prompt(
         "Focus on UI/UX problems that would make the site poorly suited for real user complaints.",
         "Prioritize issues around trauma-informed wording, complaint triage clarity, evidence capture usability, navigation coherence, draft confidence, and MCP SDK transparency.",
         "Also check that the complaint generator functionality remains legible as package exports, CLI tools, MCP server tools, and a JavaScript MCP SDK workflow.",
+        "Treat this as an actor/critic workflow audit with adversarial pressure-testing: identify where a real user could fail to complete the full complaint journey, where the UI hides the next best step, or where major product capabilities disappear from view.",
         "Treat this as an adversarial workflow audit: identify where a real user could fail to complete the full complaint journey or miss major product capabilities.",
+        "Use an actor/critic lens: the actor should propose the smallest high-impact UX repair sequence, and the critic should decide whether the dashboard is actually safe to send legal clients through.",
         f"Iteration: {iteration}",
     ]
     prompt_sections.extend(
@@ -186,12 +189,18 @@ def build_ui_ux_review_prompt(
             (
                 "Return markdown with these sections: `Top Risks`, `High-Impact UX Fixes`, "
                 "`Complaint Journey Coverage`, `Hidden Or Missing Feature Paths`, `Stage Findings`, "
-                "`MCP/SDK Workflow Improvements`, `Complaint Intake Language Fixes`, "
+                "`Actor Journey Findings`, `Critic Test Obligations`, `MCP/SDK Workflow Improvements`, `Actor Plan`, `Critic Verdict`, `Complaint Intake Language Fixes`, "
                 "`Playwright Assertions To Add`, and `Implementation Order`."
             ),
             (
                 "Under `Stage Findings`, use explicit subsections named `Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`, "
                 "each with concrete UX failures or fixes for that stage."
+            ),
+            (
+                "Under `Actor Journey Findings`, explicitly state whether a user can complete intake, save a shared synopsis for the mediator path, add testimony, upload or attach evidence, review claim support, generate a complaint, and revise the final draft from the shared MCP SDK-driven workspace."
+            ),
+            (
+                "Under `Critic Test Obligations`, list the exact Playwright end-to-end checks that should fail if buttons, navigation, shared state, SDK invocations, or stage transitions break."
             ),
         ]
     )

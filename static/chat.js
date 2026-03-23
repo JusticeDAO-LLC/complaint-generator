@@ -89,6 +89,61 @@ window.ChatPage = (function() {
         parent.append(content);
     }
 
+    function readWorkspaceHandoff() {
+        if (typeof window === 'undefined' || !window.location) {
+            return null;
+        }
+        const params = new URLSearchParams(window.location.search || '');
+        const source = String(params.get('source') || '').trim();
+        const userId = String(params.get('user_id') || '').trim();
+        const caseSynopsis = String(params.get('case_synopsis') || '').trim();
+        const prefillMessage = String(params.get('prefill_message') || '').trim();
+        const returnTo = String(params.get('return_to') || '').trim();
+        if (!(source || userId || caseSynopsis || prefillMessage || returnTo)) {
+            return null;
+        }
+        return {
+            source,
+            userId,
+            caseSynopsis,
+            prefillMessage,
+            returnTo,
+        };
+    }
+
+    function applyWorkspaceHandoff() {
+        const handoff = readWorkspaceHandoff();
+        if (!handoff) {
+            return;
+        }
+
+        const contextCard = document.getElementById('chat-context-card');
+        const contextSummary = document.getElementById('chat-context-summary');
+        const contextPrefill = document.getElementById('chat-context-prefill');
+        const returnLink = document.getElementById('chat-context-return-link');
+        const input = document.querySelector('#chat-form input');
+        if (!contextCard || !contextSummary || !contextPrefill || !returnLink || !input) {
+            return;
+        }
+
+        const summaryParts = [];
+        if (handoff.userId) {
+            summaryParts.push(`Shared complaint session: ${handoff.userId}.`);
+        }
+        if (handoff.caseSynopsis) {
+            summaryParts.push(handoff.caseSynopsis);
+        }
+        contextSummary.textContent = summaryParts.join(' ') || 'Chat was opened from the workspace with the shared complaint context.';
+        contextPrefill.textContent = handoff.prefillMessage
+            ? `Prepared mediator prompt: ${handoff.prefillMessage}`
+            : 'Use this chat to turn the current case framing into cleaner testimony and follow-up questions.';
+        returnLink.href = handoff.returnTo || '/workspace';
+        if (handoff.prefillMessage && !input.value.trim()) {
+            input.value = handoff.prefillMessage;
+        }
+        contextCard.hidden = false;
+    }
+
     function initialize() {
         let cookies = "";
         $("body").css("background-color", "transparent");
@@ -118,24 +173,76 @@ window.ChatPage = (function() {
             renderMessage(parent, chatHistory[timestamp], hashedUsername);
         }
 
-        const socket = new WebSocket("ws://" + hostname + "/api/chat");
-        socket.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            renderMessage(parent, data, hashedUsername);
-        };
+        let socket = null;
+        let socketReady = false;
 
-        $("#chat-form").on("submit", function(e) {
+        async function sendViaFallback(message) {
+            const response = await fetch("/api/chat/fallback", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    sender: hashedUsername,
+                    message: message,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error("Fallback chat request failed.");
+            }
+            const payload = await response.json();
+            const messages = Array.isArray(payload && payload.messages) ? payload.messages : [];
+            if (!messages.length) {
+                renderMessage(parent, {"sender": hashedUsername, "message": message}, hashedUsername);
+                return;
+            }
+            messages.forEach((entry) => {
+                renderMessage(parent, entry, hashedUsername);
+            });
+        }
+
+        try {
+            socket = new WebSocket("ws://" + hostname + "/api/chat");
+            socket.onopen = function() {
+                socketReady = true;
+            };
+            socket.onerror = function() {
+                socketReady = false;
+            };
+            socket.onclose = function() {
+                socketReady = false;
+            };
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                renderMessage(parent, data, hashedUsername);
+            };
+        } catch (error) {
+            socketReady = false;
+        }
+
+        $("#chat-form").on("submit", async function(e) {
             e.preventDefault();
-            const message = $("input").val();
+            const message = $("input").val().trim();
             if (message) {
-                const data = {
-                    "sender": hashedUsername,
-                    "message": message
-                };
-                socket.send(JSON.stringify(data));
-                $("input").val("");
+                try {
+                    if (socket && socketReady && socket.readyState === WebSocket.OPEN) {
+                        const data = {
+                            "sender": hashedUsername,
+                            "message": message
+                        };
+                        socket.send(JSON.stringify(data));
+                    } else {
+                        await sendViaFallback(message);
+                    }
+                    $("input").val("");
+                } catch (error) {
+                    showError(error && error.message ? error.message : "Unable to submit the chat message.");
+                }
             }
         });
+
+        applyWorkspaceHandoff();
     }
 
     return {

@@ -33,11 +33,11 @@ def _write_artifact(directory: Path, name: str, url: str = "http://example.test/
     (directory / f"{name}.png").write_bytes(b"fake-png")
 
 
-def test_ui_ux_workflow_defaults_target_full_feature_audit_and_adversarial_optimizer():
+def test_ui_ux_workflow_defaults_target_full_feature_audit_and_actor_critic_optimizer():
     assert workflow_module.DEFAULT_SCREENSHOT_TEST.endswith(
-        "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
     )
-    assert workflow_module.DEFAULT_OPTIMIZER_METHOD == "adversarial"
+    assert workflow_module.DEFAULT_OPTIMIZER_METHOD == "actor_critic"
     assert workflow_module.DEFAULT_OPTIMIZER_PRIORITY == 90
     assert any("first-time complainants" in goal for goal in workflow_module.DEFAULT_UI_UX_REVIEW_GOALS)
     assert any("Evidence capture" in item for item in workflow_module.DEFAULT_COMPLAINT_WORKFLOW_CAPABILITIES)
@@ -59,10 +59,13 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "complaint-mcp-server" in prompt or "complaint-generator-mcp" in prompt
     assert "JavaScript MCP SDK" in prompt or "ComplaintMcpClient" in prompt
     assert "Previous iteration asked for clearer intake guidance." in prompt
-    assert "Treat this as an adversarial workflow audit" in prompt
+    assert "Treat this as an actor/critic workflow audit with adversarial pressure-testing" in prompt
+    assert "actor/critic lens" in prompt
     assert "Required capability audit:" in prompt
     assert "Hidden Or Missing Feature Paths" in prompt
     assert "Stage Findings" in prompt
+    assert "Actor Plan" in prompt
+    assert "Critic Verdict" in prompt
     assert "Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`" in prompt
 
 
@@ -220,6 +223,7 @@ def test_closed_loop_ui_ux_improvement_uses_default_brief_when_none_is_supplied(
         output_dir=tmp_path / "reviews",
     )
 
+    assert captured["method"] == workflow_module.DEFAULT_OPTIMIZER_METHOD
     assert captured["priority"] == workflow_module.DEFAULT_OPTIMIZER_PRIORITY
     assert captured["goals"] == workflow_module.DEFAULT_UI_UX_REVIEW_GOALS
     assert captured["notes"] == workflow_module.DEFAULT_UI_UX_REVIEW_NOTES

@@ -148,6 +148,35 @@ def _fake_ui_review_report(tmp_path: Path) -> dict:
                     "sdk_considerations": "Preserve ComplaintMcpClient-driven flows.",
                 }
             ],
+            "broken_controls": [
+                {
+                    "surface": "/workspace",
+                    "control": "Next Best Action card",
+                    "failure_mode": "The button state does not make the next complaint step obvious enough.",
+                    "repair": "Promote the action sequencing and clarify which MCP SDK tool runs next.",
+                }
+            ],
+            "complaint_journey": {
+                "tested_stages": ["chat", "intake", "evidence", "review", "draft", "optimizer"],
+                "journey_gaps": ["The dashboard needs clearer evidence-to-draft handoff language."],
+                "sdk_tool_invocations": ["complaint.submit_intake", "complaint.save_evidence", "complaint.generate_complaint"],
+                "release_blockers": ["Clarify the next-step guidance before sending legal clients here."],
+            },
+            "actor_plan": {
+                "primary_objective": "Make the full complaint journey actionable from the workspace.",
+                "repair_sequence": [
+                    "Clarify the next best action.",
+                    "Explain evidence-to-claim mapping.",
+                    "Keep the MCP SDK invocation path visible.",
+                ],
+                "playwright_objectives": ["Walk chat, workspace, review, and builder in one browser flow."],
+                "mcp_sdk_expectations": ["Keep ComplaintMcpClient-backed complaint tool calls first-class."],
+            },
+            "critic_review": {
+                "verdict": "warning",
+                "blocking_findings": ["The complaint journey is still too easy to misread during evidence and drafting handoff."],
+                "acceptance_checks": ["Prove a full complaint can be generated through the dashboard end to end."],
+            },
             "playwright_followups": ["Capture and compare the workspace screenshot after each UI pass."],
         },
     }
@@ -3228,6 +3257,9 @@ SUGGESTIONS:
         assert bundle.summary.startswith("Workspace needs clearer next actions")
         assert "templates/workspace.html" in bundle.target_files
         assert any(path.endswith(".js") for path in bundle.target_files)
+        assert bundle.actor_plan["primary_objective"].startswith("Make the full complaint journey")
+        assert bundle.critic_review["verdict"] == "warning"
+        assert bundle.broken_controls[0]["control"] == "Next Best Action card"
 
     def test_run_adversarial_autopatch_batch_includes_ui_review_lane_when_screenshots_exist(self, tmp_path, monkeypatch):
         review_output_dir = tmp_path / "reviews"

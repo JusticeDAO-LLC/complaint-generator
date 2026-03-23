@@ -34,6 +34,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "title": {"type": "string"},
             "content": {"type": "string"},
             "source": {"type": "string"},
+            "attachment_names": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
         },
         "required": ["kind", "claim_element_id", "title", "content"],
     },

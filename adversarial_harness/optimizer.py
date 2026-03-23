@@ -8,6 +8,7 @@ Analyzes critic feedback and provides optimization recommendations.
 
 import json
 import logging
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Any, List, Optional, Tuple
@@ -224,6 +225,10 @@ class UIOptimizationBundle:
     summary: str
     issues: List[Dict[str, Any]]
     recommended_changes: List[Dict[str, Any]]
+    broken_controls: List[Dict[str, Any]]
+    complaint_journey: Dict[str, Any]
+    actor_plan: Dict[str, Any]
+    critic_review: Dict[str, Any]
     playwright_followups: List[str]
     target_files: List[str]
 
@@ -235,6 +240,10 @@ class UIOptimizationBundle:
             "summary": self.summary,
             "issues": list(self.issues or []),
             "recommended_changes": list(self.recommended_changes or []),
+            "broken_controls": list(self.broken_controls or []),
+            "complaint_journey": dict(self.complaint_journey or {}),
+            "actor_plan": dict(self.actor_plan or {}),
+            "critic_review": dict(self.critic_review or {}),
             "playwright_followups": list(self.playwright_followups or []),
             "target_files": list(self.target_files or []),
         }
@@ -2704,9 +2713,56 @@ class Optimizer:
                     "complaint-mcp-server tools",
                     "window.ComplaintMcpSdk browser SDK",
                 ],
+                "actor_critic_review": self._extract_actor_critic_review_summary(latest_review_payload, latest_review_excerpt),
                 **dict(metadata or {}),
             },
         )
+
+    @staticmethod
+    def _extract_markdown_heading_section(markdown: str, heading: str) -> str:
+        source = str(markdown or "")
+        if not source.strip():
+            return ""
+        escaped_heading = re.escape(str(heading or "").strip())
+        pattern = re.compile(rf"(?:^|\n)#+\s*{escaped_heading}\s*\n([\s\S]*?)(?=\n#+\s+|$)", re.IGNORECASE)
+        match = pattern.search(source)
+        return match.group(1).strip() if match else ""
+
+    def _extract_actor_critic_review_summary(
+        self,
+        review_payload: Optional[Dict[str, Any]],
+        review_text: str = "",
+    ) -> Dict[str, Any]:
+        payload = dict(review_payload or {})
+        summary_text = str(review_text or payload.get("review") or payload.get("summary") or "").strip()
+        actor_summary = str(
+            payload.get("actor_summary")
+            or ((payload.get("review") or {}).get("actor_summary") if isinstance(payload.get("review"), dict) else "")
+            or self._extract_markdown_heading_section(summary_text, "Actor Journey Findings")
+            or self._extract_markdown_heading_section(summary_text, "Actor Plan")
+        ).strip()
+        critic_summary = str(
+            payload.get("critic_summary")
+            or ((payload.get("review") or {}).get("critic_summary") if isinstance(payload.get("review"), dict) else "")
+            or self._extract_markdown_heading_section(summary_text, "Critic Test Obligations")
+            or self._extract_markdown_heading_section(summary_text, "Critic Verdict")
+        ).strip()
+        actor_path_breaks = list(payload.get("actor_path_breaks") or [])
+        critic_test_obligations = list(payload.get("critic_test_obligations") or [])
+        if not actor_path_breaks:
+            extracted = self._extract_markdown_heading_section(summary_text, "Complaint Journey Coverage")
+            if extracted:
+                actor_path_breaks = [extracted]
+        if not critic_test_obligations:
+            extracted = self._extract_markdown_heading_section(summary_text, "Playwright Assertions To Add")
+            if extracted:
+                critic_test_obligations = [extracted]
+        return {
+            "actor_summary": actor_summary,
+            "critic_summary": critic_summary,
+            "actor_path_breaks": actor_path_breaks,
+            "critic_test_obligations": critic_test_obligations,
+        }
 
     def build_ui_ux_optimization_bundle(
         self,
@@ -2931,6 +2987,12 @@ class Optimizer:
                 goals=goals,
                 initial_previous_review=previous_validation_review or None,
             )
+            pre_review_summary = self._extract_actor_critic_review_summary(
+                self._read_ui_ux_review_json(Path(str(pre_workflow.get("latest_review_json_path") or "")))
+                if str(pre_workflow.get("latest_review_json_path") or "").strip()
+                else {},
+                _latest_review_text(pre_workflow),
+            )
             bundle = self.build_ui_ux_optimization_bundle(
                 screenshot_dir=screenshot_dir,
                 output_dir=round_dir / "pre-review",
@@ -2976,6 +3038,12 @@ class Optimizer:
                 initial_previous_review=_latest_review_text(pre_workflow) or previous_validation_review or None,
             )
             validation_review = _latest_review_text(validation_workflow)
+            validation_review_summary = self._extract_actor_critic_review_summary(
+                self._read_ui_ux_review_json(Path(str(validation_workflow.get("latest_review_json_path") or "")))
+                if str(validation_workflow.get("latest_review_json_path") or "").strip()
+                else {},
+                validation_review,
+            )
             serialized_result = _serialize_optimizer_result(optimize_result)
             cycles.append(
                 {
@@ -2990,6 +3058,8 @@ class Optimizer:
                     },
                     "optimizer_result": serialized_result,
                     "generation_diagnostics": list(self._last_agentic_generation_diagnostics or []),
+                    "actor_critic_pre_review": pre_review_summary,
+                    "actor_critic_validation_review": validation_review_summary,
                     "pre_review": pre_workflow,
                     "validation_review": validation_workflow,
                 }
@@ -3009,6 +3079,7 @@ class Optimizer:
             "rounds_executed": len(cycles),
             "stop_reason": stop_reason,
             "cycles": cycles,
+            "actor_critic_summary": cycles[-1]["actor_critic_validation_review"] if cycles else {},
             "latest_validation_review": previous_validation_review or (
                 cycles[-1]["validation_review"].get("latest_review") if cycles else ""
             ),
@@ -3440,6 +3511,12 @@ class Optimizer:
             recommended_changes=[
                 dict(item) for item in list(review.get("recommended_changes") or []) if isinstance(item, dict)
             ],
+            broken_controls=[
+                dict(item) for item in list(review.get("broken_controls") or []) if isinstance(item, dict)
+            ],
+            complaint_journey=dict(review.get("complaint_journey") or {}),
+            actor_plan=dict(review.get("actor_plan") or {}),
+            critic_review=dict(review.get("critic_review") or {}),
             playwright_followups=[str(item) for item in list(review.get("playwright_followups") or []) if str(item)],
             target_files=target_files,
         )
@@ -3468,7 +3545,7 @@ class Optimizer:
         summary = bundle.summary or "Improve the complaint dashboard UI and complaint-handling flow."
         recommendations = [
             str(item.get("title") or item.get("recommended_fix") or "").strip()
-            for item in bundle.recommended_changes + bundle.issues
+            for item in bundle.recommended_changes + bundle.issues + bundle.broken_controls
             if isinstance(item, dict)
         ]
         recommendations = [item for item in recommendations if item]
@@ -3491,6 +3568,10 @@ class Optimizer:
                 "report_summary": {
                     "summary": bundle.summary,
                     "recommendations": recommendations[:5],
+                    "broken_controls": list(bundle.broken_controls or []),
+                    "complaint_journey": dict(bundle.complaint_journey or {}),
+                    "actor_plan": dict(bundle.actor_plan or {}),
+                    "critic_review": dict(bundle.critic_review or {}),
                     "playwright_followups": list(bundle.playwright_followups or []),
                     "recommended_target_files": list(bundle.target_files or []),
                 },

@@ -12,7 +12,7 @@ from .ui_review import run_ui_review_workflow
 
 DEFAULT_UI_UX_SCREENSHOT_TARGET = (
     "tests/test_website_cohesion_playwright.py::"
-    "test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"
+    "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
 )
 DEFAULT_UI_UX_OPTIMIZER_METHOD = "adversarial"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
@@ -61,6 +61,7 @@ def add_evidence(
     title: str = "Untitled evidence",
     content: str = "",
     source: Optional[str] = None,
+    attachment_names: Optional[str] = None,
 ) -> None:
     _print(
         service.save_evidence(
@@ -70,6 +71,7 @@ def add_evidence(
             title=title,
             content=content,
             source=source,
+            attachment_names=[item.strip() for item in str(attachment_names or "").split("|") if item.strip()],
         )
     )
 

@@ -281,6 +281,17 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#save-intake-button').click();
 
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+    await page.locator('#case-synopsis').fill('Jane Doe alleges retaliation after reporting discrimination to HR, and the next priority is proving the timing and motive with corroborating evidence.');
+    await page.locator('#save-synopsis-button').click();
+    await expect(page.locator('#review-synopsis-preview')).toContainText(/Jane Doe alleges retaliation/i);
+    await expect(page.locator('#draft-synopsis-preview')).toContainText(/next priority is proving the timing and motive/i);
+
+    await page.locator('#handoff-chat-button').click();
+    await expect(page).toHaveURL(/\/chat\?/);
+    await expect(page.locator('#chat-context-summary')).toContainText(/Jane Doe alleges retaliation/i);
+    await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
+    await page.goto('/workspace');
+
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();
 
     await page.locator('#evidence-kind').selectOption('testimony');
@@ -288,17 +299,29 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#evidence-title').fill('Witness statement');
     await page.locator('#evidence-source').fill('Coworker interview');
     await page.locator('#evidence-content').fill('A coworker confirmed the termination happened immediately after the HR complaint.');
+    await page.locator('#evidence-attachment').setInputFiles({
+      name: 'termination-timeline.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Complaint on March 8. Termination on March 10.'),
+    });
     await page.locator('#save-evidence-button').click();
 
     await expect(page.locator('#evidence-list')).toContainText(/Witness statement/i);
+    await expect(page.locator('#evidence-list')).toContainText(/termination-timeline\.txt/i);
     await page.getByRole('button', { name: 'Review', exact: true }).click();
     await expect(page.locator('#support-grid')).toContainText(/Protected activity/i);
     await expect(page.locator('#recommended-actions')).toContainText(/Check timing/i);
+    await expect(page.locator('#review-synopsis-preview')).toContainText(/Jane Doe alleges retaliation/i);
+
+    await page.locator('#handoff-review-button').click();
+    await expect(page).toHaveURL(/\/claim-support-review/);
+    await page.goto('/workspace');
 
     await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#requested-relief').fill('Back pay\nInjunctive relief');
     await page.locator('#generate-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint/i);
+    await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Jane Doe alleges retaliation/i);
 
     await page.locator('#draft-body').fill('Edited final complaint body.');
     await page.locator('#save-draft-button').click();

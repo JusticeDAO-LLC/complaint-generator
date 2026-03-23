@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 
 DEFAULT_USER_ID = "did:key:anonymous"
+DEFAULT_UI_UX_OPTIMIZER_METHOD = "adversarial"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 _DATA_DIR = Path(__file__).resolve().parent.parent / ".complaint_workspace"
 _SESSION_DIR = _DATA_DIR / "sessions"
@@ -319,6 +320,7 @@ class ComplaintWorkspaceService:
         title: str,
         content: str,
         source: Optional[str] = None,
+        attachment_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         state = self._load_state(str(user_id or DEFAULT_USER_ID))
         evidence_store = state.setdefault("evidence", {"testimony": [], "documents": []})
@@ -330,6 +332,7 @@ class ComplaintWorkspaceService:
             "title": title,
             "content": content,
             "source": source or "",
+            "attachment_names": [str(item).strip() for item in list(attachment_names or []) if str(item).strip()],
             "saved_at": _utc_now(),
         }
         evidence_store.setdefault(collection_key, []).append(record)
@@ -418,7 +421,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
                 {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
-                {"name": "complaint.optimize_ui", "description": "Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI."},
+                {"name": "complaint.optimize_ui", "description": "Run the closed-loop screenshot, llm_router, actor/critic optimizer, and revalidation workflow for the complaint dashboard UI."},
             ]
         }
 
@@ -438,6 +441,7 @@ class ComplaintWorkspaceService:
                 title=str(args.get("title") or "Untitled evidence"),
                 content=str(args.get("content") or ""),
                 source=args.get("source"),
+                attachment_names=args.get("attachment_names"),
             )
         if tool_name == "complaint.review_case":
             session = self.get_session(args.get("user_id"))
@@ -504,7 +508,7 @@ class ComplaintWorkspaceService:
                         goals=args.get("goals"),
                         pytest_target=str(pytest_target)
                         if pytest_target
-                        else "tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey",
+                        else "tests/test_website_cohesion_playwright.py::test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer",
                     )
                 return run_ui_review_workflow(
                     str(screenshot_dir),
@@ -526,12 +530,12 @@ class ComplaintWorkspaceService:
             return run_closed_loop_ui_ux_improvement(
                 screenshot_dir=str(screenshot_dir),
                 output_dir=str(args.get("output_path") or Path(str(screenshot_dir)).expanduser().resolve() / "closed-loop"),
-                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_workspace_feature_flow_captures_screenshots_for_full_complaint_generator_journey"),
+                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"),
                 max_rounds=int(args.get("max_rounds") or 2),
                 review_iterations=int(args.get("iterations") or 1),
                 provider=args.get("provider"),
                 model=args.get("model"),
-                method=str(args.get("method") or "adversarial"),
+                method=str(args.get("method") or DEFAULT_UI_UX_OPTIMIZER_METHOD),
                 priority=int(args.get("priority") or DEFAULT_UI_UX_OPTIMIZER_PRIORITY),
                 notes=args.get("notes"),
                 goals=args.get("goals"),

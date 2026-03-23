@@ -283,6 +283,7 @@ function workspaceSessionPayload(userId = 'did:key:playwright-demo') {
 function generateWorkspaceDraft(workspaceState, requestedRelief) {
   const answers = workspaceState.intake_answers;
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
+  const caseSynopsis = String(workspaceState.case_synopsis || '').trim();
   const body = [
     `${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}.`,
     `${answers.party_name || 'Plaintiff'} alleges that they ${answers.protected_activity || 'engaged in protected activity'}.`,
@@ -290,6 +291,7 @@ function generateWorkspaceDraft(workspaceState, requestedRelief) {
     `The timeline shows that ${answers.timeline || 'the events occurred close in time'}.`,
     `As a result, ${answers.party_name || 'Plaintiff'} suffered ${answers.harm || 'compensable harm'}.`,
     `Requested relief includes: ${relief.join('; ')}.`,
+    caseSynopsis ? `Working case synopsis: ${caseSynopsis}.` : '',
   ].join('\n\n');
   workspaceState.draft = {
     title: `${answers.party_name || 'Plaintiff'} v. ${answers.opposing_party || 'Defendant'} Retaliation Complaint`,
@@ -545,6 +547,7 @@ const server = http.createServer(async (request, response) => {
           title: args.title,
           content: args.content,
           source: args.source || '',
+          attachment_names: Array.isArray(args.attachment_names) ? args.attachment_names : [],
         });
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.review_case' || toolName === 'complaint.start_session') {
@@ -581,6 +584,14 @@ const server = http.createServer(async (request, response) => {
               Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
               'Integration Discovery': 'The MCP SDK and optimizer path need to stay visible so operators do not miss the shared complaint-generator tooling.',
             },
+            actor_summary: 'The actor can stay on one DID-backed complaint path, but still needs clearer guidance for synopsis, evidence upload, review, and draft transitions.',
+            critic_summary: 'The critic expects hard end-to-end assertions around testimony, evidence attachment, support review, and final complaint generation.',
+            actor_path_breaks: [
+              'Users can still miss the moment when they should save a shared synopsis before moving into review and draft.',
+            ],
+            critic_test_obligations: [
+              'Verify the full workspace journey from intake through mediator synopsis, evidence upload, review, and final complaint draft.',
+            ],
             latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
             runs: [
               {
@@ -603,6 +614,14 @@ const server = http.createServer(async (request, response) => {
                 Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
                 Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
               },
+              actor_summary: 'The actor can start the complaint, but the transition into evidence and review still needs clearer guidance.',
+              critic_summary: 'The critic wants explicit regression checks for buttons and the MCP SDK-backed journey.',
+              actor_path_breaks: [
+                'The user may not understand when to move from intake to evidence.',
+              ],
+              critic_test_obligations: [
+                'Keep an end-to-end Playwright flow that verifies the MCP SDK path through every complaint stage.',
+              ],
               issues: [
                 {
                   severity: 'medium',
@@ -628,6 +647,14 @@ const server = http.createServer(async (request, response) => {
             Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
             'Integration Discovery': 'The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels.',
           },
+          actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
+          critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
+          actor_path_breaks: [
+            'Evidence collection and support review still need to feel like one continuous action rather than separate tasks.',
+          ],
+          critic_test_obligations: [
+            'Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft.',
+          ],
           cycles: [
             {
               round: 1,
@@ -726,6 +753,7 @@ const server = http.createServer(async (request, response) => {
         title: args.title,
         content: args.content,
         source: args.source || '',
+        attachment_names: Array.isArray(args.attachment_names) ? args.attachment_names : [],
       });
       return sendJson(response, workspaceSessionPayload(userId));
     }
@@ -768,6 +796,14 @@ const server = http.createServer(async (request, response) => {
             Draft: 'Draft generation should feel like the direct continuation of the case theory, not a separate document tool.',
             'Integration Discovery': 'The MCP SDK and optimizer path need to stay visible so operators do not miss the shared complaint-generator tooling.',
           },
+          actor_summary: 'The actor can stay on one DID-backed complaint path, but still needs clearer guidance for synopsis, evidence upload, review, and draft transitions.',
+          critic_summary: 'The critic expects hard end-to-end assertions around testimony, evidence attachment, support review, and final complaint generation.',
+          actor_path_breaks: [
+            'Users can still miss the moment when they should save a shared synopsis before moving into review and draft.',
+          ],
+          critic_test_obligations: [
+            'Verify the full workspace journey from intake through mediator synopsis, evidence upload, review, and final complaint draft.',
+          ],
           latest_review_markdown_path: 'artifacts/ui-audit/reviews/iteration-01-review.md',
           runs: [
             {
@@ -790,6 +826,14 @@ const server = http.createServer(async (request, response) => {
             Intake: 'The intake flow should make the first required story fields easier to understand before asking for detail.',
             Evidence: 'Users need clearer cues about what evidence strengthens the current complaint theory.',
           },
+          actor_summary: 'The actor can start the complaint, but the transition into evidence and review still needs clearer guidance.',
+          critic_summary: 'The critic wants explicit regression checks for buttons and the MCP SDK-backed journey.',
+          actor_path_breaks: [
+            'The user may not understand when to move from intake to evidence.',
+          ],
+          critic_test_obligations: [
+            'Keep an end-to-end Playwright flow that verifies the MCP SDK path through every complaint stage.',
+          ],
           issues: [
             {
               severity: 'medium',
@@ -815,6 +859,14 @@ const server = http.createServer(async (request, response) => {
           Draft: 'Draft readiness should remain visible after optimization so users know when a first draft is appropriate.',
           'Integration Discovery': 'The optimizer path itself should stay discoverable from the shared dashboard shortcuts and tool panels.',
         },
+        actor_summary: 'The actor can finish the workflow if the optimizer keeps the path linear and support gaps actionable.',
+        critic_summary: 'The critic expects the closed-loop run to preserve MCP SDK visibility and catch broken stage transitions.',
+        actor_path_breaks: [
+          'Evidence collection and support review still need to feel like one continuous action rather than separate tasks.',
+        ],
+        critic_test_obligations: [
+          'Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft.',
+        ],
         cycles: [
           {
             round: 1,
