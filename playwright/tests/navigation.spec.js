@@ -35,7 +35,7 @@ test.describe('website surface navigation', () => {
 
   test('all routed complaint surfaces load and expose expected navigation affordances', async ({ page }) => {
     const routes = [
-      ['/', /Lex Publicus Complaint Generator/i],
+      ['/', /Build a complaint like one connected case file/i],
       ['/home', /Lex Publicus Chat App/i],
       ['/chat', /Lex Publicus Chat App/i],
       ['/profile', /Profile Data/i],
@@ -59,8 +59,13 @@ test.describe('website surface navigation', () => {
     }
 
     await page.goto('/');
+    await expect(page.locator('h1')).toContainText(/Build a complaint like one connected case file/i);
+    await expect(page.locator('#homepage-session-status')).toBeVisible();
+    await expect(page.locator('#homepage-did')).toContainText(/did:key:/i);
+    await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
 
     await page.goto('/chat');
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
@@ -297,13 +302,22 @@ test.describe('website surface navigation', () => {
     const seededJson = await seededSession.json();
     expect(Object.keys(seededJson.session.intake_answers)).toHaveLength(6);
 
+    await page.goto('/');
+    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
+    await expect(page.locator('#homepage-did')).toContainText(cachedDid);
+    await expect(page.locator('#homepage-answered-count')).toHaveText('6');
+    await expect(page.locator('#homepage-supported-count')).toHaveText('5');
+    await expect(page.locator('#homepage-session-status')).toContainText(cachedDid);
+    await expect(page.locator('#homepage-open-workspace')).toBeVisible();
+    await expect(page.locator('#homepage-resume-review')).toBeVisible();
+
     await page.goto('/document');
     await expect(page.locator('#cg-app-shell')).toBeVisible();
     await expect(page.locator('#cg-app-shell-did')).toContainText(cachedDid);
     await expect(page.locator('#cg-app-shell-intake-count')).toHaveText('6');
     await expect(page.locator('#cg-app-shell-supported-count')).toHaveText('5');
 
-    for (const path of ['/', '/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
+    for (const path of ['/home', '/chat', '/profile', '/results', '/document', '/claim-support-review', '/mlwysiwyg', '/document/optimization-trace', '/ipfs-datasets/sdk-playground']) {
       await page.goto(path);
       await expect(page.locator('#cg-app-shell')).toBeVisible();
       await expect(page.locator('#cg-app-shell-did')).toContainText(cachedDid);
