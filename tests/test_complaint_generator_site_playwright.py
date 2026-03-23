@@ -390,18 +390,17 @@ def test_unified_navigation_connects_primary_pages(site_app: FastAPI):
 
             page.goto(f"{base_url}/")
             expect_texts = [
-                ("Account", "/home", "Complaint Generator"),
-                ("Chat", "/chat", "Lex Publicus Chat App"),
-                ("Profile", "/profile", "Recent Chat History"),
-                ("Results", "/results", "Profile Data"),
+                ("Secure Intake", "/home", "Create Account"),
+                ("Workspace", "/workspace", "Unified Complaint Workspace"),
                 ("Review", "/claim-support-review", "Claim support coverage with execution controls."),
                 ("Builder", "/document", "Formal Complaint Builder"),
+                ("Editor", "/mlwysiwyg", "Complaint Editor Workshop"),
                 ("Trace", "/document/optimization-trace", "Optimization Trace Viewer"),
                 ("Landing", "/", "Lex Publicus Complaint Generator"),
             ]
 
             for label, suffix, expected_text in expect_texts:
-                href = page.get_by_role("link", name=label).first.get_attribute("href")
+                href = page.get_by_role("link", name=label, exact=True).first.get_attribute("href")
                 assert href == suffix
                 page.goto(f"{base_url}{href}")
                 page.wait_for_load_state("networkidle")
@@ -510,7 +509,7 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
                 "() => document.getElementById('workspace-status').textContent.includes('Intake answers saved.')"
             )
 
-            page.get_by_role('button', name='Evidence').click()
+            page.get_by_role('button', name='Evidence', exact=True).click()
             page.locator('#evidence-title').fill('HR complaint email')
             page.locator('#evidence-content').fill('Email confirming the protected report and management response.')
             page.locator('#save-evidence-button').click()
@@ -518,7 +517,7 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
                 "() => document.getElementById('workspace-status').textContent.includes('Evidence saved')"
             )
 
-            page.get_by_role('button', name='Draft').click()
+            page.get_by_role('button', name='Draft', exact=True).click()
             page.locator('#generate-draft-button').click()
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').textContent.includes('Complaint draft generated')"
