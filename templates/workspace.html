@@ -69,6 +69,75 @@
             line-height: 1.65;
         }
 
+        .hero-grid,
+        .quick-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .hero-grid {
+            grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+            margin-top: 22px;
+        }
+
+        .hero-panel,
+        .callout {
+            padding: 18px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .hero-panel h2,
+        .callout h3 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            margin-bottom: 8px;
+            color: var(--accent-strong);
+            font-size: 0.8rem;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .priority-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .priority-item {
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(255, 240, 226, 0.88);
+            border: 1px solid rgba(154, 52, 18, 0.12);
+        }
+
+        .priority-item strong,
+        .priority-item span,
+        .queue-item strong,
+        .queue-item span {
+            display: block;
+        }
+
+        .priority-item span,
+        .queue-item span {
+            margin-top: 4px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .queue-item {
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.76);
+            border: 1px solid var(--line);
+        }
+
         .surface-links,
         .tab-row,
         .chip-row,
@@ -167,9 +236,33 @@
         .field-grid,
         .tool-grid,
         .support-grid,
-        .integration-grid {
+        .integration-grid,
+        .stage-grid {
             display: grid;
             gap: 14px;
+        }
+
+        .stage-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin: 18px 0 22px;
+        }
+
+        .stage-card {
+            padding: 16px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.78);
+        }
+
+        .stage-card strong,
+        .stage-card span {
+            display: block;
+        }
+
+        .stage-card span {
+            margin-top: 6px;
+            color: var(--muted);
+            line-height: 1.55;
         }
 
         .field-row,
@@ -267,6 +360,10 @@
             border: 1px solid var(--line);
         }
 
+        .review-overview {
+            margin-bottom: 16px;
+        }
+
         pre {
             margin: 0;
             white-space: pre-wrap;
@@ -276,9 +373,11 @@
         }
 
         @media (max-width: 1040px) {
+            .hero-grid,
             .layout,
             .field-row,
-            .support-grid {
+            .support-grid,
+            .stage-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -291,21 +390,45 @@
 <body>
     <div class="shell">
         <section class="hero">
+            <span class="eyebrow">Complaint Operations Workspace</span>
             <h1>Unified Complaint Workspace</h1>
-            <p>One place to move from intake through evidence, support review, MCP tooling, and final complaint editing. This page uses the same complaint service contract exposed through the Python CLI, MCP tools, and browser SDK.</p>
-            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
-                <a class="surface-link" href="/">Landing</a>
-                <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" href="/chat">Chat</a>
-                <a class="surface-link" href="/profile">Profile</a>
-                <a class="surface-link" href="/results">Results</a>
-                <a class="surface-link" href="/workspace">Workspace</a>
-                <a class="surface-link" href="/claim-support-review">Review</a>
-                <a class="surface-link" href="/document">Builder</a>
-                <a class="surface-link" href="/mlwysiwyg">Editor</a>
-                <a class="surface-link" href="/document/optimization-trace">Trace</a>
-                <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
-                <a class="surface-link" href="/dashboards">Dashboards</a>
+            <p>This is the complaint operator desk: gather the story with care, identify support gaps, preserve evidence, and move into a formal draft without losing continuity across the Python package, CLI, MCP tools, and browser SDK.</p>
+            <div class="hero-grid">
+                <div class="hero-panel">
+                    <h2>Keep the complainant oriented</h2>
+                    <p class="muted">Start with identity and timeline, then capture the protected activity, the adverse action, and the harm. The interface is organized so a real complaint can move from first disclosure to a draft without forcing the user to retell the story in disconnected tools.</p>
+                    <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+                        <a class="surface-link" href="/">Landing</a>
+                        <a class="surface-link" href="/home">Account</a>
+                        <a class="surface-link" href="/chat">Chat</a>
+                        <a class="surface-link" href="/profile">Profile</a>
+                        <a class="surface-link" href="/results">Results</a>
+                        <a class="surface-link" href="/workspace">Workspace</a>
+                        <a class="surface-link" href="/claim-support-review">Review</a>
+                        <a class="surface-link" href="/document">Builder</a>
+                        <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                        <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                        <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                        <a class="surface-link" href="/dashboards">Dashboards</a>
+                    </div>
+                </div>
+                <div class="hero-panel">
+                    <h2>Today’s handling priorities</h2>
+                    <div class="priority-list">
+                        <div class="priority-item">
+                            <strong id="workflow-user-id">Complainant ID loading…</strong>
+                            <span>Every page in this workflow should be working from the same DID-backed complaint session.</span>
+                        </div>
+                        <div class="priority-item">
+                            <strong id="workflow-priority-text">Preparing complaint workspace…</strong>
+                            <span id="workflow-stage-detail">The workspace will highlight the next useful step after intake is loaded.</span>
+                        </div>
+                        <div class="priority-item">
+                            <strong>MCP + SDK contract</strong>
+                            <span>The browser UI is intentionally using the same complaint tools exposed through package imports, CLI commands, and the stdio MCP server.</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -330,9 +453,30 @@
                         <div class="muted" id="draft-status">No draft generated yet.</div>
                     </div>
                 </div>
+                <div class="list" id="queue-list">
+                    <div class="queue-item">
+                        <strong>Action queue loading…</strong>
+                        <span>The workspace will suggest the next best complaint-handling move once the session is loaded.</span>
+                    </div>
+                </div>
             </aside>
 
             <main class="panel">
+                <div class="stage-grid" aria-label="Complaint workflow summary">
+                    <div class="stage-card">
+                        <strong id="workflow-stage-chip">Loading stage…</strong>
+                        <span id="workflow-stage-summary">We are checking what information is already present and what still needs to be gathered.</span>
+                    </div>
+                    <div class="stage-card">
+                        <strong>Immediate next move</strong>
+                        <span id="workflow-next-action">Load the shared complaint session and identify the next unanswered question.</span>
+                    </div>
+                    <div class="stage-card">
+                        <strong>Draft readiness</strong>
+                        <span id="workflow-draft-guidance">A draft will become more reliable as each supported element has intake or evidence behind it.</span>
+                    </div>
+                </div>
+
                 <div class="tab-row" role="tablist" aria-label="Workspace stages">
                     <button class="tab-button is-active" data-tab-target="intake" type="button">Intake</button>
                     <button class="tab-button" data-tab-target="evidence" type="button">Evidence</button>
@@ -344,6 +488,10 @@
                 <section class="tab-panel is-active" data-tab-panel="intake">
                     <h2>Intake Questions</h2>
                     <p class="muted">Capture the facts once, then reuse them everywhere else in the workflow.</p>
+                    <div class="callout">
+                        <h3>Start with the story the complainant can tell clearly today</h3>
+                        <p class="muted">Use plain language. If dates or exact wording are uncertain, capture the best current version and come back with corroboration in the Evidence stage.</p>
+                    </div>
                     <div class="field-grid" id="intake-question-grid"></div>
                     <div class="button-row">
                         <button class="primary" id="save-intake-button" type="button">Save Intake Answers</button>
@@ -354,6 +502,10 @@
                 <section class="tab-panel" data-tab-panel="evidence">
                     <h2>Evidence Intake</h2>
                     <p class="muted">Collect both testimony and documents, and attach each item to a claim element so support gaps are obvious.</p>
+                    <div class="callout">
+                        <h3>What counts as helpful support</h3>
+                        <p class="muted">Prefer concrete sources: emails, messages, witness accounts, meeting notes, timeline records, HR filings, performance reviews, and anything that helps anchor protected activity, employer knowledge, causation, or damages.</p>
+                    </div>
                     <div class="field-grid">
                         <div class="field-row">
                             <div>
@@ -398,13 +550,19 @@
                 <section class="tab-panel" data-tab-panel="review">
                     <h2>Support Review</h2>
                     <p class="muted">See which claim elements are already supported and which ones still need more evidence before the complaint is finalized.</p>
+                    <div class="review-overview chip-row" id="review-overview"></div>
                     <div class="support-grid" id="support-grid"></div>
                     <div class="chip-row" id="recommended-actions"></div>
+                    <div class="list" id="review-gap-list"></div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="draft">
                     <h2>Draft and Edit</h2>
                     <p class="muted">Generate the complaint from the workspace state, then make final edits without leaving the same flow.</p>
+                    <div class="callout">
+                        <h3>Draft when the case theory is coherent</h3>
+                        <p class="muted">A usable draft needs a stable plaintiff identity, an opposing party, protected activity, adverse action, timing, and harm. If one of those pieces is weak, use Review and Evidence first.</p>
+                    </div>
                     <div class="field-grid">
                         <div class="field-row">
                             <div>
@@ -444,19 +602,20 @@ session = service.get_session("did:key:example")</pre>
                         <div class="tool-card">
                             <h3>Python CLI</h3>
                             <pre>complaint-workspace session --user-id did:key:example
+complaint-generator-workspace session --user-id did:key:example
 complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
-complaint-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"</pre>
+complaint-generator-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"</pre>
                         </div>
                         <div class="tool-card">
                             <h3>MCP stdio server</h3>
-                            <pre>complaint-mcp-server</pre>
+                            <pre>complaint-generator-mcp
+complaint-mcp-server</pre>
                         </div>
                         <div class="tool-card">
                             <h3>JavaScript MCP SDK</h3>
                             <pre>const client = new window.ComplaintMcpSdk.ComplaintMcpClient();
-await client.initialize();
-const did = await client.getOrCreateDid();
-await client.callTool('complaint.review_case', { user_id: did });</pre>
+const bootstrap = await client.bootstrapWorkspace();
+await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre>
                             <div class="chip-row" id="sdk-server-info"></div>
                         </div>
                         <div class="tool-card">
@@ -536,6 +695,10 @@ await client.callTool('complaint.review_case', { user_id: did });</pre>
             const review = reviewPayload.review || {};
             const supportGrid = document.getElementById('support-grid');
             const recommended = document.getElementById('recommended-actions');
+            const reviewOverview = document.getElementById('review-overview');
+            const reviewGapList = document.getElementById('review-gap-list');
+            const overview = review.overview || {};
+            const missingItems = (review.support_matrix || []).filter((item) => !item.supported);
             supportGrid.innerHTML = (review.support_matrix || []).map((item) => `
                 <div class="tool-card">
                     <h3>${escapeHtml(item.label)}</h3>
@@ -550,6 +713,20 @@ await client.callTool('complaint.review_case', { user_id: did });</pre>
             recommended.innerHTML = (review.recommended_actions || []).map((item) => `
                 <span class="chip">${escapeHtml(item.title)}: ${escapeHtml(item.detail)}</span>
             `).join('');
+            reviewOverview.innerHTML = `
+                <span class="chip good">supported: ${escapeHtml(String(overview.supported_elements || 0))}</span>
+                <span class="chip warn">missing: ${escapeHtml(String(overview.missing_elements || 0))}</span>
+                <span class="chip">testimony: ${escapeHtml(String(overview.testimony_items || 0))}</span>
+                <span class="chip">documents: ${escapeHtml(String(overview.document_items || 0))}</span>
+            `;
+            reviewGapList.innerHTML = missingItems.length
+                ? missingItems.map((item) => `
+                    <div class="item">
+                        <strong>${escapeHtml(item.label)} still needs support</strong>
+                        <div class="muted">Capture more testimony or documents tied to ${escapeHtml(item.label.toLowerCase())} before relying on the generated draft.</div>
+                    </div>
+                `).join('')
+                : '<div class="item"><strong>Core claim coverage is present.</strong><div class="muted">You can still strengthen the record, but the main elements now have some support.</div></div>';
         }
 
         function renderDraft(sessionPayload) {
@@ -565,12 +742,38 @@ await client.callTool('complaint.review_case', { user_id: did });</pre>
             const review = sessionPayload.review || {};
             const overview = review.overview || {};
             const draft = sessionPayload.draft || (sessionPayload.session || {}).draft || null;
+            const session = sessionPayload.session || {};
+            const answeredCount = (sessionPayload.questions || []).filter((question) => question && question.is_answered).length;
+            const stageLabel = draft ? 'Draft in progress' : (nextQuestion ? 'Collecting complaint facts' : 'Ready for document drafting');
+            const nextActionText = nextQuestion
+                ? `Ask and save: ${nextQuestion.label || nextQuestion.prompt}`
+                : (draft ? 'Review, refine, and export the complaint draft.' : 'Generate a complaint draft from the current record.');
+            const queue = document.getElementById('queue-list');
             document.getElementById('next-question-count').textContent = nextQuestion ? '1' : '0';
             document.getElementById('next-question-label').textContent = nextQuestion ? nextQuestion.prompt : 'Intake complete.';
             document.getElementById('supported-count').textContent = String(overview.supported_elements || 0);
             document.getElementById('missing-count-label').textContent = `${overview.missing_elements || 0} need more support`;
             document.getElementById('evidence-count').textContent = String((overview.testimony_items || 0) + (overview.document_items || 0));
             document.getElementById('draft-status').textContent = draft ? `Draft updated ${draft.updated_at || draft.generated_at || ''}` : 'No draft generated yet.';
+            document.getElementById('workflow-user-id').textContent = `Complainant ID: ${workspaceUserId || session.user_id || 'unknown'}`;
+            document.getElementById('workflow-priority-text').textContent = nextActionText;
+            document.getElementById('workflow-stage-detail').textContent = `Answered intake questions: ${answeredCount}. Supported elements: ${overview.supported_elements || 0}. Missing elements: ${overview.missing_elements || 0}.`;
+            document.getElementById('workflow-stage-chip').textContent = stageLabel;
+            document.getElementById('workflow-stage-summary').textContent = `${answeredCount} intake answers saved, ${(overview.testimony_items || 0) + (overview.document_items || 0)} evidence items collected, ${overview.supported_elements || 0} supported elements.`;
+            document.getElementById('workflow-next-action').textContent = nextActionText;
+            document.getElementById('workflow-draft-guidance').textContent = draft
+                ? 'A draft exists. Check support gaps and refine tone, relief, and factual precision before filing.'
+                : 'No complaint draft yet. Use Review to close missing support before generation if possible.';
+            queue.innerHTML = `
+                <div class="queue-item">
+                    <strong>${escapeHtml(stageLabel)}</strong>
+                    <span>${escapeHtml(nextActionText)}</span>
+                </div>
+                <div class="queue-item">
+                    <strong>Evidence posture</strong>
+                    <span>${escapeHtml(`${(overview.testimony_items || 0) + (overview.document_items || 0)} saved items across ${overview.supported_elements || 0} supported elements.`)}</span>
+                </div>
+            `;
         }
 
         function renderTools(tools) {
@@ -671,13 +874,17 @@ await client.callTool('complaint.review_case', { user_id: did });</pre>
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
 
-        Promise.all([client.getOrCreateDid(), client.initialize(), client.listTools()]).then(async (results) => {
-            workspaceUserId = workspaceUserId || results[0];
-            await refreshWorkspace();
-            const initializationPayload = results[1];
-            const tools = results[2];
-            renderTools(tools);
-            renderSdkServerInfo(initializationPayload, tools);
+        client.bootstrapWorkspace(workspaceUserId).then(async (bootstrap) => {
+            workspaceUserId = bootstrap.did;
+            workspaceSession = bootstrap.session;
+            renderIntake(bootstrap.session);
+            renderEvidence(bootstrap.session);
+            renderReview(bootstrap.session);
+            renderDraft(bootstrap.session);
+            renderSidebar(bootstrap.session);
+            renderTools(bootstrap.tools);
+            renderSdkServerInfo(bootstrap.initialization, bootstrap.tools);
+            setStatus(`Workspace synchronized for ${workspaceUserId}.`);
         }).catch((error) => {
             setStatus(`Workspace failed to load: ${error.message}`);
         });

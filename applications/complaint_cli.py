@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Optional
 
 import typer
 
 from .complaint_workspace import ComplaintWorkspaceService
+from .ui_review import run_ui_review_workflow
 
 
 app = typer.Typer(help="Unified complaint workspace CLI.")
@@ -19,6 +21,16 @@ def _print(payload) -> None:
 @app.command("session")
 def session(user_id: str = "demo-user") -> None:
     _print(service.get_session(user_id))
+
+
+@app.command("identity")
+def identity() -> None:
+    _print(service.call_mcp_tool("complaint.create_identity", {}))
+
+
+@app.command("tools")
+def tools() -> None:
+    _print(service.list_mcp_tools())
 
 
 @app.command("answer")
@@ -84,10 +96,48 @@ def reset(user_id: str = "demo-user") -> None:
     _print(service.reset_session(user_id))
 
 
+@app.command("review-ui")
+def review_ui(
+    screenshot_dir: str,
+    artifact_path: str = "artifacts/ui_review/latest.json",
+    iterations: int = 0,
+    notes: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: str = "config.llm_router.json",
+    backend_id: Optional[str] = None,
+    pytest_target: str = "tests/test_website_cohesion_playwright.py::test_user_interfaces_capture_screenshots_and_preserve_coherent_layout",
+) -> None:
+    if iterations > 0:
+        from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
+
+        _print(
+            run_iterative_ui_ux_workflow(
+                screenshot_dir=screenshot_dir,
+                output_dir=str(Path(artifact_path).expanduser().resolve().parent),
+                iterations=iterations,
+                provider=provider,
+                model=model,
+                pytest_target=pytest_target,
+            )
+        )
+        return
+    _print(
+        run_ui_review_workflow(
+            screenshot_dir,
+            notes=notes,
+            provider=provider,
+            model=model,
+            config_path=config_path,
+            backend_id=backend_id,
+            output_path=artifact_path,
+        )
+    )
+
+
 def main() -> None:
     app()
 
 
 if __name__ == "__main__":
     main()
-

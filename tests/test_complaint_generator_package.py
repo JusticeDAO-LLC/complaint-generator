@@ -45,5 +45,26 @@ def test_workspace_cli_is_packaged_through_top_level_module(tmp_path, monkeypatc
     assert '"user_id": "pkg-user"' in result.stdout
 
 
+def test_mcp_generate_complaint_returns_draft_for_new_session(tmp_path):
+    service = ComplaintWorkspaceService(tmp_path)
+
+    response = handle_jsonrpc_message(
+        service,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "complaint.generate_complaint",
+                "arguments": {"user_id": "pkg-user"},
+            },
+        },
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is False
+    assert response["result"]["structuredContent"]["draft"]["body"]
+
+
 def test_console_entrypoint_targets_run_main():
     assert complaint_generator_main is not None

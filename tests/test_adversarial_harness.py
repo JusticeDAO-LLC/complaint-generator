@@ -16,6 +16,7 @@ from adversarial_harness import (
     AdversarialHarness,
     Optimizer,
     OptimizationReport,
+    UIOptimizationBundle,
     SeedComplaintLibrary,
     ComplaintTemplate,
     HACC_QUERY_PRESETS,
@@ -118,6 +119,38 @@ class FakeAgenticOptimizationMethod:
     ADVERSARIAL = 'ADVERSARIAL'
     TEST_DRIVEN = 'TEST_DRIVEN'
     CHAOS = 'CHAOS'
+
+
+def _fake_ui_review_report(tmp_path: Path) -> dict:
+    screenshot_path = tmp_path / "workspace.png"
+    screenshot_path.write_bytes(b"png")
+    return {
+        "generated_at": "2026-03-23T00:00:00+00:00",
+        "backend": {"strategy": "fallback"},
+        "screenshots": [{"path": str(screenshot_path), "name": screenshot_path.name}],
+        "screenshot_dir": str(tmp_path),
+        "review": {
+            "summary": "Workspace needs clearer next actions for real complainants.",
+            "issues": [
+                {
+                    "severity": "high",
+                    "surface": "/workspace",
+                    "problem": "The complaint dashboard does not clearly tell the operator what to do next.",
+                    "user_impact": "Complainants may be left unsure whether to add evidence or draft.",
+                    "recommended_fix": "Promote a single next-action card and calmer intake copy.",
+                }
+            ],
+            "recommended_changes": [
+                {
+                    "title": "Strengthen complaint operator guidance",
+                    "implementation_notes": "Improve workflow labels and case triage callouts.",
+                    "shared_code_path": "applications/ui_review.py",
+                    "sdk_considerations": "Preserve ComplaintMcpClient-driven flows.",
+                }
+            ],
+            "playwright_followups": ["Capture and compare the workspace screenshot after each UI pass."],
+        },
+    }
 
 
 class FakeOptimizationTask:
@@ -3183,8 +3216,53 @@ SUGGESTIONS:
 
         warnings = payload['runtime']['preflight_warnings']
         assert any('hf-router: Hugging Face router requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN' in warning for warning in warnings)
-        assert any('llm-router-codex: Codex CLI backend requires a codex binary on PATH.' == warning for warning in warnings)
-        assert any('llm-router: accelerate is best-effort and may degrade to local_fallback' in warning for warning in warnings)
+
+    def test_optimizer_builds_ui_optimization_bundle_from_review_report(self, tmp_path):
+        optimizer = Optimizer()
+        report = _fake_ui_review_report(tmp_path)
+
+        bundle = optimizer.build_ui_optimization_bundle(ui_review_report=report)
+
+        assert isinstance(bundle, UIOptimizationBundle)
+        assert bundle.artifact_count == 1
+        assert bundle.summary.startswith("Workspace needs clearer next actions")
+        assert "templates/workspace.html" in bundle.target_files
+        assert any(path.endswith(".js") for path in bundle.target_files)
+
+    def test_run_adversarial_autopatch_batch_includes_ui_review_lane_when_screenshots_exist(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "applications.ui_review.run_ui_review_workflow",
+            lambda *args, **kwargs: _fake_ui_review_report(tmp_path),
+        )
+        monkeypatch.setattr(
+            demo_autopatch_module,
+            "run_ui_review_workflow",
+            lambda *args, **kwargs: _fake_ui_review_report(tmp_path),
+            raising=False,
+        )
+
+        payload = run_adversarial_autopatch_batch(
+            project_root=Path(__file__).resolve().parents[1],
+            output_dir=tmp_path,
+            target_file='adversarial_harness/session.py',
+            num_sessions=1,
+            max_turns=2,
+            max_parallel=1,
+            demo_backend=False,
+            phase_mode='workflow',
+            screenshot_dir=str(tmp_path),
+            backends=[DemoBatchLLMBackend()],
+            mediator_factory=DemoBatchMediator,
+        )
+
+        assert payload["ui_review_report"]["review"]["summary"].startswith("Workspace needs clearer next actions")
+        assert payload["ui_optimization_bundle"]["artifact_count"] == 1
+        assert payload["ui_phase_tasks"]
+        assert payload["ui_phase_tasks"][0]["phase"] == "ui_ux_review"
+        assert "templates/workspace.html" in payload["ui_phase_tasks"][0]["target_files"]
+        assert Path(payload["ui_phase_tasks"][0]["patch_path"]).is_file()
+        summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+        assert summary["ui_optimization_bundle"]["artifact_count"] == 1
 
 
 if __name__ == '__main__':

@@ -1,7 +1,126 @@
 {
   "claim_type": "retaliation",
   "created_at": "2026-03-23T01:47:12.423985+00:00",
-  "draft": null,
+  "draft": {
+    "body": "Jane Doe brings this retaliation complaint against Acme Corporation.\n\nJane Doe alleges that they Reported discrimination to HR.\n\nAfter that protected activity, Jane Doe experienced Termination two days later.\n\nThe timeline shows that Report on March 8, termination on March 10.\n\nAs a result, Jane Doe suffered Lost wages and emotional distress.\n\nRequested relief includes: Compensatory damages; Back pay; Injunctive relief.",
+    "generated_at": "2026-03-23T02:16:11.350213+00:00",
+    "requested_relief": [
+      "Compensatory damages",
+      "Back pay",
+      "Injunctive relief"
+    ],
+    "review_snapshot": {
+      "claim_type": "retaliation",
+      "documents": [],
+      "overview": {
+        "document_items": 0,
+        "missing_elements": 0,
+        "supported_elements": 5,
+        "testimony_items": 4
+      },
+      "recommended_actions": [
+        {
+          "detail": "All core elements have at least one support source.",
+          "title": "Collect more corroboration"
+        },
+        {
+          "detail": "Close timing between protected activity and adverse action strengthens causation.",
+          "title": "Check the timeline"
+        }
+      ],
+      "support_matrix": [
+        {
+          "document_count": 0,
+          "id": "protected_activity",
+          "intake_supported": true,
+          "label": "Protected activity",
+          "status": "supported",
+          "support_count": 5,
+          "supported": true,
+          "testimony_count": 4
+        },
+        {
+          "document_count": 0,
+          "id": "employer_knowledge",
+          "intake_supported": true,
+          "label": "Employer knowledge",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "adverse_action",
+          "intake_supported": true,
+          "label": "Adverse action",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "causation",
+          "intake_supported": true,
+          "label": "Causal link",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "harm",
+          "intake_supported": true,
+          "label": "Damages",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        }
+      ],
+      "testimony": [
+        {
+          "claim_element_id": "protected_activity",
+          "content": "Email confirming the protected report and management response.",
+          "id": "testimony-1",
+          "kind": "testimony",
+          "saved_at": "2026-03-23T01:50:02.697398+00:00",
+          "source": "",
+          "title": "HR complaint email"
+        },
+        {
+          "claim_element_id": "protected_activity",
+          "content": "Email confirming the protected report and management response.",
+          "id": "testimony-2",
+          "kind": "testimony",
+          "saved_at": "2026-03-23T02:02:17.157455+00:00",
+          "source": "",
+          "title": "HR complaint email"
+        },
+        {
+          "claim_element_id": "protected_activity",
+          "content": "Email confirming the protected report and management response.",
+          "id": "testimony-3",
+          "kind": "testimony",
+          "saved_at": "2026-03-23T02:14:19.094870+00:00",
+          "source": "",
+          "title": "HR complaint email"
+        },
+        {
+          "claim_element_id": "protected_activity",
+          "content": "Email confirming the protected report and management response.",
+          "id": "testimony-4",
+          "kind": "testimony",
+          "saved_at": "2026-03-23T02:16:11.190999+00:00",
+          "source": "",
+          "title": "HR complaint email"
+        }
+      ]
+    },
+    "title": "Jane Doe v. Acme Corporation Retaliation Complaint"
+  },
   "evidence": {
     "documents": [],
     "testimony": [
@@ -11,6 +130,33 @@
         "id": "testimony-1",
         "kind": "testimony",
         "saved_at": "2026-03-23T01:50:02.697398+00:00",
+        "source": "",
+        "title": "HR complaint email"
+      },
+      {
+        "claim_element_id": "protected_activity",
+        "content": "Email confirming the protected report and management response.",
+        "id": "testimony-2",
+        "kind": "testimony",
+        "saved_at": "2026-03-23T02:02:17.157455+00:00",
+        "source": "",
+        "title": "HR complaint email"
+      },
+      {
+        "claim_element_id": "protected_activity",
+        "content": "Email confirming the protected report and management response.",
+        "id": "testimony-3",
+        "kind": "testimony",
+        "saved_at": "2026-03-23T02:14:19.094870+00:00",
+        "source": "",
+        "title": "HR complaint email"
+      },
+      {
+        "claim_element_id": "protected_activity",
+        "content": "Email confirming the protected report and management response.",
+        "id": "testimony-4",
+        "kind": "testimony",
+        "saved_at": "2026-03-23T02:16:11.190999+00:00",
         "source": "",
         "title": "HR complaint email"
       }
@@ -84,8 +230,98 @@
       "answer": "Lost wages and emotional distress",
       "captured_at": "2026-03-23T01:50:02.478070+00:00",
       "question_id": "harm"
+    },
+    {
+      "answer": "Jane Doe",
+      "captured_at": "2026-03-23T02:02:16.868228+00:00",
+      "question_id": "party_name"
+    },
+    {
+      "answer": "Acme Corporation",
+      "captured_at": "2026-03-23T02:02:16.868237+00:00",
+      "question_id": "opposing_party"
+    },
+    {
+      "answer": "Reported discrimination to HR",
+      "captured_at": "2026-03-23T02:02:16.868239+00:00",
+      "question_id": "protected_activity"
+    },
+    {
+      "answer": "Termination two days later",
+      "captured_at": "2026-03-23T02:02:16.868241+00:00",
+      "question_id": "adverse_action"
+    },
+    {
+      "answer": "Report on March 8, termination on March 10",
+      "captured_at": "2026-03-23T02:02:16.868242+00:00",
+      "question_id": "timeline"
+    },
+    {
+      "answer": "Lost wages and emotional distress",
+      "captured_at": "2026-03-23T02:02:16.868244+00:00",
+      "question_id": "harm"
+    },
+    {
+      "answer": "Jane Doe",
+      "captured_at": "2026-03-23T02:14:18.795285+00:00",
+      "question_id": "party_name"
+    },
+    {
+      "answer": "Acme Corporation",
+      "captured_at": "2026-03-23T02:14:18.795293+00:00",
+      "question_id": "opposing_party"
+    },
+    {
+      "answer": "Reported discrimination to HR",
+      "captured_at": "2026-03-23T02:14:18.795295+00:00",
+      "question_id": "protected_activity"
+    },
+    {
+      "answer": "Termination two days later",
+      "captured_at": "2026-03-23T02:14:18.795296+00:00",
+      "question_id": "adverse_action"
+    },
+    {
+      "answer": "Report on March 8, termination on March 10",
+      "captured_at": "2026-03-23T02:14:18.795298+00:00",
+      "question_id": "timeline"
+    },
+    {
+      "answer": "Lost wages and emotional distress",
+      "captured_at": "2026-03-23T02:14:18.795299+00:00",
+      "question_id": "harm"
+    },
+    {
+      "answer": "Jane Doe",
+      "captured_at": "2026-03-23T02:16:10.884504+00:00",
+      "question_id": "party_name"
+    },
+    {
+      "answer": "Acme Corporation",
+      "captured_at": "2026-03-23T02:16:10.884517+00:00",
+      "question_id": "opposing_party"
+    },
+    {
+      "answer": "Reported discrimination to HR",
+      "captured_at": "2026-03-23T02:16:10.884520+00:00",
+      "question_id": "protected_activity"
+    },
+    {
+      "answer": "Termination two days later",
+      "captured_at": "2026-03-23T02:16:10.884523+00:00",
+      "question_id": "adverse_action"
+    },
+    {
+      "answer": "Report on March 8, termination on March 10",
+      "captured_at": "2026-03-23T02:16:10.884525+00:00",
+      "question_id": "timeline"
+    },
+    {
+      "answer": "Lost wages and emotional distress",
+      "captured_at": "2026-03-23T02:16:10.884528+00:00",
+      "question_id": "harm"
     }
   ],
-  "updated_at": "2026-03-23T01:50:02.697412+00:00",
+  "updated_at": "2026-03-23T02:16:11.350272+00:00",
   "user_id": "site-sdk-user"
 }

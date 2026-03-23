@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "main": "./index.js",
+  "module": "./index.mjs",
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "require": "./index.js",
+      "import": "./index.mjs"
+    }
   }
 }

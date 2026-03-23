@@ -5,6 +5,7 @@ class ComplaintMcpClient {
         this.origin = options.origin || (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost');
         this.fetchImpl = options.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
         this._requestId = 1;
+        this.didStorageKey = options.didStorageKey || 'complaintGenerator.did';
     }
 
     initialize() {
@@ -79,6 +80,54 @@ class ComplaintMcpClient {
         });
     }
 
+    createIdentity() {
+        return this._request(`${this.baseUrl}/identity`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    }
+
+    getCachedDid() {
+        if (typeof localStorage === 'undefined') {
+            return null;
+        }
+        return localStorage.getItem(this.didStorageKey);
+    }
+
+    cacheDid(did) {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(this.didStorageKey, did);
+        }
+        return did;
+    }
+
+    async getOrCreateDid() {
+        const cachedDid = this.getCachedDid();
+        if (cachedDid) {
+            return cachedDid;
+        }
+        const identity = await this.createIdentity();
+        if (!identity || !identity.did) {
+            throw new Error('Identity endpoint did not return a DID.');
+        }
+        return this.cacheDid(identity.did);
+    }
+
+    async bootstrapWorkspace(userId) {
+        const did = userId || await this.getOrCreateDid();
+        const [initialization, tools, session] = await Promise.all([
+            this.initialize(),
+            this.listTools(),
+            this.startSession(did),
+        ]);
+        return {
+            did,
+            initialization,
+            tools,
+            session,
+        };
+    }
+
     getSession(userId) {
         const url = new URL(`${this.baseUrl}/session`, this.origin);
         if (userId) {
@@ -122,6 +171,10 @@ class ComplaintMcpClient {
         return this.callTool('complaint.reset_session', {
             user_id: userId,
         });
+    }
+
+    reviewUiArtifacts(payload) {
+        return this.callTool('complaint.review_ui', payload || {});
     }
 }
 

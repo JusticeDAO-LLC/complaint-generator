@@ -27,6 +27,7 @@ applications/review_api.py
 applications/review_ui.py
 applications/server.py
 applications/site_ui.py
+applications/ui_review.py
 backends/__init__.py
 backends/huggingface.py
 backends/llm_router_backend.py
@@ -60,6 +61,7 @@ complaint_generator/entrypoints.py
 complaint_generator/mcp.py
 complaint_generator/mcp_server.py
 complaint_generator/review.py
+complaint_generator/ui_ux_workflow.py
 complaint_generator/workspace.py
 complaint_generator.egg-info/PKG-INFO
 complaint_generator.egg-info/SOURCES.txt
@@ -298,6 +300,8 @@ tests/test_sweep_ranker.py
 tests/test_synonym_handling_resolution.py
 tests/test_synthesize_hacc_complaint.py
 tests/test_temporal_reasoning_extraction.py
+tests/test_ui_ux_optimizer_bundle.py
+tests/test_ui_ux_workflow.py
 tests/test_validate_intake_follow_up_worksheet.py
 tests/test_validation_cache_types.py
 tests/test_vector_phase2_integration.py

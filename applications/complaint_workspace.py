@@ -222,13 +222,14 @@ class ComplaintWorkspaceService:
 
     def _build_draft(self, state: Dict[str, Any], requested_relief: Optional[List[str]] = None) -> Dict[str, Any]:
         answers = state.get("intake_answers") or {}
+        existing_draft = state.get("draft") or {}
         plaintiff = answers.get("party_name") or "Plaintiff"
         defendant = answers.get("opposing_party") or "Defendant"
         protected_activity = answers.get("protected_activity") or "engaged in protected activity"
         adverse_action = answers.get("adverse_action") or "suffered adverse action"
         timeline = answers.get("timeline") or "the events occurred close in time"
         harm = answers.get("harm") or "suffered compensable harm"
-        relief = requested_relief or state.get("draft", {}).get("requested_relief") or [
+        relief = requested_relief or existing_draft.get("requested_relief") or [
             "Compensatory damages",
             "Back pay",
             "Injunctive relief",
@@ -357,6 +358,7 @@ class ComplaintWorkspaceService:
     def list_mcp_tools(self) -> Dict[str, Any]:
         return {
             "tools": [
+                {"name": "complaint.create_identity", "description": "Create a decentralized identity for browser or CLI use."},
                 {"name": "complaint.start_session", "description": "Load or initialize a complaint workspace session."},
                 {"name": "complaint.submit_intake", "description": "Save complaint intake answers."},
                 {"name": "complaint.save_evidence", "description": "Save testimony or document evidence to the workspace."},
@@ -364,11 +366,14 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
+                {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts and produce an llm_router-backed UI critique."},
             ]
         }
 
     def call_mcp_tool(self, tool_name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         args = arguments or {}
+        if tool_name == "complaint.create_identity":
+            return generate_decentralized_id()
         if tool_name == "complaint.start_session":
             return self.get_session(args.get("user_id"))
         if tool_name == "complaint.submit_intake":
@@ -410,4 +415,32 @@ class ComplaintWorkspaceService:
             )
         if tool_name == "complaint.reset_session":
             return self.reset_session(args.get("user_id"))
+        if tool_name == "complaint.review_ui":
+            from .ui_review import create_ui_review_report, run_ui_review_workflow
+
+            screenshot_paths = args.get("screenshot_paths")
+            screenshot_dir = args.get("screenshot_dir")
+            if isinstance(screenshot_paths, list):
+                return create_ui_review_report(
+                    [str(item) for item in screenshot_paths],
+                    notes=args.get("notes"),
+                    goals=args.get("goals"),
+                    provider=args.get("provider"),
+                    model=args.get("model"),
+                    config_path=args.get("config_path"),
+                    backend_id=args.get("backend_id"),
+                    output_path=args.get("output_path"),
+                )
+            if screenshot_dir:
+                return run_ui_review_workflow(
+                    str(screenshot_dir),
+                    notes=args.get("notes"),
+                    goals=args.get("goals"),
+                    provider=args.get("provider"),
+                    model=args.get("model"),
+                    config_path=args.get("config_path"),
+                    backend_id=args.get("backend_id"),
+                    output_path=args.get("output_path"),
+                )
+            raise ValueError("complaint.review_ui requires screenshot_paths or screenshot_dir.")
         raise ValueError(f"Unknown complaint MCP tool: {tool_name}")

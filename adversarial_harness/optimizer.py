@@ -6,6 +6,7 @@ Optimizer Module
 Analyzes critic feedback and provides optimization recommendations.
 """
 
+import json
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -183,6 +184,62 @@ class WorkflowOptimizationBundle:
         }
 
 
+@dataclass
+class UIUXOptimizationBundle:
+    """Serializable bundle for screenshot-driven UI/UX optimization work."""
+
+    timestamp: str
+    screenshot_dir: str
+    output_dir: str
+    iterations: int
+    pytest_target: str
+    target_files: List[str]
+    review_runs: List[Dict[str, Any]]
+    latest_review_markdown_path: Optional[str] = None
+    latest_review_json_path: Optional[str] = None
+    task: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp": self.timestamp,
+            "screenshot_dir": self.screenshot_dir,
+            "output_dir": self.output_dir,
+            "iterations": self.iterations,
+            "pytest_target": self.pytest_target,
+            "target_files": list(self.target_files or []),
+            "review_runs": list(self.review_runs or []),
+            "latest_review_markdown_path": self.latest_review_markdown_path,
+            "latest_review_json_path": self.latest_review_json_path,
+            "task": dict(self.task or {}),
+        }
+
+
+@dataclass
+class UIOptimizationBundle:
+    """Serializable optimization bundle for screenshot-driven UI/UX review."""
+
+    timestamp: str
+    screenshot_dir: str
+    artifact_count: int
+    summary: str
+    issues: List[Dict[str, Any]]
+    recommended_changes: List[Dict[str, Any]]
+    playwright_followups: List[str]
+    target_files: List[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp": self.timestamp,
+            "screenshot_dir": self.screenshot_dir,
+            "artifact_count": self.artifact_count,
+            "summary": self.summary,
+            "issues": list(self.issues or []),
+            "recommended_changes": list(self.recommended_changes or []),
+            "playwright_followups": list(self.playwright_followups or []),
+            "target_files": list(self.target_files or []),
+        }
+
+
 class Optimizer:
     """
     Analyzes critic feedback to provide optimization recommendations.
@@ -199,6 +256,32 @@ class Optimizer:
         self.history = []
         self._last_agentic_generation_diagnostics: List[Dict[str, Any]] = []
         self._last_agentic_optimizer: Any = None
+
+    @staticmethod
+    def _default_ui_ux_target_files() -> List[Path]:
+        return [
+            Path("templates/workspace.html"),
+            Path("static/complaint_mcp_sdk.js"),
+            Path("static/complaint_mcp_sdk.mjs"),
+            Path("static/complaint_app_shell.js"),
+            Path("static/complaint_app_shell.css"),
+            Path("applications/complaint_workspace.py"),
+            Path("applications/complaint_workspace_api.py"),
+            Path("applications/complaint_cli.py"),
+            Path("applications/complaint_mcp_protocol.py"),
+            Path("playwright/tests/navigation.spec.js"),
+            Path("playwright/tests/complaint-flow.spec.js"),
+        ]
+
+    @staticmethod
+    def _read_ui_ux_review_json(path: Path) -> Dict[str, Any]:
+        import json
+
+        try:
+            payload = json.loads(path.read_text())
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
 
     @staticmethod
     def _load_agentic_optimizer_components() -> Dict[str, Any]:
@@ -424,6 +507,52 @@ class Optimizer:
             seen.add(lowered)
             deduped.append(text)
         return deduped
+
+    @staticmethod
+    def _ui_target_files_from_review(review_report: Dict[str, Any] | None) -> List[Path]:
+        report = review_report if isinstance(review_report, dict) else {}
+        review = dict(report.get("review") or {})
+        recommended_changes = list(review.get("recommended_changes") or [])
+        issues = list(review.get("issues") or [])
+
+        targets: List[Path] = []
+
+        def add(path: str) -> None:
+            candidate = Path(path)
+            if candidate not in targets:
+                targets.append(candidate)
+
+        add("templates/workspace.html")
+        add("static/complaint_mcp_sdk.js")
+        add("static/complaint_mcp_sdk.mjs")
+        add("static/complaint_app_shell.js")
+        add("static/complaint_app_shell.css")
+        add("applications/complaint_workspace.py")
+        add("applications/complaint_workspace_api.py")
+        add("applications/complaint_cli.py")
+        add("applications/complaint_mcp_protocol.py")
+        add("playwright/tests/navigation.spec.js")
+        add("playwright/tests/complaint-flow.spec.js")
+
+        shared_paths = {
+            str(item.get("shared_code_path") or "").strip()
+            for item in recommended_changes
+            if isinstance(item, dict)
+        }
+        if "applications/ui_review.py" in shared_paths:
+            add("applications/ui_review.py")
+        if any("sdk" in json.dumps(item).lower() for item in recommended_changes if isinstance(item, dict)):
+            add("templates/workspace.html")
+            add("static/complaint_mcp_sdk.js")
+            add("static/complaint_mcp_sdk.mjs")
+        if any("playwright" in str(item).lower() for item in list(review.get("playwright_followups") or [])):
+            add("playwright/tests/navigation.spec.js")
+            add("playwright/tests/complaint-flow.spec.js")
+        if any("complaint_app_shell" in json.dumps(item).lower() for item in issues if isinstance(item, dict)):
+            add("static/complaint_app_shell.js")
+            add("static/complaint_app_shell.css")
+
+        return targets
 
     @staticmethod
     def _phase_status(severity: int) -> str:
@@ -2497,6 +2626,226 @@ class Optimizer:
         )
         return task, report
 
+    def build_ui_ux_optimization_task(
+        self,
+        *,
+        screenshot_dir: str | Path,
+        output_dir: str | Path,
+        pytest_target: str,
+        iterations: int,
+        method: str = "actor_critic",
+        priority: int = 80,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        components: Optional[Dict[str, Any]] = None,
+        review_runs: Optional[List[Dict[str, Any]]] = None,
+        target_files: Optional[List[str | Path]] = None,
+    ) -> Any:
+        components = components or self._resolve_agentic_optimizer_components()
+        task_cls = components["OptimizationTask"]
+        method_enum = components["OptimizationMethod"]
+
+        normalized_method = str(method or "actor_critic").strip().lower().replace("-", "_")
+        if normalized_method not in {"actor_critic", "adversarial", "test_driven", "chaos"}:
+            raise ValueError(f"Unsupported agentic optimization method: {method}")
+
+        screenshot_root = Path(screenshot_dir)
+        output_root = Path(output_dir)
+        resolved_target_files = [
+            Path(path) for path in (target_files or self._default_ui_ux_target_files())
+        ]
+        latest_run = dict((review_runs or [])[-1] or {}) if review_runs else {}
+        latest_markdown_path = str(latest_run.get("review_markdown_path") or "")
+        latest_json_path = str(latest_run.get("review_json_path") or "")
+        latest_review_payload = self._read_ui_ux_review_json(Path(latest_json_path)) if latest_json_path else {}
+        latest_review_excerpt = str(
+            latest_review_payload.get("review")
+            or latest_review_payload.get("summary")
+            or "No llm_router review summary was captured."
+        ).strip()
+        latest_review_excerpt = latest_review_excerpt[:1200]
+
+        description = (
+            "Use the "
+            f"{normalized_method} optimizer to improve the complaint-generator MCP dashboard and shared complaint workflow UI/UX. "
+            f"The optimization source is a screenshot-driven Playwright audit stored under {screenshot_root}. "
+            "Preserve the shared JavaScript MCP SDK path, DID-backed session continuity, and the alignment between package exports, CLI tools, MCP tools, and browser flows. "
+            f"Latest UI review excerpt: {latest_review_excerpt}. "
+            "Apply changes only within the resolved shared dashboard targets."
+        )
+
+        return task_cls(
+            task_id=f"complaint_ui_ux_autopatch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}",
+            description=description,
+            target_files=resolved_target_files,
+            method=getattr(method_enum, normalized_method.upper()),
+            priority=int(priority),
+            constraints={
+                "preserve_sdk_contract": True,
+                "preserve_did_persistence": True,
+                "require_playwright_validation": True,
+                "screenshot_dir": str(screenshot_root),
+                "review_output_dir": str(output_root),
+                "pytest_target": str(pytest_target),
+                **dict(constraints or {}),
+            },
+            metadata={
+                "source": "adversarial_harness.ui_ux",
+                "workflow_type": "ui_ux_autopatch",
+                "screenshot_dir": str(screenshot_root),
+                "output_dir": str(output_root),
+                "iterations": int(iterations),
+                "pytest_target": str(pytest_target),
+                "latest_review_markdown_path": latest_markdown_path,
+                "latest_review_json_path": latest_json_path,
+                "target_contracts": [
+                    "complaint_generator package exports",
+                    "complaint-workspace CLI",
+                    "complaint-mcp-server tools",
+                    "window.ComplaintMcpSdk browser SDK",
+                ],
+                **dict(metadata or {}),
+            },
+        )
+
+    def build_ui_ux_optimization_bundle(
+        self,
+        *,
+        screenshot_dir: str | Path,
+        output_dir: str | Path,
+        pytest_target: str,
+        iterations: int = 1,
+        method: str = "actor_critic",
+        priority: int = 80,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        components: Optional[Dict[str, Any]] = None,
+        workflow_result: Optional[Dict[str, Any]] = None,
+    ) -> UIUXOptimizationBundle:
+        if workflow_result is None:
+            from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
+
+            workflow_result = run_iterative_ui_ux_workflow(
+                screenshot_dir=screenshot_dir,
+                output_dir=output_dir,
+                iterations=iterations,
+                pytest_target=pytest_target,
+            )
+
+        review_runs = list(workflow_result.get("runs") or [])
+        task = self.build_ui_ux_optimization_task(
+            screenshot_dir=screenshot_dir,
+            output_dir=output_dir,
+            pytest_target=pytest_target,
+            iterations=iterations,
+            method=method,
+            priority=priority,
+            constraints=constraints,
+            metadata=metadata,
+            components=components,
+            review_runs=review_runs,
+            target_files=self._default_ui_ux_target_files(),
+        )
+
+        return UIUXOptimizationBundle(
+            timestamp=datetime.now(UTC).isoformat(),
+            screenshot_dir=str(screenshot_dir),
+            output_dir=str(output_dir),
+            iterations=int(workflow_result.get("iterations") or iterations),
+            pytest_target=str(pytest_target),
+            target_files=[str(path) for path in self._default_ui_ux_target_files()],
+            review_runs=review_runs,
+            latest_review_markdown_path=str((review_runs[-1] or {}).get("review_markdown_path") or "") or None,
+            latest_review_json_path=str((review_runs[-1] or {}).get("review_json_path") or "") or None,
+            task={
+                "task_id": str(getattr(task, "task_id", "")),
+                "description": str(getattr(task, "description", "")),
+                "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+                "method": str(getattr(task, "method", "")),
+                "priority": int(getattr(task, "priority", priority) or priority),
+                "constraints": dict(getattr(task, "constraints", {}) or {}),
+                "metadata": dict(getattr(task, "metadata", {}) or {}),
+            },
+        )
+
+    def run_agentic_ui_ux_autopatch(
+        self,
+        *,
+        screenshot_dir: str | Path,
+        output_dir: str | Path,
+        pytest_target: str,
+        iterations: int = 1,
+        method: str = "actor_critic",
+        priority: int = 80,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        llm_router: Any = None,
+        optimizer: Any = None,
+        agent_id: str = "complaint-ui-ux-optimizer",
+        components: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        components = components or self._resolve_agentic_optimizer_components()
+        bundle = self.build_ui_ux_optimization_bundle(
+            screenshot_dir=screenshot_dir,
+            output_dir=output_dir,
+            pytest_target=pytest_target,
+            iterations=iterations,
+            method=method,
+            priority=priority,
+            constraints=constraints,
+            metadata=metadata,
+            components=components,
+        )
+        review_runs = list(bundle.review_runs or [])
+        task = self.build_ui_ux_optimization_task(
+            screenshot_dir=screenshot_dir,
+            output_dir=output_dir,
+            pytest_target=pytest_target,
+            iterations=iterations,
+            method=method,
+            priority=priority,
+            constraints=constraints,
+            metadata=metadata,
+            components=components,
+            review_runs=review_runs,
+            target_files=list(bundle.target_files or []),
+        )
+
+        router_cls = components["OptimizerLLMRouter"]
+        optimizer_classes = components["optimizer_classes"]
+        normalized_method = str(method or "actor_critic").strip().lower().replace("-", "_")
+        resolved_router = llm_router
+        if resolved_router is None and router_cls is not None:
+            resolved_router = router_cls(enable_tracking=False, enable_caching=True)
+
+        resolved_optimizer = optimizer
+        if resolved_optimizer is None:
+            if normalized_method not in optimizer_classes:
+                raise ValueError(f"Unsupported agentic optimization method: {method}")
+            resolved_optimizer = optimizer_classes[normalized_method](
+                agent_id=agent_id,
+                llm_router=resolved_router,
+            )
+
+        self._last_agentic_optimizer = resolved_optimizer
+        self._last_agentic_generation_diagnostics = []
+        result = resolved_optimizer.optimize(task)
+        diagnostics = getattr(resolved_optimizer, "_last_generation_diagnostics", None)
+        if isinstance(diagnostics, list):
+            self._last_agentic_generation_diagnostics = list(diagnostics)
+        return {
+            "bundle": bundle.to_dict(),
+            "task": {
+                "task_id": str(getattr(task, "task_id", "")),
+                "description": str(getattr(task, "description", "")),
+                "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+                "constraints": dict(getattr(task, "constraints", {}) or {}),
+                "metadata": dict(getattr(task, "metadata", {}) or {}),
+            },
+            "optimizer_result": result,
+            "generation_diagnostics": list(self._last_agentic_generation_diagnostics or []),
+        }
+
     def build_phase_patch_tasks(
         self,
         results: List[Any],
@@ -2905,6 +3254,83 @@ class Optimizer:
             workflow_action_queue=list(report.workflow_action_queue or []),
         )
         return bundle, report
+
+    def build_ui_optimization_bundle(
+        self,
+        *,
+        ui_review_report: Dict[str, Any],
+    ) -> UIOptimizationBundle:
+        report = dict(ui_review_report or {})
+        review = dict(report.get("review") or {})
+        target_files = [str(path) for path in self._ui_target_files_from_review(report)]
+        return UIOptimizationBundle(
+            timestamp=datetime.now(UTC).isoformat(),
+            screenshot_dir=str(report.get("screenshot_dir") or ""),
+            artifact_count=int(len(list(report.get("screenshots") or []))),
+            summary=str(review.get("summary") or ""),
+            issues=[dict(item) for item in list(review.get("issues") or []) if isinstance(item, dict)],
+            recommended_changes=[
+                dict(item) for item in list(review.get("recommended_changes") or []) if isinstance(item, dict)
+            ],
+            playwright_followups=[str(item) for item in list(review.get("playwright_followups") or []) if str(item)],
+            target_files=target_files,
+        )
+
+    def build_ui_patch_tasks(
+        self,
+        *,
+        ui_review_report: Dict[str, Any],
+        method: str = "test_driven",
+        priority: int = 72,
+        constraints: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        components: Optional[Dict[str, Any]] = None,
+    ) -> List[Any]:
+        components = components or self._resolve_agentic_optimizer_components()
+        task_cls = components["OptimizationTask"]
+        method_enum = components["OptimizationMethod"]
+        normalized_method = str(method or "test_driven").strip().lower().replace("-", "_")
+        if normalized_method not in {"actor_critic", "adversarial", "test_driven", "chaos"}:
+            raise ValueError(f"Unsupported agentic optimization method: {method}")
+
+        bundle = self.build_ui_optimization_bundle(ui_review_report=ui_review_report)
+        if not bundle.recommended_changes and not bundle.issues:
+            return []
+
+        summary = bundle.summary or "Improve the complaint dashboard UI and complaint-handling flow."
+        recommendations = [
+            str(item.get("title") or item.get("recommended_fix") or "").strip()
+            for item in bundle.recommended_changes + bundle.issues
+            if isinstance(item, dict)
+        ]
+        recommendations = [item for item in recommendations if item]
+        task = task_cls(
+            task_id=f"ui_ux_autopatch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}",
+            description=(
+                "Use the screenshot-driven UI optimization lane to improve the complaint MCP workspace, "
+                "preserve JavaScript MCP SDK usage, and keep the package/CLI/MCP contract coherent. "
+                f"Current review summary: {summary}"
+            ),
+            target_files=[Path(path) for path in bundle.target_files],
+            method=getattr(method_enum, normalized_method.upper()),
+            priority=int(priority),
+            constraints=dict(constraints or {}),
+            metadata={
+                "source": "adversarial_harness_ui_review",
+                "workflow_phase": "ui_ux_review",
+                "workflow_phase_status": "warning" if bundle.issues else "ready",
+                "workflow_phase_priority": 1,
+                "report_summary": {
+                    "summary": bundle.summary,
+                    "recommendations": recommendations[:5],
+                    "playwright_followups": list(bundle.playwright_followups or []),
+                    "recommended_target_files": list(bundle.target_files or []),
+                },
+                "ui_review_report": dict(ui_review_report or {}),
+                **dict(metadata or {}),
+            },
+        )
+        return [task]
 
     def run_agentic_autopatch(
         self,

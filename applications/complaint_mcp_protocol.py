@@ -9,6 +9,10 @@ from .complaint_workspace import ComplaintWorkspaceService
 JSONRPC_VERSION = "2.0"
 
 _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
+    "complaint.create_identity": {
+        "type": "object",
+        "properties": {},
+    },
     "complaint.start_session": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
@@ -63,6 +67,26 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "complaint.reset_session": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.review_ui": {
+        "type": "object",
+        "properties": {
+            "screenshot_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "screenshot_dir": {"type": "string"},
+            "notes": {"type": "string"},
+            "goals": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "provider": {"type": "string"},
+            "model": {"type": "string"},
+            "config_path": {"type": "string"},
+            "backend_id": {"type": "string"},
+            "output_path": {"type": "string"},
+        },
     },
 }
 

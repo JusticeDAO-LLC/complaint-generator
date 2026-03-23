@@ -14,8 +14,11 @@ except ModuleNotFoundError:
 
 from complaint_generator import (
     ComplaintWorkspaceService,
+    create_ui_review_report,
     create_review_surface_app,
+    generate_decentralized_id,
     handle_jsonrpc_message,
+    run_iterative_ui_ux_workflow,
     tool_list_payload,
 )
 from complaint_generator import cli as cli_module
@@ -62,7 +65,11 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     )
     assert session_payload["session"]["user_id"] == "package-user"
     assert any(tool["name"] == "complaint.generate_complaint" for tool in tool_payload["tools"])
+    assert any(tool["name"] == "complaint.review_ui" for tool in tool_payload["tools"])
     assert initialize_payload["result"]["serverInfo"]["name"] == "complaint-workspace-mcp"
+    assert callable(generate_decentralized_id)
+    assert callable(create_ui_review_report)
+    assert callable(run_iterative_ui_ux_workflow)
     if HAS_MULTIPART:
         app = create_review_surface_app(mediator=object())
         assert any(

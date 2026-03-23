@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import tempfile
 import threading
@@ -431,12 +432,35 @@ def _create_account_from_root_iframe(page) -> None:
     home_frame.locator("#create-form button").click()
 
 
+def _artifact_dir(target_dir: Path) -> Path:
+    configured = os.environ.get("COMPLAINT_UI_SCREENSHOT_DIR", "").strip()
+    if configured:
+        return Path(configured)
+    return target_dir
+
+
 def _capture_screenshot(page, target_dir: Path, name: str) -> Path:
+    target_dir = _artifact_dir(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     screenshot_path = target_dir / f"{name}.png"
     page.screenshot(path=str(screenshot_path), full_page=True)
     assert screenshot_path.exists()
     assert screenshot_path.stat().st_size > 0
+    metadata_path = target_dir / f"{name}.json"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "name": name,
+                "url": page.url,
+                "title": page.title(),
+                "viewport": dict(page.viewport_size or LAYOUT_AUDIT_VIEWPORT),
+                "text_excerpt": page.locator("body").inner_text()[:4000],
+                "screenshot_path": str(screenshot_path),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return screenshot_path
 
 

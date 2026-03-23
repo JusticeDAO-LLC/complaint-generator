@@ -43,6 +43,7 @@ def test_packaging_metadata_includes_playwright_and_console_entry_points():
         "complaint-generator-workspace",
         "complaint-mcp-server",
         "complaint-generator-mcp",
+        "complaint-ui-ux-workflow",
     ):
         assert script_name in pyproject_text
         assert script_name in setup_text

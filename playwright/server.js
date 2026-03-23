@@ -472,6 +472,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/complaint-workspace/mcp/tools') {
     return sendJson(response, {
       tools: [
+        { name: 'complaint.create_identity', description: 'Create a decentralized identity for browser or CLI use.', inputSchema: { type: 'object' } },
         { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.submit_intake', description: 'Save complaint intake answers.', inputSchema: { type: 'object' } },
         { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
@@ -479,6 +480,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
+        { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
       ],
     });
   }
@@ -496,6 +498,7 @@ const server = http.createServer(async (request, response) => {
         id: requestId,
         result: {
           tools: [
+            { name: 'complaint.create_identity', description: 'Create a decentralized identity for browser or CLI use.', inputSchema: { type: 'object' } },
             { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.submit_intake', description: 'Save complaint intake answers.', inputSchema: { type: 'object' } },
             { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
@@ -503,6 +506,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
+            { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
           ],
         },
       });
@@ -515,7 +519,13 @@ const server = http.createServer(async (request, response) => {
       const workspaceState = getWorkspaceState(userId);
       let structuredContent = null;
 
-      if (toolName === 'complaint.submit_intake') {
+      if (toolName === 'complaint.create_identity') {
+        structuredContent = {
+          did: userId,
+          method: 'did:key',
+          provider: 'playwright-stub',
+        };
+      } else if (toolName === 'complaint.submit_intake') {
         Object.assign(workspaceState.intake_answers, args.answers || {});
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.save_evidence') {
@@ -546,6 +556,13 @@ const server = http.createServer(async (request, response) => {
       } else if (toolName === 'complaint.reset_session') {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
+      } else if (toolName === 'complaint.review_ui') {
+        structuredContent = {
+          generated_at: '2026-03-23T00:00:00+00:00',
+          backend: { strategy: 'playwright-stub' },
+          screenshots: [],
+          review: { summary: 'Stub UI review completed.' },
+        };
       } else {
         return sendJson(response, {
           jsonrpc: '2.0',
@@ -603,6 +620,13 @@ const server = http.createServer(async (request, response) => {
     const userId = args.user_id || 'did:key:playwright-demo';
     const workspaceState = getWorkspaceState(userId);
 
+    if (toolName === 'complaint.create_identity') {
+      return sendJson(response, {
+        did: userId,
+        method: 'did:key',
+        provider: 'playwright-stub',
+      });
+    }
     if (toolName === 'complaint.submit_intake') {
       Object.assign(workspaceState.intake_answers, args.answers || {});
       return sendJson(response, workspaceSessionPayload(userId));
@@ -639,6 +663,14 @@ const server = http.createServer(async (request, response) => {
     if (toolName === 'complaint.reset_session') {
       workspaceSessions.set(userId, createWorkspaceState(userId));
       return sendJson(response, workspaceSessionPayload(userId));
+    }
+    if (toolName === 'complaint.review_ui') {
+      return sendJson(response, {
+        generated_at: '2026-03-23T00:00:00+00:00',
+        backend: { strategy: 'playwright-stub' },
+        screenshots: [],
+        review: { summary: 'Stub UI review completed.' },
+      });
     }
     response.writeHead(400);
     response.end('Unknown MCP tool');

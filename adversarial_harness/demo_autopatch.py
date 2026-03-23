@@ -296,6 +296,56 @@ def _serialize_autopatch_result(result: Any) -> Dict[str, Any]:
     }
 
 
+def _run_ui_review_lane(
+    *,
+    optimizer: Optimizer,
+    patch_optimizer: Any,
+    screenshot_dir: str | None,
+    ui_review_output_path: str | None,
+    ui_review_provider: str | None,
+    ui_review_model: str | None,
+    ui_review_config_path: str | None,
+    ui_review_backend_id: str | None,
+) -> Dict[str, Any]:
+    if not screenshot_dir:
+        return {}
+
+    from applications.ui_review import run_ui_review_workflow
+
+    ui_review_report = run_ui_review_workflow(
+        screenshot_dir,
+        provider=ui_review_provider,
+        model=ui_review_model,
+        config_path=ui_review_config_path,
+        backend_id=ui_review_backend_id,
+        output_path=ui_review_output_path,
+    )
+    ui_bundle = optimizer.build_ui_optimization_bundle(ui_review_report=ui_review_report)
+    ui_tasks = optimizer.build_ui_patch_tasks(
+        ui_review_report=ui_review_report,
+        method="test_driven",
+    )
+    ui_phase_payloads: list[Dict[str, Any]] = []
+    for task in ui_tasks:
+        task_result = patch_optimizer.optimize(task)
+        phase_payload = _serialize_autopatch_result(task_result)
+        phase_payload.update(
+            {
+                "phase": str(task.metadata.get("workflow_phase") or "ui_ux_review"),
+                "phase_status": str(task.metadata.get("workflow_phase_status") or "warning"),
+                "phase_priority": int(task.metadata.get("workflow_phase_priority") or 1),
+                "target_files": [str(path) for path in list(getattr(task, "target_files", []) or [])],
+            }
+        )
+        ui_phase_payloads.append(phase_payload)
+
+    return {
+        "ui_review_report": ui_review_report,
+        "ui_optimization_bundle": ui_bundle.to_dict(),
+        "ui_phase_tasks": ui_phase_payloads,
+    }
+
+
 def _run_phase_autopatches(
     *,
     optimizer: Optimizer,
@@ -422,6 +472,12 @@ def run_demo_autopatch_batch(
     session_state_dir: str | Path | None = None,
     marker_prefix: str = "Demo autopatch recommendation",
     phase_mode: str = "single",
+    screenshot_dir: str | None = None,
+    ui_review_output_path: str | None = None,
+    ui_review_provider: str | None = None,
+    ui_review_model: str | None = None,
+    ui_review_config_path: str | None = None,
+    ui_review_backend_id: str | None = None,
 ) -> Dict[str, Any]:
     resolved_project_root = Path(project_root)
     resolved_output_dir = Path(output_dir)
@@ -476,6 +532,16 @@ def run_demo_autopatch_batch(
             patch_optimizer=patch_optimizer,
             method="actor_critic",
         )
+    ui_review_payload = _run_ui_review_lane(
+        optimizer=optimizer,
+        patch_optimizer=patch_optimizer,
+        screenshot_dir=screenshot_dir,
+        ui_review_output_path=ui_review_output_path,
+        ui_review_provider=ui_review_provider,
+        ui_review_model=ui_review_model,
+        ui_review_config_path=ui_review_config_path,
+        ui_review_backend_id=ui_review_backend_id,
+    )
 
     payload = {
         "num_results": len(results),
@@ -489,6 +555,7 @@ def run_demo_autopatch_batch(
             "mode": "demo",
             **_summarize_runtime_health(results),
         },
+        **ui_review_payload,
     }
     summary_path = resolved_output_dir / "summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -511,6 +578,12 @@ def run_adversarial_autopatch_batch(
     mediator_factory: Callable[..., Any] | None = None,
     probe_prompt: str = 'Reply with exactly OK.',
     phase_mode: str = "single",
+    screenshot_dir: str | None = None,
+    ui_review_output_path: str | None = None,
+    ui_review_provider: str | None = None,
+    ui_review_model: str | None = None,
+    ui_review_config_path: str | None = None,
+    ui_review_backend_id: str | None = None,
 ) -> Dict[str, Any]:
     if demo_backend or not backends:
         payload = run_demo_autopatch_batch(
@@ -523,6 +596,12 @@ def run_adversarial_autopatch_batch(
             session_state_dir=session_state_dir,
             marker_prefix=marker_prefix,
             phase_mode=phase_mode,
+            screenshot_dir=screenshot_dir,
+            ui_review_output_path=ui_review_output_path,
+            ui_review_provider=ui_review_provider,
+            ui_review_model=ui_review_model,
+            ui_review_config_path=ui_review_config_path,
+            ui_review_backend_id=ui_review_backend_id,
         )
         return payload
 
@@ -585,6 +664,16 @@ def run_adversarial_autopatch_batch(
             patch_optimizer=patch_optimizer,
             method="actor_critic",
         )
+    ui_review_payload = _run_ui_review_lane(
+        optimizer=optimizer,
+        patch_optimizer=patch_optimizer,
+        screenshot_dir=screenshot_dir,
+        ui_review_output_path=ui_review_output_path,
+        ui_review_provider=ui_review_provider,
+        ui_review_model=ui_review_model,
+        ui_review_config_path=ui_review_config_path,
+        ui_review_backend_id=ui_review_backend_id,
+    )
 
     payload = {
         "num_results": len(results),
@@ -604,6 +693,7 @@ def run_adversarial_autopatch_batch(
             "probe_attempts": probe_attempts,
             **_summarize_runtime_health(results),
         },
+        **ui_review_payload,
     }
     if not selected_backend_healthy:
         payload["runtime"]["degraded"] = True

@@ -14,7 +14,11 @@ pytestmark = [pytest.mark.no_auto_network]
 def _invoke_cli(runner: CliRunner, *args: str):
     result = runner.invoke(complaint_cli_impl.app, list(args))
     assert result.exit_code == 0, result.stdout
-    return json.loads(result.stdout)
+    lines = [line for line in (result.stdout or "").splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("{"):
+            return json.loads("\n".join(lines[index:]))
+    raise AssertionError(f"No JSON payload found in stdout: {result.stdout!r}")
 
 
 def _call_mcp_tool(service: ComplaintWorkspaceService, request_id: int, tool_name: str, arguments: dict):
@@ -43,6 +47,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
     tool_names = [tool["name"] for tool in payload["tools"]]
 
     assert tool_names == [
+        "complaint.create_identity",
         "complaint.start_session",
         "complaint.submit_intake",
         "complaint.save_evidence",
@@ -50,6 +55,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.generate_complaint",
         "complaint.update_draft",
         "complaint.reset_session",
+        "complaint.review_ui",
     ]
     assert all("inputSchema" in tool for tool in payload["tools"])
 
@@ -62,6 +68,12 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     session_payload = _invoke_cli(runner, "session", "--user-id", "cli-user")
     assert session_payload["session"]["user_id"] == "cli-user"
     assert session_payload["next_question"]["id"] == "party_name"
+
+    identity_payload = _invoke_cli(runner, "identity")
+    assert str(identity_payload["did"]).startswith("did:key:")
+
+    tools_payload = _invoke_cli(runner, "tools")
+    assert any(tool["name"] == "complaint.review_ui" for tool in tools_payload["tools"])
 
     answer_payload = _invoke_cli(
         runner,
@@ -140,6 +152,9 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert start_payload["session"]["user_id"] == "mcp-user"
     assert start_payload["next_question"]["id"] == "party_name"
 
+    identity_payload = _call_mcp_tool(service, 10, "complaint.create_identity", {})
+    assert str(identity_payload["did"]).startswith("did:key:")
+
     intake_payload = _call_mcp_tool(
         service,
         2,
@@ -209,3 +224,37 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert reset_payload["session"]["user_id"] == "mcp-user"
     assert reset_payload["session"]["draft"] is None
     assert reset_payload["session"]["intake_answers"] == {}
+
+
+def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-review-sessions")
+
+    def fake_run_ui_review_workflow(*args, **kwargs):
+        return {
+            "generated_at": "2026-03-23T00:00:00+00:00",
+            "backend": {"strategy": "fallback"},
+            "screenshots": [{"path": "/tmp/workspace.png"}],
+            "review": {"summary": "Review completed."},
+        }
+
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+    monkeypatch.setattr("applications.complaint_cli.run_ui_review_workflow", fake_run_ui_review_workflow)
+    monkeypatch.setattr("applications.ui_review.run_ui_review_workflow", fake_run_ui_review_workflow)
+
+    cli_payload = _invoke_cli(
+        runner,
+        "review-ui",
+        str(tmp_path),
+        "--artifact-path",
+        str(tmp_path / "review.json"),
+    )
+    assert cli_payload["review"]["summary"] == "Review completed."
+
+    mcp_payload = _call_mcp_tool(
+        service,
+        11,
+        "complaint.review_ui",
+        {"screenshot_dir": str(tmp_path)},
+    )
+    assert mcp_payload["review"]["summary"] == "Review completed."

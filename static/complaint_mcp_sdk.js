@@ -123,6 +123,21 @@
             return this.cacheDid(identity.did);
         }
 
+        async bootstrapWorkspace(userId) {
+            const did = userId || await this.getOrCreateDid();
+            const [initialization, tools, session] = await Promise.all([
+                this.initialize(),
+                this.listTools(),
+                this.startSession(did),
+            ]);
+            return {
+                did,
+                initialization,
+                tools,
+                session,
+            };
+        }
+
         getSession(userId) {
             const url = new URL(this.baseUrl + '/session', this.origin);
             if (userId) {
@@ -166,6 +181,10 @@
             return this.callTool('complaint.reset_session', {
                 user_id: userId,
             });
+        }
+
+        reviewUiArtifacts(payload) {
+            return this.callTool('complaint.review_ui', payload || {});
         }
     }
 
