@@ -159,6 +159,8 @@ def build_ui_ux_review_prompt(
                     "Exported complaint markdown excerpt:",
                     str(artifact.get("markdown_excerpt", "")).strip(),
                     f"PDF header: {artifact.get('pdf_header', '')}",
+                    "Complaint-output-informed UI suggestions:",
+                    str(artifact.get("ui_suggestions_excerpt", "")).strip(),
                 ]
             )
         artifact_blocks.append("\n".join(lines))
@@ -248,6 +250,9 @@ def build_ui_ux_review_prompt(
             ),
             (
                 "If exported complaint markdown or PDF artifacts are present, critique whether the final complaint output is coherent, filing-shaped, and consistent with what the UI promised the user during intake, review, and draft generation."
+            ),
+            (
+                "If complaint-output-informed UI suggestions are present, use them to propose concrete changes to buttons, validation, warnings, panel hierarchy, and handoff copy that would make the generated complaint stronger before export."
             ),
         ]
     )

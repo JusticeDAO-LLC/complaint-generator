@@ -506,6 +506,7 @@ def _write_export_artifact_metadata(
     markdown_text: str,
     pdf_filename: str,
     pdf_bytes: bytes,
+    ui_suggestions_excerpt: str = "",
 ) -> Path:
     target_dir = _artifact_dir(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -524,6 +525,7 @@ def _write_export_artifact_metadata(
                 "markdown_excerpt": markdown_text[:2000],
                 "pdf_filename": pdf_filename,
                 "pdf_header": pdf_bytes[:16].decode("latin1", errors="ignore"),
+                "ui_suggestions_excerpt": ui_suggestions_excerpt,
             },
             indent=2,
             sort_keys=True,

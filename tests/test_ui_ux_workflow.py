@@ -47,6 +47,23 @@ def test_ui_ux_workflow_defaults_target_full_feature_audit_and_actor_critic_opti
 
 def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_path):
     _write_artifact(tmp_path, "workspace")
+    (tmp_path / "complaint-export.json").write_text(
+        json.dumps(
+            {
+                "name": "workspace-export-artifacts",
+                "url": "http://example.test/workspace?target_tab=integrations",
+                "title": "Unified Complaint Workspace",
+                "viewport": {"width": 1440, "height": 1200},
+                "text_excerpt": "Complaint packet exported",
+                "artifact_type": "complaint_export",
+                "markdown_filename": "jordan-example-complaint.md",
+                "pdf_filename": "jordan-example-complaint.pdf",
+                "markdown_excerpt": "Jordan Example brings this retaliation complaint against Acme Corporation.",
+                "pdf_header": "%PDF-1.4",
+                "ui_suggestions_excerpt": "Add stronger export warnings when support gaps remain.",
+            }
+        )
+    )
 
     prompt = build_ui_ux_review_prompt(
         iteration=2,
@@ -73,6 +90,8 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "control audit matrix" in prompt
     assert "Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`" in prompt
     assert "save a shared synopsis for the mediator path" in prompt
+    assert "Complaint-output-informed UI suggestions:" in prompt
+    assert "Add stronger export warnings when support gaps remain." in prompt
 
 
 def test_build_ui_ux_review_prompt_uses_default_goals_and_notes_when_not_supplied(tmp_path):

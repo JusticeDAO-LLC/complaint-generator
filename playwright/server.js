@@ -11,6 +11,13 @@ const ipfsDatasetsTemplatesDir = path.join(root, 'ipfs_datasets_py', 'ipfs_datas
 const ipfsDatasetsStaticDir = path.join(root, 'ipfs_datasets_py', 'ipfs_datasets_py', 'static');
 const port = 19000;
 
+function slugifyFilename(value) {
+  return String(value || 'complaint-packet')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'complaint-packet';
+}
+
 const dashboardEntries = [
   {
     slug: 'mcp',
@@ -471,6 +478,14 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
 function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
   const sessionPayload = workspaceSessionPayload(userId);
   const draft = sessionPayload.draft || getWorkspaceState(userId).draft || { title: 'Draft not generated', requested_relief: [], body: '' };
+  const markdownContent = [
+    `# ${draft.title}`,
+    '',
+    draft.body || 'No complaint draft has been generated yet.',
+    '',
+    '## Case Synopsis',
+    String(sessionPayload.case_synopsis || '').trim() || 'No shared case synopsis saved yet.',
+  ].join('\n');
   return {
     packet: {
       title: draft.title,
@@ -483,6 +498,18 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       draft,
       exported_at: '2026-03-23T00:00:00+00:00',
     },
+    artifacts: {
+      json: {
+        filename: `${slugifyFilename(draft.title || 'complaint-packet')}.json`,
+      },
+      markdown: {
+        filename: `${slugifyFilename(draft.title || 'complaint-packet')}.md`,
+        content: markdownContent,
+      },
+      pdf: {
+        filename: `${slugifyFilename(draft.title || 'complaint-packet')}.pdf`,
+      },
+    },
     packet_summary: {
       question_count: sessionPayload.questions.length,
       answered_question_count: sessionPayload.questions.filter((item) => item.is_answered).length,
@@ -492,8 +519,48 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       document_items: sessionPayload.review.overview.document_items || 0,
       has_draft: Boolean(sessionPayload.draft),
       complaint_readiness: complaintReadinessPayload(userId),
+      artifact_formats: ['json', 'markdown', 'pdf'],
+    },
+    artifact_analysis: {
+      draft_word_count: String(draft.body || '').split(/\s+/).filter(Boolean).length,
+      evidence_item_count: Number((sessionPayload.session.evidence.testimony || []).length + (sessionPayload.session.evidence.documents || []).length),
+      requested_relief_count: Number((draft.requested_relief || []).length),
+      supported_elements: sessionPayload.review.overview.supported_elements || 0,
+      missing_elements: sessionPayload.review.overview.missing_elements || 0,
+      has_case_synopsis: Boolean(String(sessionPayload.case_synopsis || '').trim()),
     },
   };
+}
+
+function buildComplaintDownloadArtifact(userId = 'did:key:playwright-demo', outputFormat = 'json') {
+  const packetPayload = exportComplaintPacketPayload(userId);
+  const packet = packetPayload.packet || {};
+  const artifacts = packetPayload.artifacts || {};
+  const normalizedFormat = String(outputFormat || 'json').trim().toLowerCase();
+  if (normalizedFormat === 'json') {
+    return {
+      filename: ((artifacts.json || {}).filename) || 'complaint-packet.json',
+      mediaType: 'application/json',
+      body: Buffer.from(JSON.stringify(packet, null, 2), 'utf-8'),
+    };
+  }
+  if (normalizedFormat === 'markdown' || normalizedFormat === 'md') {
+    return {
+      filename: ((artifacts.markdown || {}).filename) || 'complaint-packet.md',
+      mediaType: 'text/markdown; charset=utf-8',
+      body: Buffer.from(String((artifacts.markdown || {}).content || ''), 'utf-8'),
+    };
+  }
+  if (normalizedFormat === 'pdf') {
+    const markdownContent = String((artifacts.markdown || {}).content || 'Complaint packet');
+    const pdfStub = `%PDF-1.4\n% Complaint packet preview\n1 0 obj\n<< /Type /Catalog >>\nendobj\n% ${markdownContent}\n%%EOF\n`;
+    return {
+      filename: ((artifacts.pdf || {}).filename) || 'complaint-packet.pdf',
+      mediaType: 'application/pdf',
+      body: Buffer.from(pdfStub, 'utf-8'),
+    };
+  }
+  return buildComplaintDownloadArtifact(userId, 'json');
 }
 
 function generateWorkspaceDraft(workspaceState, requestedRelief) {
@@ -683,6 +750,20 @@ const server = http.createServer(async (request, response) => {
     return sendJson(response, workspaceSessionPayload(url.searchParams.get('user_id') || 'did:key:playwright-demo'));
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/complaint-workspace/export/download') {
+    const artifact = buildComplaintDownloadArtifact(
+      url.searchParams.get('user_id') || 'did:key:playwright-demo',
+      url.searchParams.get('output_format') || 'json',
+    );
+    response.writeHead(200, {
+      'Content-Type': artifact.mediaType,
+      'Content-Disposition': `attachment; filename="${artifact.filename}"`,
+      'Content-Length': String(artifact.body.length),
+    });
+    response.end(artifact.body);
+    return;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/complaint-workspace/identity') {
     return sendJson(response, {
       did: 'did:key:playwright-demo',
@@ -708,6 +789,8 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
         { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.', inputSchema: { type: 'object' } },
+        { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
+        { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -744,6 +827,8 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
             { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.', inputSchema: { type: 'object' } },
+            { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
+            { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -813,6 +898,30 @@ const server = http.createServer(async (request, response) => {
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.export_complaint_packet') {
         structuredContent = exportComplaintPacketPayload(userId);
+      } else if (toolName === 'complaint.export_complaint_markdown') {
+        const packetPayload = exportComplaintPacketPayload(userId);
+        structuredContent = {
+          artifact: {
+            format: 'markdown',
+            filename: packetPayload.artifacts.markdown.filename,
+            media_type: 'text/markdown',
+            excerpt: packetPayload.artifacts.markdown.excerpt || packetPayload.artifacts.markdown.content.slice(0, 2000),
+          },
+          packet_summary: packetPayload.packet_summary,
+          artifact_analysis: packetPayload.artifact_analysis || {},
+        };
+      } else if (toolName === 'complaint.export_complaint_pdf') {
+        const packetPayload = exportComplaintPacketPayload(userId);
+        structuredContent = {
+          artifact: {
+            format: 'pdf',
+            filename: packetPayload.artifacts.pdf.filename,
+            media_type: 'application/pdf',
+            header_b64: packetPayload.artifacts.pdf.header_b64,
+          },
+          packet_summary: packetPayload.packet_summary,
+          artifact_analysis: packetPayload.artifact_analysis || {},
+        };
       } else if (toolName === 'complaint.reset_session') {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
@@ -1054,6 +1163,32 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.export_complaint_packet') {
       return sendJson(response, exportComplaintPacketPayload(userId));
+    }
+    if (toolName === 'complaint.export_complaint_markdown') {
+      const packetPayload = exportComplaintPacketPayload(userId);
+      return sendJson(response, {
+        artifact: {
+          format: 'markdown',
+          filename: packetPayload.artifacts.markdown.filename,
+          media_type: 'text/markdown',
+          excerpt: packetPayload.artifacts.markdown.excerpt || packetPayload.artifacts.markdown.content.slice(0, 2000),
+        },
+        packet_summary: packetPayload.packet_summary,
+        artifact_analysis: packetPayload.artifact_analysis || {},
+      });
+    }
+    if (toolName === 'complaint.export_complaint_pdf') {
+      const packetPayload = exportComplaintPacketPayload(userId);
+      return sendJson(response, {
+        artifact: {
+          format: 'pdf',
+          filename: packetPayload.artifacts.pdf.filename,
+          media_type: 'application/pdf',
+          header_b64: packetPayload.artifacts.pdf.header_b64,
+        },
+        packet_summary: packetPayload.packet_summary,
+        artifact_analysis: packetPayload.artifact_analysis || {},
+      });
     }
     if (toolName === 'complaint.reset_session') {
       workspaceSessions.set(userId, createWorkspaceState(userId));

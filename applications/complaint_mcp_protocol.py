@@ -96,6 +96,18 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.export_complaint_markdown": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.export_complaint_pdf": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.analyze_complaint_output": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
     "complaint.update_case_synopsis": {
         "type": "object",
         "properties": {

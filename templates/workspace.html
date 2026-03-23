@@ -1538,6 +1538,7 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
+                                <button class="secondary" id="analyze-complaint-output-button" type="button">Analyze Exported Complaint</button>
                                 <button class="secondary" id="download-packet-tool-markdown-button" type="button" data-output-format="markdown" disabled>Download Markdown</button>
                                 <button class="secondary" id="download-packet-tool-pdf-button" type="button" data-output-format="pdf" disabled>Download PDF</button>
                             </div>
@@ -1562,6 +1563,10 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>Packet Export Summary</label>
                                 <div class="status draft-preview-shell"><pre id="packet-export-summary">No packet export run yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Complaint Output UI Suggestions</label>
+                                <div class="status draft-preview-shell"><pre id="complaint-output-analysis-preview">No complaint-output analysis run yet.</pre></div>
                             </div>
                         </div>
                         <div class="tool-card">
@@ -1703,6 +1708,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceComplaintReadiness = null;
         let workspaceUiReadiness = null;
         let latestPacketExport = null;
+        let latestComplaintOutputAnalysis = null;
         let sdkPrimitiveSnapshot = null;
         const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
@@ -2373,6 +2379,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const complaintReadinessNode = document.getElementById('complaint-readiness-preview');
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
+            const outputAnalysisNode = document.getElementById('complaint-output-analysis-preview');
 
             if (workspaceMediatorPrompt && workspaceMediatorPrompt.prefill_message) {
                 mediatorNode.textContent = workspaceMediatorPrompt.prefill_message;
@@ -2408,6 +2415,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 packetSummaryNode.textContent = JSON.stringify(latestPacketExport.packet_summary, null, 2);
             } else {
                 packetSummaryNode.textContent = 'No packet export run yet.';
+            }
+
+            const outputAnalysis = latestComplaintOutputAnalysis || (latestPacketExport && latestPacketExport.ui_feedback);
+            if (outputAnalysis) {
+                outputAnalysisNode.textContent = JSON.stringify(outputAnalysis, null, 2);
+            } else {
+                outputAnalysisNode.textContent = 'No complaint-output analysis run yet.';
             }
         }
 
@@ -3374,6 +3388,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setBusyStatus('Exporting the current lawsuit packet through the complaint MCP tools…');
             const packetPayload = await client.exportComplaintPacket(workspaceUserId);
             latestPacketExport = packetPayload;
+            latestComplaintOutputAnalysis = packetPayload.ui_feedback || null;
             const summary = packetPayload.packet_summary || {};
             const packet = packetPayload.packet || {};
             const draft = packet.draft || {};
@@ -3385,6 +3400,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             syncPacketDownloadState();
             renderWorkflowOperations();
             setStatus('Complaint packet exported.');
+        }
+
+        async function analyzeComplaintOutputPanel() {
+            setBusyStatus('Analyzing the exported complaint output for UI/UX improvement suggestions…');
+            latestComplaintOutputAnalysis = await client.analyzeComplaintOutput(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Complaint output analysis refreshed.');
         }
 
         function downloadPacket(event) {
@@ -3552,6 +3574,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-complaint-readiness-button').addEventListener('click', refreshComplaintReadinessPanel);
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
+        document.getElementById('analyze-complaint-output-button').addEventListener('click', analyzeComplaintOutputPanel);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
         document.getElementById('download-packet-tool-markdown-button').addEventListener('click', downloadPacket);
         document.getElementById('download-packet-tool-pdf-button').addEventListener('click', downloadPacket);

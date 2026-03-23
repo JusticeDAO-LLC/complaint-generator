@@ -1,11 +1,13 @@
 import json
 
+from fastapi import FastAPI
 import pytest
 from typer.testing import CliRunner
 
 from applications import complaint_cli as complaint_cli_impl
+from applications.complaint_workspace_api import attach_complaint_workspace_routes
 from applications.complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from complaint_generator import ComplaintWorkspaceService, optimize_ui, review_ui, run_browser_audit
+from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, optimize_ui, review_ui, run_browser_audit
 
 
 pytestmark = [pytest.mark.no_auto_network]
@@ -61,6 +63,9 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.generate_complaint",
         "complaint.update_draft",
         "complaint.export_complaint_packet",
+        "complaint.export_complaint_markdown",
+        "complaint.export_complaint_pdf",
+        "complaint.analyze_complaint_output",
         "complaint.update_case_synopsis",
         "complaint.reset_session",
         "complaint.review_ui",
@@ -92,6 +97,9 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert any(tool["name"] == "complaint.review_ui" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.optimize_ui" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.export_complaint_packet" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.export_complaint_markdown" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.export_complaint_pdf" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
 
     answer_payload = _invoke_cli(
         runner,
@@ -182,6 +190,22 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     export_payload = _invoke_cli(runner, "export-packet", "--user-id", "cli-user")
     assert export_payload["packet"]["draft"]["title"] == "Edited CLI complaint"
     assert export_payload["packet_summary"]["has_draft"] is True
+    assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
+
+    markdown_payload = _invoke_cli(runner, "export-markdown", "--user-id", "cli-user")
+    assert markdown_payload["artifact"]["format"] == "markdown"
+    assert markdown_payload["artifact"]["filename"].endswith(".md")
+    assert "Edited CLI complaint" in markdown_payload["artifact"]["excerpt"]
+
+    pdf_payload = _invoke_cli(runner, "export-pdf", "--user-id", "cli-user")
+    assert pdf_payload["artifact"]["format"] == "pdf"
+    assert pdf_payload["artifact"]["filename"].endswith(".pdf")
+    assert isinstance(pdf_payload["artifact"]["header_b64"], str)
+
+    output_analysis_payload = _invoke_cli(runner, "analyze-output", "--user-id", "cli-user")
+    assert output_analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
+    assert output_analysis_payload["packet_summary"]["has_draft"] is True
+    assert output_analysis_payload["artifact_analysis"]["draft_word_count"] >= 1
 
     synopsis_payload = _invoke_cli(
         runner,
@@ -310,10 +334,25 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
     assert "Jordan Example" in export_payload["artifacts"]["markdown"]["content"]
     assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
+    assert export_payload["ui_feedback"]["ui_suggestions"]
+
+    markdown_export = _call_mcp_tool(service, 30, "complaint.export_complaint_markdown", {"user_id": "mcp-user"})
+    assert markdown_export["artifact"]["format"] == "markdown"
+    assert markdown_export["artifact"]["filename"].endswith(".md")
+    assert "Jordan Example" in markdown_export["artifact"]["excerpt"]
+
+    pdf_export = _call_mcp_tool(service, 31, "complaint.export_complaint_pdf", {"user_id": "mcp-user"})
+    assert pdf_export["artifact"]["format"] == "pdf"
+    assert pdf_export["artifact"]["filename"].endswith(".pdf")
+    assert isinstance(pdf_export["artifact"]["header_b64"], str)
+
+    output_analysis_payload = _call_mcp_tool(service, 32, "complaint.analyze_complaint_output", {"user_id": "mcp-user"})
+    assert output_analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
+    assert output_analysis_payload["packet_summary"]["has_draft"] is True
 
     synopsis_payload = _call_mcp_tool(
         service,
-        30,
+        33,
         "complaint.update_case_synopsis",
         {
             "user_id": "mcp-user",
@@ -323,7 +362,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
     assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
 
-    reset_payload = _call_mcp_tool(service, 31, "complaint.reset_session", {"user_id": "mcp-user"})
+    reset_payload = _call_mcp_tool(service, 34, "complaint.reset_session", {"user_id": "mcp-user"})
     assert reset_payload["session"]["user_id"] == "mcp-user"
     assert reset_payload["session"]["draft"] is None
     assert reset_payload["session"]["intake_answers"] == {}
@@ -598,3 +637,71 @@ def test_package_wrappers_delegate_to_matching_ui_review_and_browser_tools(monke
         "complaint.optimize_ui",
         "complaint.run_browser_audit",
     ]
+
+
+def test_workspace_download_route_serves_json_markdown_and_pdf_exports(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "download-sessions")
+    user_id = "download-user"
+    service.submit_intake_answers(
+        user_id,
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Threatened termination and then terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10",
+            "harm": "Lost wages, benefits, and emotional distress",
+        },
+    )
+    service.save_evidence(
+        user_id,
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="The termination email followed within two days of the HR complaint.",
+        source="Inbox export",
+    )
+    service.generate_complaint(
+        user_id,
+        requested_relief=["Back pay", "Compensatory damages"],
+        title_override="Jordan Example v. Acme Corporation Complaint",
+    )
+
+    app = FastAPI()
+    attach_complaint_workspace_routes(app, service)
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    json_response = client.get(
+        "/api/complaint-workspace/export/download",
+        params={"user_id": user_id, "output_format": "json"},
+    )
+    assert json_response.status_code == 200
+    assert json_response.headers["content-type"].startswith("application/json")
+    assert 'filename="jordan-example-v.-acme-corporation-complaint.json"' in json_response.headers["content-disposition"]
+    json_payload = json_response.json()
+    assert json_payload["draft"]["title"] == "Jordan Example v. Acme Corporation Complaint"
+    assert json_payload["draft"]["body"].startswith(
+        "Jordan Example brings this retaliation complaint against Acme Corporation."
+    )
+
+    markdown_response = client.get(
+        "/api/complaint-workspace/export/download",
+        params={"user_id": user_id, "output_format": "markdown"},
+    )
+    assert markdown_response.status_code == 200
+    assert markdown_response.headers["content-type"].startswith("text/markdown")
+    assert 'filename="jordan-example-v.-acme-corporation-complaint.md"' in markdown_response.headers["content-disposition"]
+    assert markdown_response.text.startswith("# Jordan Example v. Acme Corporation Complaint")
+    assert "Jordan Example brings this retaliation complaint against Acme Corporation." in markdown_response.text
+
+    pdf_response = client.get(
+        "/api/complaint-workspace/export/download",
+        params={"user_id": user_id, "output_format": "pdf"},
+    )
+    assert pdf_response.status_code == 200
+    assert pdf_response.headers["content-type"].startswith("application/pdf")
+    assert 'filename="jordan-example-v.-acme-corporation-complaint.pdf"' in pdf_response.headers["content-disposition"]
+    assert pdf_response.content.startswith(b"%PDF-1.4")
+    assert b"Jordan Example v. Acme Corporation Complaint" in pdf_response.content

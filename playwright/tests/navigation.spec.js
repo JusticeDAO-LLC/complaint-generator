@@ -319,6 +319,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.build_mediator_prompt/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.export_complaint_packet/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.export_complaint_markdown/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.export_complaint_pdf/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Intake workflow/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Mediator testimony handoff/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Actor\/Critic UI optimizer/i);

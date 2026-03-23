@@ -182,6 +182,33 @@ def export_complaint_packet(
     return _resolve_service(service, root_dir=root_dir).export_complaint_packet(user_id)
 
 
+def export_complaint_markdown(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).export_complaint_markdown(user_id)
+
+
+def export_complaint_pdf(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).export_complaint_pdf(user_id)
+
+
+def analyze_complaint_output(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).analyze_complaint_output(user_id)
+
+
 def update_case_synopsis(
     user_id: Optional[str],
     synopsis: Optional[str],
@@ -307,6 +334,9 @@ __all__ = [
     "create_identity",
     "create_complaint_workspace_router",
     "export_complaint_packet",
+    "export_complaint_markdown",
+    "export_complaint_pdf",
+    "analyze_complaint_output",
     "generate_decentralized_id",
     "generate_complaint",
     "get_workflow_capabilities",

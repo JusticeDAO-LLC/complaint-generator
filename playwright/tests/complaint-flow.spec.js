@@ -1,3 +1,5 @@
+const fs = require('fs/promises');
+
 const { test, expect } = require('@playwright/test');
 const { installCommonMocks, documentGenerationResponse } = require('./helpers/fixtures');
 
@@ -263,7 +265,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page).toHaveURL(/\/claim-support-review/);
   });
 
-  test('workspace unifies intake, evidence, support review, draft editing, and MCP tool visibility', async ({ page }) => {
+  test('workspace unifies intake, evidence, support review, draft editing, actor/critic audit, and MCP tool visibility', async ({ page }) => {
     const did = `did:key:workspace-flow-${Date.now()}`;
     await page.addInitScript((did) => {
       window.localStorage.setItem('complaintGenerator.did', did);
@@ -347,6 +349,26 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#packet-preview')).toContainText(/Title: Jane Doe v\. Acme Corporation Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Edited final complaint body\./i);
 
+    await page.getByRole('button', { name: 'UX Audit', exact: true }).click();
+    await page.locator('#run-ux-review-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed\./i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/Evidence capture guidance is still too easy to miss/i);
+    await expect(page.locator('#ux-review-actor-critic')).toContainText(/actor/i);
+    await expect(page.locator('#ux-review-actor-critic')).toContainText(/critic/i);
+
+    await page.locator('#run-browser-audit-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/End-to-end complaint browser audit completed\./i);
+    await expect(page.locator('#ux-review-summary')).toContainText(/End-to-end complaint browser audit completed with 6 screenshot artifacts\./i);
+    await expect(page.locator('#ux-review-stage-findings')).toContainText(/Lawsuit-generation browser audit/i);
+
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#refresh-ui-readiness-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/UI readiness refreshed\./i);
+    await expect(page.locator('#ui-readiness-preview')).toContainText(/"status":\s*"cached"/i);
+    await expect(page.locator('#ui-readiness-preview')).toContainText(/"verdict":\s*"Needs repair"/i);
+    await expect(page.locator('#ui-readiness-preview')).toContainText(/"score":\s*81/i);
+    await expect(page.locator('#ui-readiness-preview')).toContainText(/"actor_path_breaks":/i);
+
     const cachedDid = await page.evaluate(() => localStorage.getItem('complaintGenerator.did'));
     await page.reload();
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toBe(cachedDid);
@@ -354,7 +376,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
   });
 
-  test('homepage to workspace journey ends with an actual generated complaint and exported lawsuit packet', async ({ page }) => {
+  test('homepage to workspace journey ends with an actual generated complaint, downloadable markdown/pdf exports, and packet analysis', async ({ page }, testInfo) => {
     const did = `did:key:workspace-homepage-flow-${Date.now()}`;
     await page.addInitScript((did) => {
       window.localStorage.setItem('complaintGenerator.did', did);
@@ -426,8 +448,31 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#export-packet-tool-button').click();
     await expect(page.locator('#packet-export-summary')).toContainText(/"has_draft": true/i);
     await expect(page.locator('#packet-export-summary')).toContainText(/"complaint_readiness":/i);
+    await expect(page.locator('#packet-export-summary')).toContainText(/"artifact_formats":/i);
     await expect(page.locator('#packet-preview')).toContainText(/Title: Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Taylor Smith brings this retaliation complaint against Acme Logistics\./i);
+
+    const [markdownDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#download-packet-tool-markdown-button').click(),
+    ]);
+    const markdownPath = testInfo.outputPath(markdownDownload.suggestedFilename());
+    await markdownDownload.saveAs(markdownPath);
+    const markdownBody = await fs.readFile(markdownPath, 'utf-8');
+    expect(markdownDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.md$/i);
+    expect(markdownBody).toContain('# Taylor Smith v. Acme Logistics Retaliation Complaint');
+    expect(markdownBody).toContain('Taylor Smith brings this retaliation complaint against Acme Logistics.');
+
+    const [pdfDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#download-packet-tool-pdf-button').click(),
+    ]);
+    const pdfPath = testInfo.outputPath(pdfDownload.suggestedFilename());
+    await pdfDownload.saveAs(pdfPath);
+    const pdfBody = await fs.readFile(pdfPath);
+    expect(pdfDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.pdf$/i);
+    expect(pdfBody.subarray(0, 8).toString('utf-8')).toContain('%PDF-1.4');
+    expect(pdfBody.toString('utf-8')).toContain('Taylor Smith v. Acme Logistics Retaliation Complaint');
 
     await page.goto('/');
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Ready for first draft|Draft in progress/i);

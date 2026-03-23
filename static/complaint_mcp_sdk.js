@@ -215,6 +215,24 @@
             });
         }
 
+        exportComplaintMarkdown(userId) {
+            return this.callTool('complaint.export_complaint_markdown', {
+                user_id: userId,
+            });
+        }
+
+        exportComplaintPdf(userId) {
+            return this.callTool('complaint.export_complaint_pdf', {
+                user_id: userId,
+            });
+        }
+
+        analyzeComplaintOutput(userId) {
+            return this.callTool('complaint.analyze_complaint_output', {
+                user_id: userId,
+            });
+        }
+
         downloadComplaintPacketUrl(userId, outputFormat) {
             const url = new URL(this.baseUrl + '/export/download', this.origin);
             if (userId) {

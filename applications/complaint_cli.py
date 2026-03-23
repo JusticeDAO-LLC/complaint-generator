@@ -143,6 +143,21 @@ def export_packet(user_id: str = "demo-user") -> None:
     _print(service.export_complaint_packet(user_id))
 
 
+@app.command("export-markdown")
+def export_markdown(user_id: str = "demo-user") -> None:
+    _print(service.export_complaint_markdown(user_id))
+
+
+@app.command("export-pdf")
+def export_pdf(user_id: str = "demo-user") -> None:
+    _print(service.export_complaint_pdf(user_id))
+
+
+@app.command("analyze-output")
+def analyze_output(user_id: str = "demo-user") -> None:
+    _print(service.analyze_complaint_output(user_id))
+
+
 @app.command("update-synopsis")
 def update_synopsis(user_id: str = "demo-user", synopsis: str = "") -> None:
     _print(service.update_case_synopsis(user_id, synopsis))

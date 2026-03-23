@@ -706,9 +706,21 @@ class ComplaintWorkspaceService:
             "exported_at": _utc_now(),
         }
         artifacts = self._build_export_artifacts(packet)
+        artifact_analysis = {
+            "draft_word_count": len(str(draft.get("body") or "").split()),
+            "evidence_item_count": len((packet.get("evidence") or {}).get("testimony") or [])
+            + len((packet.get("evidence") or {}).get("documents") or []),
+            "requested_relief_count": len(list(draft.get("requested_relief") or [])),
+            "supported_elements": int((review.get("overview") or {}).get("supported_elements") or 0),
+            "missing_elements": int((review.get("overview") or {}).get("missing_elements") or 0),
+            "has_case_synopsis": bool(str(packet.get("case_synopsis") or "").strip()),
+        }
+        ui_feedback = self._analyze_complaint_output(packet, artifact_analysis)
         return {
             "packet": packet,
             "artifacts": artifacts,
+            "artifact_analysis": artifact_analysis,
+            "ui_feedback": ui_feedback,
             "packet_summary": {
                 "question_count": len(packet["questions"]),
                 "answered_question_count": len([item for item in packet["questions"] if item.get("is_answered")]),
@@ -720,6 +732,160 @@ class ComplaintWorkspaceService:
                 "complaint_readiness": self.get_complaint_readiness(user_id),
                 "artifact_formats": sorted(artifacts.keys()),
             },
+        }
+
+    def _analyze_complaint_output(self, packet: Dict[str, Any], artifact_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        draft = dict(packet.get("draft") or {})
+        review = dict(packet.get("review") or {})
+        overview = dict(review.get("overview") or {})
+        body = str(draft.get("body") or "").strip()
+        case_synopsis = str(packet.get("case_synopsis") or "").strip()
+        issues: List[Dict[str, Any]] = []
+        suggestions: List[Dict[str, Any]] = []
+
+        if artifact_analysis.get("missing_elements", 0) > 0:
+            missing_count = int(artifact_analysis.get("missing_elements") or 0)
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": f"The exported complaint still reflects {missing_count} unsupported claim elements.",
+                    "ui_implication": "The review and draft stages need stronger warnings before the user treats the complaint as filing-ready.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Tighten review-to-draft gatekeeping",
+                    "recommendation": "Add stronger blocker language and a more prominent unsupported-elements summary before draft generation or export.",
+                    "target_surface": "review,draft,integrations",
+                }
+            )
+        if not case_synopsis:
+            issues.append(
+                {
+                    "severity": "medium",
+                    "source": "complaint_output",
+                    "finding": "The exported complaint has no shared case synopsis.",
+                    "ui_implication": "Users can reach export without preserving a stable theory of the case across mediator, review, and draft surfaces.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Make case framing harder to miss",
+                    "recommendation": "Require or strongly encourage a shared case synopsis before export and keep it visible near every major handoff.",
+                    "target_surface": "intake,review,draft",
+                }
+            )
+        if artifact_analysis.get("draft_word_count", 0) < 80:
+            issues.append(
+                {
+                    "severity": "medium",
+                    "source": "complaint_output",
+                    "finding": "The exported complaint draft is still very short.",
+                    "ui_implication": "The draft workflow may be under-explaining what a usable first complaint should contain.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Strengthen draft completeness cues",
+                    "recommendation": "Show a drafting checklist and clearer guidance about allegations, chronology, harm, and requested relief before export.",
+                    "target_surface": "draft",
+                }
+            )
+        if artifact_analysis.get("requested_relief_count", 0) == 0:
+            issues.append(
+                {
+                    "severity": "medium",
+                    "source": "complaint_output",
+                    "finding": "No requested relief was carried into the export.",
+                    "ui_implication": "The user may not understand that requested relief should be completed before download.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Surface requested-relief validation",
+                    "recommendation": "Warn before export when requested relief is empty and point the user back to the draft editor.",
+                    "target_surface": "draft,integrations",
+                }
+            )
+        if artifact_analysis.get("evidence_item_count", 0) == 0:
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": "The complaint was exported without any saved evidence items.",
+                    "ui_implication": "The workspace is not making evidence capture feel mandatory enough before a user downloads the packet.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Make evidence support more legible before export",
+                    "recommendation": "Display stronger export warnings and direct links back to the evidence workbench when the packet lacks corroborating materials.",
+                    "target_surface": "evidence,review,integrations",
+                }
+            )
+
+        if not suggestions:
+            suggestions.append(
+                {
+                    "title": "Preserve the current filing flow",
+                    "recommendation": "The exported complaint looks coherent enough to keep the current UI flow, but continue validating navigation, evidence support, and clarity through Playwright.",
+                    "target_surface": "workspace,review,document",
+                }
+            )
+
+        return {
+            "summary": (
+                "The exported complaint artifact was analyzed to infer which UI steps may still be too weak, "
+                "hidden, or permissive for a real complainant."
+            ),
+            "issues": issues,
+            "ui_suggestions": suggestions,
+            "draft_excerpt": body[:600],
+            "complaint_strengths": [
+                f"Supported elements: {int(overview.get('supported_elements') or 0)}",
+                f"Evidence items: {int(overview.get('testimony_items') or 0) + int(overview.get('document_items') or 0)}",
+                f"Requested relief items: {int(artifact_analysis.get('requested_relief_count') or 0)}",
+            ],
+        }
+
+    def analyze_complaint_output(self, user_id: Optional[str]) -> Dict[str, Any]:
+        payload = self.export_complaint_packet(user_id)
+        return {
+            "user_id": ((payload.get("packet") or {}).get("user_id") or str(user_id or DEFAULT_USER_ID)),
+            "packet_summary": deepcopy(payload.get("packet_summary") or {}),
+            "artifact_analysis": deepcopy(payload.get("artifact_analysis") or {}),
+            "ui_feedback": deepcopy(payload.get("ui_feedback") or {}),
+        }
+
+    def export_complaint_markdown(self, user_id: Optional[str]) -> Dict[str, Any]:
+        artifact = self.build_export_artifact(user_id, "markdown")
+        packet_payload = self.export_complaint_packet(user_id)
+        return {
+            "artifact": {
+                "format": "markdown",
+                "filename": artifact["filename"],
+                "media_type": artifact["media_type"],
+                "size_bytes": len(artifact["body"]),
+                "excerpt": artifact["body"].decode("utf-8", errors="replace")[:2000],
+            },
+            "packet_summary": deepcopy(packet_payload.get("packet_summary") or {}),
+            "artifact_analysis": deepcopy(packet_payload.get("artifact_analysis") or {}),
+        }
+
+    def export_complaint_pdf(self, user_id: Optional[str]) -> Dict[str, Any]:
+        artifact = self.build_export_artifact(user_id, "pdf")
+        packet_payload = self.export_complaint_packet(user_id)
+        return {
+            "artifact": {
+                "format": "pdf",
+                "filename": artifact["filename"],
+                "media_type": artifact["media_type"],
+                "size_bytes": len(artifact["body"]),
+                "header_b64": b64encode(artifact["body"][:32]).decode("ascii"),
+            },
+            "packet_summary": deepcopy(packet_payload.get("packet_summary") or {}),
+            "artifact_analysis": deepcopy(packet_payload.get("artifact_analysis") or {}),
         }
 
     def build_export_artifact(self, user_id: Optional[str], output_format: str = "json") -> Dict[str, Any]:
@@ -877,6 +1043,9 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
                 {"name": "complaint.export_complaint_packet", "description": "Export the current lawsuit complaint packet with intake, evidence, review, and draft content."},
+                {"name": "complaint.export_complaint_markdown", "description": "Export the generated complaint as a downloadable Markdown artifact."},
+                {"name": "complaint.export_complaint_pdf", "description": "Export the generated complaint as a downloadable PDF artifact."},
+                {"name": "complaint.analyze_complaint_output", "description": "Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions."},
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
                 {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
@@ -944,6 +1113,12 @@ class ComplaintWorkspaceService:
             )
         if tool_name == "complaint.export_complaint_packet":
             return self.export_complaint_packet(args.get("user_id"))
+        if tool_name == "complaint.export_complaint_markdown":
+            return self.export_complaint_markdown(args.get("user_id"))
+        if tool_name == "complaint.export_complaint_pdf":
+            return self.export_complaint_pdf(args.get("user_id"))
+        if tool_name == "complaint.analyze_complaint_output":
+            return self.analyze_complaint_output(args.get("user_id"))
         if tool_name == "complaint.update_case_synopsis":
             return self.update_case_synopsis(
                 args.get("user_id"),

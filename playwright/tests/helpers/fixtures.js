@@ -346,6 +346,8 @@ const workspaceToolList = [
   { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.' },
   { name: 'complaint.update_draft', description: 'Persist edits to the generated complaint draft.' },
   { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.' },
+  { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.' },
+  { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.' },
   { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.' },
   { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.' },
   { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique.' },
@@ -551,6 +553,79 @@ function buildWorkspaceCapabilities(state) {
         detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.',
       },
     ],
+  };
+}
+
+function slugifyWorkspaceFilename(value) {
+  return String(value || 'complaint-packet')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'complaint-packet';
+}
+
+function buildWorkspacePacketExport(state) {
+  const sessionPayload = buildWorkspaceSessionPayload(state);
+  const draft = state.draft || buildWorkspaceDraft(state, null);
+  const packet = {
+    title: draft.title,
+    user_id: state.user_id,
+    claim_type: state.claim_type,
+    case_synopsis: sessionPayload.case_synopsis,
+    questions: clone(sessionPayload.questions),
+    evidence: clone(state.evidence),
+    review: clone(sessionPayload.review),
+    draft: clone(draft),
+    exported_at: '2026-03-22T12:30:00Z',
+  };
+  const filenameRoot = slugifyWorkspaceFilename(draft.title);
+  const markdown = [
+    `# ${draft.title}`,
+    '',
+    '## Working Case Synopsis',
+    sessionPayload.case_synopsis,
+    '',
+    '## Complaint Draft',
+    draft.body,
+  ].join('\n');
+  return {
+    packet,
+    packet_summary: {
+      question_count: sessionPayload.questions.length,
+      answered_question_count: sessionPayload.questions.filter((item) => item.is_answered).length,
+      supported_elements: Number((sessionPayload.review.overview || {}).supported_elements || 0),
+      missing_elements: Number((sessionPayload.review.overview || {}).missing_elements || 0),
+      testimony_items: Number((sessionPayload.review.overview || {}).testimony_items || 0),
+      document_items: Number((sessionPayload.review.overview || {}).document_items || 0),
+      has_draft: Boolean(state.draft),
+      complaint_readiness: buildWorkspaceComplaintReadiness(state),
+      artifact_formats: ['json', 'markdown', 'pdf'],
+    },
+    artifacts: {
+      json: {
+        filename: `${filenameRoot}.json`,
+        content_type: 'application/json',
+      },
+      markdown: {
+        filename: `${filenameRoot}.md`,
+        content_type: 'text/markdown',
+        content: markdown,
+        excerpt: markdown.slice(0, 2000),
+      },
+      pdf: {
+        filename: `${filenameRoot}.pdf`,
+        content_type: 'application/pdf',
+        header_b64: Buffer.from('%PDF-1.4 mock complaint').toString('base64'),
+      },
+    },
+    artifact_analysis: {
+      draft_word_count: String(draft.body || '').split(/\s+/).filter(Boolean).length,
+      evidence_item_count: Number((state.evidence.testimony || []).length + (state.evidence.documents || []).length),
+      requested_relief_count: Number((draft.requested_relief || []).length),
+      supported_elements: Number((sessionPayload.review.overview || {}).supported_elements || 0),
+      missing_elements: Number((sessionPayload.review.overview || {}).missing_elements || 0),
+      has_case_synopsis: Boolean(String(sessionPayload.case_synopsis || '').trim()),
+    },
   };
 }
 
@@ -774,29 +849,32 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
       };
     }
     if (name === 'complaint.export_complaint_packet') {
-      const sessionPayload = buildWorkspaceSessionPayload(state);
-      const draft = state.draft || buildWorkspaceDraft(state, null);
+      return buildWorkspacePacketExport(state);
+    }
+    if (name === 'complaint.export_complaint_markdown') {
+      const payload = buildWorkspacePacketExport(state);
       return {
-        packet: {
-          title: draft.title,
-          user_id: state.user_id,
-          claim_type: state.claim_type,
-          case_synopsis: sessionPayload.case_synopsis,
-          questions: clone(sessionPayload.questions),
-          evidence: clone(state.evidence),
-          review: clone(sessionPayload.review),
-          draft: clone(draft),
-          exported_at: '2026-03-22T12:30:00Z',
+        artifact: {
+          format: 'markdown',
+          filename: payload.artifacts.markdown.filename,
+          media_type: payload.artifacts.markdown.content_type,
+          excerpt: payload.artifacts.markdown.excerpt,
         },
-        packet_summary: {
-          question_count: sessionPayload.questions.length,
-          answered_question_count: sessionPayload.questions.filter((item) => item.is_answered).length,
-          supported_elements: Number((sessionPayload.review.overview || {}).supported_elements || 0),
-          missing_elements: Number((sessionPayload.review.overview || {}).missing_elements || 0),
-          testimony_items: Number((sessionPayload.review.overview || {}).testimony_items || 0),
-          document_items: Number((sessionPayload.review.overview || {}).document_items || 0),
-          has_draft: Boolean(state.draft),
+        packet_summary: clone(payload.packet_summary),
+        artifact_analysis: clone(payload.artifact_analysis),
+      };
+    }
+    if (name === 'complaint.export_complaint_pdf') {
+      const payload = buildWorkspacePacketExport(state);
+      return {
+        artifact: {
+          format: 'pdf',
+          filename: payload.artifacts.pdf.filename,
+          media_type: payload.artifacts.pdf.content_type,
+          header_b64: payload.artifacts.pdf.header_b64,
         },
+        packet_summary: clone(payload.packet_summary),
+        artifact_analysis: clone(payload.artifact_analysis),
       };
     }
     if (name === 'complaint.update_case_synopsis') {
@@ -861,6 +939,46 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(payload),
+    });
+  });
+
+  await page.route('**/api/complaint-workspace/export/download**', async (route) => {
+    const url = new URL(route.request().url());
+    const userId = url.searchParams.get('user_id');
+    const outputFormat = String(url.searchParams.get('output_format') || 'json');
+    const payload = buildWorkspacePacketExport(getWorkspaceState(userId));
+
+    if (outputFormat === 'pdf') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/pdf',
+        headers: {
+          'Content-Disposition': `attachment; filename="${payload.artifacts.pdf.filename}"`,
+        },
+        body: Buffer.from(`%PDF-1.4\n% mock complaint pdf\n${payload.packet.draft.body}\n`),
+      });
+      return;
+    }
+
+    if (outputFormat === 'markdown') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/markdown',
+        headers: {
+          'Content-Disposition': `attachment; filename="${payload.artifacts.markdown.filename}"`,
+        },
+        body: payload.artifacts.markdown.content,
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: {
+        'Content-Disposition': `attachment; filename="${payload.artifacts.json.filename}"`,
+      },
+      body: JSON.stringify(payload.packet, null, 2),
     });
   });
 

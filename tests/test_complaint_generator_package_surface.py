@@ -24,7 +24,10 @@ from complaint_generator import (
     create_review_dashboard_app,
     create_ui_review_report,
     create_review_surface_app,
+    analyze_complaint_output,
     export_complaint_packet,
+    export_complaint_markdown,
+    export_complaint_pdf,
     generate_decentralized_id,
     generate_complaint,
     get_workflow_capabilities,
@@ -96,6 +99,7 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(generate_decentralized_id)
     assert callable(build_ui_ux_review_prompt)
     assert callable(create_ui_review_report)
+    assert callable(analyze_complaint_output)
     assert callable(create_review_dashboard_app)
     assert callable(review_ui)
     assert callable(optimize_ui)
@@ -116,6 +120,9 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(generate_complaint)
     assert callable(update_draft)
     assert callable(export_complaint_packet)
+    assert callable(export_complaint_markdown)
+    assert callable(export_complaint_pdf)
+    assert callable(analyze_complaint_output)
     assert callable(update_case_synopsis)
     assert callable(reset_session)
     assert callable(list_mcp_tools)
@@ -206,12 +213,20 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert updated_payload["draft"]["title"] == "Edited package wrapper complaint"
 
     export_payload = export_complaint_packet("package-wrapper-user", service=service)
+    markdown_payload = export_complaint_markdown("package-wrapper-user", service=service)
+    pdf_payload = export_complaint_pdf("package-wrapper-user", service=service)
+    analysis_payload = analyze_complaint_output("package-wrapper-user", service=service)
     tools_payload = list_mcp_tools(service=service)
     assert export_payload["packet_summary"]["has_draft"] is True
     assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
     assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
     assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
+    assert export_payload["ui_feedback"]["ui_suggestions"]
+    assert markdown_payload["artifact"]["filename"].endswith(".md")
+    assert pdf_payload["artifact"]["filename"].endswith(".pdf")
+    assert analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
     assert any(tool["name"] == "complaint.run_browser_audit" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
 
     reset_payload = reset_session("package-wrapper-user", service=service)
     assert reset_payload["session"]["intake_answers"] == {}
