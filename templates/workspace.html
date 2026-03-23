@@ -1515,11 +1515,12 @@
                     <div class="integration-grid">
                         <div class="tool-card">
                             <h3>Python package imports</h3>
-                            <pre>from complaint_generator import ComplaintWorkspaceService, create_review_surface_app
+                            <pre>from complaint_generator import ComplaintWorkspaceService, create_review_surface_app, export_complaint_docx
 from complaint_generator.mcp import handle_jsonrpc_message
 
 service = ComplaintWorkspaceService()
-session = service.get_session("did:key:example")</pre>
+session = service.get_session("did:key:example")
+docx_artifact = export_complaint_docx("did:key:example", service=service)</pre>
                         </div>
                         <div class="tool-card">
                             <h3>Python CLI</h3>
@@ -1528,6 +1529,7 @@ complaint-generator-workspace session --user-id did:key:example
 complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
 complaint-generator-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"
 complaint-workspace export-markdown --user-id did:key:example
+complaint-workspace export-docx --user-id did:key:example
 complaint-workspace export-pdf --user-id did:key:example
 complaint-workspace browser-audit artifacts/ui-audit/browser-audit</pre>
                         </div>
@@ -1535,6 +1537,7 @@ complaint-workspace browser-audit artifacts/ui-audit/browser-audit</pre>
                             <h3>MCP stdio server</h3>
                             <pre>complaint-generator-mcp
 complaint-mcp-server
+tool: complaint.export_complaint_docx
 tool: complaint.run_browser_audit</pre>
                         </div>
                         <div class="tool-card">
@@ -1543,6 +1546,7 @@ tool: complaint.run_browser_audit</pre>
 const bootstrap = await client.bootstrapWorkspace();
 await client.callTool('complaint.review_case', { user_id: bootstrap.did });
 await client.exportComplaintMarkdown(bootstrap.did);
+await client.exportComplaintDocx(bootstrap.did);
 await client.exportComplaintPdf(bootstrap.did);
 await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit' });</pre>
                             <div class="chip-row" id="sdk-server-info"></div>
@@ -1596,6 +1600,10 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>Formal Complaint Release Gate</label>
                                 <div class="status draft-preview-shell"><pre id="formal-complaint-release-gate">No export release-gate review run yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Formal Complaint Defects</label>
+                                <div class="status draft-preview-shell"><pre id="formal-complaint-defects">No complaint-output defects recorded yet.</pre></div>
                             </div>
                             <div>
                                 <label>Complaint Output UI Suggestions</label>
@@ -2427,6 +2435,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
             const releaseGateNode = document.getElementById('formal-complaint-release-gate');
+            const formalDefectsNode = document.getElementById('formal-complaint-defects');
             const outputAnalysisNode = document.getElementById('complaint-output-analysis-preview');
             const claimAlignmentNode = document.getElementById('claim-alignment-preview');
 
@@ -2503,9 +2512,21 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                     claim_type_alignment_score: Number(releaseGate.claim_type_alignment_score || 0),
                     draft_fallback_reason: String((((latestPacketExport || {}).packet || {}).draft || {}).draft_fallback_reason || '').trim(),
                 }, null, 2);
+                const issueItems = Array.isArray(uiFeedback.issues) ? uiFeedback.issues : [];
+                const formalDefects = issueItems
+                    .filter((item) => String((item || {}).source || '').startsWith('complaint_output'))
+                    .map((item) => ({
+                        severity: String(item.severity || 'unknown'),
+                        finding: String(item.finding || '').trim(),
+                        ui_implication: String(item.ui_implication || '').trim(),
+                    }));
+                formalDefectsNode.textContent = formalDefects.length
+                    ? JSON.stringify(formalDefects.slice(0, 6), null, 2)
+                    : 'No complaint-output defects recorded yet.';
                 claimAlignmentNode.textContent = JSON.stringify(claimAlignmentSummary, null, 2);
             } else {
                 releaseGateNode.textContent = 'No export release-gate review run yet.';
+                formalDefectsNode.textContent = 'No complaint-output defects recorded yet.';
                 outputAnalysisNode.textContent = 'No complaint-output analysis run yet.';
                 claimAlignmentNode.textContent = 'No claim-alignment review run yet.';
             }
@@ -3493,15 +3514,20 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const summary = packetPayload.packet_summary || {};
             const packet = packetPayload.packet || {};
             const draft = packet.draft || {};
+            const releaseGate = (packetPayload.ui_feedback || {}).release_gate || {};
             const exportedComplaint = [
                 draft.title ? `Title: ${draft.title}` : '',
                 packet.claim_type ? `Claim type: ${packet.claim_type}` : '',
+                releaseGate.verdict ? `Release gate: ${String(releaseGate.verdict).toUpperCase()}` : '',
+                releaseGate.reason ? `Release gate reason: ${releaseGate.reason}` : '',
                 draft.body ? `\n${draft.body}` : '',
             ].filter(Boolean).join('\n');
             document.getElementById('packet-preview').textContent = exportedComplaint || JSON.stringify(summary, null, 2);
             syncPacketDownloadState();
             renderWorkflowOperations();
-            setStatus('Complaint packet exported.');
+            setStatus(releaseGate.verdict
+                ? `Complaint packet exported. Release gate: ${String(releaseGate.verdict).toUpperCase()}.`
+                : 'Complaint packet exported.');
         }
 
         async function analyzeComplaintOutputPanel() {

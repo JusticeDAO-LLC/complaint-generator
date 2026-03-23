@@ -232,6 +232,43 @@ def _required_formal_complaint_markers() -> List[str]:
     ]
 
 
+def _formal_complaint_forbidden_meta_phrases() -> List[str]:
+    return [
+        "workflow summary",
+        "complaint record",
+        "support matrix",
+        "mcp",
+        "sdk",
+        "product explanation",
+        "json",
+    ]
+
+
+def _formal_complaint_validation_issues(body: str, claim_type: Optional[str] = None) -> List[str]:
+    complaint_body = str(body or "").strip()
+    issues: List[str] = []
+    for marker in _required_formal_complaint_markers():
+        if marker not in complaint_body:
+            issues.append(f"Missing formal marker: {marker}")
+
+    if not re.search(r"(?m)^\s*\d+\.\s+", complaint_body):
+        issues.append("Missing numbered pleading paragraphs.")
+
+    lowered = complaint_body.lower()
+    for phrase in _formal_complaint_forbidden_meta_phrases():
+        if phrase in lowered:
+            issues.append(f"Contains meta-summary language: {phrase}")
+
+    if claim_type:
+        preferred_heading = f"COMPLAINT FOR {_claim_type_display_name(claim_type).upper()}"
+        preferred_count_heading = _claim_type_count_heading(claim_type)
+        if preferred_heading not in complaint_body:
+            issues.append(f"Missing preferred complaint heading: {preferred_heading}")
+        if preferred_count_heading not in complaint_body:
+            issues.append(f"Missing preferred count heading: {preferred_count_heading}")
+    return issues
+
+
 def _build_complaint_output_release_gate(
     *,
     claim_type: str,
@@ -274,8 +311,7 @@ def _build_complaint_output_release_gate(
 
 
 def _has_required_formal_complaint_markers(body: str) -> bool:
-    complaint_body = str(body or "")
-    return all(marker in complaint_body for marker in _required_formal_complaint_markers())
+    return not _formal_complaint_validation_issues(body)
 
 
 def generate_decentralized_id() -> Dict[str, Any]:
@@ -739,7 +775,8 @@ class ComplaintWorkspaceService:
             "You are revising a generated complaint so it reads like a formal legal complaint rather than a workflow summary.\n"
             "Use only the facts already present in the complaint record. Do not invent statutes, parties, dates, courts, judges, addresses, or evidence.\n"
             "Keep the output in plain text with a litigation-style caption, numbered factual paragraphs, a separate count heading, a prayer for relief, and a signature block.\n"
-            "Do not write a memo, case summary, product explanation, or workflow note. Write the text like a filed civil complaint.\n"
+            "Number the factual allegations as pleading paragraphs like '1. ...', '2. ...', and keep that numbering visible in the final complaint body.\n"
+            "Do not write a memo, case summary, product explanation, workflow note, JSON explanation, SDK explanation, or support-matrix summary. Write the text like a filed civil complaint.\n"
             "Preserve the requested relief unless the record plainly requires a tighter phrasing.\n"
             f"Claim-specific filing guidance: {_claim_type_filing_guidance(payload['claim_type'])}\n"
             f"Preferred complaint heading: {preferred_heading}\n"
@@ -808,7 +845,12 @@ class ComplaintWorkspaceService:
             raw_text = _strip_code_fences(raw_response)
             if _has_required_formal_complaint_markers(raw_text):
                 llm_body = raw_text
-        if not _has_required_formal_complaint_markers(llm_body):
+        validation_issues = _formal_complaint_validation_issues(
+            llm_body,
+            base_draft.get("claim_type") or state.get("claim_type"),
+        )
+        if validation_issues:
+            self._last_draft_refinement_error = "; ".join(validation_issues[:3])
             return None
 
         requested_relief = [
@@ -1339,6 +1381,7 @@ class ComplaintWorkspaceService:
         }
         ui_feedback = self._analyze_complaint_output(packet, artifact_analysis)
         draft_fallback_reason = str(draft.get("draft_fallback_reason") or "").strip()
+        complaint_issues = list(ui_feedback.get("issues") or [])
         return {
             "packet": packet,
             "artifacts": artifacts,
@@ -1357,6 +1400,12 @@ class ComplaintWorkspaceService:
                 "complaint_readiness": self.get_complaint_readiness(user_id),
                 "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
                 "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+                "formal_defect_count": len(
+                    [item for item in complaint_issues if str((item or {}).get("source") or "").startswith("complaint_output")]
+                ),
+                "high_severity_issue_count": len(
+                    [item for item in complaint_issues if str((item or {}).get("severity") or "").lower() == "high"]
+                ),
                 "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
                 "artifact_formats": sorted(artifacts.keys()),
             },
@@ -1394,6 +1443,9 @@ class ComplaintWorkspaceService:
             "complaint_heading_matches": expected_complaint_heading in body,
             "count_heading_matches": expected_count_heading in body,
         }
+        validation_issues = _formal_complaint_validation_issues(body, claim_type)
+        meta_summary_issues = [issue for issue in validation_issues if issue.startswith("Contains meta-summary language:")]
+        numbering_issue_present = any(issue == "Missing numbered pleading paragraphs." for issue in validation_issues)
 
         if artifact_analysis.get("missing_elements", 0) > 0:
             missing_count = int(artifact_analysis.get("missing_elements") or 0)
@@ -1497,6 +1549,40 @@ class ComplaintWorkspaceService:
                     "source": "complaint_output",
                     "finding": "The exported complaint is missing formal pleading sections.",
                     "ui_implication": "The drafting UI is letting users export something that does not read like a formal legal complaint.",
+                }
+            )
+
+        if numbering_issue_present:
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": "The exported complaint is missing numbered pleading paragraphs.",
+                    "ui_implication": "The draft builder is allowing narrative text that still reads like a summary instead of a filed complaint.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Keep numbered complaint paragraphs visible in the draft",
+                    "recommendation": "Show numbered pleading paragraph examples and warn before export if the draft body stops reading like a paragraph-numbered complaint.",
+                    "target_surface": "draft,document,integrations",
+                }
+            )
+
+        if meta_summary_issues:
+            issues.append(
+                {
+                    "severity": "high",
+                    "source": "complaint_output",
+                    "finding": "The exported complaint still contains internal product or workflow language instead of clean pleading language.",
+                    "ui_implication": "The LLM drafting flow is leaking system-facing wording into a client-facing legal document.",
+                }
+            )
+            suggestions.append(
+                {
+                    "title": "Strip workflow language out of the complaint draft",
+                    "recommendation": "Warn when the draft body mentions workflow summaries, complaint records, SDKs, JSON, or support matrices so the final complaint remains client-safe.",
+                    "target_surface": "draft,integrations,optimizer",
                 }
             )
 
@@ -1799,6 +1885,13 @@ class ComplaintWorkspaceService:
                 "pdf_header": str(pdf_artifact.get("content_type") or "application/pdf"),
                 "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
                 "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+                "formal_defect_count": len(
+                    [
+                        item
+                        for item in list(ui_feedback.get("issues") or [])
+                        if str((item or {}).get("source") or "").startswith("complaint_output")
+                    ]
+                ),
                 "claim_type_alignment": dict(ui_feedback.get("claim_type_alignment") or {}),
                 "release_gate": dict(ui_feedback.get("release_gate") or {}),
                 "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),

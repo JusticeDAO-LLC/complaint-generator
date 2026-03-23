@@ -1042,6 +1042,9 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
                 "() => document.getElementById('formal-complaint-release-gate').innerText.toLowerCase().includes('verdict')"
             )
             page.wait_for_function(
+                "() => document.getElementById('formal-complaint-defects').innerText.trim().length > 10"
+            )
+            page.wait_for_function(
                 "() => document.getElementById('claim-alignment-preview').innerText.includes('claim_type_alignment_score')"
             )
             page.wait_for_function(
@@ -1523,6 +1526,9 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             )
             page.wait_for_function(
                 "() => document.getElementById('formal-complaint-release-gate').innerText.includes('verdict')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-defects').innerText.trim().length > 10"
             )
             const_workspace_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             page.wait_for_function(

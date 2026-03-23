@@ -572,6 +572,8 @@ def test_llm_draft_timeout_falls_back_to_template_with_reason(monkeypatch, tmp_p
     export_payload = service.export_complaint_packet("timeout-user")
     assert export_payload["packet_summary"]["draft_strategy"] == "template"
     assert export_payload["packet_summary"]["draft_fallback_reason"] == "llm_router draft refinement timed out after 20s"
+    assert export_payload["packet_summary"]["formal_defect_count"] >= 0
+    assert export_payload["packet_summary"]["high_severity_issue_count"] >= 0
     assert isinstance(export_payload["packet_summary"]["release_gate"], dict)
     assert "verdict" in export_payload["packet_summary"]["release_gate"]
 
@@ -597,7 +599,8 @@ def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(t
 
     assert "Preferred complaint heading: COMPLAINT FOR HOUSING DISCRIMINATION" in prompt
     assert "Preferred count heading: COUNT I - HOUSING DISCRIMINATION" in prompt
-    assert "Do not write a memo, case summary, product explanation, or workflow note." in prompt
+    assert "Number the factual allegations as pleading paragraphs like '1. ...', '2. ...'" in prompt
+    assert "Do not write a memo, case summary, product explanation, workflow note, JSON explanation, SDK explanation, or support-matrix summary." in prompt
     assert "The complaint must expressly allege all of the following:" in prompt
     assert "Allege the housing-related denial, interference, limitation, or retaliation with specificity." in prompt
     assert "Allege the property, housing benefit, tenancy, or housing opportunity context clearly enough to read like a real housing pleading." in prompt
@@ -649,6 +652,52 @@ def test_complaint_output_analysis_flags_claim_type_mismatch(tmp_path):
         suggestion["title"] == "Keep the selected claim theory visible through drafting"
         for suggestion in payload["ui_feedback"]["ui_suggestions"]
     )
+    assert payload["packet_summary"]["formal_defect_count"] >= 1
+
+
+def test_complaint_output_analysis_flags_meta_summary_language_and_missing_numbering(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "meta-summary-sessions")
+    service.submit_intake_answers(
+        "meta-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Was terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+    service.update_draft(
+        "meta-user",
+        title="Meta complaint",
+        body=(
+            "IN THE UNITED STATES DISTRICT COURT\n\n"
+            "Civil Action No. ________________\n"
+            "COMPLAINT FOR RETALIATION\n\n"
+            "JURISDICTION AND VENUE\n"
+            "PARTIES\n"
+            "FACTUAL ALLEGATIONS\n"
+            "This complaint record is a workflow summary prepared through the SDK.\n"
+            "EVIDENTIARY SUPPORT AND NOTICE\n"
+            "CLAIM FOR RELIEF\n"
+            "COUNT I - RETALIATION\n"
+            "PRAYER FOR RELIEF\n"
+            "JURY DEMAND\n"
+            "SIGNATURE BLOCK\n"
+        ),
+        requested_relief=["Back pay"],
+    )
+
+    payload = service.analyze_complaint_output("meta-user")
+    findings = [issue["finding"] for issue in payload["ui_feedback"]["issues"]]
+    suggestion_titles = [item["title"] for item in payload["ui_feedback"]["ui_suggestions"]]
+
+    assert any("missing numbered pleading paragraphs" in finding.lower() for finding in findings)
+    assert any("internal product or workflow language" in finding.lower() for finding in findings)
+    assert "Keep numbered complaint paragraphs visible in the draft" in suggestion_titles
+    assert "Strip workflow language out of the complaint draft" in suggestion_titles
+    assert payload["packet_summary"]["formal_defect_count"] >= 2
 
 
 def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path):

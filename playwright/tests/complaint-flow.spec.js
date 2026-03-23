@@ -389,6 +389,14 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-generation-meta')).toContainText(/Claim type: retaliation/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    const packageCard = page.locator('.tool-card').filter({ has: page.getByRole('heading', { name: 'Python package imports' }) }).first();
+    const cliCard = page.locator('.tool-card').filter({ has: page.getByRole('heading', { name: 'Python CLI' }) }).first();
+    const mcpCard = page.locator('.tool-card').filter({ has: page.getByRole('heading', { name: 'MCP stdio server' }) }).first();
+    const sdkCard = page.locator('.tool-card').filter({ has: page.getByRole('heading', { name: 'JavaScript MCP SDK' }) }).first();
+    await expect(packageCard.locator('pre')).toContainText(/export_complaint_docx/i);
+    await expect(cliCard.locator('pre')).toContainText(/export-docx/i);
+    await expect(mcpCard.locator('pre')).toContainText(/complaint\.export_complaint_docx/i);
+    await expect(sdkCard.locator('pre')).toContainText(/exportComplaintDocx/i);
     await page.locator('#refresh-complaint-readiness-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint readiness refreshed/i);
     await expect(page.locator('#complaint-readiness-preview')).toContainText(/"verdict":\s*"Draft in progress"/i);
