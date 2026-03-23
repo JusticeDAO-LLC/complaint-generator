@@ -397,7 +397,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#feature-walkthrough-list')).toContainText(/A complaint draft exists and can be revised directly/i);
     await page.locator('#export-packet-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint packet exported/i);
-    await expect(page.locator('#packet-preview')).toContainText(/"has_draft": true/i);
+    await expect(page.locator('#packet-preview')).toContainText(/Title: Jane Doe v\. Acme Corporation Complaint/i);
+    await expect(page.locator('#packet-preview')).toContainText(/Jane Doe brings this retaliation complaint against Acme Corporation/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await expect(page.locator('body')).toContainText(/complaint-workspace session/i);

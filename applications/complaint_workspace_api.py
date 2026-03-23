@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
@@ -108,6 +110,20 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
     @router.post("/api/complaint-workspace/reset")
     async def reset_session(request: Dict[str, Any]) -> Dict[str, Any]:
         return workspace.reset_session(request.get("user_id"))
+
+    @router.get("/api/complaint-workspace/export/download")
+    async def download_complaint_packet(user_id: Optional[str] = Query(default=None)) -> Response:
+        payload = workspace.export_complaint_packet(user_id)
+        packet = payload.get("packet") or {}
+        filename_root = str(packet.get("title") or "complaint-packet").strip() or "complaint-packet"
+        safe_filename = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in filename_root).strip("-") or "complaint-packet"
+        if not safe_filename.lower().endswith(".json"):
+            safe_filename = f"{safe_filename}.json"
+        return Response(
+            content=json.dumps(packet, indent=2, sort_keys=True),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+        )
 
     @router.get("/api/complaint-workspace/mcp/tools")
     async def list_mcp_tools() -> Dict[str, Any]:

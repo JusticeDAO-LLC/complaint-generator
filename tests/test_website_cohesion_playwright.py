@@ -1437,7 +1437,7 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
                 "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
             with page.expect_download() as download_info:
-                page.click("#download-packet-button")
+                page.locator("[data-tab-panel='integrations'] #download-packet-tool-button").click()
             download = download_info.value
             download_path = download.path()
             assert download.suggested_filename.endswith(".json")
@@ -1588,7 +1588,7 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
             with page.expect_download() as download_info:
-                page.click("#download-packet-button")
+                page.locator("[data-tab-panel='integrations'] #download-packet-tool-button").click()
             download = download_info.value
             download_path = download.path()
             assert download.suggested_filename.endswith(".json")

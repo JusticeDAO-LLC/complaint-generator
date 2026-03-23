@@ -712,6 +712,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
         { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI.', inputSchema: { type: 'object' } },
+        { name: 'complaint.run_browser_audit', description: 'Run the Playwright end-to-end complaint browser audit that drives chat, intake, evidence, review, draft, and builder surfaces.', inputSchema: { type: 'object' } },
       ],
     });
   }
@@ -747,6 +748,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
             { name: 'complaint.optimize_ui', description: 'Run the closed-loop screenshot, llm_router, optimizer, and revalidation workflow for the complaint dashboard UI.', inputSchema: { type: 'object' } },
+            { name: 'complaint.run_browser_audit', description: 'Run the Playwright end-to-end complaint browser audit that drives chat, intake, evidence, review, draft, and builder surfaces.', inputSchema: { type: 'object' } },
           ],
         },
       });
@@ -923,6 +925,13 @@ const server = http.createServer(async (request, response) => {
           ],
         };
         persistUiReadiness(userId, structuredContent);
+      } else if (toolName === 'complaint.run_browser_audit') {
+        structuredContent = {
+          command: ['pytest', '-q', String(args.pytest_target || 'playwright/tests/complaint-flow.spec.js')],
+          returncode: 0,
+          artifact_count: 6,
+          screenshot_dir: String(args.screenshot_dir || 'artifacts/ui-audit/browser-audit'),
+        };
       } else {
         return sendJson(response, {
           jsonrpc: '2.0',

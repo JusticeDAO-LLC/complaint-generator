@@ -1537,6 +1537,7 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
+                                <button class="secondary" id="download-packet-tool-button" type="button" disabled>Download Exported Complaint</button>
                             </div>
                             <div class="field-grid">
                                 <div>
@@ -1700,7 +1701,6 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceComplaintReadiness = null;
         let workspaceUiReadiness = null;
         let latestPacketExport = null;
-        let latestPacketDownloadUrl = null;
         let sdkPrimitiveSnapshot = null;
         const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
@@ -2410,22 +2410,26 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         }
 
         function syncPacketDownloadState() {
-            const downloadButton = document.getElementById('download-packet-button');
-            if (latestPacketDownloadUrl) {
-                URL.revokeObjectURL(latestPacketDownloadUrl);
-                latestPacketDownloadUrl = null;
-            }
+            const downloadButtons = [
+                document.getElementById('download-packet-button'),
+                document.getElementById('download-packet-tool-button'),
+            ].filter(Boolean);
             if (!latestPacketExport || !latestPacketExport.packet) {
-                downloadButton.disabled = true;
-                downloadButton.dataset.downloadFilename = '';
+                downloadButtons.forEach((button) => {
+                    button.disabled = true;
+                    button.dataset.downloadFilename = '';
+                    button.dataset.downloadUrl = '';
+                });
                 return;
             }
             const packet = latestPacketExport.packet;
-            const packetBlob = new Blob([JSON.stringify(packet, null, 2)], { type: 'application/json' });
-            latestPacketDownloadUrl = URL.createObjectURL(packetBlob);
             const suggestedName = `${slugifyFilename(packet.title || 'complaint-packet')}.json`;
-            downloadButton.disabled = false;
-            downloadButton.dataset.downloadFilename = suggestedName;
+            const downloadUrl = client.downloadComplaintPacketUrl(workspaceUserId);
+            downloadButtons.forEach((button) => {
+                button.disabled = false;
+                button.dataset.downloadFilename = suggestedName;
+                button.dataset.downloadUrl = downloadUrl;
+            });
         }
 
         function renderSdkDiagnostics() {
@@ -3380,13 +3384,21 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         }
 
         function downloadPacket() {
-            if (!latestPacketExport || !latestPacketDownloadUrl) {
+            if (!latestPacketExport) {
+                setStatus('Export the complaint packet before downloading it.');
+                return;
+            }
+            const preferredButton = document.getElementById('download-packet-tool-button');
+            const fallbackButton = document.getElementById('download-packet-button');
+            const filenameSource = [preferredButton, fallbackButton].find((button) => button && button.dataset.downloadFilename);
+            const urlSource = [preferredButton, fallbackButton].find((button) => button && button.dataset.downloadUrl);
+            if (!urlSource || !urlSource.dataset.downloadUrl) {
                 setStatus('Export the complaint packet before downloading it.');
                 return;
             }
             const link = document.createElement('a');
-            link.href = latestPacketDownloadUrl;
-            link.download = document.getElementById('download-packet-button').dataset.downloadFilename || 'complaint-packet.json';
+            link.href = urlSource.dataset.downloadUrl;
+            link.download = (filenameSource && filenameSource.dataset.downloadFilename) || 'complaint-packet.json';
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -3539,6 +3551,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
+        document.getElementById('download-packet-tool-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);

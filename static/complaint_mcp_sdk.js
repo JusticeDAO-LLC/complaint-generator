@@ -215,6 +215,14 @@
             });
         }
 
+        downloadComplaintPacketUrl(userId) {
+            const url = new URL(this.baseUrl + '/export/download', this.origin);
+            if (userId) {
+                url.searchParams.set('user_id', userId);
+            }
+            return url.toString();
+        }
+
         updateCaseSynopsis(userId, synopsis) {
             return this.callTool('complaint.update_case_synopsis', {
                 user_id: userId,

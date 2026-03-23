@@ -273,7 +273,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.get_complaint_readiness/i);
-    await expect(page.locator('#tool-list')).toContainText(/complaint\.run_browser_audit/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
 
@@ -292,6 +292,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#review-synopsis-preview')).toContainText(/Jane Doe alleges retaliation/i);
     await expect(page.locator('#draft-synopsis-preview')).toContainText(/next priority is proving the timing and motive/i);
 
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /Jane%20Doe|Jane\+Doe|Jane Doe/i);
     await page.locator('#handoff-chat-button').click();
     await expect(page).toHaveURL(/\/chat\?/);
     await expect(page.locator('#chat-context-summary')).toContainText(/Jane Doe alleges retaliation/i);
@@ -331,10 +332,13 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-title')).toHaveValue(/Jane Doe v\. Acme Corporation Retaliation Complaint/i);
     await expect(page.locator('#draft-body')).toHaveValue(/Jane Doe brings this retaliation complaint against Acme Corporation\./i);
 
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#refresh-complaint-readiness-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint readiness refreshed/i);
     await expect(page.locator('#complaint-readiness-preview')).toContainText(/"verdict":\s*"Draft in progress"/i);
     await expect(page.locator('#complaint-readiness-preview')).toContainText(/"has_draft":\s*true/i);
+
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
 
     await page.locator('#draft-body').fill('Edited final complaint body.');
     await page.locator('#save-draft-button').click();
@@ -379,6 +383,7 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#save-synopsis-button').click();
     await expect(page.locator('#review-synopsis-preview')).toContainText(/Taylor Smith alleges retaliation/i);
 
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /Taylor%20Smith|Taylor\+Smith|Taylor Smith/i);
     await page.locator('#handoff-chat-button').click();
     await expect(page).toHaveURL(/\/chat\?/);
     await expect(page.locator('#chat-context-summary')).toContainText(/Taylor Smith alleges retaliation/i);
@@ -412,7 +417,15 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Taylor Smith alleges retaliation/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
 
-    await page.locator('#export-packet-button').click();
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#refresh-complaint-readiness-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint readiness refreshed/i);
+    await expect(page.locator('#complaint-readiness-preview')).toContainText(/"verdict":\s*"Draft in progress"/i);
+    await expect(page.locator('#complaint-readiness-preview')).toContainText(/"has_draft":\s*true/i);
+
+    await page.locator('#export-packet-tool-button').click();
+    await expect(page.locator('#packet-export-summary')).toContainText(/"has_draft": true/i);
+    await expect(page.locator('#packet-export-summary')).toContainText(/"complaint_readiness":/i);
     await expect(page.locator('#packet-preview')).toContainText(/Title: Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Taylor Smith brings this retaliation complaint against Acme Logistics\./i);
 
