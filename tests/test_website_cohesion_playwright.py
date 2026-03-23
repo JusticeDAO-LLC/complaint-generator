@@ -1493,6 +1493,9 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.trim().length > 80"
             )
             const_workspace_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
+            page.wait_for_function(
+                "() => { const button = document.getElementById('download-packet-tool-markdown-button'); return button && !button.disabled && !!button.dataset.downloadUrl; }"
+            )
             with page.expect_download() as markdown_download_info:
                 page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
             markdown_download = markdown_download_info.value
@@ -1678,6 +1681,9 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.trim().length > 80"
             )
             const_homepage_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
+            page.wait_for_function(
+                "() => { const button = document.getElementById('download-packet-tool-markdown-button'); return button && !button.disabled && !!button.dataset.downloadUrl; }"
+            )
             with page.expect_download() as markdown_download_info:
                 page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
             markdown_download = markdown_download_info.value
