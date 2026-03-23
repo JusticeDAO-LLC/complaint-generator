@@ -36,7 +36,7 @@ def _write_artifact(directory: Path, name: str, url: str = "http://example.test/
 
 def test_ui_ux_workflow_defaults_target_full_feature_audit_and_actor_critic_optimizer():
     assert workflow_module.DEFAULT_SCREENSHOT_TEST.endswith(
-        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
     )
     assert workflow_module.DEFAULT_OPTIMIZER_METHOD == "actor_critic"
     assert workflow_module.DEFAULT_OPTIMIZER_PRIORITY == 90
@@ -130,7 +130,7 @@ def test_run_end_to_end_complaint_browser_audit_delegates_to_playwright_audit(mo
     assert result["artifact_count"] == 4
     assert str(captured["screenshot_dir"]).endswith("screens")
     assert str(captured["pytest_target"]).endswith(
-        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
     )
 
 

@@ -117,6 +117,7 @@ def _default_state(user_id: str) -> Dict[str, Any]:
         "intake_history": [],
         "evidence": {"testimony": [], "documents": []},
         "draft": None,
+        "ui_readiness": None,
     }
 
 
@@ -143,6 +144,7 @@ class ComplaintWorkspaceService:
         payload.setdefault("intake_history", [])
         payload.setdefault("evidence", {"testimony": [], "documents": []})
         payload.setdefault("draft", None)
+        payload.setdefault("ui_readiness", None)
         return payload
 
     def _save_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -401,6 +403,104 @@ class ComplaintWorkspaceService:
             "has_draft": bool(current_draft),
         }
 
+    def _summarize_ui_readiness_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        review = dict((result or {}).get("review") or {})
+        complaint_journey = dict(review.get("complaint_journey") or (result or {}).get("complaint_journey") or {})
+        critic_review = dict(review.get("critic_review") or (result or {}).get("critic_review") or {})
+        actor_path_breaks = list(review.get("actor_path_breaks") or (result or {}).get("actor_path_breaks") or [])
+        broken_controls = list(review.get("broken_controls") or (result or {}).get("broken_controls") or [])
+        issues = list(review.get("issues") or (result or {}).get("issues") or [])
+        release_blockers = list(complaint_journey.get("release_blockers") or [])
+        acceptance_checks = list(critic_review.get("acceptance_checks") or [])
+        tested_stages = list(complaint_journey.get("tested_stages") or [])
+        sdk_invocations = list(complaint_journey.get("sdk_tool_invocations") or [])
+
+        severity_counts = {"high": 0, "medium": 0, "low": 0}
+        for item in issues:
+            severity = str((item or {}).get("severity") or "").strip().lower()
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+
+        score = 100
+        score -= len(release_blockers) * 14
+        score -= len(actor_path_breaks) * 9
+        score -= len(broken_controls) * 8
+        score -= severity_counts["high"] * 12
+        score -= severity_counts["medium"] * 6
+        score -= severity_counts["low"] * 3
+        critic_verdict = str(critic_review.get("verdict") or "warning").strip().lower()
+        if critic_verdict == "fail":
+            score -= 25
+        elif critic_verdict == "warning":
+            score -= 10
+        if len(tested_stages) >= 6:
+            score += 4
+        if len(sdk_invocations) >= 2:
+            score += 4
+        if len(acceptance_checks) >= 3:
+            score += 4
+        score = max(0, min(100, score))
+
+        verdict = "Needs repair"
+        if score >= 85 and not release_blockers and critic_verdict != "fail":
+            verdict = "Client-safe"
+        elif score < 65 or len(release_blockers) > 1 or critic_verdict == "fail":
+            verdict = "Do not send to clients yet"
+
+        summary_text = str(
+            (result or {}).get("latest_review")
+            or review.get("summary")
+            or (result or {}).get("summary")
+            or ""
+        ).strip()
+
+        return {
+            "score": score,
+            "verdict": verdict,
+            "critic_verdict": critic_verdict or "warning",
+            "release_blockers": release_blockers,
+            "acceptance_checks": acceptance_checks,
+            "tested_stages": tested_stages,
+            "sdk_invocations": sdk_invocations,
+            "actor_path_breaks": actor_path_breaks,
+            "broken_controls": broken_controls,
+            "issue_counts": severity_counts,
+            "summary": summary_text,
+            "workflow_type": str((result or {}).get("workflow_type") or (result or {}).get("backend", {}).get("strategy") or "review"),
+            "updated_at": _utc_now(),
+        }
+
+    def _persist_ui_readiness(self, user_id: Optional[str], result: Dict[str, Any]) -> Dict[str, Any]:
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        summarized = self._summarize_ui_readiness_result(result)
+        state["ui_readiness"] = summarized
+        self._save_state(state)
+        return summarized
+
+    def get_ui_readiness(self, user_id: Optional[str]) -> Dict[str, Any]:
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        cached = dict(state.get("ui_readiness") or {})
+        if cached:
+            cached.setdefault("status", "cached")
+            cached["user_id"] = state["user_id"]
+            return cached
+        return {
+            "user_id": state["user_id"],
+            "status": "unavailable",
+            "verdict": "No UI verdict cached",
+            "score": None,
+            "summary": "",
+            "release_blockers": [],
+            "acceptance_checks": [],
+            "tested_stages": [],
+            "sdk_invocations": [],
+            "actor_path_breaks": [],
+            "broken_controls": [],
+            "issue_counts": {"high": 0, "medium": 0, "low": 0},
+            "workflow_type": None,
+            "updated_at": None,
+        }
+
     def get_workflow_capabilities(self, user_id: Optional[str]) -> Dict[str, Any]:
         session = self.get_session(user_id)
         review = session["review"]
@@ -453,6 +553,7 @@ class ComplaintWorkspaceService:
             "case_synopsis": session["case_synopsis"],
             "overview": overview,
             "complaint_readiness": readiness,
+            "ui_readiness": self.get_ui_readiness(user_id),
             "capabilities": capabilities,
         }
 
@@ -608,6 +709,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.review_case", "description": "Return the current support matrix and evidence review."},
                 {"name": "complaint.build_mediator_prompt", "description": "Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps."},
                 {"name": "complaint.get_complaint_readiness", "description": "Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement."},
+                {"name": "complaint.get_ui_readiness", "description": "Return the latest cached actor/critic UI readiness verdict for this complaint session."},
                 {"name": "complaint.get_workflow_capabilities", "description": "Summarize which complaint-workflow abilities are currently available for the session."},
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
@@ -655,6 +757,8 @@ class ComplaintWorkspaceService:
             return self.build_mediator_prompt(args.get("user_id"))
         if tool_name == "complaint.get_complaint_readiness":
             return self.get_complaint_readiness(args.get("user_id"))
+        if tool_name == "complaint.get_ui_readiness":
+            return self.get_ui_readiness(args.get("user_id"))
         if tool_name == "complaint.get_workflow_capabilities":
             return self.get_workflow_capabilities(args.get("user_id"))
         if tool_name == "complaint.generate_complaint":
@@ -705,7 +809,7 @@ class ComplaintWorkspaceService:
                 )
             if screenshot_dir:
                 if iterations > 0:
-                    return run_iterative_ui_ux_workflow(
+                    result = run_iterative_ui_ux_workflow(
                         screenshot_dir=str(screenshot_dir),
                         output_dir=args.get("output_path"),
                         iterations=iterations,
@@ -715,9 +819,11 @@ class ComplaintWorkspaceService:
                         goals=args.get("goals"),
                         pytest_target=str(pytest_target)
                         if pytest_target
-                        else "tests/test_website_cohesion_playwright.py::test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer",
+                        else "tests/test_website_cohesion_playwright.py::test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs",
                     )
-                return run_ui_review_workflow(
+                    self._persist_ui_readiness(args.get("user_id"), result)
+                    return result
+                result = run_ui_review_workflow(
                     str(screenshot_dir),
                     notes=args.get("notes"),
                     goals=args.get("goals"),
@@ -727,6 +833,8 @@ class ComplaintWorkspaceService:
                     backend_id=args.get("backend_id"),
                     output_path=args.get("output_path"),
                 )
+                self._persist_ui_readiness(args.get("user_id"), result)
+                return result
             raise ValueError("complaint.review_ui requires screenshot_paths or screenshot_dir.")
         if tool_name == "complaint.optimize_ui":
             from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement
@@ -734,10 +842,10 @@ class ComplaintWorkspaceService:
             screenshot_dir = args.get("screenshot_dir")
             if not screenshot_dir:
                 raise ValueError("complaint.optimize_ui requires screenshot_dir.")
-            return run_closed_loop_ui_ux_improvement(
+            result = run_closed_loop_ui_ux_improvement(
                 screenshot_dir=str(screenshot_dir),
                 output_dir=str(args.get("output_path") or Path(str(screenshot_dir)).expanduser().resolve() / "closed-loop"),
-                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"),
+                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"),
                 max_rounds=int(args.get("max_rounds") or 2),
                 review_iterations=int(args.get("iterations") or 1),
                 provider=args.get("provider"),
@@ -747,6 +855,8 @@ class ComplaintWorkspaceService:
                 notes=args.get("notes"),
                 goals=args.get("goals"),
             )
+            self._persist_ui_readiness(args.get("user_id"), result)
+            return result
         if tool_name == "complaint.run_browser_audit":
             from complaint_generator.ui_ux_workflow import run_end_to_end_complaint_browser_audit
 
@@ -755,6 +865,6 @@ class ComplaintWorkspaceService:
                 raise ValueError("complaint.run_browser_audit requires screenshot_dir.")
             return run_end_to_end_complaint_browser_audit(
                 screenshot_dir=str(screenshot_dir),
-                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"),
+                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"),
             )
         raise ValueError(f"Unknown complaint MCP tool: {tool_name}")

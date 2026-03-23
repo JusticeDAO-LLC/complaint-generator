@@ -61,6 +61,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.get_ui_readiness": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
     "complaint.get_workflow_capabilities": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
@@ -111,6 +115,7 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "type": "array",
                 "items": {"type": "string"},
             },
+            "user_id": {"type": "string"},
             "screenshot_dir": {"type": "string"},
             "notes": {"type": "string"},
             "goals": {
@@ -129,6 +134,7 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "complaint.optimize_ui": {
         "type": "object",
         "properties": {
+            "user_id": {"type": "string"},
             "screenshot_dir": {"type": "string"},
             "output_path": {"type": "string"},
             "notes": {"type": "string"},

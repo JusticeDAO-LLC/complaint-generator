@@ -473,7 +473,10 @@ def _capture_screenshot(page, target_dir: Path, name: str) -> Path:
     target_dir = _artifact_dir(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     screenshot_path = target_dir / f"{name}.png"
-    page.screenshot(path=str(screenshot_path), full_page=True)
+    try:
+        page.screenshot(path=str(screenshot_path), full_page=True)
+    except Exception:
+        page.screenshot(path=str(screenshot_path))
     assert screenshot_path.exists()
     assert screenshot_path.stat().st_size > 0
     metadata_path = target_dir / f"{name}.json"
@@ -902,6 +905,13 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('workflow-capabilities-preview').innerText.includes('Complaint packet')"
             )
+            page.click("#refresh-complaint-readiness-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint readiness refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('ready') || document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('building')"
+            )
             page.click("#build-mediator-prompt-button")
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').innerText.includes('Mediator brief refreshed.')"
@@ -1180,7 +1190,7 @@ def test_workspace_feature_flow_captures_screenshots_for_full_complaint_generato
 
             page.get_by_role("button", name="UX Audit", exact=True).click()
             page.wait_for_function(
-                "() => document.getElementById('ux-review-pytest-target').value.includes('test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer')"
+                "() => document.getElementById('ux-review-pytest-target').value.includes('test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs')"
             )
             feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-ux-review"))
 
@@ -1343,7 +1353,7 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
 
             page.get_by_role("button", name="UX Audit", exact=True).click()
             page.wait_for_function(
-                "() => document.getElementById('ux-review-pytest-target').value.includes('test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer')"
+                "() => document.getElementById('ux-review-pytest-target').value.includes('test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs')"
             )
             page.wait_for_function(
                 "() => document.getElementById('ux-review-method').value === 'actor_critic'"
@@ -1354,6 +1364,10 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.click("#refresh-capabilities-button")
             page.wait_for_function(
                 "() => document.getElementById('workflow-capabilities-preview').innerText.includes('Complaint packet')"
+            )
+            page.click("#refresh-complaint-readiness-button")
+            page.wait_for_function(
+                "() => document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('ready') || document.getElementById('complaint-readiness-preview').innerText.toLowerCase().includes('building')"
             )
             page.click("#build-mediator-prompt-button")
             page.wait_for_function(

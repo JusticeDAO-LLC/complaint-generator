@@ -13,7 +13,7 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SCREENSHOT_TEST = (
     "tests/test_website_cohesion_playwright.py::"
-    "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+    "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
 )
 DEFAULT_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_OPTIMIZER_PRIORITY = 90

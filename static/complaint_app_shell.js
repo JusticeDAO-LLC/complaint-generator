@@ -109,7 +109,7 @@
             const active = window.location.pathname === href ? ' is-active' : '';
             return '<a class="cg-app-shell__nav-link' + active + '" href="' + href + '">' + label + '</a>';
         }).join('');
-        const readiness = loadCachedReadiness();
+        const readiness = state.uiReadiness || loadCachedReadiness();
         const readinessVerdict = readiness && readiness.verdict ? readiness.verdict : 'No UI verdict cached';
         const readinessScore = readiness && Number.isFinite(Number(readiness.score)) ? String(readiness.score) + '/100' : 'pending';
         const readinessUpdated = readiness && readiness.updated_at ? readiness.updated_at : '';
@@ -201,6 +201,7 @@
         let toolCount = 0;
         let sessionPayload = null;
         let complaintReadiness = null;
+        let uiReadiness = null;
         let status = 'Using shared complaint workspace shell.';
 
         try {
@@ -224,6 +225,7 @@
             }
             sessionPayload = await client.getSession(did);
             complaintReadiness = await client.getComplaintReadiness(did);
+            uiReadiness = await client.getUiReadiness(did);
             status = 'Shared session loaded for ' + did + '.';
         } catch (error) {
             status = 'Shared session unavailable: ' + error.message;
@@ -234,6 +236,7 @@
             toolCount: toolCount,
             sessionPayload: sessionPayload,
             complaintReadiness: complaintReadiness,
+            uiReadiness: uiReadiness,
             status: status,
         });
     }

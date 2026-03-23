@@ -56,6 +56,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.review_case",
         "complaint.build_mediator_prompt",
         "complaint.get_complaint_readiness",
+        "complaint.get_ui_readiness",
         "complaint.get_workflow_capabilities",
         "complaint.generate_complaint",
         "complaint.update_draft",
@@ -139,9 +140,13 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert readiness_payload["verdict"] in {"Not ready to draft", "Still building the record", "Ready for first draft", "Draft in progress"}
     assert isinstance(readiness_payload["score"], int)
 
+    ui_readiness_payload = _invoke_cli(runner, "ui-readiness", "--user-id", "cli-user")
+    assert ui_readiness_payload["verdict"] in {"No UI verdict cached", "Needs repair", "Client-safe", "Do not send to clients yet"}
+
     capabilities_payload = _invoke_cli(runner, "capabilities", "--user-id", "cli-user")
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
     assert "complaint_readiness" in capabilities_payload
+    assert "ui_readiness" in capabilities_payload
 
     generate_payload = _invoke_cli(
         runner,
@@ -259,13 +264,17 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert readiness_payload["verdict"] in {"Not ready to draft", "Still building the record", "Ready for first draft", "Draft in progress"}
     assert isinstance(readiness_payload["score"], int)
 
-    capabilities_payload = _call_mcp_tool(service, 25, "complaint.get_workflow_capabilities", {"user_id": "mcp-user"})
+    ui_readiness_payload = _call_mcp_tool(service, 25, "complaint.get_ui_readiness", {"user_id": "mcp-user"})
+    assert ui_readiness_payload["verdict"] in {"No UI verdict cached", "Needs repair", "Client-safe", "Do not send to clients yet"}
+
+    capabilities_payload = _call_mcp_tool(service, 26, "complaint.get_workflow_capabilities", {"user_id": "mcp-user"})
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
     assert "complaint_readiness" in capabilities_payload
+    assert "ui_readiness" in capabilities_payload
 
     generate_payload = _call_mcp_tool(
         service,
-        26,
+        27,
         "complaint.generate_complaint",
         {
             "user_id": "mcp-user",
@@ -280,7 +289,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
 
     update_payload = _call_mcp_tool(
         service,
-        27,
+        28,
         "complaint.update_draft",
         {
             "user_id": "mcp-user",
@@ -293,14 +302,14 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert update_payload["draft"]["body"] == "Updated body from MCP."
     assert update_payload["draft"]["requested_relief"] == ["Reinstatement", "Attorney fees"]
 
-    export_payload = _call_mcp_tool(service, 28, "complaint.export_complaint_packet", {"user_id": "mcp-user"})
+    export_payload = _call_mcp_tool(service, 29, "complaint.export_complaint_packet", {"user_id": "mcp-user"})
     assert export_payload["packet"]["draft"]["title"] == "Updated MCP complaint"
     assert export_payload["packet_summary"]["has_draft"] is True
     assert "complaint_readiness" in export_payload["packet_summary"]
 
     synopsis_payload = _call_mcp_tool(
         service,
-        29,
+        30,
         "complaint.update_case_synopsis",
         {
             "user_id": "mcp-user",
@@ -310,7 +319,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
     assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
 
-    reset_payload = _call_mcp_tool(service, 30, "complaint.reset_session", {"user_id": "mcp-user"})
+    reset_payload = _call_mcp_tool(service, 31, "complaint.reset_session", {"user_id": "mcp-user"})
     assert reset_payload["session"]["user_id"] == "mcp-user"
     assert reset_payload["session"]["draft"] is None
     assert reset_payload["session"]["intake_answers"] == {}
@@ -336,18 +345,24 @@ def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path
         runner,
         "review-ui",
         str(tmp_path),
+        "--user-id",
+        "cli-user",
         "--artifact-path",
         str(tmp_path / "review.json"),
     )
     assert cli_payload["review"]["summary"] == "Review completed."
+    cached_cli_ui_payload = _invoke_cli(runner, "ui-readiness", "--user-id", "cli-user")
+    assert cached_cli_ui_payload["status"] == "cached"
 
     mcp_payload = _call_mcp_tool(
         service,
         11,
         "complaint.review_ui",
-        {"screenshot_dir": str(tmp_path)},
+        {"screenshot_dir": str(tmp_path), "user_id": "mcp-user"},
     )
     assert mcp_payload["review"]["summary"] == "Review completed."
+    cached_mcp_ui_payload = _call_mcp_tool(service, 12, "complaint.get_ui_readiness", {"user_id": "mcp-user"})
+    assert cached_mcp_ui_payload["status"] == "cached"
 
 
 def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp_path):
@@ -377,6 +392,7 @@ def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp
         12,
         "complaint.review_ui",
         {
+            "user_id": "iter-user",
             "screenshot_dir": str(tmp_path),
             "iterations": 2,
             "output_path": str(tmp_path / "reviews"),
@@ -386,6 +402,8 @@ def test_review_ui_tool_supports_iterative_workflow_through_mcp(monkeypatch, tmp
 
     assert mcp_payload["iterations"] == 2
     assert mcp_payload["runs"][0]["iteration"] == 1
+    cached_payload = _call_mcp_tool(service, 13, "complaint.get_ui_readiness", {"user_id": "iter-user"})
+    assert cached_payload["status"] == "cached"
 
 
 def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monkeypatch, tmp_path):
@@ -417,6 +435,8 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
         runner,
         "optimize-ui",
         str(tmp_path),
+        "--user-id",
+        "cli-user",
         "--output-path",
         str(tmp_path / "closed-loop"),
         "--max-rounds",
@@ -430,12 +450,15 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
     )
     assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
     assert cli_payload["max_rounds"] == 2
+    cached_cli_ui_payload = _invoke_cli(runner, "ui-readiness", "--user-id", "cli-user")
+    assert cached_cli_ui_payload["status"] == "cached"
 
     mcp_payload = _call_mcp_tool(
         service,
         13,
         "complaint.optimize_ui",
         {
+            "user_id": "mcp-user",
             "screenshot_dir": str(tmp_path),
             "max_rounds": 2,
             "output_path": str(tmp_path / "closed-loop"),
@@ -446,6 +469,8 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
     )
     assert mcp_payload["workflow_type"] == "ui_ux_closed_loop"
     assert mcp_payload["cycles"][0]["optimizer_result"]["changed_files"] == ["templates/workspace.html"]
+    cached_mcp_ui_payload = _call_mcp_tool(service, 14, "complaint.get_ui_readiness", {"user_id": "mcp-user"})
+    assert cached_mcp_ui_payload["status"] == "cached"
 
 
 def test_optimize_ui_defaults_to_feature_complete_audit_and_actor_critic_method(monkeypatch, tmp_path):
@@ -472,7 +497,7 @@ def test_optimize_ui_defaults_to_feature_complete_audit_and_actor_critic_method(
     assert captured["method"] == "actor_critic"
     assert captured["priority"] == 90
     assert captured["pytest_target"].endswith(
-        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
     )
 
 
@@ -508,7 +533,7 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
     assert cli_payload["returncode"] == 0
     assert cli_payload["artifact_count"] == 3
     assert captured["pytest_target"].endswith(
-        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
     )
 
     tool_names = [tool["name"] for tool in tool_list_payload(service)["tools"]]
@@ -526,5 +551,5 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
     assert mcp_payload["returncode"] == 0
     assert mcp_payload["artifact_count"] == 3
     assert captured["pytest_target"].endswith(
-        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
     )

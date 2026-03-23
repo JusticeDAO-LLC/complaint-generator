@@ -206,6 +206,7 @@ function createWorkspaceState(userId = 'did:key:playwright-demo') {
       documents: [],
     },
     draft: null,
+    ui_readiness: null,
   };
 }
 
@@ -358,6 +359,93 @@ function complaintReadinessPayload(userId = 'did:key:playwright-demo') {
   };
 }
 
+function uiReadinessPayload(userId = 'did:key:playwright-demo') {
+  const workspaceState = getWorkspaceState(userId);
+  return workspaceState.ui_readiness || {
+    user_id: userId,
+    status: 'unavailable',
+    verdict: 'No UI verdict cached',
+    score: null,
+    summary: '',
+    release_blockers: [],
+    acceptance_checks: [],
+    tested_stages: [],
+    sdk_invocations: [],
+    actor_path_breaks: [],
+    broken_controls: [],
+    issue_counts: { high: 0, medium: 0, low: 0 },
+    workflow_type: null,
+    updated_at: null,
+  };
+}
+
+function persistUiReadiness(userId = 'did:key:playwright-demo', result = {}) {
+  const workspaceState = getWorkspaceState(userId);
+  const review = (result && result.review) || {};
+  const complaintJourney = review.complaint_journey || result.complaint_journey || {};
+  const criticReview = review.critic_review || result.critic_review || {};
+  const issues = Array.isArray(review.issues) ? review.issues : Array.isArray(result.issues) ? result.issues : [];
+  const actorPathBreaks = Array.isArray(review.actor_path_breaks) ? review.actor_path_breaks : Array.isArray(result.actor_path_breaks) ? result.actor_path_breaks : [];
+  const brokenControls = Array.isArray(review.broken_controls) ? review.broken_controls : Array.isArray(result.broken_controls) ? result.broken_controls : [];
+  const releaseBlockers = Array.isArray(complaintJourney.release_blockers) ? complaintJourney.release_blockers : [];
+  const acceptanceChecks = Array.isArray(criticReview.acceptance_checks) ? criticReview.acceptance_checks : [];
+  const testedStages = Array.isArray(complaintJourney.tested_stages) ? complaintJourney.tested_stages : [];
+  const sdkInvocations = Array.isArray(complaintJourney.sdk_tool_invocations) ? complaintJourney.sdk_tool_invocations : [];
+  const issueCounts = { high: 0, medium: 0, low: 0 };
+  for (const item of issues) {
+    const severity = String((item || {}).severity || '').trim().toLowerCase();
+    if (severity in issueCounts) {
+      issueCounts[severity] += 1;
+    }
+  }
+  let score = 100;
+  score -= releaseBlockers.length * 14;
+  score -= actorPathBreaks.length * 9;
+  score -= brokenControls.length * 8;
+  score -= issueCounts.high * 12;
+  score -= issueCounts.medium * 6;
+  score -= issueCounts.low * 3;
+  const criticVerdict = String(criticReview.verdict || 'warning').trim().toLowerCase();
+  if (criticVerdict === 'fail') {
+    score -= 25;
+  } else if (criticVerdict === 'warning') {
+    score -= 10;
+  }
+  if (testedStages.length >= 6) {
+    score += 4;
+  }
+  if (sdkInvocations.length >= 2) {
+    score += 4;
+  }
+  if (acceptanceChecks.length >= 3) {
+    score += 4;
+  }
+  score = Math.max(0, Math.min(100, score));
+  let verdict = 'Needs repair';
+  if (score >= 85 && releaseBlockers.length === 0 && criticVerdict !== 'fail') {
+    verdict = 'Client-safe';
+  } else if (score < 65 || releaseBlockers.length > 1 || criticVerdict === 'fail') {
+    verdict = 'Do not send to clients yet';
+  }
+  workspaceState.ui_readiness = {
+    user_id: userId,
+    status: 'cached',
+    verdict,
+    score,
+    summary: String(result.latest_review || review.summary || result.summary || '').trim(),
+    release_blockers: releaseBlockers,
+    acceptance_checks: acceptanceChecks,
+    tested_stages: testedStages,
+    sdk_invocations: sdkInvocations,
+    actor_path_breaks: actorPathBreaks,
+    broken_controls: brokenControls,
+    issue_counts: issueCounts,
+    workflow_type: String(result.workflow_type || ((result.backend || {}).strategy) || 'review'),
+    updated_at: '2026-03-23T00:00:00+00:00',
+  };
+  return workspaceState.ui_readiness;
+}
+
 function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
   const sessionPayload = workspaceSessionPayload(userId);
   const overview = ((sessionPayload.review || {}).overview) || {};
@@ -368,6 +456,7 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
     case_synopsis: String(sessionPayload.case_synopsis || '').trim(),
     overview,
     complaint_readiness: complaintReadinessPayload(userId),
+    ui_readiness: uiReadinessPayload(userId),
     capabilities: [
       { id: 'intake_questions', label: 'Complaint intake questions', available: questions.length > 0, detail: `${answeredCount} of ${questions.length} intake questions answered.` },
       { id: 'mediator_prompt', label: 'Chat mediator handoff', available: true, detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.' },
@@ -614,6 +703,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
         { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.', inputSchema: { type: 'object' } },
+        { name: 'complaint.get_ui_readiness', description: 'Return the latest cached actor/critic UI readiness verdict for this complaint session.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
@@ -648,6 +738,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
             { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.', inputSchema: { type: 'object' } },
+            { name: 'complaint.get_ui_readiness', description: 'Return the latest cached actor/critic UI readiness verdict for this complaint session.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
@@ -699,6 +790,8 @@ const server = http.createServer(async (request, response) => {
         structuredContent = buildMediatorPromptPayload(userId);
       } else if (toolName === 'complaint.get_complaint_readiness') {
         structuredContent = complaintReadinessPayload(userId);
+      } else if (toolName === 'complaint.get_ui_readiness') {
+        structuredContent = uiReadinessPayload(userId);
       } else if (toolName === 'complaint.get_workflow_capabilities') {
         structuredContent = workflowCapabilitiesPayload(userId);
       } else if (toolName === 'complaint.generate_complaint') {
@@ -754,6 +847,7 @@ const server = http.createServer(async (request, response) => {
               },
             ],
           };
+          persistUiReadiness(userId, structuredContent);
         } else {
           structuredContent = {
             generated_at: '2026-03-23T00:00:00+00:00',
@@ -783,6 +877,7 @@ const server = http.createServer(async (request, response) => {
               ],
             },
           };
+          persistUiReadiness(userId, structuredContent);
         }
       } else if (toolName === 'complaint.optimize_ui') {
         structuredContent = {
@@ -827,6 +922,7 @@ const server = http.createServer(async (request, response) => {
             },
           ],
         };
+        persistUiReadiness(userId, structuredContent);
       } else {
         return sendJson(response, {
           jsonrpc: '2.0',
@@ -923,6 +1019,9 @@ const server = http.createServer(async (request, response) => {
     if (toolName === 'complaint.get_complaint_readiness') {
       return sendJson(response, complaintReadinessPayload(userId));
     }
+    if (toolName === 'complaint.get_ui_readiness') {
+      return sendJson(response, uiReadinessPayload(userId));
+    }
     if (toolName === 'complaint.get_workflow_capabilities') {
       return sendJson(response, workflowCapabilitiesPayload(userId));
     }
@@ -953,7 +1052,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.review_ui') {
       if ((Number(args.iterations || 0)) > 0) {
-        return sendJson(response, {
+        const result = {
           iterations: Number(args.iterations || 0),
           screenshot_dir: args.screenshot_dir || 'artifacts/ui-audit/screenshots',
           output_dir: args.output_path || 'artifacts/ui-audit/reviews',
@@ -983,9 +1082,11 @@ const server = http.createServer(async (request, response) => {
               review_json_path: 'artifacts/ui-audit/reviews/iteration-01-review.json',
             },
           ],
-        });
+        };
+        persistUiReadiness(userId, result);
+        return sendJson(response, result);
       }
-      return sendJson(response, {
+      const result = {
         generated_at: '2026-03-23T00:00:00+00:00',
         backend: { strategy: 'playwright-stub' },
         screenshots: [],
@@ -1012,10 +1113,12 @@ const server = http.createServer(async (request, response) => {
             },
           ],
         },
-      });
+      };
+      persistUiReadiness(userId, result);
+      return sendJson(response, result);
     }
     if (toolName === 'complaint.optimize_ui') {
-      return sendJson(response, {
+      const result = {
         workflow_type: 'ui_ux_closed_loop',
         max_rounds: Number(args.max_rounds || 2),
         rounds_executed: 1,
@@ -1056,7 +1159,9 @@ const server = http.createServer(async (request, response) => {
             },
           },
         ],
-      });
+      };
+      persistUiReadiness(userId, result);
+      return sendJson(response, result);
     }
     response.writeHead(400);
     response.end('Unknown MCP tool');

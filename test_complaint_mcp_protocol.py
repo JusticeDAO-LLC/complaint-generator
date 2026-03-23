@@ -32,6 +32,7 @@ def test_public_package_exports_workspace_service():
     assert complaint_generator.DEFAULT_INTAKE_QUESTIONS[0]["id"] == "party_name"
     assert complaint_generator.DEFAULT_CLAIM_ELEMENTS[0]["id"] == "protected_activity"
     assert complaint_generator.get_complaint_readiness is not None
+    assert complaint_generator.get_ui_readiness is not None
 
 
 def test_tools_call_returns_structured_content(tmp_path):
@@ -107,6 +108,30 @@ def test_mcp_protocol_exposes_mediator_prompt_and_packet_export(tmp_path):
             },
         },
     )
+    review_response = handle_jsonrpc_message(
+        service,
+        {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "complaint.review_ui",
+                "arguments": {"user_id": "demo-user", "screenshot_paths": []},
+            },
+        },
+    )
+    cached_ui_response = handle_jsonrpc_message(
+        service,
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "complaint.get_ui_readiness",
+                "arguments": {"user_id": "demo-user"},
+            },
+        },
+    )
 
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_response["result"]["structuredContent"]["prefill_message"]
     assert export_response["result"]["structuredContent"]["packet"]["draft"]["body"]
@@ -115,4 +140,11 @@ def test_mcp_protocol_exposes_mediator_prompt_and_packet_export(tmp_path):
         "Still building the record",
         "Ready for first draft",
         "Draft in progress",
+    }
+    assert review_response["result"]["isError"] is False
+    assert cached_ui_response["result"]["structuredContent"]["verdict"] in {
+        "No UI verdict cached",
+        "Needs repair",
+        "Client-safe",
+        "Do not send to clients yet",
     }

@@ -12,7 +12,7 @@ from .ui_review import run_ui_review_workflow
 
 DEFAULT_UI_UX_SCREENSHOT_TARGET = (
     "tests/test_website_cohesion_playwright.py::"
-    "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+    "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
 )
 DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
@@ -101,6 +101,11 @@ def complaint_readiness(user_id: str = "demo-user") -> None:
     _print(service.get_complaint_readiness(user_id))
 
 
+@app.command("ui-readiness")
+def ui_readiness(user_id: str = "demo-user") -> None:
+    _print(service.get_ui_readiness(user_id))
+
+
 @app.command("capabilities")
 def capabilities(user_id: str = "demo-user") -> None:
     _print(service.get_workflow_capabilities(user_id))
@@ -151,6 +156,7 @@ def reset(user_id: str = "demo-user") -> None:
 @app.command("review-ui")
 def review_ui(
     screenshot_dir: str,
+    user_id: str = "demo-user",
     artifact_path: str = "artifacts/ui_review/latest.json",
     iterations: int = 0,
     notes: Optional[str] = None,
@@ -165,36 +171,37 @@ def review_ui(
     if iterations > 0:
         from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow
 
-        _print(
-            run_iterative_ui_ux_workflow(
-                screenshot_dir=screenshot_dir,
-                output_dir=str(Path(artifact_path).expanduser().resolve().parent),
-                iterations=iterations,
-                provider=provider,
-                model=model,
-                pytest_target=pytest_target,
-                notes=notes,
-                goals=goal_items,
-            )
-        )
-        return
-    _print(
-        run_ui_review_workflow(
-            screenshot_dir,
-            notes=notes,
-            goals=goal_items,
+        result = run_iterative_ui_ux_workflow(
+            screenshot_dir=screenshot_dir,
+            output_dir=str(Path(artifact_path).expanduser().resolve().parent),
+            iterations=iterations,
             provider=provider,
             model=model,
-            config_path=config_path,
-            backend_id=backend_id,
-            output_path=artifact_path,
+            pytest_target=pytest_target,
+            notes=notes,
+            goals=goal_items,
         )
+        service._persist_ui_readiness(user_id, result)
+        _print(result)
+        return
+    result = run_ui_review_workflow(
+        screenshot_dir,
+        notes=notes,
+        goals=goal_items,
+        provider=provider,
+        model=model,
+        config_path=config_path,
+        backend_id=backend_id,
+        output_path=artifact_path,
     )
+    service._persist_ui_readiness(user_id, result)
+    _print(result)
 
 
 @app.command("optimize-ui")
 def optimize_ui(
     screenshot_dir: str,
+    user_id: str = "demo-user",
     output_path: str = "artifacts/ui_review/closed-loop",
     max_rounds: int = 2,
     iterations: int = 1,
@@ -209,21 +216,21 @@ def optimize_ui(
     from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement
 
     goal_items = _split_multiline_values(goals)
-    _print(
-        run_closed_loop_ui_ux_improvement(
-            screenshot_dir=screenshot_dir,
-            output_dir=output_path,
-            pytest_target=pytest_target,
-            max_rounds=max_rounds,
-            review_iterations=iterations,
-            provider=provider,
-            model=model,
-            method=method,
-            priority=priority,
-            notes=notes,
-            goals=goal_items,
-        )
+    result = run_closed_loop_ui_ux_improvement(
+        screenshot_dir=screenshot_dir,
+        output_dir=output_path,
+        pytest_target=pytest_target,
+        max_rounds=max_rounds,
+        review_iterations=iterations,
+        provider=provider,
+        model=model,
+        method=method,
+        priority=priority,
+        notes=notes,
+        goals=goal_items,
     )
+    service._persist_ui_readiness(user_id, result)
+    _print(result)
 
 
 @app.command("browser-audit")

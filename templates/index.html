@@ -725,7 +725,7 @@
                 const badge = document.getElementById('homepage-session-badge');
                 const workspaceLink = document.getElementById('homepage-open-workspace');
                 const resumeLink = document.getElementById('homepage-resume-link');
-                const readiness = loadCachedReadiness();
+                let readiness = loadCachedReadiness();
 
                 if (readiness) {
                     const blocker = Array.isArray(readiness.release_blockers) && readiness.release_blockers.length
@@ -742,6 +742,7 @@
                     const client = new globalThis.ComplaintMcpSdk.ComplaintMcpClient();
                     const did = await client.getOrCreateDid();
                     const tools = await client.listTools();
+                    readiness = await client.getUiReadiness(did);
                     const payload = await client.getSession(did);
                     const complaintReadiness = await client.getComplaintReadiness(did);
                     const summary = overview(payload);
