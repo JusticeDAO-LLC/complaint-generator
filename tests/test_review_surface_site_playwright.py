@@ -1080,14 +1080,15 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                 _wait_for_text(page, "#evidence-list", "Termination email")
 
                 page.get_by_role("button", name="Draft", exact=True).click()
+                page.locator("#draft-mode").select_option("template")
                 page.locator("#draft-title").fill("Jane Doe v. Acme Corporation Complaint")
                 page.locator("#requested-relief").fill("Back pay\nInjunctive relief")
                 page.locator("#generate-draft-button").click()
-                _wait_for_text(page, "#workspace-status", "Complaint draft generated through the llm_router formal complaint path.")
+                _wait_for_text(page, "#workspace-status", "Complaint draft generated from the deterministic template fallback.")
                 _wait_for_text(page, "#draft-preview", "Jane Doe brings this retaliation complaint against Acme Corporation.")
-                assert page.locator("#draft-body").input_value().startswith(
-                    "Jane Doe brings this retaliation complaint against Acme Corporation."
-                )
+                draft_body = page.locator("#draft-body").input_value()
+                assert draft_body.startswith("IN THE UNITED STATES DISTRICT COURT")
+                assert "Jane Doe brings this retaliation complaint against Acme Corporation." in draft_body
 
                 page.get_by_role("button", name="CLI + MCP", exact=True).click()
                 _wait_for_text(page, "#tool-list", "complaint.review_case")

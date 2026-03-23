@@ -521,6 +521,34 @@ def test_cli_and_mcp_can_request_llm_backed_complaint_generation(monkeypatch, tm
     assert observed_calls[1]["model"] == "stub-model-2"
 
 
+def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "prompt-sessions")
+    service.submit_intake_answers(
+        "prompt-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Housing Group",
+            "protected_activity": "Requested a reasonable accommodation and reported discriminatory housing treatment",
+            "adverse_action": "Was denied a lease renewal and housing assistance",
+            "timeline": "Requested accommodation in April and lost the housing opportunity in May.",
+            "harm": "Lost stable housing and incurred relocation costs.",
+        },
+    )
+    service.update_claim_type("prompt-user", "housing_discrimination")
+    state = service._load_state("prompt-user")
+    base_draft = service._build_draft(state, use_llm=False)
+
+    prompt = service._build_formal_complaint_generation_prompt(state, base_draft)
+
+    assert "Preferred complaint heading: COMPLAINT FOR HOUSING DISCRIMINATION" in prompt
+    assert "Preferred count heading: COUNT I - HOUSING DISCRIMINATION" in prompt
+    assert "Do not write a memo, case summary, product explanation, or workflow note." in prompt
+    assert "The complaint must expressly allege all of the following:" in prompt
+    assert "Allege the housing-related denial, interference, limitation, or retaliation with specificity." in prompt
+    assert "Allege the property, housing benefit, tenancy, or housing opportunity context clearly enough to read like a real housing pleading." in prompt
+    assert "Return strict JSON with this shape:" in prompt
+
+
 def test_review_ui_tool_can_be_invoked_through_cli_and_mcp(monkeypatch, tmp_path):
     runner = CliRunner()
     service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-review-sessions")

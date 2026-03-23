@@ -3438,6 +3438,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const draft = packet.draft || {};
             const exportedComplaint = [
                 draft.title ? `Title: ${draft.title}` : '',
+                packet.claim_type ? `Claim type: ${packet.claim_type}` : '',
                 draft.body ? `\n${draft.body}` : '',
             ].filter(Boolean).join('\n');
             document.getElementById('packet-preview').textContent = exportedComplaint || JSON.stringify(summary, null, 2);

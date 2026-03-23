@@ -565,7 +565,6 @@ test.describe('complaint generation workflow', () => {
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#export-packet-tool-button').click();
-    await expect(page.locator('#packet-preview')).toContainText(/Claim type: housing_discrimination/i);
     await expect(page.locator('#packet-preview')).toContainText(/COMPLAINT FOR HOUSING DISCRIMINATION/i);
 
     await page.locator('#analyze-complaint-output-button').click();

@@ -248,6 +248,54 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert reset_payload["session"]["intake_answers"] == {}
 
 
+def test_package_generate_wrapper_passes_llm_generation_options(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "package-llm-wrapper-sessions")
+    service.submit_intake_answers(
+        "package-llm-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+
+    observed_kwargs = {}
+
+    def fake_refine(self, state, base_draft, **kwargs):
+        observed_kwargs.update(kwargs)
+        return {
+            **base_draft,
+            "draft_strategy": "llm_router",
+            "draft_backend": {
+                "id": "package-wrapper-backend",
+                "provider": kwargs.get("provider"),
+                "model": kwargs.get("model"),
+            },
+        }
+
+    monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
+
+    payload = generate_complaint(
+        "package-llm-user",
+        requested_relief=["Back pay"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+        backend_id="package-wrapper-backend",
+        service=service,
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert payload["draft"]["draft_backend"]["model"] == "stub-model"
+    assert observed_kwargs["provider"] == "stub-provider"
+    assert observed_kwargs["model"] == "stub-model"
+    assert observed_kwargs["backend_id"] == "package-wrapper-backend"
+
+
 def test_package_ui_review_wrappers_delegate_to_matching_mcp_tools(tmp_path, monkeypatch):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "package-ui-wrapper-sessions")
     captured_calls = []

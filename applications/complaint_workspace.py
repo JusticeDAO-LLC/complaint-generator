@@ -134,6 +134,60 @@ def _claim_type_filing_guidance(value: Optional[str]) -> str:
     )
 
 
+def _claim_type_count_heading(value: Optional[str]) -> str:
+    normalized = _normalize_claim_type(value)
+    return {
+        "retaliation": "COUNT I - RETALIATION",
+        "employment_discrimination": "COUNT I - EMPLOYMENT DISCRIMINATION",
+        "housing_discrimination": "COUNT I - HOUSING DISCRIMINATION",
+        "due_process_failure": "COUNT I - DUE PROCESS VIOLATION",
+        "consumer_protection": "COUNT I - CONSUMER PROTECTION",
+    }.get(normalized, f"COUNT I - {_claim_type_display_name(normalized).upper()}")
+
+
+def _claim_type_required_allegations(value: Optional[str]) -> List[str]:
+    normalized = _normalize_claim_type(value)
+    return {
+        "retaliation": [
+            "Allege the protected activity with specificity.",
+            "Allege defendant knowledge of the protected activity.",
+            "Allege the adverse action and the chronology tying it to the protected activity.",
+            "Allege resulting damages and requested relief.",
+        ],
+        "employment_discrimination": [
+            "Allege the discriminatory treatment or adverse employment action with specificity.",
+            "Allege the protected status, protected conduct, or prohibited motive that makes the treatment unlawful.",
+            "Allege the chronology, comparators, disparate treatment, or surrounding facts supporting discriminatory inference when present.",
+            "Allege resulting damages and requested relief tied to employment harm.",
+        ],
+        "housing_discrimination": [
+            "Allege the housing-related denial, interference, limitation, or retaliation with specificity.",
+            "Allege the protected housing status, rights, or protected housing activity that makes the conduct unlawful.",
+            "Allege the property, housing benefit, tenancy, or housing opportunity context clearly enough to read like a real housing pleading.",
+            "Allege resulting housing harm, economic harm, and requested equitable or damages relief.",
+        ],
+        "due_process_failure": [
+            "Allege the deprivation or adverse action imposed by defendant.",
+            "Allege the missing notice, hearing, review, appeal, or other procedural protection.",
+            "Allege the chronology showing plaintiff was deprived without the required process.",
+            "Allege resulting harm and requested procedural or damages relief.",
+        ],
+        "consumer_protection": [
+            "Allege the unfair, deceptive, or unlawful practice with specificity.",
+            "Allege the transaction, consumer relationship, or commercial context.",
+            "Allege how plaintiff was misled, harmed, overcharged, or otherwise injured.",
+            "Allege resulting damages, restitution, injunctive relief, or other requested relief.",
+        ],
+    }.get(
+        normalized,
+        [
+            "Allege the unlawful conduct with specificity.",
+            "Allege the chronology and resulting harm clearly.",
+            "Allege why the pleaded facts support the claim for relief.",
+        ],
+    )
+
+
 def _strip_code_fences(text: str) -> str:
     stripped = str(text or "").strip()
     if stripped.startswith("```"):
@@ -625,13 +679,41 @@ class ComplaintWorkspaceService:
             "base_draft": str(base_draft.get("body") or "")[:12000],
         }
         markers = "\n".join(f"- {marker}" for marker in _required_formal_complaint_markers())
+        allegation_lines = "\n".join(
+            f"- {line}" for line in _claim_type_required_allegations(payload["claim_type"])
+        )
+        preferred_count_heading = _claim_type_count_heading(payload["claim_type"])
+        preferred_heading = f"COMPLAINT FOR {payload['claim_label'].upper()}"
         return (
             "You are revising a generated complaint so it reads like a formal legal complaint rather than a workflow summary.\n"
-            "Use only the facts already present in the complaint record. Do not invent statutes, parties, dates, courts, judges, or evidence.\n"
-            "Keep the output in plain text with numbered factual paragraphs and a clear caption. Preserve the requested relief unless the record plainly requires a tighter phrasing.\n"
+            "Use only the facts already present in the complaint record. Do not invent statutes, parties, dates, courts, judges, addresses, or evidence.\n"
+            "Keep the output in plain text with a litigation-style caption, numbered factual paragraphs, a separate count heading, a prayer for relief, and a signature block.\n"
+            "Do not write a memo, case summary, product explanation, or workflow note. Write the text like a filed civil complaint.\n"
+            "Preserve the requested relief unless the record plainly requires a tighter phrasing.\n"
             f"Claim-specific filing guidance: {_claim_type_filing_guidance(payload['claim_type'])}\n"
+            f"Preferred complaint heading: {preferred_heading}\n"
+            f"Preferred count heading: {preferred_count_heading}\n"
+            "The complaint must expressly allege all of the following:\n"
+            f"{allegation_lines}\n"
             "Retain these exact section headings in the body:\n"
             f"{markers}\n\n"
+            "Follow this pleading skeleton and keep the headings exactly as written:\n"
+            "IN THE UNITED STATES DISTRICT COURT\n"
+            "FOR THE DISTRICT AND DIVISION IN WHICH THE UNLAWFUL PRACTICES OCCURRED\n\n"
+            "[Plaintiff caption]\n"
+            "Civil Action No. ________________\n"
+            f"{preferred_heading}\n"
+            "JURY TRIAL DEMANDED\n"
+            "NATURE OF THE ACTION\n"
+            "JURISDICTION AND VENUE\n"
+            "PARTIES\n"
+            "FACTUAL ALLEGATIONS\n"
+            "EVIDENTIARY SUPPORT AND NOTICE\n"
+            "CLAIM FOR RELIEF\n"
+            f"{preferred_count_heading}\n"
+            "PRAYER FOR RELIEF\n"
+            "JURY DEMAND\n"
+            "SIGNATURE BLOCK\n\n"
             "Return strict JSON with this shape:\n"
             "{\n"
             '  "title": "draft title",\n'
