@@ -48,12 +48,17 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
 
     assert tool_names == [
         "complaint.create_identity",
+        "complaint.list_intake_questions",
+        "complaint.list_claim_elements",
         "complaint.start_session",
         "complaint.submit_intake",
         "complaint.save_evidence",
         "complaint.review_case",
+        "complaint.build_mediator_prompt",
+        "complaint.get_workflow_capabilities",
         "complaint.generate_complaint",
         "complaint.update_draft",
+        "complaint.export_complaint_packet",
         "complaint.update_case_synopsis",
         "complaint.reset_session",
         "complaint.review_ui",
@@ -75,9 +80,16 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     identity_payload = _invoke_cli(runner, "identity")
     assert str(identity_payload["did"]).startswith("did:key:")
 
+    questions_payload = _invoke_cli(runner, "questions")
+    assert questions_payload["questions"][0]["id"] == "party_name"
+
+    claim_elements_payload = _invoke_cli(runner, "claim-elements")
+    assert claim_elements_payload["claim_elements"][0]["id"] == "protected_activity"
+
     tools_payload = _invoke_cli(runner, "tools")
     assert any(tool["name"] == "complaint.review_ui" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.optimize_ui" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.export_complaint_packet" for tool in tools_payload["tools"])
 
     answer_payload = _invoke_cli(
         runner,
@@ -119,6 +131,12 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert "case_synopsis" in review_payload
     assert "Reported discrimination to HR" in review_payload["review"]["case_synopsis"]
 
+    mediator_payload = _invoke_cli(runner, "mediator-prompt", "--user-id", "cli-user")
+    assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
+
+    capabilities_payload = _invoke_cli(runner, "capabilities", "--user-id", "cli-user")
+    assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
+
     generate_payload = _invoke_cli(
         runner,
         "generate",
@@ -150,6 +168,10 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert update_payload["draft"]["body"] == "Edited complaint body from CLI."
     assert update_payload["draft"]["requested_relief"] == ["Reinstatement", "Fees"]
 
+    export_payload = _invoke_cli(runner, "export-packet", "--user-id", "cli-user")
+    assert export_payload["packet"]["draft"]["title"] == "Edited CLI complaint"
+    assert export_payload["packet_summary"]["has_draft"] is True
+
     synopsis_payload = _invoke_cli(
         runner,
         "update-synopsis",
@@ -177,9 +199,15 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     identity_payload = _call_mcp_tool(service, 10, "complaint.create_identity", {})
     assert str(identity_payload["did"]).startswith("did:key:")
 
+    questions_payload = _call_mcp_tool(service, 11, "complaint.list_intake_questions", {})
+    assert questions_payload["questions"][0]["id"] == "party_name"
+
+    claim_elements_payload = _call_mcp_tool(service, 12, "complaint.list_claim_elements", {})
+    assert claim_elements_payload["claim_elements"][0]["id"] == "protected_activity"
+
     intake_payload = _call_mcp_tool(
         service,
-        2,
+        20,
         "complaint.submit_intake",
         {
             "user_id": "mcp-user",
@@ -196,7 +224,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
 
     evidence_payload = _call_mcp_tool(
         service,
-        3,
+        21,
         "complaint.save_evidence",
         {
             "user_id": "mcp-user",
@@ -212,15 +240,21 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert evidence_payload["saved"]["kind"] == "testimony"
     assert evidence_payload["saved"]["attachment_names"] == ["witness-notes.txt"]
 
-    review_payload = _call_mcp_tool(service, 4, "complaint.review_case", {"user_id": "mcp-user"})
+    review_payload = _call_mcp_tool(service, 22, "complaint.review_case", {"user_id": "mcp-user"})
     assert review_payload["review"]["overview"]["testimony_items"] == 1
     assert review_payload["session"]["user_id"] == "mcp-user"
     assert "case_synopsis" in review_payload
     assert "Reported discrimination to HR" in review_payload["review"]["case_synopsis"]
 
+    mediator_payload = _call_mcp_tool(service, 23, "complaint.build_mediator_prompt", {"user_id": "mcp-user"})
+    assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
+
+    capabilities_payload = _call_mcp_tool(service, 24, "complaint.get_workflow_capabilities", {"user_id": "mcp-user"})
+    assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
+
     generate_payload = _call_mcp_tool(
         service,
-        5,
+        25,
         "complaint.generate_complaint",
         {
             "user_id": "mcp-user",
@@ -235,7 +269,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
 
     update_payload = _call_mcp_tool(
         service,
-        6,
+        26,
         "complaint.update_draft",
         {
             "user_id": "mcp-user",
@@ -248,9 +282,13 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert update_payload["draft"]["body"] == "Updated body from MCP."
     assert update_payload["draft"]["requested_relief"] == ["Reinstatement", "Attorney fees"]
 
+    export_payload = _call_mcp_tool(service, 27, "complaint.export_complaint_packet", {"user_id": "mcp-user"})
+    assert export_payload["packet"]["draft"]["title"] == "Updated MCP complaint"
+    assert export_payload["packet_summary"]["has_draft"] is True
+
     synopsis_payload = _call_mcp_tool(
         service,
-        7,
+        28,
         "complaint.update_case_synopsis",
         {
             "user_id": "mcp-user",
@@ -260,7 +298,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
     assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
 
-    reset_payload = _call_mcp_tool(service, 8, "complaint.reset_session", {"user_id": "mcp-user"})
+    reset_payload = _call_mcp_tool(service, 29, "complaint.reset_session", {"user_id": "mcp-user"})
     assert reset_payload["session"]["user_id"] == "mcp-user"
     assert reset_payload["session"]["draft"] is None
     assert reset_payload["session"]["intake_answers"] == {}

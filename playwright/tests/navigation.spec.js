@@ -175,6 +175,35 @@ test.describe('website surface navigation', () => {
     });
   });
 
+  test('chat surface preserves workspace handoff context and captures a screenshot', async ({ page }, testInfo) => {
+    const handoffUrl = '/chat?source=workspace'
+      + '&user_id=did:key:handoff-demo'
+      + '&case_synopsis=Jordan%20Example%20alleges%20retaliation%20after%20reporting%20discrimination%20to%20HR.'
+      + '&prefill_message=Mediator%2C%20help%20turn%20this%20into%20testimony-ready%20narrative%20for%20the%20complaint%20record.'
+      + '&return_to=%2Fworkspace%3Ftarget_tab%3Dreview';
+
+    await page.goto(handoffUrl);
+
+    await expect(page).toHaveTitle(/Lex Publicus Chat App/i);
+    await expect(page.locator('h1').first()).toContainText(/Tell the story before the pleading/i);
+    await expect(page.locator('h2').first()).toContainText(/Complaint narrative chat/i);
+    await expect(page.locator('#chat-context-card')).toBeVisible();
+    await expect(page.locator('#chat-context-summary')).toContainText(/did:key:handoff-demo/i);
+    await expect(page.locator('#chat-context-summary')).toContainText(/Jordan Example alleges retaliation/i);
+    await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared mediator prompt/i);
+    await expect(page.locator('#chat-context-return-link')).toHaveAttribute('href', /\/workspace\?target_tab=review/);
+    await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
+    await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/document"]').first()).toBeVisible();
+
+    const screenshotPath = testInfo.outputPath('chat-handoff-overview.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await testInfo.attach('chat-handoff-overview', {
+      path: screenshotPath,
+      contentType: 'image/png',
+    });
+  });
+
   test('document and dashboard remain mutually navigable as one website', async ({ page }) => {
     await page.goto('/document');
     await page.locator('a[href="/claim-support-review"]').first().click();
@@ -242,6 +271,8 @@ test.describe('website surface navigation', () => {
     await page.getByRole('button', { name: 'Intake', exact: true }).click();
     await expect(page.locator('#sdk-server-info')).toContainText(/complaint-workspace-mcp/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint.generate_complaint/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.build_mediator_prompt/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint.export_complaint_packet/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Intake workflow/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Mediator testimony handoff/i);
     await expect(page.locator('#feature-coverage-list')).toContainText(/Actor\/Critic UI optimizer/i);
@@ -318,6 +349,9 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Complaint draft generated from intake and evidence/i);
     await expect(page.locator('#draft-preview')).toContainText(/Jane Doe brings this retaliation complaint against Acme Corporation/i);
     await expect(page.locator('#feature-walkthrough-list')).toContainText(/A complaint draft exists and can be revised directly/i);
+    await page.locator('#export-packet-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint packet exported/i);
+    await expect(page.locator('#packet-preview')).toContainText(/"has_draft": true/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await expect(page.locator('body')).toContainText(/complaint-workspace session/i);

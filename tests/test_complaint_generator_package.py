@@ -2,6 +2,8 @@ from typer.testing import CliRunner
 
 from complaint_generator import (
     ComplaintWorkspaceService,
+    DEFAULT_CLAIM_ELEMENTS,
+    DEFAULT_INTAKE_QUESTIONS,
     complaint_mcp_server_main,
     complaint_workspace_cli_main,
     create_complaint_workspace_router,
@@ -16,6 +18,8 @@ from complaint_generator.review import create_review_dashboard_app, create_revie
 def test_package_exports_unified_workspace_and_review_helpers():
     service = ComplaintWorkspaceService()
 
+    assert DEFAULT_INTAKE_QUESTIONS[0]["id"] == "party_name"
+    assert DEFAULT_CLAIM_ELEMENTS[0]["id"] == "protected_activity"
     assert create_complaint_workspace_router is not None
     assert create_review_dashboard_app is not None
     assert create_review_surface_app is not None

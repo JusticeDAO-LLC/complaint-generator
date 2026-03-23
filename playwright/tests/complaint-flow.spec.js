@@ -325,6 +325,8 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#draft-body').fill('Edited final complaint body.');
     await page.locator('#save-draft-button').click();
     await expect(page.locator('#draft-preview')).toContainText(/Edited final complaint body\./i);
+    await page.locator('#export-packet-button').click();
+    await expect(page.locator('#packet-preview')).toContainText(/"has_draft": true/i);
 
     const cachedDid = await page.evaluate(() => localStorage.getItem('complaintGenerator.did'));
     await page.reload();
