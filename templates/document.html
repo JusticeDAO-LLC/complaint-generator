@@ -83,6 +83,46 @@
             line-height: 1.65;
         }
 
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(143, 45, 30, 0.08);
+            color: var(--accent);
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .hero-guidance {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .hero-guidance-card {
+            padding: 14px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.82);
+            border: 1px solid rgba(22, 33, 38, 0.08);
+        }
+
+        .hero-guidance-card strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .hero-guidance-card span {
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
         .hero-metrics {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -853,7 +893,8 @@
 
         @media (max-width: 1080px) {
             .hero,
-            .workspace {
+            .workspace,
+            .hero-guidance {
                 grid-template-columns: 1fr;
             }
 
@@ -892,11 +933,12 @@
     <div class="layout">
         <section class="hero">
             <article class="hero-card">
+                <span class="eyebrow">Draft After Support Review</span>
                 <h1>Formal Complaint Builder</h1>
                 <p>
-                    Convert intake data, legal analysis, claim support, and stored evidence into a court-style complaint draft.
-                    This page builds the caption, facts, claims for relief, legal standards, requested relief, and linked exhibits,
-                    then renders DOCX and PDF outputs from the same structured draft.
+                    Turn the complaint record into a filing-style draft once the facts and support are in reasonable shape.
+                    This page converts the guided intake, evidence record, and review work into a structured complaint
+                    with caption, factual allegations, claims for relief, requested relief, and linked artifacts.
                 </p>
                 <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                     <a class="surface-link" href="/">Landing</a>
@@ -912,19 +954,33 @@
                     <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                     <a class="surface-link" href="/dashboards">Dashboards</a>
                 </div>
+                <div class="hero-guidance">
+                    <div class="hero-guidance-card">
+                        <strong>Use this page when the record is organized</strong>
+                        <span>The builder works best after intake answers and support review already make the case theory coherent.</span>
+                    </div>
+                    <div class="hero-guidance-card">
+                        <strong>Override only what needs court-specific control</strong>
+                        <span>Blank fields still inherit from the stored complaint record, so you do not need to re-enter the case.</span>
+                    </div>
+                    <div class="hero-guidance-card">
+                        <strong>Step back if the draft feels premature</strong>
+                        <span>If support is thin or contradictions remain, go back to review before relying on the generated complaint.</span>
+                    </div>
+                </div>
             </article>
             <aside class="hero-card hero-metrics">
                 <div class="metric">
                     <span class="metric-label">Output</span>
-                    <span class="metric-value">DOCX + PDF + Checklist</span>
+                    <span class="metric-value">Draft + DOCX + PDF</span>
                 </div>
                 <div class="metric">
-                    <span class="metric-label">Source</span>
-                    <span class="metric-value">Intake + Evidence</span>
+                    <span class="metric-label">Best Input</span>
+                    <span class="metric-value">Reviewed intake + support</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Draft Style</span>
-                    <span class="metric-value">Court Caption</span>
+                    <span class="metric-value">Filing-style complaint</span>
                 </div>
                 <div class="metric">
                     <span class="metric-label">Artifacts</span>

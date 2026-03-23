@@ -91,6 +91,32 @@
             max-width: 60ch;
         }
 
+        .hero-guidance {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .hero-guidance-card {
+            border-radius: 18px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.78);
+            border: 1px solid var(--line);
+        }
+
+        .hero-guidance-card strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .hero-guidance-card span {
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
         .hero-stats {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -675,7 +701,8 @@
 
         @media (max-width: 1080px) {
             .hero,
-            .layout {
+            .layout,
+            .hero-guidance {
                 grid-template-columns: 1fr;
             }
         }
@@ -699,10 +726,10 @@
         <section class="hero">
             <div class="hero-card">
                 <span class="eyebrow">Operator Review Surface</span>
-                <h1>Claim support coverage with execution controls.</h1>
+                <h1>Review whether the complaint is actually supported.</h1>
                 <p class="lede">
-                    Inspect claim-element coverage, review missing evidence or authority support, and trigger bounded
-                    follow-up retrieval without leaving the browser.
+                    Use this page to inspect claim-element coverage, identify missing evidence or authority support,
+                    and decide whether the case should go back to intake, move forward to drafting, or stay in review.
                 </p>
                 <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                     <a class="surface-link" href="/">Landing</a>
@@ -717,6 +744,20 @@
                     <a class="surface-link" href="/mlwysiwyg">Editor</a>
                     <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                     <a class="surface-link" href="/dashboards">Dashboards</a>
+                </div>
+                <div class="hero-guidance">
+                    <div class="hero-guidance-card">
+                        <strong>Use this page before drafting</strong>
+                        <span>The goal here is to see whether the complaint has enough support to justify a draft.</span>
+                    </div>
+                    <div class="hero-guidance-card">
+                        <strong>Look for missing elements, not just more text</strong>
+                        <span>This surface is most useful when you need to know what proof or authority is still missing.</span>
+                    </div>
+                    <div class="hero-guidance-card">
+                        <strong>Route the case forward deliberately</strong>
+                        <span>Go back to intake if facts are missing, or move to the builder once the record is ready.</span>
+                    </div>
                 </div>
                 <div class="status-line" id="prefill-context-line" hidden>Opened from document workflow.</div>
                 <div class="focus-chip-row" id="section-focus-chip-row" hidden></div>

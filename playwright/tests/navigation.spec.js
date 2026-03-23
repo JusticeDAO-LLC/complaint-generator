@@ -51,7 +51,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
 
     const screenshotPath = testInfo.outputPath('homepage-overview.png');
-    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await page.screenshot({ path: screenshotPath });
     await testInfo.attach('homepage-overview', {
       path: screenshotPath,
       contentType: 'image/png',
@@ -74,7 +74,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('a[href="/claim-support-review"]').first()).toBeVisible();
 
     const screenshotPath = testInfo.outputPath('homepage-mobile-overview.png');
-    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await page.screenshot({ path: screenshotPath });
     await testInfo.attach('homepage-mobile-overview', {
       path: screenshotPath,
       contentType: 'image/png',
