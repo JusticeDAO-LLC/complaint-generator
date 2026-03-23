@@ -563,6 +563,43 @@ function buildComplaintDownloadArtifact(userId = 'did:key:playwright-demo', outp
   return buildComplaintDownloadArtifact(userId, 'json');
 }
 
+function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
+  const packetPayload = exportComplaintPacketPayload(userId);
+  const packetSummary = packetPayload.packet_summary || {};
+  const artifactAnalysis = packetPayload.artifact_analysis || {};
+  return {
+    user_id: userId,
+    packet_summary: packetSummary,
+    artifact_analysis: artifactAnalysis,
+    ui_feedback: {
+      summary: 'The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.',
+      issues: Number(packetSummary.missing_elements || 0) > 0
+        ? [
+            {
+              severity: 'high',
+              source: 'complaint_output',
+              finding: `The exported complaint still reflects ${Number(packetSummary.missing_elements || 0)} unsupported claim elements.`,
+              ui_implication: 'The review and draft stages need stronger warnings before the user treats the complaint as filing-ready.',
+            },
+          ]
+        : [],
+      ui_suggestions: [
+        {
+          title: 'Tighten review-to-draft gatekeeping',
+          recommendation: 'Add stronger blocker language and a more prominent unsupported-elements summary before draft generation or export.',
+          target_surface: 'review,draft,integrations',
+        },
+      ],
+      draft_excerpt: String((((packetPayload.packet || {}).draft || {}).body || '')).slice(0, 600),
+      complaint_strengths: [
+        `Supported elements: ${Number(packetSummary.supported_elements || 0)}`,
+        `Evidence items: ${Number(packetSummary.testimony_items || 0) + Number(packetSummary.document_items || 0)}`,
+        `Requested relief items: ${Number(artifactAnalysis.requested_relief_count || 0)}`,
+      ],
+    },
+  };
+}
+
 function generateWorkspaceDraft(workspaceState, requestedRelief) {
   const answers = workspaceState.intake_answers;
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
@@ -791,6 +828,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.', inputSchema: { type: 'object' } },
         { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
+        { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -829,6 +867,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.', inputSchema: { type: 'object' } },
             { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
+            { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -897,7 +936,9 @@ const server = http.createServer(async (request, response) => {
         workspaceState.case_synopsis = typeof args.synopsis === 'string' ? args.synopsis.trim() : '';
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.export_complaint_packet') {
-        structuredContent = exportComplaintPacketPayload(userId);
+        structuredContent = Object.assign({}, exportComplaintPacketPayload(userId), {
+          ui_feedback: buildComplaintOutputAnalysis(userId).ui_feedback,
+        });
       } else if (toolName === 'complaint.export_complaint_markdown') {
         const packetPayload = exportComplaintPacketPayload(userId);
         structuredContent = {
@@ -922,6 +963,8 @@ const server = http.createServer(async (request, response) => {
           packet_summary: packetPayload.packet_summary,
           artifact_analysis: packetPayload.artifact_analysis || {},
         };
+      } else if (toolName === 'complaint.analyze_complaint_output') {
+        structuredContent = buildComplaintOutputAnalysis(userId);
       } else if (toolName === 'complaint.reset_session') {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
@@ -1162,7 +1205,9 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, workspaceSessionPayload(userId));
     }
     if (toolName === 'complaint.export_complaint_packet') {
-      return sendJson(response, exportComplaintPacketPayload(userId));
+      return sendJson(response, Object.assign({}, exportComplaintPacketPayload(userId), {
+        ui_feedback: buildComplaintOutputAnalysis(userId).ui_feedback,
+      }));
     }
     if (toolName === 'complaint.export_complaint_markdown') {
       const packetPayload = exportComplaintPacketPayload(userId);
@@ -1189,6 +1234,9 @@ const server = http.createServer(async (request, response) => {
         packet_summary: packetPayload.packet_summary,
         artifact_analysis: packetPayload.artifact_analysis || {},
       });
+    }
+    if (toolName === 'complaint.analyze_complaint_output') {
+      return sendJson(response, buildComplaintOutputAnalysis(userId));
     }
     if (toolName === 'complaint.reset_session') {
       workspaceSessions.set(userId, createWorkspaceState(userId));

@@ -129,6 +129,12 @@ def _fake_ui_review_report(tmp_path: Path) -> dict:
         "backend": {"strategy": "fallback"},
         "screenshots": [{"path": str(screenshot_path), "name": screenshot_path.name}],
         "screenshot_dir": str(tmp_path),
+        "complaint_output_feedback": {
+            "export_artifact_count": 1,
+            "markdown_filenames": ["jordan-example-complaint.md"],
+            "pdf_filenames": ["jordan-example-complaint.pdf"],
+            "ui_suggestions": ["Add stronger export warnings when support gaps remain."],
+        },
         "review": {
             "summary": "Workspace needs clearer next actions for real complainants.",
             "issues": [
@@ -3260,6 +3266,8 @@ SUGGESTIONS:
         assert bundle.actor_plan["primary_objective"].startswith("Make the full complaint journey")
         assert bundle.critic_review["verdict"] == "warning"
         assert bundle.broken_controls[0]["control"] == "Next Best Action card"
+        assert bundle.complaint_output_feedback["export_artifact_count"] == 1
+        assert "Add stronger export warnings when support gaps remain." in bundle.complaint_output_feedback["ui_suggestions"]
 
     def test_run_adversarial_autopatch_batch_includes_ui_review_lane_when_screenshots_exist(self, tmp_path, monkeypatch):
         review_output_dir = tmp_path / "reviews"

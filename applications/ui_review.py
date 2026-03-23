@@ -86,11 +86,54 @@ def _screenshot_payload(paths: Iterable[Path]) -> List[Dict[str, Any]]:
     return payload
 
 
+def _list_artifact_metadata(screenshot_dir: str) -> List[Dict[str, Any]]:
+    root = Path(screenshot_dir).expanduser().resolve()
+    if not root.exists():
+        return []
+    payloads: List[Dict[str, Any]] = []
+    for candidate in sorted(root.glob("*.json")):
+        try:
+            payload = json.loads(candidate.read_text())
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            payloads.append(payload)
+    return payloads
+
+
+def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    exports = [
+        dict(item)
+        for item in list(artifact_metadata or [])
+        if isinstance(item, dict) and str(item.get("artifact_type") or "") == "complaint_export"
+    ]
+    suggestions = [
+        str(item.get("ui_suggestions_excerpt") or "").strip()
+        for item in exports
+        if str(item.get("ui_suggestions_excerpt") or "").strip()
+    ]
+    return {
+        "export_artifact_count": len(exports),
+        "markdown_filenames": [
+            str(item.get("markdown_filename") or "").strip()
+            for item in exports
+            if str(item.get("markdown_filename") or "").strip()
+        ],
+        "pdf_filenames": [
+            str(item.get("pdf_filename") or "").strip()
+            for item in exports
+            if str(item.get("pdf_filename") or "").strip()
+        ],
+        "ui_suggestions": suggestions,
+    }
+
+
 def build_ui_review_prompt(
     screenshots: Iterable[Path],
     *,
     notes: Optional[str] = None,
     goals: Optional[List[str]] = None,
+    artifact_metadata: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     screenshot_list = _screenshot_payload(screenshots)
     goal_lines = goals or [
@@ -99,6 +142,7 @@ def build_ui_review_prompt(
         "Use the JavaScript MCP SDK rather than page-specific ad hoc fetch logic whenever possible.",
         "Make the intake, evidence, support review, and draft editing journey feel linear and trustworthy.",
     ]
+    complaint_feedback = _summarize_complaint_output_feedback(artifact_metadata or [])
     return (
         "You are reviewing the UI/UX of a complaint-generator web application for real complainants.\n"
         "The screenshots below were created by Playwright during regression testing.\n"
@@ -117,6 +161,9 @@ def build_ui_review_prompt(
         "Treat every visible button, tab, CTA, and handoff link as part of the release contract. If a control looks actionable but does not move the user to the next valid complaint step, record it as broken.\n\n"
         "Screenshot artifacts:\n"
         f"{json.dumps(screenshot_list, indent=2, sort_keys=True)}\n\n"
+        "Complaint export artifacts:\n"
+        f"{json.dumps(complaint_feedback, indent=2, sort_keys=True)}\n\n"
+        "If complaint export artifacts are present, use them to explain how the generated filing exposes missing warnings, weak validation, confusing handoffs, or unclear drafting guidance in the UI.\n\n"
         "Return strict JSON with this shape:\n"
         "{\n"
         '  "summary": "short paragraph",\n'
@@ -280,12 +327,19 @@ def create_ui_review_report(
     config_path: Optional[str] = None,
     backend_id: Optional[str] = None,
     output_path: Optional[str] = None,
+    artifact_metadata: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     screenshots = _normalize_paths(screenshot_paths)
     if not screenshots:
         raise ValueError("No screenshot files were found for UI review.")
 
-    prompt = build_ui_review_prompt(screenshots, notes=notes, goals=goals)
+    complaint_output_feedback = _summarize_complaint_output_feedback(artifact_metadata or [])
+    prompt = build_ui_review_prompt(
+        screenshots,
+        notes=notes,
+        goals=goals,
+        artifact_metadata=artifact_metadata,
+    )
     review_payload: Dict[str, Any]
     backend_metadata: Dict[str, Any]
 
@@ -401,6 +455,8 @@ def create_ui_review_report(
         "generated_at": _utc_now(),
         "backend": backend_metadata,
         "screenshots": _screenshot_payload(screenshots),
+        "artifact_metadata": list(artifact_metadata or []),
+        "complaint_output_feedback": complaint_output_feedback,
         "notes": notes or "",
         "review": review_payload,
     }
@@ -423,6 +479,7 @@ def run_ui_review_workflow(
     output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     screenshots = _list_screenshots(screenshot_dir)
+    artifact_metadata = _list_artifact_metadata(screenshot_dir)
     return create_ui_review_report(
         [str(path) for path in screenshots],
         notes=notes,
@@ -432,4 +489,5 @@ def run_ui_review_workflow(
         config_path=config_path,
         backend_id=backend_id,
         output_path=output_path,
+        artifact_metadata=artifact_metadata,
     )

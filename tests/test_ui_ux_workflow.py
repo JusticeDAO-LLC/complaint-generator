@@ -92,6 +92,14 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "save a shared synopsis for the mediator path" in prompt
     assert "Complaint-output-informed UI suggestions:" in prompt
     assert "Add stronger export warnings when support gaps remain." in prompt
+    assert "complaint_generator.analyze_complaint_output" in prompt
+    assert "complaint-workspace export-markdown" in prompt
+    assert "complaint-workspace export-pdf" in prompt
+    assert "complaint-workspace analyze-output" in prompt
+    assert "complaint.analyze_complaint_output" in prompt
+    assert "exportComplaintMarkdown()" in prompt
+    assert "exportComplaintPdf()" in prompt
+    assert "analyzeComplaintOutput()" in prompt
 
 
 def test_build_ui_ux_review_prompt_uses_default_goals_and_notes_when_not_supplied(tmp_path):

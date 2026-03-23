@@ -13,6 +13,14 @@ pytestmark = [pytest.mark.no_auto_network]
 def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path: Path):
     screenshot = tmp_path / "workspace.png"
     screenshot.write_bytes(b"fake-png")
+    artifact_metadata = [
+        {
+            "artifact_type": "complaint_export",
+            "markdown_filename": "complaint.md",
+            "pdf_filename": "complaint.pdf",
+            "ui_suggestions_excerpt": "Add a clearer export warning when support gaps remain.",
+        }
+    ]
 
     class FakeMultimodalBackend:
         def __init__(self, **kwargs):
@@ -22,6 +30,8 @@ def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path
 
         def __call__(self, prompt, *, image_paths=None, system_prompt=None):
             assert "ComplaintMcpClient" in prompt
+            assert "Complaint export artifacts" in prompt
+            assert "Add a clearer export warning when support gaps remain." in prompt
             assert image_paths == [screenshot]
             assert system_prompt
             return (
@@ -36,10 +46,12 @@ def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path
 
     monkeypatch.setattr(ui_review_module, "MultimodalRouterBackend", FakeMultimodalBackend)
 
-    report = ui_review_module.create_ui_review_report([str(screenshot)])
+    report = ui_review_module.create_ui_review_report([str(screenshot)], artifact_metadata=artifact_metadata)
 
     assert report["backend"]["strategy"] == "multimodal_router"
     assert report["review"]["summary"] == "Use calmer next-step guidance."
+    assert report["complaint_output_feedback"]["export_artifact_count"] == 1
+    assert report["complaint_output_feedback"]["ui_suggestions"] == ["Add a clearer export warning when support gaps remain."]
 
 
 def test_create_ui_review_report_falls_back_to_text_router(monkeypatch, tmp_path: Path):

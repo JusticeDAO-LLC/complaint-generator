@@ -1504,6 +1504,8 @@ session = service.get_session("did:key:example")</pre>
 complaint-generator-workspace session --user-id did:key:example
 complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
 complaint-generator-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"
+complaint-workspace export-markdown --user-id did:key:example
+complaint-workspace export-pdf --user-id did:key:example
 complaint-workspace browser-audit artifacts/ui-audit/browser-audit</pre>
                         </div>
                         <div class="tool-card">
@@ -1517,6 +1519,8 @@ tool: complaint.run_browser_audit</pre>
                             <pre>const client = new window.ComplaintMcpSdk.ComplaintMcpClient();
 const bootstrap = await client.bootstrapWorkspace();
 await client.callTool('complaint.review_case', { user_id: bootstrap.did });
+await client.exportComplaintMarkdown(bootstrap.did);
+await client.exportComplaintPdf(bootstrap.did);
 await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit' });</pre>
                             <div class="chip-row" id="sdk-server-info"></div>
                         </div>

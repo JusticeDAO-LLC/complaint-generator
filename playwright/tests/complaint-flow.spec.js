@@ -452,6 +452,12 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#packet-preview')).toContainText(/Title: Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Taylor Smith brings this retaliation complaint against Acme Logistics\./i);
 
+    await page.locator('#analyze-complaint-output-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Complaint output analysis refreshed\./i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"ui_feedback":/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Tighten review-to-draft gatekeeping/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"artifact_analysis":/i);
+
     const [markdownDownload] = await Promise.all([
       page.waitForEvent('download'),
       page.locator('#download-packet-tool-markdown-button').click(),

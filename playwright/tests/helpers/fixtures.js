@@ -348,6 +348,7 @@ const workspaceToolList = [
   { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.' },
   { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.' },
   { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.' },
+  { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.' },
   { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.' },
   { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.' },
   { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique.' },
@@ -629,6 +630,41 @@ function buildWorkspacePacketExport(state) {
   };
 }
 
+function buildWorkspaceComplaintOutputAnalysis(state) {
+  const payload = buildWorkspacePacketExport(state);
+  return {
+    user_id: state.user_id,
+    packet_summary: clone(payload.packet_summary),
+    artifact_analysis: clone(payload.artifact_analysis),
+    ui_feedback: {
+      summary: 'The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.',
+      issues: Number((payload.packet_summary || {}).missing_elements || 0) > 0
+        ? [
+            {
+              severity: 'high',
+              source: 'complaint_output',
+              finding: `The exported complaint still reflects ${Number((payload.packet_summary || {}).missing_elements || 0)} unsupported claim elements.`,
+              ui_implication: 'The review and draft stages need stronger warnings before the user treats the complaint as filing-ready.',
+            },
+          ]
+        : [],
+      ui_suggestions: [
+        {
+          title: 'Tighten review-to-draft gatekeeping',
+          recommendation: 'Add stronger blocker language and a more prominent unsupported-elements summary before draft generation or export.',
+          target_surface: 'review,draft,integrations',
+        },
+      ],
+      draft_excerpt: String((((payload.packet || {}).draft || {}).body || '')).slice(0, 600),
+      complaint_strengths: [
+        `Supported elements: ${Number((payload.packet_summary || {}).supported_elements || 0)}`,
+        `Evidence items: ${Number((payload.packet_summary || {}).testimony_items || 0) + Number((payload.packet_summary || {}).document_items || 0)}`,
+        `Requested relief items: ${Number((payload.artifact_analysis || {}).requested_relief_count || 0)}`,
+      ],
+    },
+  };
+}
+
 function buildWorkspaceComplaintReadiness(state) {
   const sessionPayload = buildWorkspaceSessionPayload(state);
   const review = sessionPayload.review || {};
@@ -849,7 +885,10 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
       };
     }
     if (name === 'complaint.export_complaint_packet') {
-      return buildWorkspacePacketExport(state);
+      const payload = buildWorkspacePacketExport(state);
+      return Object.assign({}, payload, {
+        ui_feedback: buildWorkspaceComplaintOutputAnalysis(state).ui_feedback,
+      });
     }
     if (name === 'complaint.export_complaint_markdown') {
       const payload = buildWorkspacePacketExport(state);
@@ -876,6 +915,9 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
         packet_summary: clone(payload.packet_summary),
         artifact_analysis: clone(payload.artifact_analysis),
       };
+    }
+    if (name === 'complaint.analyze_complaint_output') {
+      return buildWorkspaceComplaintOutputAnalysis(state);
     }
     if (name === 'complaint.update_case_synopsis') {
       state.case_synopsis = String(toolArgs.synopsis || '').trim();

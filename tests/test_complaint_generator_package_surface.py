@@ -260,12 +260,17 @@ def test_package_ui_review_wrappers_delegate_to_matching_mcp_tools(tmp_path, mon
         screenshot_dir=tmp_path / "screens",
         service=service,
     )
+    analysis_payload = analyze_complaint_output(
+        "package-ui-user",
+        service=service,
+    )
 
     assert review_payload["tool_name"] == "complaint.review_ui"
     assert review_payload["arguments"]["iterations"] == 2
     assert optimize_payload["tool_name"] == "complaint.optimize_ui"
     assert optimize_payload["arguments"]["max_rounds"] == 3
     assert audit_payload["tool_name"] == "complaint.run_browser_audit"
+    assert analysis_payload["user_id"] == "package-ui-user"
     assert [item[0] for item in captured_calls] == [
         "complaint.review_ui",
         "complaint.optimize_ui",

@@ -230,6 +230,7 @@ class UIOptimizationBundle:
     actor_plan: Dict[str, Any]
     critic_review: Dict[str, Any]
     playwright_followups: List[str]
+    complaint_output_feedback: Dict[str, Any]
     target_files: List[str]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -245,6 +246,7 @@ class UIOptimizationBundle:
             "actor_plan": dict(self.actor_plan or {}),
             "critic_review": dict(self.critic_review or {}),
             "playwright_followups": list(self.playwright_followups or []),
+            "complaint_output_feedback": dict(self.complaint_output_feedback or {}),
             "target_files": list(self.target_files or []),
         }
 
@@ -3518,6 +3520,7 @@ class Optimizer:
             actor_plan=dict(review.get("actor_plan") or {}),
             critic_review=dict(review.get("critic_review") or {}),
             playwright_followups=[str(item) for item in list(review.get("playwright_followups") or []) if str(item)],
+            complaint_output_feedback=dict(report.get("complaint_output_feedback") or review.get("complaint_output_feedback") or {}),
             target_files=target_files,
         )
 
@@ -3573,6 +3576,7 @@ class Optimizer:
                     "actor_plan": dict(bundle.actor_plan or {}),
                     "critic_review": dict(bundle.critic_review or {}),
                     "playwright_followups": list(bundle.playwright_followups or []),
+                    "complaint_output_feedback": dict(bundle.complaint_output_feedback or {}),
                     "recommended_target_files": list(bundle.target_files or []),
                 },
                 "ui_review_report": dict(ui_review_report or {}),
