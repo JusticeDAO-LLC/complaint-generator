@@ -14,7 +14,7 @@ DEFAULT_UI_UX_SCREENSHOT_TARGET = (
     "tests/test_website_cohesion_playwright.py::"
     "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
 )
-DEFAULT_UI_UX_OPTIMIZER_METHOD = "adversarial"
+DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 
 
@@ -41,6 +41,16 @@ def session(user_id: str = "demo-user") -> None:
 @app.command("identity")
 def identity() -> None:
     _print(service.call_mcp_tool("complaint.create_identity", {}))
+
+
+@app.command("questions")
+def questions() -> None:
+    _print(service.list_intake_questions())
+
+
+@app.command("claim-elements")
+def claim_elements() -> None:
+    _print(service.list_claim_elements())
 
 
 @app.command("tools")
@@ -81,6 +91,16 @@ def review(user_id: str = "demo-user") -> None:
     _print(service.call_mcp_tool("complaint.review_case", {"user_id": user_id}))
 
 
+@app.command("mediator-prompt")
+def mediator_prompt(user_id: str = "demo-user") -> None:
+    _print(service.build_mediator_prompt(user_id))
+
+
+@app.command("capabilities")
+def capabilities(user_id: str = "demo-user") -> None:
+    _print(service.get_workflow_capabilities(user_id))
+
+
 @app.command("generate")
 def generate(
     user_id: str = "demo-user",
@@ -106,6 +126,11 @@ def update_draft(
 ) -> None:
     relief_items = [line.strip() for line in requested_relief.split("|") if line.strip()]
     _print(service.update_draft(user_id, title=title, body=body, requested_relief=relief_items or None))
+
+
+@app.command("export-packet")
+def export_packet(user_id: str = "demo-user") -> None:
+    _print(service.export_complaint_packet(user_id))
 
 
 @app.command("update-synopsis")

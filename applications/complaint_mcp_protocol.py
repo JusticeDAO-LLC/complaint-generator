@@ -13,6 +13,14 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {},
     },
+    "complaint.list_intake_questions": {
+        "type": "object",
+        "properties": {},
+    },
+    "complaint.list_claim_elements": {
+        "type": "object",
+        "properties": {},
+    },
     "complaint.start_session": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
@@ -45,6 +53,14 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.build_mediator_prompt": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.get_workflow_capabilities": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
     "complaint.generate_complaint": {
         "type": "object",
         "properties": {
@@ -67,6 +83,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "items": {"type": "string"},
             },
         },
+    },
+    "complaint.export_complaint_packet": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
     },
     "complaint.update_case_synopsis": {
         "type": "object",

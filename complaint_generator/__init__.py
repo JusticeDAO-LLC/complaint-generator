@@ -20,12 +20,16 @@ from .ui_ux_workflow import (
 )
 from .workspace import (
     ComplaintWorkspaceService,
+    DEFAULT_CLAIM_ELEMENTS,
+    DEFAULT_INTAKE_QUESTIONS,
     generate_decentralized_id,
 )
 from applications.ui_review import create_ui_review_report, run_ui_review_workflow
 
 __all__ = [
     "ComplaintWorkspaceService",
+    "DEFAULT_CLAIM_ELEMENTS",
+    "DEFAULT_INTAKE_QUESTIONS",
     "attach_complaint_workspace_routes",
     "build_ui_ux_review_prompt",
     "collect_screenshot_artifacts",

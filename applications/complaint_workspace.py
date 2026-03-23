@@ -310,6 +310,113 @@ class ComplaintWorkspaceService:
             "case_synopsis": self._build_case_synopsis(state),
         }
 
+    def build_mediator_prompt(self, user_id: Optional[str]) -> Dict[str, Any]:
+        session = self.get_session(user_id)
+        review = session["review"]
+        support_matrix = list(review.get("support_matrix") or [])
+        first_gap = next((item for item in support_matrix if not item.get("supported")), None)
+        synopsis = session["case_synopsis"]
+        gap_focus = (
+            f"Focus especially on clarifying {str(first_gap.get('label') or '').lower()} and what proof could corroborate it."
+            if first_gap
+            else "Focus on sharpening the strongest testimony, identifying corroboration, and confirming the cleanest sequence of events."
+        )
+        prefill_message = (
+            f"{synopsis}\n\n"
+            "Mediator, help turn this into testimony-ready narrative for the complaint record. "
+            "Ask the single most useful next follow-up question, keep the tone calm, and explain what support would strengthen the case. "
+            f"{gap_focus}"
+        )
+        return {
+            "user_id": session["session"]["user_id"],
+            "case_synopsis": synopsis,
+            "target_gap": deepcopy(first_gap) if first_gap else None,
+            "prefill_message": prefill_message,
+            "return_target_tab": "review",
+        }
+
+    def get_workflow_capabilities(self, user_id: Optional[str]) -> Dict[str, Any]:
+        session = self.get_session(user_id)
+        review = session["review"]
+        overview = dict(review.get("overview") or {})
+        current_draft = (session.get("session") or {}).get("draft")
+        questions = list(session.get("questions") or [])
+        answered_count = len([item for item in questions if item.get("is_answered")])
+        total_questions = len(questions)
+        capabilities = [
+            {
+                "id": "intake_questions",
+                "label": "Complaint intake questions",
+                "available": total_questions > 0,
+                "detail": f"{answered_count} of {total_questions} intake questions answered.",
+            },
+            {
+                "id": "mediator_prompt",
+                "label": "Chat mediator handoff",
+                "available": True,
+                "detail": "A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.",
+            },
+            {
+                "id": "evidence_capture",
+                "label": "Evidence capture",
+                "available": True,
+                "detail": f"{int(overview.get('testimony_items') or 0) + int(overview.get('document_items') or 0)} evidence items saved.",
+            },
+            {
+                "id": "support_review",
+                "label": "Claim support review",
+                "available": True,
+                "detail": f"{overview.get('supported_elements') or 0} supported elements, {overview.get('missing_elements') or 0} gaps remaining.",
+            },
+            {
+                "id": "complaint_draft",
+                "label": "Complaint draft",
+                "available": True,
+                "detail": "A draft already exists and can be edited." if current_draft else "A draft can be generated from the current complaint record.",
+            },
+            {
+                "id": "complaint_packet",
+                "label": "Complaint packet export",
+                "available": True,
+                "detail": "The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.",
+            },
+        ]
+        return {
+            "user_id": session["session"]["user_id"],
+            "case_synopsis": session["case_synopsis"],
+            "overview": overview,
+            "capabilities": capabilities,
+        }
+
+    def export_complaint_packet(self, user_id: Optional[str]) -> Dict[str, Any]:
+        session = self.get_session(user_id)
+        state = session["session"]
+        draft = deepcopy(state.get("draft") or self._build_draft(state))
+        review = deepcopy(session["review"])
+        packet = {
+            "title": draft["title"],
+            "user_id": state["user_id"],
+            "claim_type": state.get("claim_type", "retaliation"),
+            "case_synopsis": session["case_synopsis"],
+            "questions": deepcopy(session["questions"]),
+            "evidence": deepcopy(state.get("evidence") or {}),
+            "review": review,
+            "draft": draft,
+            "exported_at": _utc_now(),
+        }
+        return {
+            "packet": packet,
+            "packet_summary": {
+                "question_count": len(packet["questions"]),
+                "answered_question_count": len([item for item in packet["questions"] if item.get("is_answered")]),
+                "supported_elements": int((review.get("overview") or {}).get("supported_elements") or 0),
+                "missing_elements": int((review.get("overview") or {}).get("missing_elements") or 0),
+                "testimony_items": int((review.get("overview") or {}).get("testimony_items") or 0),
+                "document_items": int((review.get("overview") or {}).get("document_items") or 0),
+                "has_draft": bool(state.get("draft")),
+            },
+        }
+
     def submit_intake_answers(self, user_id: Optional[str], answers: Dict[str, Any]) -> Dict[str, Any]:
         state = self._load_state(str(user_id or DEFAULT_USER_ID))
         answer_map = state.setdefault("intake_answers", {})
@@ -424,12 +531,17 @@ class ComplaintWorkspaceService:
         return {
             "tools": [
                 {"name": "complaint.create_identity", "description": "Create a decentralized identity for browser or CLI use."},
+                {"name": "complaint.list_intake_questions", "description": "List the complaint intake questions used across browser, CLI, and MCP flows."},
+                {"name": "complaint.list_claim_elements", "description": "List the tracked claim elements used for evidence and review."},
                 {"name": "complaint.start_session", "description": "Load or initialize a complaint workspace session."},
                 {"name": "complaint.submit_intake", "description": "Save complaint intake answers."},
                 {"name": "complaint.save_evidence", "description": "Save testimony or document evidence to the workspace."},
                 {"name": "complaint.review_case", "description": "Return the current support matrix and evidence review."},
+                {"name": "complaint.build_mediator_prompt", "description": "Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps."},
+                {"name": "complaint.get_workflow_capabilities", "description": "Summarize which complaint-workflow abilities are currently available for the session."},
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
+                {"name": "complaint.export_complaint_packet", "description": "Export the current lawsuit complaint packet with intake, evidence, review, and draft content."},
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
                 {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
@@ -442,6 +554,10 @@ class ComplaintWorkspaceService:
         args = arguments or {}
         if tool_name == "complaint.create_identity":
             return generate_decentralized_id()
+        if tool_name == "complaint.list_intake_questions":
+            return self.list_intake_questions()
+        if tool_name == "complaint.list_claim_elements":
+            return self.list_claim_elements()
         if tool_name == "complaint.start_session":
             return self.get_session(args.get("user_id"))
         if tool_name == "complaint.submit_intake":
@@ -465,6 +581,10 @@ class ComplaintWorkspaceService:
                 "next_question": session["next_question"],
                 "case_synopsis": session["case_synopsis"],
             }
+        if tool_name == "complaint.build_mediator_prompt":
+            return self.build_mediator_prompt(args.get("user_id"))
+        if tool_name == "complaint.get_workflow_capabilities":
+            return self.get_workflow_capabilities(args.get("user_id"))
         if tool_name == "complaint.generate_complaint":
             return self.generate_complaint(
                 args.get("user_id"),
@@ -483,6 +603,8 @@ class ComplaintWorkspaceService:
                 body=args.get("body"),
                 requested_relief=requested_relief,
             )
+        if tool_name == "complaint.export_complaint_packet":
+            return self.export_complaint_packet(args.get("user_id"))
         if tool_name == "complaint.update_case_synopsis":
             return self.update_case_synopsis(
                 args.get("user_id"),

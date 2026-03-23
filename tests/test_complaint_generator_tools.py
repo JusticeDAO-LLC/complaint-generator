@@ -398,7 +398,7 @@ def test_optimize_ui_tool_supports_closed_loop_workflow_through_cli_and_mcp(monk
     assert mcp_payload["cycles"][0]["optimizer_result"]["changed_files"] == ["templates/workspace.html"]
 
 
-def test_optimize_ui_defaults_to_feature_complete_audit_and_adversarial_method(monkeypatch, tmp_path):
+def test_optimize_ui_defaults_to_feature_complete_audit_and_actor_critic_method(monkeypatch, tmp_path):
     runner = CliRunner()
     service = ComplaintWorkspaceService(root_dir=tmp_path / "ui-optimize-default-sessions")
     captured = {}
@@ -419,7 +419,7 @@ def test_optimize_ui_defaults_to_feature_complete_audit_and_adversarial_method(m
         str(tmp_path),
     )
     assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
-    assert captured["method"] == "adversarial"
+    assert captured["method"] == "actor_critic"
     assert captured["priority"] == 90
     assert captured["pytest_target"].endswith(
         "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
@@ -461,6 +461,9 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
         "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
     )
 
+    tool_names = [tool["name"] for tool in tool_list_payload(service)["tools"]]
+    assert "complaint.run_browser_audit" in tool_names
+
     captured.clear()
     mcp_payload = _call_mcp_tool(
         service,
@@ -472,22 +475,6 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
     )
     assert mcp_payload["returncode"] == 0
     assert mcp_payload["artifact_count"] == 3
-    assert captured["pytest_target"].endswith(
-        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
-    )
-
-    captured.clear()
-    mcp_payload = _call_mcp_tool(
-        service,
-        14,
-        "complaint.optimize_ui",
-        {
-            "screenshot_dir": str(tmp_path),
-        },
-    )
-    assert mcp_payload["workflow_type"] == "ui_ux_closed_loop"
-    assert captured["method"] == "adversarial"
-    assert captured["priority"] == 90
     assert captured["pytest_target"].endswith(
         "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
     )

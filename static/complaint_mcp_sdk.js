@@ -97,6 +97,14 @@
             });
         }
 
+        listIntakeQuestions() {
+            return this.callTool('complaint.list_intake_questions', {});
+        }
+
+        listClaimElements() {
+            return this.callTool('complaint.list_claim_elements', {});
+        }
+
         getCachedDid() {
             if (typeof localStorage === 'undefined') {
                 return null;
@@ -165,6 +173,18 @@
             });
         }
 
+        buildMediatorPrompt(userId) {
+            return this.callTool('complaint.build_mediator_prompt', {
+                user_id: userId,
+            });
+        }
+
+        getWorkflowCapabilities(userId) {
+            return this.callTool('complaint.get_workflow_capabilities', {
+                user_id: userId,
+            });
+        }
+
         generateComplaint(userId, payload) {
             return this.callTool('complaint.generate_complaint', Object.assign({
                 user_id: userId,
@@ -175,6 +195,12 @@
             return this.callTool('complaint.update_draft', Object.assign({
                 user_id: userId,
             }, payload || {}));
+        }
+
+        exportComplaintPacket(userId) {
+            return this.callTool('complaint.export_complaint_packet', {
+                user_id: userId,
+            });
         }
 
         updateCaseSynopsis(userId, synopsis) {

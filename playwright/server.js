@@ -280,6 +280,70 @@ function workspaceSessionPayload(userId = 'did:key:playwright-demo') {
   };
 }
 
+function buildMediatorPromptPayload(userId = 'did:key:playwright-demo') {
+  const sessionPayload = workspaceSessionPayload(userId);
+  const supportMatrix = ((sessionPayload.review || {}).support_matrix) || [];
+  const firstGap = supportMatrix.find((item) => !item.supported) || null;
+  const synopsis = String(sessionPayload.case_synopsis || '').trim();
+  const gapFocus = firstGap
+    ? `Focus especially on clarifying ${String(firstGap.label || '').toLowerCase()} and what proof could corroborate it.`
+    : 'Focus on sharpening the strongest testimony, identifying corroboration, and confirming the cleanest sequence of events.';
+  return {
+    user_id: userId,
+    case_synopsis: synopsis,
+    target_gap: firstGap,
+    prefill_message: `${synopsis}\n\nMediator, help turn this into testimony-ready narrative for the complaint record. Ask the single most useful next follow-up question, keep the tone calm, and explain what support would strengthen the case. ${gapFocus}`,
+    return_target_tab: 'review',
+  };
+}
+
+function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
+  const sessionPayload = workspaceSessionPayload(userId);
+  const overview = ((sessionPayload.review || {}).overview) || {};
+  const questions = sessionPayload.questions || [];
+  const answeredCount = questions.filter((item) => item.is_answered).length;
+  return {
+    user_id: userId,
+    case_synopsis: String(sessionPayload.case_synopsis || '').trim(),
+    overview,
+    capabilities: [
+      { id: 'intake_questions', label: 'Complaint intake questions', available: questions.length > 0, detail: `${answeredCount} of ${questions.length} intake questions answered.` },
+      { id: 'mediator_prompt', label: 'Chat mediator handoff', available: true, detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.' },
+      { id: 'evidence_capture', label: 'Evidence capture', available: true, detail: `${(overview.testimony_items || 0) + (overview.document_items || 0)} evidence items saved.` },
+      { id: 'support_review', label: 'Claim support review', available: true, detail: `${overview.supported_elements || 0} supported elements, ${overview.missing_elements || 0} gaps remaining.` },
+      { id: 'complaint_draft', label: 'Complaint draft', available: true, detail: sessionPayload.draft ? 'A draft already exists and can be edited.' : 'A draft can be generated from the current complaint record.' },
+      { id: 'complaint_packet', label: 'Complaint packet export', available: true, detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.' },
+    ],
+  };
+}
+
+function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
+  const sessionPayload = workspaceSessionPayload(userId);
+  const draft = sessionPayload.draft || getWorkspaceState(userId).draft || { title: 'Draft not generated', requested_relief: [], body: '' };
+  return {
+    packet: {
+      title: draft.title,
+      user_id: userId,
+      claim_type: sessionPayload.session.claim_type,
+      case_synopsis: sessionPayload.case_synopsis,
+      questions: sessionPayload.questions,
+      evidence: sessionPayload.session.evidence,
+      review: sessionPayload.review,
+      draft,
+      exported_at: '2026-03-23T00:00:00+00:00',
+    },
+    packet_summary: {
+      question_count: sessionPayload.questions.length,
+      answered_question_count: sessionPayload.questions.filter((item) => item.is_answered).length,
+      supported_elements: sessionPayload.review.overview.supported_elements || 0,
+      missing_elements: sessionPayload.review.overview.missing_elements || 0,
+      testimony_items: sessionPayload.review.overview.testimony_items || 0,
+      document_items: sessionPayload.review.overview.document_items || 0,
+      has_draft: Boolean(sessionPayload.draft),
+    },
+  };
+}
+
 function generateWorkspaceDraft(workspaceState, requestedRelief) {
   const answers = workspaceState.intake_answers;
   const relief = requestedRelief && requestedRelief.length ? requestedRelief : ['Back pay', 'Injunctive relief'];
@@ -479,12 +543,17 @@ const server = http.createServer(async (request, response) => {
     return sendJson(response, {
       tools: [
         { name: 'complaint.create_identity', description: 'Create a decentralized identity for browser or CLI use.', inputSchema: { type: 'object' } },
+        { name: 'complaint.list_intake_questions', description: 'List the complaint intake questions used across browser, CLI, and MCP flows.', inputSchema: { type: 'object' } },
+        { name: 'complaint.list_claim_elements', description: 'List the tracked claim elements used for evidence and review.', inputSchema: { type: 'object' } },
         { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.submit_intake', description: 'Save complaint intake answers.', inputSchema: { type: 'object' } },
         { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
+        { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
+        { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
+        { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
         { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -507,12 +576,17 @@ const server = http.createServer(async (request, response) => {
         result: {
           tools: [
             { name: 'complaint.create_identity', description: 'Create a decentralized identity for browser or CLI use.', inputSchema: { type: 'object' } },
+            { name: 'complaint.list_intake_questions', description: 'List the complaint intake questions used across browser, CLI, and MCP flows.', inputSchema: { type: 'object' } },
+            { name: 'complaint.list_claim_elements', description: 'List the tracked claim elements used for evidence and review.', inputSchema: { type: 'object' } },
             { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.submit_intake', description: 'Save complaint intake answers.', inputSchema: { type: 'object' } },
             { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
+            { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
+            { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
+            { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
             { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts and produce a UI critique.', inputSchema: { type: 'object' } },
@@ -535,6 +609,10 @@ const server = http.createServer(async (request, response) => {
           method: 'did:key',
           provider: 'playwright-stub',
         };
+      } else if (toolName === 'complaint.list_intake_questions') {
+        structuredContent = { questions: workspaceQuestions };
+      } else if (toolName === 'complaint.list_claim_elements') {
+        structuredContent = { claim_elements: claimElements };
       } else if (toolName === 'complaint.submit_intake') {
         Object.assign(workspaceState.intake_answers, args.answers || {});
         structuredContent = workspaceSessionPayload(userId);
@@ -552,6 +630,10 @@ const server = http.createServer(async (request, response) => {
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.review_case' || toolName === 'complaint.start_session') {
         structuredContent = workspaceSessionPayload(userId);
+      } else if (toolName === 'complaint.build_mediator_prompt') {
+        structuredContent = buildMediatorPromptPayload(userId);
+      } else if (toolName === 'complaint.get_workflow_capabilities') {
+        structuredContent = workflowCapabilitiesPayload(userId);
       } else if (toolName === 'complaint.generate_complaint') {
         generateWorkspaceDraft(workspaceState, args.requested_relief || []);
         if (args.title_override) {
@@ -567,6 +649,8 @@ const server = http.createServer(async (request, response) => {
       } else if (toolName === 'complaint.update_case_synopsis') {
         workspaceState.case_synopsis = typeof args.synopsis === 'string' ? args.synopsis.trim() : '';
         structuredContent = workspaceSessionPayload(userId);
+      } else if (toolName === 'complaint.export_complaint_packet') {
+        structuredContent = exportComplaintPacketPayload(userId);
       } else if (toolName === 'complaint.reset_session') {
         workspaceSessions.set(userId, createWorkspaceState(userId));
         structuredContent = workspaceSessionPayload(userId);
@@ -740,6 +824,12 @@ const server = http.createServer(async (request, response) => {
         provider: 'playwright-stub',
       });
     }
+    if (toolName === 'complaint.list_intake_questions') {
+      return sendJson(response, { questions: workspaceQuestions });
+    }
+    if (toolName === 'complaint.list_claim_elements') {
+      return sendJson(response, { claim_elements: claimElements });
+    }
     if (toolName === 'complaint.submit_intake') {
       Object.assign(workspaceState.intake_answers, args.answers || {});
       return sendJson(response, workspaceSessionPayload(userId));
@@ -760,6 +850,12 @@ const server = http.createServer(async (request, response) => {
     if (toolName === 'complaint.review_case' || toolName === 'complaint.start_session') {
       return sendJson(response, workspaceSessionPayload(userId));
     }
+    if (toolName === 'complaint.build_mediator_prompt') {
+      return sendJson(response, buildMediatorPromptPayload(userId));
+    }
+    if (toolName === 'complaint.get_workflow_capabilities') {
+      return sendJson(response, workflowCapabilitiesPayload(userId));
+    }
     if (toolName === 'complaint.generate_complaint') {
       generateWorkspaceDraft(workspaceState, args.requested_relief || []);
       if (args.title_override) {
@@ -777,6 +873,9 @@ const server = http.createServer(async (request, response) => {
     if (toolName === 'complaint.update_case_synopsis') {
       workspaceState.case_synopsis = typeof args.synopsis === 'string' ? args.synopsis.trim() : '';
       return sendJson(response, workspaceSessionPayload(userId));
+    }
+    if (toolName === 'complaint.export_complaint_packet') {
+      return sendJson(response, exportComplaintPacketPayload(userId));
     }
     if (toolName === 'complaint.reset_session') {
       workspaceSessions.set(userId, createWorkspaceState(userId));

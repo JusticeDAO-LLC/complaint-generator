@@ -899,6 +899,16 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
             ],
         },
     )
+    monkeypatch.setattr(
+        "complaint_generator.ui_ux_workflow.run_end_to_end_complaint_browser_audit",
+        lambda **kwargs: {
+            "command": ["pytest", "-q", str(kwargs.get("pytest_target") or "")],
+            "returncode": 0,
+            "artifact_count": 6,
+            "screenshot_dir": str(kwargs.get("screenshot_dir") or ""),
+            "stdout": "browser audit passed",
+        },
+    )
 
     app = create_review_surface_app(mediator=object())
 
@@ -968,5 +978,11 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
                 _wait_for_text(page, "#ux-review-stage-findings", "shared MCP SDK and optimizer path should remain discoverable")
                 closed_loop_stage_text = page.locator("#ux-review-stage-findings").inner_text()
                 assert "Markdown fallback should not replace the structured integration-discovery finding." not in closed_loop_stage_text
+
+                page.locator("#run-browser-audit-button").click()
+                _wait_for_text(page, "#workspace-status", "End-to-end complaint browser audit completed.")
+                _wait_for_text(page, "#ux-review-summary", "6 screenshot artifacts")
+                _wait_for_text(page, "#ux-review-metadata", "browser audit")
+                _wait_for_text(page, "#ux-review-runs", "pytest -q")
             finally:
                 browser.close()

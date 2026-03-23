@@ -1476,10 +1476,12 @@
                     <div class="button-row">
                         <button class="primary" id="generate-draft-button" type="button">Generate First Draft</button>
                         <button class="secondary" id="save-draft-button" type="button">Save Draft Changes</button>
+                        <button class="secondary" id="export-packet-button" type="button">Export Complaint Packet</button>
                         <button class="secondary" id="reset-session-button" type="button">Reset Workspace</button>
                     </div>
                     <div class="soft-note" id="draft-soft-note">Treat the first draft as a working document. Review is still the place to decide whether the record behind it feels strong enough.</div>
                     <div class="status draft-preview-shell"><pre id="draft-preview">No complaint generated yet.</pre></div>
+                    <div class="status draft-preview-shell"><pre id="packet-preview">No complaint packet exported yet.</pre></div>
                 </section>
 
                 <section class="tab-panel" data-tab-panel="integrations">
@@ -1607,6 +1609,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                                 <button class="primary" id="run-ux-review-button" type="button">Run Iterative UX Review</button>
                                 <button class="secondary" id="run-ux-snapshot-button" type="button">Run Snapshot Review</button>
                                 <button class="secondary" id="run-ux-closed-loop-button" type="button">Run Closed-Loop Optimization</button>
+                                <button class="secondary" id="run-browser-audit-button" type="button">Run Browser Audit</button>
                             </div>
                             <div class="helper-text">The default audit walks the landing, chat, profile, workspace intake, evidence, review, mediator handoff, draft, CLI + MCP, and builder surfaces before the actor/critic optimizer proposes a patch.</div>
                         </div>
@@ -1636,6 +1639,8 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceUserId = new URLSearchParams(window.location.search).get('user_id') || null;
         let workspaceSession = null;
         let workspaceSessionTools = [];
+        let workspaceCapabilities = null;
+        let workspaceMediatorPrompt = null;
 
         function setStatus(message) {
             const statusNode = document.getElementById('workspace-status');
@@ -1841,6 +1846,9 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         }
 
         function buildMediatorPrefillMessage(sessionPayload) {
+            if (workspaceMediatorPrompt && workspaceMediatorPrompt.prefill_message) {
+                return String(workspaceMediatorPrompt.prefill_message);
+            }
             const review = (sessionPayload && sessionPayload.review) || {};
             const supportMatrix = review.support_matrix || [];
             const firstGap = supportMatrix.find((item) => !item.supported);
@@ -1857,7 +1865,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const review = (sessionPayload && sessionPayload.review) || {};
             const overview = review.overview || {};
             const claimType = String(session.claim_type || sessionPayload.claim_type || 'retaliation').trim() || 'retaliation';
-            const synopsis = String(document.getElementById('case-synopsis').value || '').trim() || buildDefaultSynopsis(sessionPayload || {});
+            const synopsis = String((workspaceMediatorPrompt && workspaceMediatorPrompt.case_synopsis) || document.getElementById('case-synopsis').value || '').trim() || buildDefaultSynopsis(sessionPayload || {});
             const missingCount = Number(overview.missing_elements || 0);
             const supportedCount = Number(overview.supported_elements || 0);
             const chatUrl = buildSurfaceUrl('/chat', {
@@ -1885,9 +1893,11 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             document.getElementById('handoff-chat-button').dataset.handoffUrl = chatUrl;
             document.getElementById('handoff-review-button').dataset.handoffUrl = reviewUrl;
             document.getElementById('handoff-builder-button').dataset.handoffUrl = builderUrl;
-            document.getElementById('handoff-chat-summary').textContent = missingCount > 0
-                ? `Open Chat with the current case framing and a prepared testimony prompt that targets ${missingCount} remaining support gap${missingCount === 1 ? '' : 's'}.`
-                : 'Open Chat with the current case framing and a prepared testimony prompt so the mediator can tighten the narrative before filing.';
+            document.getElementById('handoff-chat-summary').textContent = (workspaceMediatorPrompt && workspaceMediatorPrompt.target_gap && workspaceMediatorPrompt.target_gap.label)
+                ? `Open Chat with a testimony prompt generated by the complaint tools and focused on ${workspaceMediatorPrompt.target_gap.label.toLowerCase()}.`
+                : (missingCount > 0
+                    ? `Open Chat with the current case framing and a prepared testimony prompt that targets ${missingCount} remaining support gap${missingCount === 1 ? '' : 's'}.`
+                    : 'Open Chat with the current case framing and a prepared testimony prompt so the mediator can tighten the narrative before filing.');
             document.getElementById('handoff-review-summary').textContent = `Open the review dashboard with the same complaint session so ${supportedCount} supported elements and ${missingCount} remaining gaps stay visible.`;
             document.getElementById('handoff-builder-summary').textContent = 'Open the formal builder with the same DID-backed session so the draft can be generated or refined without losing context.';
         }
@@ -2499,6 +2509,11 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             renderConnectedHandoffs(sessionPayload);
         }
 
+        async function loadSharedCapabilities() {
+            workspaceCapabilities = await client.getWorkflowCapabilities(workspaceUserId);
+            workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
+        }
+
         function normalizeUiReviewSummary(result) {
             if (!result) {
                 return 'No review output returned.';
@@ -2788,10 +2803,72 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 : '<div class="item"><strong>No follow-up actions listed.</strong><div class="muted">Run another review after a UI pass to collect the next recommended screenshot assertions.</div></div>';
         }
 
+        function renderBrowserAuditResult(result) {
+            const metadata = document.getElementById('ux-review-metadata');
+            const summary = document.getElementById('ux-review-summary');
+            const actorCritic = document.getElementById('ux-review-actor-critic');
+            const stageFindings = document.getElementById('ux-review-stage-findings');
+            const issues = document.getElementById('ux-review-issues');
+            const runs = document.getElementById('ux-review-runs');
+            const artifacts = document.getElementById('ux-review-artifacts');
+            const followups = document.getElementById('ux-review-followups');
+            const artifactCount = Number((result && result.artifact_count) || 0);
+            const commandText = Array.isArray(result && result.command) ? result.command.join(' ') : '';
+
+            metadata.innerHTML = [
+                '<span class="chip good">browser audit</span>',
+                result && result.returncode === 0 ? '<span class="chip good">status: passed</span>' : '<span class="chip warn">status: failed</span>',
+                artifactCount ? `<span class="chip">artifacts: ${escapeHtml(String(artifactCount))}</span>` : '',
+                result && result.screenshot_dir ? `<span class="chip">screenshots: ${escapeHtml(String(result.screenshot_dir))}</span>` : '',
+            ].filter(Boolean).join('');
+
+            summary.textContent = artifactCount
+                ? `End-to-end complaint browser audit completed with ${artifactCount} screenshot artifact${artifactCount === 1 ? '' : 's'}.`
+                : 'End-to-end complaint browser audit completed, but no screenshot artifacts were returned.';
+
+            actorCritic.innerHTML = `
+                <div class="item">
+                    <strong>Shared browser path</strong>
+                    <div class="muted">This audit exercises the same complaint manager flow through chat testimony, intake, evidence capture, review, draft generation, and builder handoff.</div>
+                </div>
+            `;
+
+            stageFindings.innerHTML = `
+                <div class="walkthrough-item">
+                    <strong>Lawsuit-generation browser audit</strong>
+                    <div class="chip-row">
+                        <span class="chip ${result && result.returncode === 0 ? 'good' : 'warn'}">${result && result.returncode === 0 ? 'completed' : 'needs review'}</span>
+                    </div>
+                    <span>${escapeHtml(result && result.returncode === 0 ? 'The MCP browser flow completed without tool-level failures.' : 'The Playwright browser audit reported a failing flow and should be reviewed before trusting the dashboard.')}</span>
+                </div>
+            `;
+
+            issues.innerHTML = '<div class="item"><strong>No structured issue objects for browser audit.</strong><div class="muted">Use iterative UX review or closed-loop optimization on the captured artifacts for actor/critic issue generation.</div></div>';
+            runs.innerHTML = `
+                <div class="item">
+                    <strong>Audit command</strong>
+                    <div class="muted">${escapeHtml(commandText || 'Playwright complaint journey audit')}</div>
+                </div>
+            `;
+            artifacts.innerHTML = `
+                <div class="item">
+                    <strong>Screenshot artifact output</strong>
+                    <div class="muted">${escapeHtml(String(result && result.screenshot_dir || 'No screenshot directory returned.'))}</div>
+                </div>
+            `;
+            followups.innerHTML = `
+                <div class="item">
+                    <strong>Suggested next action</strong>
+                    <div class="muted">Run iterative UX review or closed-loop optimization against these end-to-end complaint artifacts if the audit surfaces broken buttons or confusing handoffs.</div>
+                </div>
+            `;
+        }
+
         async function refreshWorkspace() {
             setBusyStatus('Refreshing shared complaint session…');
             const sessionPayload = await client.startSession(workspaceUserId);
             workspaceSession = sessionPayload;
+            await loadSharedCapabilities();
             renderWorkspace(sessionPayload);
             setStatus(`Workspace synchronized for ${workspaceUserId}.`);
         }
@@ -2803,6 +2880,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 answers[node.dataset.questionId] = node.value.trim();
             });
             workspaceSession = await client.submitIntake(workspaceUserId, answers);
+            await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             setStatus('Intake answers saved.');
         }
@@ -2826,6 +2904,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 content,
                 attachment_names: attachmentNames,
             });
+            await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             document.getElementById('evidence-title').value = '';
             document.getElementById('evidence-source').value = '';
@@ -2861,6 +2940,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 requested_relief: document.getElementById('requested-relief').value.split('\n').map((item) => item.trim()).filter(Boolean),
                 title_override: document.getElementById('draft-title').value.trim() || null,
             });
+            await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             activateTab('draft');
             setStatus('Complaint draft generated from intake and evidence.');
@@ -2873,6 +2953,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 body: document.getElementById('draft-body').value.trim(),
                 requested_relief: document.getElementById('requested-relief').value.split('\n').map((item) => item.trim()).filter(Boolean),
             });
+            await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             setStatus('Draft edits saved.');
         }
@@ -2881,8 +2962,17 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setBusyStatus('Saving the shared case synopsis through the MCP workspace…');
             const synopsis = document.getElementById('case-synopsis').value.trim();
             workspaceSession = await client.updateCaseSynopsis(workspaceUserId, synopsis);
+            await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
             setStatus('Shared case synopsis saved.');
+        }
+
+        async function exportPacket() {
+            setBusyStatus('Exporting the current lawsuit packet through the complaint MCP tools…');
+            const packetPayload = await client.exportComplaintPacket(workspaceUserId);
+            const summary = packetPayload.packet_summary || {};
+            document.getElementById('packet-preview').textContent = JSON.stringify(summary, null, 2);
+            setStatus('Complaint packet exported.');
         }
 
         async function resetSession() {
@@ -2963,6 +3053,24 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setStatus('Closed-loop UI/UX optimization completed.');
         }
 
+        async function runBrowserAudit() {
+            const screenshotDir = document.getElementById('ux-review-screenshot-dir').value.trim();
+            const pytestTarget = document.getElementById('ux-review-pytest-target').value.trim();
+            if (!screenshotDir || !pytestTarget) {
+                activateTab('ux-review');
+                setStatus('Add both a screenshot directory and a Playwright target before running the browser audit.');
+                return;
+            }
+            activateTab('ux-review');
+            setBusyStatus('Running the end-to-end complaint browser audit via MCP…');
+            const result = await client.runBrowserAudit({
+                screenshot_dir: screenshotDir,
+                pytest_target: pytestTarget,
+            });
+            renderBrowserAuditResult(result);
+            setStatus('End-to-end complaint browser audit completed.');
+        }
+
         document.querySelectorAll('.tab-button').forEach((node) => {
             node.addEventListener('click', () => activateTab(node.dataset.tabTarget));
         });
@@ -2971,6 +3079,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('save-evidence-button').addEventListener('click', addEvidence);
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
+        document.getElementById('export-packet-button').addEventListener('click', exportPacket);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
         document.getElementById('action-button').addEventListener('click', () => {
@@ -3039,11 +3148,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('run-ux-review-button').addEventListener('click', () => runUiReview(true));
         document.getElementById('run-ux-snapshot-button').addEventListener('click', () => runUiReview(false));
         document.getElementById('run-ux-closed-loop-button').addEventListener('click', runClosedLoopUiOptimization);
+        document.getElementById('run-browser-audit-button').addEventListener('click', runBrowserAudit);
 
         client.bootstrapWorkspace(workspaceUserId).then(async (bootstrap) => {
             workspaceUserId = bootstrap.did;
             workspaceSession = bootstrap.session;
             workspaceSessionTools = bootstrap.tools || [];
+            await loadSharedCapabilities();
             renderWorkspace(bootstrap.session);
             renderTools(workspaceSessionTools);
             renderSdkServerInfo(bootstrap.initialization, workspaceSessionTools);
