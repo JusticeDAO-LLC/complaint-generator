@@ -816,7 +816,7 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert sdk_response.status_code == 200
     assert "/claim-support-review" in root_response.text
     assert "/document" in root_response.text
-    assert "/dashboards" in root_response.text
+    assert "/ipfs-datasets/sdk-playground" in root_response.text
     assert "/claim-support-review" in home_response.text
     assert "/document" in home_response.text
     assert "/dashboards" in home_response.text
