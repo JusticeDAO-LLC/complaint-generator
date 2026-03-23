@@ -196,6 +196,21 @@ def optimize_ui(
     )
 
 
+@app.command("browser-audit")
+def browser_audit(
+    screenshot_dir: str = typer.Argument("artifacts/ui-audit/browser-audit"),
+    pytest_target: str = DEFAULT_UI_UX_SCREENSHOT_TARGET,
+) -> None:
+    from complaint_generator.ui_ux_workflow import run_end_to_end_complaint_browser_audit
+
+    _print(
+        run_end_to_end_complaint_browser_audit(
+            screenshot_dir=screenshot_dir,
+            pytest_target=pytest_target,
+        )
+    )
+
+
 def main() -> None:
     app()
 

@@ -122,6 +122,14 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         },
         "required": ["screenshot_dir"],
     },
+    "complaint.run_browser_audit": {
+        "type": "object",
+        "properties": {
+            "screenshot_dir": {"type": "string"},
+            "pytest_target": {"type": "string"},
+        },
+        "required": ["screenshot_dir"],
+    },
 }
 
 

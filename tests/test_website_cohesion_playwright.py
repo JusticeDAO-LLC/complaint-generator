@@ -891,6 +891,10 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             assert "complaint-generator-workspace session" in integrations_text
             assert "complaint-generator-mcp" in integrations_text
             assert "window.ComplaintMcpSdk.ComplaintMcpClient" in integrations_text
+            assert "complaint.run_browser_audit" in integrations_text
+            assert page.evaluate(
+                "() => typeof window.ComplaintMcpSdk.ComplaintMcpClient.prototype.runBrowserAudit === 'function'"
+            ) is True
 
             page.click("button[data-tab-target='review']")
             assert "Jordan Example alleges retaliation" in page.locator("#review-synopsis-preview").inner_text()

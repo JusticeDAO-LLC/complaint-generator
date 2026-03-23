@@ -112,6 +112,21 @@ def run_playwright_screenshot_audit(
     }
 
 
+def run_end_to_end_complaint_browser_audit(
+    *,
+    screenshot_dir: str | Path,
+    pytest_executable: str | Path | None = None,
+    workdir: str | Path | None = None,
+    pytest_target: str = DEFAULT_SCREENSHOT_TEST,
+) -> dict[str, Any]:
+    return run_playwright_screenshot_audit(
+        screenshot_dir=screenshot_dir,
+        pytest_target=pytest_target,
+        pytest_executable=pytest_executable,
+        workdir=workdir,
+    )
+
+
 def build_ui_ux_review_prompt(
     *,
     iteration: int,
@@ -428,6 +443,7 @@ __all__ = [
     "DEFAULT_UI_UX_REVIEW_GOALS",
     "DEFAULT_UI_UX_REVIEW_NOTES",
     "review_screenshot_audit_with_llm_router",
+    "run_end_to_end_complaint_browser_audit",
     "run_closed_loop_ui_ux_improvement",
     "run_iterative_ui_ux_workflow",
     "run_playwright_screenshot_audit",

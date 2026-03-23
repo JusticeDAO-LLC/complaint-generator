@@ -422,6 +422,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.reset_session", "description": "Clear the complaint workspace session."},
                 {"name": "complaint.review_ui", "description": "Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique."},
                 {"name": "complaint.optimize_ui", "description": "Run the closed-loop screenshot, llm_router, actor/critic optimizer, and revalidation workflow for the complaint dashboard UI."},
+                {"name": "complaint.run_browser_audit", "description": "Run the Playwright end-to-end complaint browser audit that drives chat, intake, evidence, review, draft, and builder surfaces."},
             ]
         }
 
@@ -539,5 +540,15 @@ class ComplaintWorkspaceService:
                 priority=int(args.get("priority") or DEFAULT_UI_UX_OPTIMIZER_PRIORITY),
                 notes=args.get("notes"),
                 goals=args.get("goals"),
+            )
+        if tool_name == "complaint.run_browser_audit":
+            from complaint_generator.ui_ux_workflow import run_end_to_end_complaint_browser_audit
+
+            screenshot_dir = args.get("screenshot_dir")
+            if not screenshot_dir:
+                raise ValueError("complaint.run_browser_audit requires screenshot_dir.")
+            return run_end_to_end_complaint_browser_audit(
+                screenshot_dir=str(screenshot_dir),
+                pytest_target=str(args.get("pytest_target") or "tests/test_website_cohesion_playwright.py::test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"),
             )
         raise ValueError(f"Unknown complaint MCP tool: {tool_name}")

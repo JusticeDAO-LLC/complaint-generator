@@ -7,6 +7,7 @@ from complaint_generator import (
     build_ui_ux_review_prompt,
     review_screenshot_audit_with_llm_router,
     run_closed_loop_ui_ux_improvement,
+    run_end_to_end_complaint_browser_audit,
     run_iterative_ui_ux_workflow,
     run_playwright_screenshot_audit,
 )
@@ -108,6 +109,27 @@ def test_run_playwright_screenshot_audit_uses_configured_artifact_directory(monk
     assert result["returncode"] == 0
     assert result["artifact_count"] == 1
     assert result["artifacts"][0]["name"] == "workspace"
+
+
+def test_run_end_to_end_complaint_browser_audit_delegates_to_playwright_audit(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_audit(**kwargs):
+        captured.update(kwargs)
+        return {"returncode": 0, "artifact_count": 4, "screenshot_dir": str(kwargs["screenshot_dir"])}
+
+    monkeypatch.setattr(workflow_module, "run_playwright_screenshot_audit", fake_audit)
+
+    result = run_end_to_end_complaint_browser_audit(
+        screenshot_dir=tmp_path / "screens",
+    )
+
+    assert result["returncode"] == 0
+    assert result["artifact_count"] == 4
+    assert str(captured["screenshot_dir"]).endswith("screens")
+    assert str(captured["pytest_target"]).endswith(
+        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+    )
 
 
 def test_review_and_iterative_workflow_return_llm_router_output(monkeypatch, tmp_path):

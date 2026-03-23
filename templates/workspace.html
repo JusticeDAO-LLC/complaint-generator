@@ -1499,18 +1499,21 @@ session = service.get_session("did:key:example")</pre>
                             <pre>complaint-workspace session --user-id did:key:example
 complaint-generator-workspace session --user-id did:key:example
 complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
-complaint-generator-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"</pre>
+complaint-generator-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"
+complaint-workspace browser-audit artifacts/ui-audit/browser-audit</pre>
                         </div>
                         <div class="tool-card">
                             <h3>MCP stdio server</h3>
                             <pre>complaint-generator-mcp
-complaint-mcp-server</pre>
+complaint-mcp-server
+tool: complaint.run_browser_audit</pre>
                         </div>
                         <div class="tool-card">
                             <h3>JavaScript MCP SDK</h3>
                             <pre>const client = new window.ComplaintMcpSdk.ComplaintMcpClient();
 const bootstrap = await client.bootstrapWorkspace();
-await client.callTool('complaint.review_case', { user_id: bootstrap.did });</pre>
+await client.callTool('complaint.review_case', { user_id: bootstrap.did });
+await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit' });</pre>
                             <div class="chip-row" id="sdk-server-info"></div>
                         </div>
                         <div class="tool-card">

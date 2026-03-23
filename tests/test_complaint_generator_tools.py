@@ -58,6 +58,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.reset_session",
         "complaint.review_ui",
         "complaint.optimize_ui",
+        "complaint.run_browser_audit",
     ]
     assert all("inputSchema" in tool for tool in payload["tools"])
 
@@ -420,6 +421,53 @@ def test_optimize_ui_defaults_to_feature_complete_audit_and_adversarial_method(m
     assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
     assert captured["method"] == "adversarial"
     assert captured["priority"] == 90
+    assert captured["pytest_target"].endswith(
+        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+    )
+
+
+def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "browser-audit-sessions")
+    captured = {}
+
+    def fake_browser_audit(**kwargs):
+        captured.update(kwargs)
+        return {
+            "command": ["pytest", "-q", str(kwargs["pytest_target"])],
+            "returncode": 0,
+            "artifact_count": 3,
+            "screenshot_dir": str(kwargs["screenshot_dir"]),
+        }
+
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+    monkeypatch.setattr(
+        "complaint_generator.ui_ux_workflow.run_end_to_end_complaint_browser_audit",
+        fake_browser_audit,
+    )
+
+    cli_payload = _invoke_cli(
+        runner,
+        "browser-audit",
+        str(tmp_path / "screens"),
+    )
+    assert cli_payload["returncode"] == 0
+    assert cli_payload["artifact_count"] == 3
+    assert captured["pytest_target"].endswith(
+        "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
+    )
+
+    captured.clear()
+    mcp_payload = _call_mcp_tool(
+        service,
+        15,
+        "complaint.run_browser_audit",
+        {
+            "screenshot_dir": str(tmp_path / "screens"),
+        },
+    )
+    assert mcp_payload["returncode"] == 0
+    assert mcp_payload["artifact_count"] == 3
     assert captured["pytest_target"].endswith(
         "test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_optimizer"
     )

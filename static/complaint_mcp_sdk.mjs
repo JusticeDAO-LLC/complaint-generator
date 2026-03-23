@@ -195,6 +195,10 @@ class ComplaintMcpClient {
     runClosedLoopUiUxWorkflow(payload) {
         return this.optimizeUiArtifacts(payload);
     }
+
+    runBrowserAudit(payload) {
+        return this.callTool('complaint.run_browser_audit', payload || {});
+    }
 }
 
 export { ComplaintMcpClient };

@@ -140,7 +140,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('a[href="/dashboards"]').first()).toBeVisible();
   });
 
-  test('profile and results surfaces explain stored complaint state clearly', async ({ page }) => {
+  test('profile and results surfaces explain stored complaint state clearly', async ({ page }, testInfo) => {
     await page.goto('/profile');
     await expect(page).toHaveTitle(/Profile Data/i);
     await expect(page.locator('h1').first()).toContainText(/Profile data without the clutter/i);
@@ -151,6 +151,13 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Profile/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Results/i);
 
+    const profileScreenshotPath = testInfo.outputPath('profile-overview.png');
+    await page.screenshot({ path: profileScreenshotPath, fullPage: true });
+    await testInfo.attach('profile-overview', {
+      path: profileScreenshotPath,
+      contentType: 'image/png',
+    });
+
     await page.goto('/results');
     await expect(page).toHaveTitle(/Complaint Results/i);
     await expect(page.locator('h1').first()).toContainText(/Results without the raw-demo feel/i);
@@ -159,6 +166,13 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#profile_data')).toBeVisible();
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Review/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
+
+    const resultsScreenshotPath = testInfo.outputPath('results-overview.png');
+    await page.screenshot({ path: resultsScreenshotPath, fullPage: true });
+    await testInfo.attach('results-overview', {
+      path: resultsScreenshotPath,
+      contentType: 'image/png',
+    });
   });
 
   test('document and dashboard remain mutually navigable as one website', async ({ page }) => {
