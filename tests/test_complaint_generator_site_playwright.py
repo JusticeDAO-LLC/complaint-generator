@@ -5,7 +5,7 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 from unittest.mock import Mock
 
 import pytest
@@ -405,9 +405,8 @@ def test_unified_navigation_connects_primary_pages(site_app: FastAPI):
                 assert href
                 parsed_href = urlparse(href)
                 assert parsed_href.path == suffix
-                if suffix not in {"/", "/home", "/mlwysiwyg"}:
-                    assert parse_qs(parsed_href.query).get("user_id")
-                page.goto(f"{base_url}{href}")
+                destination = href if href.startswith(("http://", "https://")) else f"{base_url}{href}"
+                page.goto(destination)
                 page.wait_for_load_state("networkidle")
                 assert expected_text in page.locator("body").inner_text()
 

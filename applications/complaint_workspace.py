@@ -63,6 +63,12 @@ _INTAKE_QUESTIONS: List[Dict[str, str]] = [
         "prompt": "What harm did you suffer?",
         "placeholder": "Lost wages, lost benefits, emotional distress",
     },
+    {
+        "id": "court_header",
+        "label": "Court caption",
+        "prompt": "If you know the court, what district caption should appear on the complaint?",
+        "placeholder": "FOR THE NORTHERN DISTRICT OF CALIFORNIA",
+    },
 ]
 
 _CLAIM_ELEMENTS: List[Dict[str, str]] = [
@@ -235,6 +241,18 @@ def _formalize_relief_item(value: Optional[str]) -> str:
         "damages": "Damages according to proof",
     }
     return replacements.get(lowered, text)
+
+
+def _court_header_line(value: Optional[str]) -> str:
+    text = _normalize_fragment(value, "FOR THE APPROPRIATE JUDICIAL DISTRICT")
+    upper = text.upper()
+    if "UNITED STATES DISTRICT COURT" in upper:
+        return "FOR THE APPROPRIATE JUDICIAL DISTRICT"
+    if upper.startswith("FOR "):
+        return upper
+    if "DISTRICT OF" in upper:
+        return f"FOR {upper}" if upper.startswith("THE ") else f"FOR THE {upper}"
+    return "FOR THE APPROPRIATE JUDICIAL DISTRICT"
 
 
 def _slugify_filename(value: str) -> str:
@@ -783,6 +801,7 @@ class ComplaintWorkspaceService:
         support_count = int(overview.get("supported_elements") or 0)
         missing_count = int(overview.get("missing_elements") or 0)
         evidence_count = len(testimony_items) + len(document_items)
+        court_header = _court_header_line(answers.get("court_header"))
         testimony_reference_lines = _unique_preserve_order([
             f"Plaintiff expects to present testimony identified as '{item.get('title') or 'Untitled testimony'},' which is presently offered in support of the {_claim_element_label(item.get('claim_element_id')).lower()} element."
             for item in testimony_items[:3]
@@ -1035,7 +1054,7 @@ class ComplaintWorkspaceService:
         body = "\n\n".join(
             [
                 "IN THE UNITED STATES DISTRICT COURT",
-                "FOR THE APPROPRIATE JUDICIAL DISTRICT",
+                court_header,
                 "",
                 f"{plaintiff}, Plaintiff,",
                 "v.",

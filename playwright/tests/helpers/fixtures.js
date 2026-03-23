@@ -207,6 +207,21 @@ function formalizeReliefItem(value) {
   return replacements[text.toLowerCase()] || text;
 }
 
+function courtHeaderLine(value) {
+  const text = normalizeFragment(value, 'FOR THE APPROPRIATE JUDICIAL DISTRICT');
+  const upper = text.toUpperCase();
+  if (upper.includes('UNITED STATES DISTRICT COURT')) {
+    return 'FOR THE APPROPRIATE JUDICIAL DISTRICT';
+  }
+  if (upper.startsWith('FOR ')) {
+    return upper;
+  }
+  if (upper.includes('DISTRICT OF')) {
+    return upper.startsWith('THE ') ? `FOR ${upper}` : `FOR THE ${upper}`;
+  }
+  return 'FOR THE APPROPRIATE JUDICIAL DISTRICT';
+}
+
 function claimElementLabel(value) {
   const normalized = String(value || '').trim();
   const labels = {
@@ -588,6 +603,7 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
   const synopsis = buildWorkspaceCaseSynopsis(state);
   const claimType = String(state.claim_type || 'retaliation');
   const claimTypeTitle = claimType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  const courtHeader = courtHeaderLine(answers.court_header);
   const protectedActivity = sentenceFragment(answers.protected_activity, 'engaged in protected activity');
   const pleadingActivity = pleadingActivityFragment(answers.protected_activity, 'engaging in protected activity');
   const adverseAction = eventFragment(answers.adverse_action, 'suffered an adverse action');
@@ -733,7 +749,7 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
     claim_type: claimType,
     body: [
       'IN THE UNITED STATES DISTRICT COURT',
-      'FOR THE APPROPRIATE JUDICIAL DISTRICT',
+      courtHeader,
       '',
       `${answers.party_name || 'Plaintiff'}, Plaintiff,`,
       'v.',

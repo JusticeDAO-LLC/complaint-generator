@@ -1,7 +1,7 @@
 __pycache__
 statefiles/*.json
 .DS_Store
-
+.complaint_workspace
 # Test artifacts
 .pytest_cache/
 .hypothesis/

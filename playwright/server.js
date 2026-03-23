@@ -131,6 +131,21 @@ function formalizeReliefItem(value) {
   return replacements[text.toLowerCase()] || text;
 }
 
+function courtHeaderLine(value) {
+  const text = normalizeFragment(value, 'FOR THE APPROPRIATE JUDICIAL DISTRICT');
+  const upper = text.toUpperCase();
+  if (upper.includes('UNITED STATES DISTRICT COURT')) {
+    return 'FOR THE APPROPRIATE JUDICIAL DISTRICT';
+  }
+  if (upper.startsWith('FOR ')) {
+    return upper;
+  }
+  if (upper.includes('DISTRICT OF')) {
+    return upper.startsWith('THE ') ? `FOR ${upper}` : `FOR THE ${upper}`;
+  }
+  return 'FOR THE APPROPRIATE JUDICIAL DISTRICT';
+}
+
 function claimElementLabel(value) {
   const normalized = String(value || '').trim();
   const labels = {
@@ -317,6 +332,7 @@ const workspaceQuestions = [
   { id: 'adverse_action', label: 'Adverse action', prompt: 'What happened to you afterward?', placeholder: 'Termination two days later' },
   { id: 'timeline', label: 'Timeline', prompt: 'When did the key events happen?', placeholder: 'Complaint on March 8, termination on March 10' },
   { id: 'harm', label: 'Harm', prompt: 'What harm did you suffer?', placeholder: 'Lost wages, lost benefits, emotional distress' },
+  { id: 'court_header', label: 'Court caption', prompt: 'If you know the court, what district caption should appear on the complaint?', placeholder: 'FOR THE NORTHERN DISTRICT OF CALIFORNIA' },
 ];
 
 const claimElements = [
@@ -1054,6 +1070,7 @@ function generateWorkspaceDraft(workspaceState, requestedRelief, options = {}) {
   const caseSynopsis = String(workspaceState.case_synopsis || '').trim();
   const claimType = String(workspaceState.claim_type || 'retaliation');
   const claimTypeTitle = claimType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  const courtHeader = courtHeaderLine(answers.court_header);
   const protectedActivity = sentenceFragment(answers.protected_activity, 'engaged in protected activity');
   const pleadingActivity = pleadingActivityFragment(answers.protected_activity, 'engaging in protected activity');
   const adverseAction = eventFragment(answers.adverse_action, 'suffered an adverse action');
@@ -1191,7 +1208,7 @@ function generateWorkspaceDraft(workspaceState, requestedRelief, options = {}) {
     .map((item) => `Plaintiff identifies documentary exhibit '${item.title || 'Untitled document'}' as presently supporting the ${claimElementLabel(item.claim_element_id).toLowerCase()} element.`);
   const body = [
     'IN THE UNITED STATES DISTRICT COURT',
-    'FOR THE APPROPRIATE JUDICIAL DISTRICT',
+    courtHeader,
     '',
     `${answers.party_name || 'Plaintiff'}, Plaintiff,`,
     'v.',

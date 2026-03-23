@@ -523,6 +523,7 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#intake-adverse_action').fill('Was terminated three days later');
     await page.locator('#intake-timeline').fill('Report on April 2, termination on April 5');
     await page.locator('#intake-harm').fill('Lost wages, benefits, and housing stability');
+    await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     await page.locator('#save-intake-button').click();
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
 
@@ -623,7 +624,7 @@ test.describe('complaint generation workflow', () => {
     const markdownBody = await fs.readFile(markdownPath, 'utf-8');
     expect(markdownDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.md$/i);
     expect(markdownBody.startsWith('IN THE UNITED STATES DISTRICT COURT')).toBeTruthy();
-    expect(markdownBody).toContain('FOR THE APPROPRIATE JUDICIAL DISTRICT');
+    expect(markdownBody).toContain('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     expect(markdownBody).toContain('Taylor Smith brings this retaliation complaint against Acme Logistics.');
     expect(markdownBody).toContain('Plaintiff Taylor Smith, proceeding pro se, alleges upon personal knowledge');
     expect(markdownBody).toContain('engaged in protected activity by reporting wage-and-hour violations to HR.');

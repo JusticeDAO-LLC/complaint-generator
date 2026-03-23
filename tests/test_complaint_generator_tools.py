@@ -925,12 +925,14 @@ def test_deterministic_retaliation_draft_normalizes_activity_into_pleading_style
             "adverse_action": "Was terminated three days later",
             "timeline": "Report on April 2, termination on April 5",
             "harm": "Lost wages, benefits, and housing stability",
+            "court_header": "FOR THE NORTHERN DISTRICT OF CALIFORNIA",
         },
     )
 
     payload = service.generate_complaint("pleading-style-user")
     body = payload["draft"]["body"]
 
+    assert "FOR THE NORTHERN DISTRICT OF CALIFORNIA" in body
     assert "engaged in protected activity by reporting wage-and-hour violations to HR." in body
     assert "Plaintiff engaged in protected activity by reporting wage-and-hour violations to HR," in body
     assert "After that protected activity, Plaintiff was terminated three days later." in body
