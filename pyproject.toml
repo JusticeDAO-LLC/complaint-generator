@@ -57,6 +57,8 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = [
+  "adversarial_harness",
+  "adversarial_harness.*",
   "applications",
   "applications.*",
   "backends",

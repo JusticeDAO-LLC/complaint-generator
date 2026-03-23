@@ -1,0 +1,6 @@
+[console_scripts]
+complaint-generator = complaint_generator.entrypoints:main
+complaint-generator-mcp = complaint_generator.mcp_server:main
+complaint-generator-workspace = complaint_generator.cli:main
+complaint-mcp-server = complaint_generator.mcp_server:main
+complaint-workspace = complaint_generator.cli:main

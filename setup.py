@@ -7,6 +7,8 @@ setup(
     description="Complaint generator workspace with CLI, MCP tools, and web surfaces.",
     packages=find_packages(
         include=[
+            "adversarial_harness",
+            "adversarial_harness.*",
             "applications",
             "applications.*",
             "backends",
