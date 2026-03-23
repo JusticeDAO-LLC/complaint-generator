@@ -7,6 +7,7 @@ from complaint_generator import (
     complaint_mcp_server_main,
     complaint_workspace_cli_main,
     create_complaint_workspace_router,
+    get_complaint_readiness,
     handle_jsonrpc_message,
     tool_list_payload,
 )
@@ -25,6 +26,7 @@ def test_package_exports_unified_workspace_and_review_helpers():
     assert create_review_surface_app is not None
     assert complaint_workspace_cli_main is not None
     assert complaint_mcp_server_main is not None
+    assert get_complaint_readiness is not None
 
     tool_payload = tool_list_payload(service)
     assert tool_payload["tools"]

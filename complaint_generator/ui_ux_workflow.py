@@ -162,6 +162,7 @@ def build_ui_ux_review_prompt(
         "Also check that the complaint generator functionality remains legible as package exports, CLI tools, MCP server tools, and a JavaScript MCP SDK workflow.",
         "Treat this as an actor/critic workflow audit with adversarial pressure-testing: identify where a real user could fail to complete the full complaint journey, where the UI hides the next best step, or where major product capabilities disappear from view.",
         "Treat this as an adversarial workflow audit: identify where a real user could fail to complete the full complaint journey or miss major product capabilities.",
+        "Explicitly audit visible buttons, links, tabs, and handoff controls. Treat any dead, misleading, duplicated, or context-losing control as a release blocker until proven otherwise.",
         "Use an actor/critic lens: the actor should propose the smallest high-impact UX repair sequence, and the critic should decide whether the dashboard is actually safe to send legal clients through.",
         f"Iteration: {iteration}",
     ]
@@ -227,6 +228,9 @@ def build_ui_ux_review_prompt(
             ),
             (
                 "Under `Critic Test Obligations`, list the exact Playwright end-to-end checks that should fail if buttons, navigation, shared state, SDK invocations, or stage transitions break."
+            ),
+            (
+                "Under `Playwright Assertions To Add`, include a control audit matrix that names the exact button, link, or tab to click, the expected route or state transition, and the expected visible text confirming success."
             ),
         ]
     )

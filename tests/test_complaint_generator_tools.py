@@ -55,6 +55,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.save_evidence",
         "complaint.review_case",
         "complaint.build_mediator_prompt",
+        "complaint.get_complaint_readiness",
         "complaint.get_workflow_capabilities",
         "complaint.generate_complaint",
         "complaint.update_draft",
@@ -134,8 +135,13 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     mediator_payload = _invoke_cli(runner, "mediator-prompt", "--user-id", "cli-user")
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
 
+    readiness_payload = _invoke_cli(runner, "complaint-readiness", "--user-id", "cli-user")
+    assert readiness_payload["verdict"] in {"Not ready to draft", "Still building the record", "Ready for first draft", "Draft in progress"}
+    assert isinstance(readiness_payload["score"], int)
+
     capabilities_payload = _invoke_cli(runner, "capabilities", "--user-id", "cli-user")
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
+    assert "complaint_readiness" in capabilities_payload
 
     generate_payload = _invoke_cli(
         runner,
@@ -249,12 +255,17 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     mediator_payload = _call_mcp_tool(service, 23, "complaint.build_mediator_prompt", {"user_id": "mcp-user"})
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
 
-    capabilities_payload = _call_mcp_tool(service, 24, "complaint.get_workflow_capabilities", {"user_id": "mcp-user"})
+    readiness_payload = _call_mcp_tool(service, 24, "complaint.get_complaint_readiness", {"user_id": "mcp-user"})
+    assert readiness_payload["verdict"] in {"Not ready to draft", "Still building the record", "Ready for first draft", "Draft in progress"}
+    assert isinstance(readiness_payload["score"], int)
+
+    capabilities_payload = _call_mcp_tool(service, 25, "complaint.get_workflow_capabilities", {"user_id": "mcp-user"})
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
+    assert "complaint_readiness" in capabilities_payload
 
     generate_payload = _call_mcp_tool(
         service,
-        25,
+        26,
         "complaint.generate_complaint",
         {
             "user_id": "mcp-user",
@@ -269,7 +280,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
 
     update_payload = _call_mcp_tool(
         service,
-        26,
+        27,
         "complaint.update_draft",
         {
             "user_id": "mcp-user",
@@ -282,13 +293,14 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert update_payload["draft"]["body"] == "Updated body from MCP."
     assert update_payload["draft"]["requested_relief"] == ["Reinstatement", "Attorney fees"]
 
-    export_payload = _call_mcp_tool(service, 27, "complaint.export_complaint_packet", {"user_id": "mcp-user"})
+    export_payload = _call_mcp_tool(service, 28, "complaint.export_complaint_packet", {"user_id": "mcp-user"})
     assert export_payload["packet"]["draft"]["title"] == "Updated MCP complaint"
     assert export_payload["packet_summary"]["has_draft"] is True
+    assert "complaint_readiness" in export_payload["packet_summary"]
 
     synopsis_payload = _call_mcp_tool(
         service,
-        28,
+        29,
         "complaint.update_case_synopsis",
         {
             "user_id": "mcp-user",
@@ -298,7 +310,7 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
     assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
 
-    reset_payload = _call_mcp_tool(service, 29, "complaint.reset_session", {"user_id": "mcp-user"})
+    reset_payload = _call_mcp_tool(service, 30, "complaint.reset_session", {"user_id": "mcp-user"})
     assert reset_payload["session"]["user_id"] == "mcp-user"
     assert reset_payload["session"]["draft"] is None
     assert reset_payload["session"]["intake_answers"] == {}

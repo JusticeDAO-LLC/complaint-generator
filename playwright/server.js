@@ -297,6 +297,67 @@ function buildMediatorPromptPayload(userId = 'did:key:playwright-demo') {
   };
 }
 
+function complaintReadinessPayload(userId = 'did:key:playwright-demo') {
+  const sessionPayload = workspaceSessionPayload(userId);
+  const overview = ((sessionPayload.review || {}).overview) || {};
+  const questions = sessionPayload.questions || [];
+  const answeredQuestions = questions.filter((item) => item.is_answered).length;
+  const totalQuestions = questions.length;
+  const supportedElements = Number(overview.supported_elements || 0);
+  const missingElements = Number(overview.missing_elements || 0);
+  const evidenceCount = Number(overview.testimony_items || 0) + Number(overview.document_items || 0);
+  const hasDraft = Boolean(sessionPayload.draft);
+
+  let score = 10;
+  if (totalQuestions > 0) {
+    score += Math.round((answeredQuestions / totalQuestions) * 35);
+  }
+  score += Math.round((supportedElements / Math.max(supportedElements + missingElements, 1)) * 35);
+  if (evidenceCount > 0) {
+    score += Math.min(12, evidenceCount * 4);
+  }
+  if (hasDraft) {
+    score += 12;
+  }
+  score = Math.max(0, Math.min(100, score));
+
+  let verdict = 'Not ready to draft';
+  let detail = 'Finish intake and add support before relying on generated complaint text.';
+  let recommendedRoute = '/workspace';
+  let recommendedAction = 'Continue the guided complaint workflow to complete intake and collect support.';
+  if (hasDraft) {
+    verdict = 'Draft in progress';
+    detail = 'A complaint draft already exists. Compare it against the supported facts and remaining proof gaps before treating it as filing-ready.';
+    recommendedRoute = '/document';
+    recommendedAction = 'Refine the existing draft and reconcile it with the support review.';
+  } else if (totalQuestions > 0 && answeredQuestions === totalQuestions && missingElements === 0 && evidenceCount > 0) {
+    verdict = 'Ready for first draft';
+    detail = 'The intake record and support posture are coherent enough to generate a first complaint draft.';
+    recommendedRoute = '/document';
+    recommendedAction = 'Generate the first complaint draft from the current record.';
+  } else if (answeredQuestions > 0) {
+    verdict = 'Still building the record';
+    detail = `${missingElements} claim elements still need support and ${Math.max(totalQuestions - answeredQuestions, 0)} intake answers may still be missing.`;
+    recommendedRoute = missingElements > 0 ? '/claim-support-review' : '/workspace';
+    recommendedAction = 'Review support gaps and attach stronger evidence before relying on generated complaint language.';
+  }
+
+  return {
+    user_id: userId,
+    score,
+    verdict,
+    detail,
+    recommended_route: recommendedRoute,
+    recommended_action: recommendedAction,
+    answered_questions: answeredQuestions,
+    total_questions: totalQuestions,
+    supported_elements: supportedElements,
+    missing_elements: missingElements,
+    evidence_count: evidenceCount,
+    has_draft: hasDraft,
+  };
+}
+
 function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
   const sessionPayload = workspaceSessionPayload(userId);
   const overview = ((sessionPayload.review || {}).overview) || {};
@@ -306,6 +367,7 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
     user_id: userId,
     case_synopsis: String(sessionPayload.case_synopsis || '').trim(),
     overview,
+    complaint_readiness: complaintReadinessPayload(userId),
     capabilities: [
       { id: 'intake_questions', label: 'Complaint intake questions', available: questions.length > 0, detail: `${answeredCount} of ${questions.length} intake questions answered.` },
       { id: 'mediator_prompt', label: 'Chat mediator handoff', available: true, detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.' },
@@ -340,6 +402,7 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       testimony_items: sessionPayload.review.overview.testimony_items || 0,
       document_items: sessionPayload.review.overview.document_items || 0,
       has_draft: Boolean(sessionPayload.draft),
+      complaint_readiness: complaintReadinessPayload(userId),
     },
   };
 }
@@ -550,6 +613,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
         { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
+        { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
@@ -583,6 +647,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_case', description: 'Return the support matrix and evidence review.', inputSchema: { type: 'object' } },
             { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
+            { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
@@ -632,6 +697,8 @@ const server = http.createServer(async (request, response) => {
         structuredContent = workspaceSessionPayload(userId);
       } else if (toolName === 'complaint.build_mediator_prompt') {
         structuredContent = buildMediatorPromptPayload(userId);
+      } else if (toolName === 'complaint.get_complaint_readiness') {
+        structuredContent = complaintReadinessPayload(userId);
       } else if (toolName === 'complaint.get_workflow_capabilities') {
         structuredContent = workflowCapabilitiesPayload(userId);
       } else if (toolName === 'complaint.generate_complaint') {
@@ -852,6 +919,9 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.build_mediator_prompt') {
       return sendJson(response, buildMediatorPromptPayload(userId));
+    }
+    if (toolName === 'complaint.get_complaint_readiness') {
+      return sendJson(response, complaintReadinessPayload(userId));
     }
     if (toolName === 'complaint.get_workflow_capabilities') {
       return sendJson(response, workflowCapabilitiesPayload(userId));

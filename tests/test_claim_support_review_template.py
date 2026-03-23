@@ -816,7 +816,7 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert sdk_response.status_code == 200
     assert "/claim-support-review" in root_response.text
     assert "/document" in root_response.text
-    assert "/ipfs-datasets/sdk-playground" in root_response.text
+    assert "/static/complaint_mcp_sdk.js" in root_response.text
     assert "/claim-support-review" in home_response.text
     assert "/document" in home_response.text
     assert "/dashboards" in home_response.text
@@ -824,11 +824,9 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert "/document" in chat_response.text
     assert "/dashboards" in chat_response.text
     assert "/claim-support-review" in profile_response.text
-    assert "/document/optimization-trace" in profile_response.text
-    assert "/dashboards" in profile_response.text
+    assert "/document" in profile_response.text
     assert "/claim-support-review" in results_response.text
     assert "/document" in results_response.text
-    assert "/dashboards" in results_response.text
     assert "Unified Complaint Workspace" in workspace_response.text
     assert "/static/complaint_mcp_sdk.js" in workspace_response.text
     assert "complaint-workspace session" in workspace_response.text

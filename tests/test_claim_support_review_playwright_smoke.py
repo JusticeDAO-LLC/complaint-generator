@@ -414,7 +414,8 @@ def _build_hook_backed_browser_mediator(db_path: str):
             claim_type=claim_type or "retaliation",
             limit=25,
         )
-        testimony_records = testimony_payload["claims"]["retaliation"]
+        claim_bucket = testimony_payload.get("claims") or {}
+        testimony_records = claim_bucket.get("retaliation") or []
         testimony_links = _build_testimony_links(testimony_records)
         required_kinds = required_support_kinds or ["evidence", "authority"]
         return {

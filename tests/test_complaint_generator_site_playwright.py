@@ -392,7 +392,7 @@ def test_unified_navigation_connects_primary_pages(site_app: FastAPI):
             expect_texts = [
                 ("Secure Intake", "/home", "Create Account"),
                 ("Workspace", "/workspace", "Unified Complaint Workspace"),
-                ("Review", "/claim-support-review", "Claim support coverage with execution controls."),
+                ("Review", "/claim-support-review", "Review whether the complaint is actually supported."),
                 ("Builder", "/document", "Formal Complaint Builder"),
                 ("Editor", "/mlwysiwyg", "Complaint Editor Workshop"),
                 ("Trace", "/document/optimization-trace", "Optimization Trace Viewer"),

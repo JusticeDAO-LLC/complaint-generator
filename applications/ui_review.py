@@ -37,6 +37,8 @@ def _parse_json_response(text: str) -> Dict[str, Any]:
         "issues": [],
         "recommended_changes": [],
         "broken_controls": [],
+        "button_audit": [],
+        "route_handoffs": [],
         "complaint_journey": {},
         "actor_plan": {},
         "critic_review": {},
@@ -112,6 +114,7 @@ def build_ui_review_prompt(
         "- CLI tools like complaint-generator and complaint-workspace, including review-ui, optimize-ui, and browser-audit\n"
         "- MCP server tools such as complaint.start_session, complaint.build_mediator_prompt, complaint.export_complaint_packet, complaint.review_ui, complaint.optimize_ui, and complaint.run_browser_audit\n"
         "- Browser SDK usage through window.ComplaintMcpSdk.ComplaintMcpClient, including optimizeUiArtifacts() and runBrowserAudit()\n\n"
+        "Treat every visible button, tab, CTA, and handoff link as part of the release contract. If a control looks actionable but does not move the user to the next valid complaint step, record it as broken.\n\n"
         "Screenshot artifacts:\n"
         f"{json.dumps(screenshot_list, indent=2, sort_keys=True)}\n\n"
         "Return strict JSON with this shape:\n"
@@ -140,6 +143,24 @@ def build_ui_review_prompt(
         '      "control": "button, link, form control, or panel",\n'
         '      "failure_mode": "what appears broken, misleading, or disconnected",\n'
         '      "repair": "what to change in code or behavior"\n'
+        "    }\n"
+        "  ],\n"
+        '  "button_audit": [\n'
+        "    {\n"
+        '      "surface": "page or route guess",\n'
+        '      "control": "button, link, or tab label",\n'
+        '      "expected_outcome": "route, state change, or visible confirmation",\n'
+        '      "status": "pass|warning|fail",\n'
+        '      "notes": "why it passes or fails"\n'
+        "    }\n"
+        "  ],\n"
+        '  "route_handoffs": [\n'
+        "    {\n"
+        '      "from_surface": "source page",\n'
+        '      "to_surface": "destination page",\n'
+        '      "trigger": "clicked control or action",\n'
+        '      "state_requirements": ["shared DID, synopsis, draft state, etc."],\n'
+        '      "status": "pass|warning|fail"\n'
         "    }\n"
         "  ],\n"
         '  "complaint_journey": {\n'

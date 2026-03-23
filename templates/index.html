@@ -743,6 +743,7 @@
                     const did = await client.getOrCreateDid();
                     const tools = await client.listTools();
                     const payload = await client.getSession(did);
+                    const complaintReadiness = await client.getComplaintReadiness(did);
                     const summary = overview(payload);
                     const action = nextHomepageRoute(payload);
                     const nextQuestion = payload && payload.next_question && payload.next_question.prompt
@@ -757,7 +758,7 @@
                     setText('homepage-evidence-count', String(Number(summary.testimony_items || 0) + Number(summary.document_items || 0)));
                     setText('homepage-session-status', 'Shared complaint session loaded for ' + did + '.');
                     setText('homepage-next-step', action.detail + ' ' + nextQuestion);
-                    setText('homepage-complaint-readiness-summary', complaintReadinessSummary(payload));
+                    setText('homepage-complaint-readiness-summary', `${complaintReadiness.verdict || 'Not ready to draft'} (${complaintReadiness.score || 'pending'}/100). ${complaintReadiness.detail || complaintReadinessSummary(payload)}`);
 
                     if (badge) {
                         badge.textContent = 'Connected';

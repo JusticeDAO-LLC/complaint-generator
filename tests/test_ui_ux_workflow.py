@@ -62,6 +62,7 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "Previous iteration asked for clearer intake guidance." in prompt
     assert "Treat this as an actor/critic workflow audit with adversarial pressure-testing" in prompt
     assert "actor/critic lens" in prompt
+    assert "visible buttons, links, tabs, and handoff controls" in prompt
     assert "Required capability audit:" in prompt
     assert "Hidden Or Missing Feature Paths" in prompt
     assert "Stage Findings" in prompt
@@ -69,6 +70,7 @@ def test_build_ui_ux_review_prompt_includes_artifacts_and_surface_contract(tmp_p
     assert "Critic Test Obligations" in prompt
     assert "Actor Plan" in prompt
     assert "Critic Verdict" in prompt
+    assert "control audit matrix" in prompt
     assert "Intake`, `Evidence`, `Review`, `Draft`, and `Integration Discovery`" in prompt
     assert "save a shared synopsis for the mediator path" in prompt
 

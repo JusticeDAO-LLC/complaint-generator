@@ -57,55 +57,6 @@
         };
     }
 
-    function computeComplaintReadiness(payload) {
-        const review = payload && payload.review ? payload.review : {};
-        const overview = review.overview || {};
-        const session = payload && payload.session ? payload.session : {};
-        const totalQuestions = Array.isArray(payload && payload.questions) ? payload.questions.length : 0;
-        const answeredQuestions = countAnsweredQuestions(payload);
-        const supportedElements = Number(overview.supported_elements || 0);
-        const missingElements = Number(overview.missing_elements || 0);
-        const evidenceCount = Number(overview.testimony_items || 0) + Number(overview.document_items || 0);
-        const draft = session.draft || null;
-
-        let score = 10;
-        if (totalQuestions > 0) {
-            score += Math.round((answeredQuestions / totalQuestions) * 35);
-        }
-        const supportDenominator = Math.max(supportedElements + missingElements, 1);
-        score += Math.round((supportedElements / supportDenominator) * 35);
-        if (evidenceCount > 0) {
-            score += Math.min(12, evidenceCount * 4);
-        }
-        if (draft) {
-            score += 12;
-        }
-        score = Math.max(0, Math.min(100, score));
-
-        let verdict = 'Not ready to draft';
-        let detail = 'Finish intake and add support before relying on generated complaint text.';
-        let tone = ' is-warn';
-        if (draft) {
-            verdict = 'Draft in progress';
-            detail = 'A complaint draft exists. Compare it against the supported facts and remaining proof gaps before treating it as filing-ready.';
-            tone = ' is-good';
-        } else if (totalQuestions > 0 && answeredQuestions === totalQuestions && missingElements === 0 && evidenceCount > 0) {
-            verdict = 'Ready for first draft';
-            detail = 'The intake record and current support posture are coherent enough to generate a first complaint draft.';
-            tone = ' is-good';
-        } else if (answeredQuestions > 0) {
-            verdict = 'Still building the record';
-            detail = `${missingElements} claim elements still need support and ${Math.max(totalQuestions - answeredQuestions, 0)} intake answers may still be missing.`;
-        }
-
-        return {
-            score,
-            verdict,
-            detail,
-            tone,
-        };
-    }
-
     function findPageTitle() {
         const heading = document.querySelector('h1');
         if (heading && heading.textContent.trim()) {
@@ -170,7 +121,15 @@
             : readiness
                 ? ' is-warn'
                 : '';
-        const complaintReadiness = computeComplaintReadiness(state.sessionPayload);
+        const complaintReadiness = state.complaintReadiness || {
+            verdict: 'Not ready to draft',
+            score: 'pending',
+            detail: 'Load the complaint session to estimate readiness.',
+        };
+        const complaintReadinessTone = String(complaintReadiness.verdict || '').toLowerCase() === 'ready for first draft'
+            || String(complaintReadiness.verdict || '').toLowerCase() === 'draft in progress'
+            ? ' is-good'
+            : ' is-warn';
 
         shell.innerHTML = [
             '<div class="cg-app-shell__inner">',
@@ -192,10 +151,10 @@
             '<div class="cg-app-shell__stat"><span class="cg-app-shell__stat-label">Evidence</span><span class="cg-app-shell__stat-value" id="cg-app-shell-evidence-count">' + summary.evidenceCount + '</span><span class="cg-app-shell__stat-detail">' + safeText(summary.draftSummary, 'No draft generated yet.') + '</span></div>',
             '</div>',
             '<div class="cg-app-shell__section-title">Complaint Readiness</div>',
-            '<div class="cg-app-shell__readiness' + complaintReadiness.tone + '" id="cg-app-shell-complaint-readiness">',
+            '<div class="cg-app-shell__readiness' + complaintReadinessTone + '" id="cg-app-shell-complaint-readiness">',
             '<div class="cg-app-shell__readiness-header"><strong>' + safeText(complaintReadiness.verdict, 'Not reviewed') + '</strong><span>' + safeText(String(complaintReadiness.score) + '/100', 'pending') + '</span></div>',
             '<div class="cg-app-shell__readiness-copy">' + safeText(complaintReadiness.detail, 'Load the complaint session to estimate readiness.') + '</div>',
-            '<div class="cg-app-shell__readiness-meta">Answered intake: ' + summary.answeredQuestions + '. Supported elements: ' + summary.supportedElements + '. Evidence items: ' + summary.evidenceCount + '.</div>',
+            '<div class="cg-app-shell__readiness-meta">Answered intake: ' + safeText(complaintReadiness.answered_questions, summary.answeredQuestions) + '. Supported elements: ' + safeText(complaintReadiness.supported_elements, summary.supportedElements) + '. Evidence items: ' + safeText(complaintReadiness.evidence_count, summary.evidenceCount) + '.</div>',
             '<a class="cg-app-shell__action" href="/workspace">Continue complaint workflow</a>',
             '</div>',
             '<div class="cg-app-shell__section-title">UI Readiness</div>',
@@ -241,6 +200,7 @@
         let did = null;
         let toolCount = 0;
         let sessionPayload = null;
+        let complaintReadiness = null;
         let status = 'Using shared complaint workspace shell.';
 
         try {
@@ -263,6 +223,7 @@
                 status = 'Identity ready, but MCP tool discovery is unavailable.';
             }
             sessionPayload = await client.getSession(did);
+            complaintReadiness = await client.getComplaintReadiness(did);
             status = 'Shared session loaded for ' + did + '.';
         } catch (error) {
             status = 'Shared session unavailable: ' + error.message;
@@ -272,6 +233,7 @@
             did: did,
             toolCount: toolCount,
             sessionPayload: sessionPayload,
+            complaintReadiness: complaintReadiness,
             status: status,
         });
     }

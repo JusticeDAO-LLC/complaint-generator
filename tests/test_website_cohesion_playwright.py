@@ -1401,3 +1401,124 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 
             browser.close()
+
+
+def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs(tmp_path):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    screenshot_dir = tmp_path / "playwright-homepage-journey"
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+
+            page.goto(base_url)
+            _wait_for_surface(page, "/")
+            _assert_surface_layout(page)
+            _capture_screenshot(page, screenshot_dir, "homepage-entry")
+
+            page.click("#homepage-open-intake")
+            page.wait_for_url(f"{base_url}/home")
+            page.click("#create-form button")
+            page.fill("#create-form .username_input", "ExampleUser1")
+            page.fill("#create-form .password_input", "StrongPass1!")
+            page.fill("#create-form .password_verify_input", "StrongPass1!")
+            page.fill("#create-form .email_input", "jordan@example.com")
+            page.click("#create-form button")
+            page.wait_for_url(f"{base_url}/chat")
+            page.wait_for_function(
+                "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
+            )
+            _capture_screenshot(page, screenshot_dir, "chat-arrival")
+
+            page.fill("#chat-form input", "I reported discrimination and then my supervisor threatened to fire me.")
+            page.click("#send")
+            page.wait_for_function(
+                "() => document.getElementById('messages').innerText.includes('I reported discrimination and then my supervisor threatened to fire me.')"
+            )
+
+            page.click("a[href='/workspace']")
+            page.wait_for_url(f"{base_url}/workspace")
+            page.wait_for_function(
+                "() => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp')"
+            )
+
+            page.fill("#intake-party_name", "Jordan Example")
+            page.fill("#intake-opposing_party", "Acme Corporation")
+            page.fill("#intake-protected_activity", "Reported discrimination to HR")
+            page.fill("#intake-adverse_action", "Threatened termination and then terminated two days later")
+            page.fill("#intake-timeline", "Reported discrimination on March 8, threat on March 9, termination on March 10")
+            page.fill("#intake-harm", "Lost wages, benefits, and emotional distress")
+            page.click("#save-intake-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"
+            )
+            page.fill(
+                "#case-synopsis",
+                "Jordan Example alleges retaliation after protected activity, with testimony, evidence, and review all tied to one DID-backed complaint record.",
+            )
+            page.click("#save-synopsis-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Shared case synopsis saved.')"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-intake")
+
+            page.click("button[data-tab-target='evidence']")
+            page.select_option("#evidence-kind", "document")
+            page.select_option("#evidence-claim-element", "causation")
+            page.fill("#evidence-title", "Termination email")
+            page.fill("#evidence-source", "Inbox export")
+            page.fill("#evidence-content", "The termination email followed within two days of the HR complaint.")
+            page.click("#save-evidence-button")
+            page.wait_for_function(
+                "() => document.getElementById('evidence-list').innerText.includes('Termination email')"
+            )
+            _capture_screenshot(page, screenshot_dir, "workspace-evidence")
+
+            workspace_user_id = page.locator("#did-chip").inner_text().replace("did: ", "").strip()
+            review_href = page.locator("#handoff-review-button").get_attribute("href") or ""
+            assert f"workspace_user_id={workspace_user_id}" in unquote(review_href)
+            page.click("#handoff-review-button")
+            page.wait_for_url(f"{base_url}/claim-support-review**")
+            page.wait_for_function(
+                "() => document.getElementById('shared-case-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
+            )
+            _capture_screenshot(page, screenshot_dir, "review-handoff")
+
+            page.goto(f"{base_url}/workspace?user_id={workspace_user_id}&target_tab=draft")
+            page.wait_for_function(
+                "() => document.getElementById('draft-synopsis-preview').innerText.includes('Jordan Example alleges retaliation')"
+            )
+            page.fill("#draft-title", "Jordan Example v. Acme Corporation Complaint")
+            page.fill("#requested-relief", "Back pay\nCompensatory damages")
+            page.click("#generate-draft-button")
+            page.wait_for_function(
+                "() => document.getElementById('draft-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
+            )
+            builder_href = page.locator("#handoff-builder-button").get_attribute("href") or ""
+            assert f"user_id={workspace_user_id}" in unquote(builder_href)
+            page.click("#handoff-builder-button")
+            page.wait_for_url(f"{base_url}/document**")
+            page.wait_for_function(
+                "() => document.getElementById('builder-synopsis-text').innerText.includes('Jordan Example alleges retaliation')"
+            )
+            page.fill("#district", "Northern District of California")
+            page.fill("#plaintiffs", "Jordan Example")
+            page.fill("#defendants", "Acme Corporation")
+            page.fill("#requestedRelief", "Back pay\nCompensatory damages")
+            page.fill("#signerName", "Jordan Example")
+            page.fill("#signerTitle", "Plaintiff, Pro Se")
+            page.click("#generateButton")
+            page.wait_for_function(
+                "() => document.getElementById('previewRoot').innerText.includes('Plaintiff alleges retaliation')"
+            )
+            _capture_screenshot(page, screenshot_dir, "builder-filing")
+
+            artifact_paths = sorted(screenshot_dir.glob("*.png"))
+            assert len(artifact_paths) >= 6
+            assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
+
+            browser.close()

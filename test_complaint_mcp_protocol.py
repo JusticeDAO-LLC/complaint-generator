@@ -31,6 +31,7 @@ def test_public_package_exports_workspace_service():
     assert complaint_generator.ComplaintWorkspaceService is ComplaintWorkspaceService
     assert complaint_generator.DEFAULT_INTAKE_QUESTIONS[0]["id"] == "party_name"
     assert complaint_generator.DEFAULT_CLAIM_ELEMENTS[0]["id"] == "protected_activity"
+    assert complaint_generator.get_complaint_readiness is not None
 
 
 def test_tools_call_returns_structured_content(tmp_path):
@@ -94,6 +95,24 @@ def test_mcp_protocol_exposes_mediator_prompt_and_packet_export(tmp_path):
             },
         },
     )
+    readiness_response = handle_jsonrpc_message(
+        service,
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "complaint.get_complaint_readiness",
+                "arguments": {"user_id": "demo-user"},
+            },
+        },
+    )
 
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_response["result"]["structuredContent"]["prefill_message"]
     assert export_response["result"]["structuredContent"]["packet"]["draft"]["body"]
+    assert readiness_response["result"]["structuredContent"]["verdict"] in {
+        "Not ready to draft",
+        "Still building the record",
+        "Ready for first draft",
+        "Draft in progress",
+    }
