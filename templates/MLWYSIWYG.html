@@ -178,8 +178,51 @@
             font-size: 0.92rem;
         }
 
+        .next-step-panel {
+            margin-top: 18px;
+            border-top: 1px solid var(--line);
+            padding-top: 18px;
+        }
+
+        .next-step-panel h3 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+
+        .next-step-panel p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .action-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 10px 14px;
+            border-radius: 16px;
+            text-decoration: none;
+            color: var(--accent);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid var(--line);
+            font-weight: 700;
+            text-align: center;
+        }
+
         @media (max-width: 960px) {
             .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .action-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -220,6 +263,17 @@
                     <button id="refresh-preview" class="primary" type="button">Refresh Preview</button>
                     <button id="reset-editor" class="secondary" type="button">Reset Draft</button>
                 </div>
+
+                <section class="next-step-panel" aria-label="Editor next steps">
+                    <h3>Connected next steps</h3>
+                    <p>Use the editor for quick text reshaping, then move back into the richer workflow surface that matches the job you need to do next.</p>
+                    <div class="action-grid">
+                        <a class="action-link" id="editor-open-workspace" href="/workspace">Return to workspace</a>
+                        <a class="action-link" id="editor-open-review" href="/claim-support-review">Open review</a>
+                        <a class="action-link" id="editor-open-builder" href="/document">Open builder</a>
+                        <a class="action-link" id="editor-open-trace" href="/document/optimization-trace">Open trace</a>
+                    </div>
+                </section>
             </aside>
 
             <main class="panel">

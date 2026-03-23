@@ -280,6 +280,33 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('body')).toContainText(/Formal Complaint Builder/i);
   });
 
+  test('profile, results, and editor expose direct next-step actions instead of nav-only handoffs', async ({ page }) => {
+    await page.goto('/profile');
+    await expect(page.locator('[aria-label="Profile next steps"]')).toBeVisible();
+    await expect(page.locator('#profile-open-results')).toBeVisible();
+    await expect(page.locator('#profile-open-review')).toBeVisible();
+    await expect(page.locator('#profile-open-builder')).toBeVisible();
+    await expect(page.locator('#profile-open-workspace')).toBeVisible();
+    await page.locator('#profile-open-results').click();
+    await expect(page).toHaveURL(/\/results/);
+
+    await expect(page.locator('[aria-label="Results next steps"]')).toBeVisible();
+    await expect(page.locator('#results-open-workspace')).toBeVisible();
+    await expect(page.locator('#results-open-review')).toBeVisible();
+    await expect(page.locator('#results-open-builder')).toBeVisible();
+    await expect(page.locator('#results-open-editor')).toBeVisible();
+    await page.locator('#results-open-editor').click();
+    await expect(page).toHaveURL(/\/mlwysiwyg/);
+
+    await expect(page.locator('[aria-label="Editor next steps"]')).toBeVisible();
+    await expect(page.locator('#editor-open-workspace')).toBeVisible();
+    await expect(page.locator('#editor-open-review')).toBeVisible();
+    await expect(page.locator('#editor-open-builder')).toBeVisible();
+    await expect(page.locator('#editor-open-trace')).toBeVisible();
+    await page.locator('#editor-open-trace').click();
+    await expect(page).toHaveURL(/\/document\/optimization-trace/);
+  });
+
   test('dashboard hub and every mounted shell route are reachable in the JS stub surface', async ({ page }) => {
     await page.goto('/dashboards');
     await expect(page.locator('body')).toContainText(/Unified Dashboard Hub/i);

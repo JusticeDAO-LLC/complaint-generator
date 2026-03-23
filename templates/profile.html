@@ -246,6 +246,27 @@
             border: 1px solid rgba(84, 59, 37, 0.08);
         }
 
+        .action-stack {
+            display: grid;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .action-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            background: rgba(255, 249, 243, 0.9);
+            color: var(--accent-deep);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
         @media (max-width: 1020px) {
             .hero,
             .content-grid,
@@ -340,6 +361,12 @@
                 <div class="eyebrow">How To Use This</div>
                 <h2 style="margin-top: 8px;">What to check here</h2>
                 <p style="margin-top: 12px;">Use this page to confirm that the right complaint account is loaded, check the saved data that will feed later stages, and compare the structured profile with the intake conversation.</p>
+                <div class="action-stack" aria-label="Profile next steps">
+                    <a class="action-link" id="profile-open-results" href="/results">Open results</a>
+                    <a class="action-link" id="profile-open-review" href="/claim-support-review">Open review</a>
+                    <a class="action-link" id="profile-open-builder" href="/document">Open builder</a>
+                    <a class="action-link" id="profile-open-workspace" href="/workspace">Open workspace</a>
+                </div>
             </aside>
         </section>
 

@@ -228,19 +228,25 @@ For the installed console-script surface, use the dedicated smoke helper after a
 ```bash
 python -m pip install -e . --no-deps
 python scripts/run_package_install_smoke.py --json
+.venv/bin/python -m complaint_generator.cli --help
 ```
 
 That helper validates `complaint-generator`, `complaint-workspace`, `complaint-generator-workspace`, `complaint-mcp-server`, and `complaint-generator-mcp` from the interpreter's script directory.
+For the repo-local module entrypoints, you can also use `.venv/bin/python -m complaint_generator.cli --help` and `.venv/bin/python -m complaint_generator.mcp_server`.
 
 The same slices are also available through editor and shell tooling:
 
 - VS Code tasks:
   - `Package Install Smoke`
+  - `Complaint Workspace CLI`
+  - `Complaint MCP Server`
   - `Standard Regression (Lean)`
   - `Standard Regression (Review)`
   - `Standard Regression (Full)`
 - Run and Debug:
   - `Package Install Smoke`
+  - `Complaint Workspace CLI`
+  - `Complaint MCP Server`
   - `Standard Regression (Lean)`
   - `Standard Regression (Review)`
   - `Standard Regression (Full)`

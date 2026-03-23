@@ -182,6 +182,27 @@
             line-height: 1.55;
         }
 
+        .action-stack {
+            display: grid;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .action-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            background: rgba(255, 249, 243, 0.9);
+            color: var(--accent-deep);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
         @media (max-width: 920px) {
             .hero {
                 grid-template-columns: 1fr;
@@ -301,6 +322,12 @@
                 <div class="eyebrow">Why This Page Exists</div>
                 <h2 style="margin-top: 8px;">Use it to verify what the system knows</h2>
                 <p style="margin-top: 12px;">This is the page to inspect what the account has stored so far before moving into review or drafting.</p>
+                <div class="action-stack" aria-label="Results next steps">
+                    <a class="action-link" id="results-open-workspace" href="/workspace">Open workspace</a>
+                    <a class="action-link" id="results-open-review" href="/claim-support-review">Open review</a>
+                    <a class="action-link" id="results-open-builder" href="/document">Open builder</a>
+                    <a class="action-link" id="results-open-editor" href="/mlwysiwyg">Open editor</a>
+                </div>
             </aside>
         </section>
 

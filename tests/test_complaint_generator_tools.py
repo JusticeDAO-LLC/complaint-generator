@@ -190,7 +190,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert "Plaintiff, Pro Se" in generate_payload["draft"]["body"]
     assert "Address: ____________________" in generate_payload["draft"]["body"]
     assert "Email: ____________________" in generate_payload["draft"]["body"]
-    assert "WORKING CASE SYNOPSIS" in generate_payload["draft"]["body"]
+    assert "WORKING CASE SYNOPSIS" not in generate_payload["draft"]["body"]
     assert "by and through this Complaint" in generate_payload["draft"]["body"]
     assert "Reported discrimination to HR" in generate_payload["draft"]["case_synopsis"]
 
@@ -602,6 +602,8 @@ def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(t
     assert "Number the factual allegations as pleading paragraphs like '1. ...', '2. ...'" in prompt
     assert "Do not write a memo, case summary, product explanation, workflow note, JSON explanation, SDK explanation, or support-matrix summary." in prompt
     assert "The complaint must expressly allege all of the following:" in prompt
+    assert "Match the tone and paragraph style of this example snippet for the selected claim type:" in prompt
+    assert "7. Plaintiff sought to rent, retain, or enjoy housing on equal terms protected by law." in prompt
     assert "Allege the housing-related denial, interference, limitation, or retaliation with specificity." in prompt
     assert "Allege the property, housing benefit, tenancy, or housing opportunity context clearly enough to read like a real housing pleading." in prompt
     assert "Return strict JSON with this shape:" in prompt

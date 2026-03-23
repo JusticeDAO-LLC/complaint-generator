@@ -194,6 +194,42 @@ def _claim_type_required_allegations(value: Optional[str]) -> List[str]:
     )
 
 
+def _claim_type_formal_example_snippet(value: Optional[str]) -> str:
+    normalized = _normalize_claim_type(value)
+    return {
+        "retaliation": (
+            "7. Plaintiff engaged in protected activity by reporting discrimination to human resources.\n"
+            "8. Defendant knew of Plaintiff's protected activity before imposing the challenged adverse action.\n"
+            "9. Within days of that protected activity, Defendant terminated Plaintiff, supporting a strong inference of retaliatory motive."
+        ),
+        "employment_discrimination": (
+            "7. Plaintiff is a member of a protected class and was performing the job in a satisfactory manner.\n"
+            "8. Defendant nevertheless subjected Plaintiff to discriminatory terms, conditions, or termination.\n"
+            "9. Comparable employees outside Plaintiff's protected group were treated more favorably under similar circumstances."
+        ),
+        "housing_discrimination": (
+            "7. Plaintiff sought to rent, retain, or enjoy housing on equal terms protected by law.\n"
+            "8. Defendant denied, limited, or interfered with that housing opportunity because of Plaintiff's protected housing status or activity.\n"
+            "9. As a result, Plaintiff lost housing stability, incurred relocation-related harm, or was denied equal housing access."
+        ),
+        "due_process_failure": (
+            "7. Defendant deprived Plaintiff of a protected interest without adequate notice.\n"
+            "8. Defendant failed to provide the hearing, review, or procedural safeguards required before imposing that deprivation.\n"
+            "9. Plaintiff suffered concrete harm because the challenged action occurred without constitutionally adequate process."
+        ),
+        "consumer_protection": (
+            "7. Defendant made deceptive or unfair representations in connection with a consumer transaction.\n"
+            "8. Plaintiff relied on or was exposed to those representations in the course of the transaction.\n"
+            "9. Plaintiff suffered economic loss or other consumer harm as a result of Defendant's deceptive practice."
+        ),
+    }.get(
+        normalized,
+        "7. Plaintiff alleges specific unlawful conduct by Defendant.\n"
+        "8. Defendant's conduct caused concrete harm to Plaintiff.\n"
+        "9. Plaintiff seeks relief that remedies the pleaded misconduct."
+    )
+
+
 def _strip_code_fences(text: str) -> str:
     stripped = str(text or "").strip()
     if stripped.startswith("```"):
@@ -530,6 +566,13 @@ class ComplaintWorkspaceService:
             for item in document_items[:3]
         ) or "No documentary exhibits have been summarized yet"
         complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
+        relief_description = {
+            "retaliation": "retaliatory conduct",
+            "employment_discrimination": "discriminatory employment conduct",
+            "housing_discrimination": "discriminatory housing conduct",
+            "due_process_failure": "procedural due process violations",
+            "consumer_protection": "deceptive or unfair consumer practices",
+        }.get(claim_type, "unlawful conduct")
         nature_of_action = {
             "retaliation": (
                 f"1. {plaintiff} brings this retaliation complaint against {defendant}. "
@@ -555,6 +598,119 @@ class ComplaintWorkspaceService:
             claim_type,
             f"1. {plaintiff} brings this {claim_label.lower()} complaint against {defendant}. "
             f"This civil action arises from unlawful conduct that injured {plaintiff}.",
+        )
+        jurisdiction_paragraph = {
+            "retaliation": (
+                "3. Jurisdiction is alleged in this Court because the controversy arises from retaliation for protected conduct "
+                "and from the remedial obligations governing materially adverse acts taken in response to that conduct."
+            ),
+            "employment_discrimination": (
+                "3. Jurisdiction is alleged in this Court because the controversy arises from discriminatory employment practices, "
+                "workplace bias, and related remedies for unlawful employment actions."
+            ),
+            "housing_discrimination": (
+                "3. Jurisdiction is alleged in this Court because the controversy arises from discriminatory housing practices, "
+                "interference with housing rights or benefits, and related remedial obligations."
+            ),
+            "due_process_failure": (
+                "3. Jurisdiction is alleged in this Court because the controversy arises from deprivation without constitutionally "
+                "or statutorily required notice, hearing, review, or other procedural protections."
+            ),
+            "consumer_protection": (
+                "3. Jurisdiction is alleged in this Court because the controversy arises from unfair, deceptive, or unlawful consumer-facing conduct "
+                "and the remedies available for resulting harm."
+            ),
+        }.get(
+            claim_type,
+            "3. Jurisdiction is alleged in this Court because the controversy arises from unlawful conduct and the remedies available for resulting harm.",
+        )
+        venue_paragraph = {
+            "housing_discrimination": (
+                "4. Venue is alleged to be proper because the housing-related events, denial, interference, or threatened loss of housing benefits occurred in this forum and the resulting harm was felt here."
+            ),
+            "employment_discrimination": (
+                "4. Venue is alleged to be proper because the workplace events, adverse employment decisions, and resulting economic harm occurred in or were directed into this forum."
+            ),
+            "consumer_protection": (
+                "4. Venue is alleged to be proper because the transaction, deceptive practice, or resulting economic loss occurred in this forum or caused injury here."
+            ),
+        }.get(
+            claim_type,
+            "4. Venue is alleged to be proper because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.",
+        )
+        party_paragraphs = {
+            "retaliation": (
+                f"5. Plaintiff {plaintiff} is the person harmed by the retaliation described below.",
+                f"6. Defendant {defendant} is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.",
+            ),
+            "employment_discrimination": (
+                f"5. Plaintiff {plaintiff} is the employee, applicant, or worker harmed by the discriminatory employment conduct described below.",
+                f"6. Defendant {defendant} is the employer or responsible actor from whom relief is sought for the discriminatory employment actions alleged in this pleading.",
+            ),
+            "housing_discrimination": (
+                f"5. Plaintiff {plaintiff} is the housing applicant, tenant, resident, or person seeking housing-related rights or benefits who was harmed by the discriminatory conduct described below.",
+                f"6. Defendant {defendant} is the housing provider, landlord, authority, manager, or responsible actor from whom relief is sought for the housing discrimination alleged in this pleading.",
+            ),
+            "due_process_failure": (
+                f"5. Plaintiff {plaintiff} is the person deprived of rights, benefits, or protected interests without adequate process.",
+                f"6. Defendant {defendant} is the person or entity responsible for the challenged deprivation and the missing procedural safeguards alleged in this pleading.",
+            ),
+            "consumer_protection": (
+                f"5. Plaintiff {plaintiff} is the consumer or injured person harmed by the deceptive, unfair, or unlawful conduct described below.",
+                f"6. Defendant {defendant} is the seller, business, servicer, or responsible actor from whom relief is sought for the consumer-facing conduct alleged in this pleading.",
+            ),
+        }.get(
+            claim_type,
+            (
+                f"5. Plaintiff {plaintiff} is the person harmed by the conduct described below.",
+                f"6. Defendant {defendant} is the party from whom relief is sought and is responsible for the conduct alleged in this pleading.",
+            ),
+        )
+        factual_allegation_lines = {
+            "retaliation": [
+                f"7. {plaintiff} alleges that they {protected_activity}.",
+                "8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.",
+                f"9. After that protected activity, {plaintiff} experienced {adverse_action}.",
+                f"10. The chronology currently available in the record shows that {timeline}.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+            ],
+            "employment_discrimination": [
+                f"7. {plaintiff} alleges facts showing discriminatory employment treatment, including that they {protected_activity}.",
+                f"8. Defendant thereafter took or maintained adverse employment action, including {adverse_action}.",
+                f"9. The employment chronology currently available in the record shows that {timeline}.",
+                "10. The present record supports an inference of discriminatory motive, disparate treatment, prohibited bias, retaliation, or other unlawful employment decision-making.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+            ],
+            "housing_discrimination": [
+                f"7. {plaintiff} alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including that they {protected_activity}.",
+                f"8. Defendant thereafter denied, burdened, interfered with, or threatened housing-related rights or benefits, including {adverse_action}.",
+                f"9. The housing-related chronology currently available in the record shows that {timeline}.",
+                "10. The present record supports an inference that Defendant acted in a discriminatory manner, interfered with protected housing rights, or retaliated in connection with protected housing activity.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+            ],
+            "due_process_failure": [
+                "7. Plaintiff alleges that Defendant imposed or maintained a deprivation affecting protected rights, interests, status, benefits, or property.",
+                f"8. The challenged action included {adverse_action}.",
+                f"9. The chronology currently available in the record shows that {timeline}.",
+                "10. Plaintiff alleges that the deprivation occurred without adequate notice, hearing, review, appeal, or other required procedural protection.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+            ],
+            "consumer_protection": [
+                "7. Plaintiff alleges that Defendant engaged in deceptive, misleading, unfair, or otherwise unlawful consumer-facing conduct.",
+                f"8. That conduct included or resulted in {adverse_action}.",
+                f"9. The chronology currently available in the record shows that {timeline}.",
+                "10. Plaintiff alleges that the challenged conduct caused consumer harm, financial loss, or other compensable injury in a transactional or service context.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+            ],
+        }.get(
+            claim_type,
+            [
+                f"7. {plaintiff} alleges that they {protected_activity}.",
+                f"8. Defendant engaged in conduct including {adverse_action}.",
+                f"9. The chronology currently available in the record shows that {timeline}.",
+                "10. Plaintiff alleges facts supporting a plausible claim for relief.",
+                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+            ],
         )
         count_heading = {
             "retaliation": "COUNT I - RETALIATION",
@@ -618,24 +774,20 @@ class ComplaintWorkspaceService:
                 "NATURE OF THE ACTION",
                 nature_of_action,
                 (
-                    f"2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the retaliatory "
+                    f"2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the {relief_description} "
                     f"conduct, restore lost compensation, and prevent additional harm flowing from {adverse_action}."
                 ),
                 "",
                 "JURISDICTION AND VENUE",
-                "3. Jurisdiction is alleged in this Court because the controversy arises under retaliation law and related remedial doctrines applicable to the challenged conduct.",
-                "4. Venue is alleged to be proper because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.",
+                jurisdiction_paragraph,
+                venue_paragraph,
                 "",
                 "PARTIES",
-                f"5. Plaintiff {plaintiff} is the person harmed by the retaliation described below.",
-                f"6. Defendant {defendant} is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.",
+                party_paragraphs[0],
+                party_paragraphs[1],
                 "",
                 "FACTUAL ALLEGATIONS",
-                f"7. {plaintiff} alleges that they {protected_activity}.",
-                "8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.",
-                f"9. After that protected activity, {plaintiff} experienced {adverse_action}.",
-                f"10. The chronology currently available in the record shows that {timeline}.",
-                f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
+                *factual_allegation_lines,
                 "",
                 "EVIDENTIARY SUPPORT AND NOTICE",
                 (
@@ -681,9 +833,6 @@ class ComplaintWorkspaceService:
                 "Address: ____________________",
                 "Telephone: ____________________",
                 "Email: ____________________",
-                "",
-                "WORKING CASE SYNOPSIS",
-                f"Working case synopsis: {case_synopsis}",
             ]
         )
         draft = {
@@ -769,6 +918,7 @@ class ComplaintWorkspaceService:
         allegation_lines = "\n".join(
             f"- {line}" for line in _claim_type_required_allegations(payload["claim_type"])
         )
+        example_snippet = _claim_type_formal_example_snippet(payload["claim_type"])
         preferred_count_heading = _claim_type_count_heading(payload["claim_type"])
         preferred_heading = f"COMPLAINT FOR {payload['claim_label'].upper()}"
         return (
@@ -783,6 +933,8 @@ class ComplaintWorkspaceService:
             f"Preferred count heading: {preferred_count_heading}\n"
             "The complaint must expressly allege all of the following:\n"
             f"{allegation_lines}\n"
+            "Match the tone and paragraph style of this example snippet for the selected claim type:\n"
+            f"{example_snippet}\n"
             "Retain these exact section headings in the body:\n"
             f"{markers}\n\n"
             "Follow this pleading skeleton and keep the headings exactly as written:\n"
@@ -1433,7 +1585,6 @@ class ComplaintWorkspaceService:
             "prayer_for_relief": "PRAYER FOR RELIEF" in body,
             "jury_demand": "JURY DEMAND" in body,
             "signature_block": "SIGNATURE BLOCK" in body,
-            "working_case_synopsis": "WORKING CASE SYNOPSIS" in body,
         }
         claim_type = _normalize_claim_type(packet.get("claim_type"))
         claim_label = _claim_type_display_name(claim_type)

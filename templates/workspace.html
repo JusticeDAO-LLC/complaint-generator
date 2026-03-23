@@ -1442,6 +1442,8 @@
                             <span>Before treating the draft as usable, make sure it names the parties clearly, ties the adverse action to the protected activity, describes the harm, and asks for relief that matches the record.</span>
                             <div class="soft-note" id="draft-synopsis-preview">The case synopsis will appear here as a drafting reference.</div>
                             <div class="soft-note" id="draft-generation-meta">Draft generation strategy details will appear here once a complaint is generated.</div>
+                            <div class="status draft-preview-shell"><pre id="draft-contract-preview">Draft contract details will appear here once the complaint type and drafting path are selected.</pre></div>
+                            <div class="status draft-preview-shell"><pre id="draft-readiness-preview">Filing-readiness guidance will appear here once the record is reviewed or a complaint is generated.</pre></div>
                             <div class="guidance-grid">
                                 <div class="guidance-card">
                                     <strong>Title the complaint clearly</strong>
@@ -2153,7 +2155,69 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             document.getElementById('draft-generation-meta').textContent = draft.body
                 ? `Draft strategy: ${strategyLabel}${backendParts ? ` (${backendParts})` : ''}. Claim type: ${claimType.replace(/_/g, ' ')}.${fallbackReason ? ` Fallback reason: ${fallbackReason}.` : ''}`
                 : 'Draft generation strategy details will appear here once a complaint is generated.';
+            renderDraftReadiness(sessionPayload);
             syncSynopsisMirrors(document.getElementById('case-synopsis').value);
+        }
+
+        function draftClaimTypeLabel(rawClaimType) {
+            return String(rawClaimType || 'retaliation')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (character) => character.toUpperCase());
+        }
+
+        function draftCountHeading(rawClaimType) {
+            return `COUNT I - ${String(rawClaimType || 'retaliation').replace(/_/g, ' ').toUpperCase()}`;
+        }
+
+        function renderDraftReadiness(sessionPayload) {
+            const session = (sessionPayload || {}).session || {};
+            const draft = (sessionPayload || {}).draft || session.draft || {};
+            const overview = ((sessionPayload || {}).review || {}).overview || {};
+            const selectedClaimType = String((document.getElementById('draft-claim-type') || {}).value || session.claim_type || 'retaliation');
+            const selectedDraftMode = String((document.getElementById('draft-mode') || {}).value || (draft.draft_strategy === 'template' ? 'template' : 'llm_router'));
+            const requestedReliefItems = String((document.getElementById('requested-relief') || {}).value || '')
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
+            const currentDraftBody = String((document.getElementById('draft-body') || {}).value || draft.body || '');
+            const currentReleaseGate = (((latestComplaintOutputAnalysis || {}).ui_feedback || latestComplaintOutputAnalysis || {}).release_gate)
+                || ((latestPacketExport || {}).ui_feedback || {}).release_gate
+                || null;
+            const issueItems = Array.isArray((((latestComplaintOutputAnalysis || {}).ui_feedback || latestComplaintOutputAnalysis || {}).issues))
+                ? (((latestComplaintOutputAnalysis || {}).ui_feedback || latestComplaintOutputAnalysis || {}).issues)
+                : [];
+            const evidenceItemCount = Number(overview.testimony_items || 0) + Number(overview.document_items || 0);
+            const missingElements = Number(overview.missing_elements || 0);
+            const supportedElements = Number(overview.supported_elements || 0);
+            const contractLines = [
+                `Claim type: ${draftClaimTypeLabel(selectedClaimType)}`,
+                `Expected complaint heading: COMPLAINT FOR ${String(selectedClaimType).replace(/_/g, ' ').toUpperCase()}`,
+                `Expected count heading: ${draftCountHeading(selectedClaimType)}`,
+                `Drafting mode: ${selectedDraftMode === 'llm_router' ? 'llm_router formal complaint path' : 'deterministic template fallback'}`,
+                `Requested relief items: ${requestedReliefItems.length}`,
+                `Draft body length: ${currentDraftBody.split(/\s+/).filter(Boolean).length} words`,
+            ];
+            document.getElementById('draft-contract-preview').textContent = contractLines.join('\n');
+
+            const readinessLines = currentReleaseGate
+                ? [
+                    `Release gate verdict: ${String(currentReleaseGate.verdict || 'unknown').toUpperCase()}`,
+                    currentReleaseGate.reason ? `Reason: ${currentReleaseGate.reason}` : 'Reason: No release-gate reason provided yet.',
+                    `Filing shape score: ${Number(currentReleaseGate.filing_shape_score || 0)}`,
+                    `Claim-type alignment score: ${Number(currentReleaseGate.claim_type_alignment_score || 0)}`,
+                    `Evidence items: ${Number(currentReleaseGate.evidence_item_count || evidenceItemCount)}`,
+                    `Missing elements: ${Number(currentReleaseGate.missing_elements || missingElements)}`,
+                    issueItems.length ? `Top defect: ${String((issueItems[0] || {}).finding || '').trim()}` : 'Top defect: No complaint-output defect captured.',
+                ]
+                : [
+                    `Record support: ${supportedElements} supported / ${missingElements} missing elements`,
+                    `Evidence items: ${evidenceItemCount}`,
+                    draft.body ? 'Draft status: A complaint draft exists. Keep the selected claim theory and formal sections intact while editing.' : 'Draft status: No complaint draft exists yet.',
+                    missingElements > 0
+                        ? 'Next best move: close the missing support gaps before treating the complaint as filing-ready.'
+                        : 'Next best move: keep the complaint aligned to the selected theory and requested relief while refining the filing language.',
+                ];
+            document.getElementById('draft-readiness-preview').textContent = readinessLines.join('\n');
         }
 
         function renderSidebar(sessionPayload) {
@@ -2333,6 +2397,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             document.getElementById('draft-soft-note').textContent = draft
                 ? 'The draft is now editable. Tighten wording carefully without removing the facts that give the complaint its support.'
                 : 'Treat the first draft as a working document. Review is still the place to decide whether the record behind it feels strong enough.';
+            renderDraftReadiness(sessionPayload);
             queue.innerHTML = `
                 <div class="queue-item">
                     <strong>${escapeHtml(stageLabel)}</strong>
@@ -2530,6 +2595,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 outputAnalysisNode.textContent = 'No complaint-output analysis run yet.';
                 claimAlignmentNode.textContent = 'No claim-alignment review run yet.';
             }
+            renderDraftReadiness(workspaceSession || {});
         }
 
         function syncPacketDownloadState() {
@@ -3724,6 +3790,10 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
+        document.getElementById('draft-claim-type').addEventListener('change', () => renderDraftReadiness(workspaceSession || {}));
+        document.getElementById('draft-mode').addEventListener('change', () => renderDraftReadiness(workspaceSession || {}));
+        document.getElementById('requested-relief').addEventListener('input', () => renderDraftReadiness(workspaceSession || {}));
+        document.getElementById('draft-body').addEventListener('input', () => renderDraftReadiness(workspaceSession || {}));
         document.getElementById('action-button').addEventListener('click', () => {
             const targetTab = document.getElementById('action-button').dataset.targetTab || 'intake';
             jumpToStage(

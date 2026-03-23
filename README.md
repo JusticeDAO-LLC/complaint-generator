@@ -179,6 +179,13 @@ complaint-mcp-server
 complaint-generator-mcp
 ```
 
+**Repo-local module entrypoints:**
+
+```bash
+.venv/bin/python -m complaint_generator.cli --help
+.venv/bin/python -m complaint_generator.mcp_server
+```
+
 **Browser SDK and unified workspace page:**
 
 - The browser SDK is served from `/static/complaint_mcp_sdk.js`
@@ -219,6 +226,9 @@ Also available via:
 - VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
 - Run and Debug entries with the same three labels
 - Make targets `package-install-smoke`, `regression`, `regression-lean`, `regression-review`, and `regression-full`
+- Make targets `complaint-workspace-cli` and `complaint-mcp-server`
+- VS Code tasks `Complaint Workspace CLI` and `Complaint MCP Server`
+- Run and Debug entries `Complaint Workspace CLI` and `Complaint MCP Server`
 - GitHub Actions workflow `standard-regression.yml`
 
 The helper now defaults to the browser-inclusive `full` slice so the review, template, document, and Playwright workflow contracts stay gated together.

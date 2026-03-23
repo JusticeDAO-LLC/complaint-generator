@@ -1,4 +1,4 @@
-.PHONY: canary-validate canary-smoke canary-sample package-install-smoke regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit hacc-adversarial-runner
+.PHONY: canary-validate canary-smoke canary-sample package-install-smoke regression regression-lean regression-review regression-full hacc-grounding hacc-grounding-no-smoke hacc-grounded-history hacc-unit hacc-adversarial-runner complaint-workspace-cli complaint-mcp-server
 
 HACC_GROUNDED_RUN_DIR ?= output/hacc_grounded/latest
 HACC_REPO_DIR ?= ../HACC
@@ -32,6 +32,12 @@ hacc-unit:
 
 hacc-adversarial-runner:
 	python3 -m pytest "$(HACC_REPO_DIR)/tests/test_hacc_adversarial_runner.py" -q
+
+complaint-workspace-cli:
+	.venv/bin/python -m complaint_generator.cli --help
+
+complaint-mcp-server:
+	.venv/bin/python -m complaint_generator.mcp_server
 
 canary-validate:
 	.venv/bin/python scripts/validate_canary_ops.py

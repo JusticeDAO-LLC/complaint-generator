@@ -7,6 +7,8 @@ from .apps import (
 from .cli import app as complaint_workspace_cli_app
 from .cli import main as complaint_cli_main
 from .cli import main as complaint_workspace_cli_main
+from .entrypoints import main as complaint_generator_main
+from .entrypoints import run_main
 from .mcp import handle_jsonrpc_message, tool_list_payload
 from .mcp_server import main as complaint_mcp_server_main
 from .ui_ux_workflow import (
@@ -63,6 +65,7 @@ __all__ = [
     "build_ui_ux_review_prompt",
     "collect_screenshot_artifacts",
     "complaint_cli_main",
+    "complaint_generator_main",
     "complaint_mcp_server_main",
     "complaint_workspace_cli_app",
     "complaint_workspace_cli_main",
@@ -73,6 +76,7 @@ __all__ = [
     "create_ui_review_report",
     "analyze_complaint_output",
     "review_generated_exports",
+    "run_main",
     "export_complaint_packet",
     "export_complaint_markdown",
     "export_complaint_pdf",

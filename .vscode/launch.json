@@ -130,6 +130,25 @@
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}/../HACC"
+    },
+    {
+      "name": "Complaint Workspace CLI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "complaint_generator.cli",
+      "args": [
+        "--help"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Complaint MCP Server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "complaint_generator.mcp_server",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }

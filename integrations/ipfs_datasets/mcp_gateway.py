@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 from .loader import import_module_optional
 from .types import with_adapter_metadata
 
-from applications.complaint_workspace import ComplaintWorkspaceService
+from complaint_generator import ComplaintWorkspaceService
 
 
 _mcp_server_module, _mcp_server_error = import_module_optional("ipfs_datasets_py.mcp_server")

@@ -377,8 +377,8 @@ def test_package_workspace_generate_complaint_can_optionally_use_llm_router(tmp_
             **base_draft,
             "title": "LLM Refined Housing Complaint",
             "body": base_draft["body"].replace(
-                "WORKING CASE SYNOPSIS",
-                "PRELIMINARY STATEMENT\n\n24. Plaintiff seeks prompt judicial intervention to stop discriminatory interference with housing rights and preserve the evidentiary record.\n\nWORKING CASE SYNOPSIS",
+                "PRAYER FOR RELIEF",
+                "PRELIMINARY STATEMENT\n\n24. Plaintiff seeks prompt judicial intervention to stop discriminatory interference with housing rights and preserve the evidentiary record.\n\nPRAYER FOR RELIEF",
             ),
             "draft_strategy": "llm_router",
             "draft_backend": {"provider": "stub-provider", "model": "stub-model"},

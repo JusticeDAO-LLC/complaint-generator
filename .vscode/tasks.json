@@ -205,6 +205,43 @@
       }
     },
     {
+      "label": "Complaint Workspace CLI",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "complaint_generator.cli",
+        "--help"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "Complaint MCP Server",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "complaint_generator.mcp_server"
+      ],
+      "group": "test",
+      "isBackground": false,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "HACC Preset Matrix Smoke",
       "type": "shell",
       "command": "${workspaceFolder}/.venv/bin/python",

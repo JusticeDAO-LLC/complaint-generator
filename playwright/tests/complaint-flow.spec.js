@@ -321,6 +321,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#tool-list')).toContainText(/complaint\.generate_complaint/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.get_complaint_readiness/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.update_claim_type/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.review_generated_exports/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
@@ -387,6 +388,10 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-body')).toHaveValue(/Jane Doe brings this retaliation complaint against Acme Corporation\./i);
     await expect(page.locator('#draft-generation-meta')).toContainText(/Draft strategy: llm_router/i);
     await expect(page.locator('#draft-generation-meta')).toContainText(/Claim type: retaliation/i);
+    await expect(page.locator('#draft-contract-preview')).toContainText(/Claim type: Retaliation/i);
+    await expect(page.locator('#draft-contract-preview')).toContainText(/Expected count heading: COUNT I - RETALIATION/i);
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Record support: /i);
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Evidence items: 1/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     const packageCard = page.locator('.tool-card').filter({ has: page.getByRole('heading', { name: 'Python package imports' }) }).first();
@@ -413,6 +418,9 @@ test.describe('complaint generation workflow', () => {
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#analyze-complaint-output-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint output analysis refreshed\./i);
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Release gate verdict:/i);
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Top defect:/i);
 
     await page.getByRole('button', { name: 'UX Audit', exact: true }).click();
     await page.locator('#ux-review-provider').fill('llm_router');
@@ -516,6 +524,9 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-preview')).toContainText(/COUNT I - RETALIATION/i);
     await expect(page.locator('#draft-preview')).toContainText(/Working case synopsis: Taylor Smith alleges retaliation/i);
     await expect(page.locator('#draft-title')).toHaveValue(/Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
+    await expect(page.locator('#draft-contract-preview')).toContainText(/Claim type: Retaliation/i);
+    await expect(page.locator('#draft-contract-preview')).toContainText(/Drafting mode: llm_router formal complaint path/i);
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Evidence items: 1/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#refresh-complaint-readiness-button').click();
@@ -535,6 +546,9 @@ test.describe('complaint generation workflow', () => {
 
     await page.locator('#analyze-complaint-output-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Complaint output analysis refreshed\./i);
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Release gate verdict:/i);
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"ui_feedback":/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Release gate: (PASS|WARNING)/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);
@@ -542,6 +556,12 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Tighten review-to-draft gatekeeping/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"artifact_analysis":/i);
     await expect(page.locator('#claim-alignment-preview')).toContainText(/"release_gate_verdict":\s*"(pass|warning)"/i);
+
+    await page.locator('#review-generated-exports-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/export critic/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"export_critic":/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"average_filing_shape_score":\s*[7-9]\d|"average_filing_shape_score":\s*100/i);
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"average_claim_type_alignment_score":\s*[7-9]\d|"average_claim_type_alignment_score":\s*100/i);
 
     const [markdownDownload] = await Promise.all([
       page.waitForEvent('download'),
@@ -639,6 +659,8 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#workspace-status')).toContainText(/llm_router formal complaint path/i);
     await expect(page.locator('#draft-generation-meta')).toContainText(/Draft strategy: llm_router/i);
     await expect(page.locator('#draft-generation-meta')).toContainText(/Claim type: housing discrimination/i);
+    await expect(page.locator('#draft-contract-preview')).toContainText(/Claim type: Housing Discrimination/i);
+    await expect(page.locator('#draft-contract-preview')).toContainText(/Expected count heading: COUNT I - HOUSING DISCRIMINATION/i);
     await expect(page.locator('#draft-preview')).toContainText(/COMPLAINT FOR HOUSING DISCRIMINATION/i);
     await expect(page.locator('#draft-preview')).toContainText(/Morgan Lee brings this housing discrimination complaint against Acme Housing Authority\./i);
     await expect(page.locator('#draft-preview')).toContainText(/COUNT I - HOUSING DISCRIMINATION/i);
@@ -658,6 +680,11 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/Release gate: (PASS|WARNING)/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"filing_shape_score":\s*[7-9]\d|"filing_shape_score":\s*100/i);
     await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"formal_sections_present":/i);
+    await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Release gate verdict:/i);
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#review-generated-exports-button').click();
+    await expect(page.locator('#complaint-output-analysis-preview')).toContainText(/"export_critic":/i);
     await expect(page.locator('#claim-alignment-preview')).toContainText(/"release_gate_verdict":\s*"(pass|warning)"/i);
     const housingAnalysisText = await page.locator('#complaint-output-analysis-preview').textContent();
     expect(housingAnalysisText).toMatch(/Housing Discrimination/i);
