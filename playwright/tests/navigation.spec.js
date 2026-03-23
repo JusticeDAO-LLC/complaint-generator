@@ -281,14 +281,14 @@ test.describe('website surface navigation', () => {
   });
 
   test('workspace handoff cards keep the complaint context visible and capture a screenshot', async ({ page }, testInfo) => {
+    test.slow();
     await page.addInitScript(() => {
       window.localStorage.setItem('complaintGenerator.did', 'did:key:workspace-handoff-demo');
     });
 
     await page.goto('/workspace');
-    await page.waitForFunction(
-      () => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp'),
-    );
+    await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i, { timeout: 30000 });
+    await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 30000 });
 
     await page.locator('#intake-party_name').fill('Jordan Example');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
@@ -313,10 +313,16 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
     await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /prefill_message=/);
     await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /return_to=%2Fworkspace/);
+    await expect(page.locator('#workspace-nav-chat')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#workspace-nav-profile')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#workspace-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
     await expect(page.locator('#handoff-review-button')).toHaveAttribute('href', /\/claim-support-review\?/);
     await expect(page.locator('#handoff-review-button')).toHaveAttribute('href', /workspace_user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#workspace-nav-review')).toHaveAttribute('href', /workspace_user_id=did%3Akey%3Aworkspace-handoff-demo/);
     await expect(page.locator('#handoff-builder-button')).toHaveAttribute('href', /\/document\?/);
     await expect(page.locator('#handoff-builder-button')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#workspace-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#workspace-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
 
     const screenshotPath = testInfo.outputPath('workspace-handoffs-overview.png');
     await page.locator('[aria-label="Connected surface handoffs"]').screenshot({ path: screenshotPath });
@@ -327,21 +333,46 @@ test.describe('website surface navigation', () => {
   });
 
   test('document and dashboard remain mutually navigable as one website', async ({ page }) => {
-    await page.goto('/document');
+    await page.goto('/document?user_id=did:key:builder-nav-demo&claim_type=retaliation');
+    await expect(page.locator('#builder-nav-chat')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
+    await expect(page.locator('#builder-nav-profile')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
+    await expect(page.locator('#builder-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
+    await expect(page.locator('#builder-nav-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
+    await expect(page.locator('#builder-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
+    await expect(page.locator('#builder-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
+    await expect(page.locator('#builder-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Abuilder-nav-demo/);
     await page.locator('a[href="/claim-support-review"]').first().click();
     await expect(page).toHaveURL(/\/claim-support-review/);
     await expect(page.locator('body')).toContainText(/Operator Review Surface/i);
 
-    await page.locator('a[href="/document"]').first().click();
+    await page.goto('/document?user_id=did:key:builder-nav-demo&claim_type=retaliation');
+    await page.locator('#builder-nav-trace').click();
+    await expect(page).toHaveURL(/\/document\/optimization-trace\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Abuilder-nav-demo/);
+
+    await page.goto('/document?user_id=did:key:builder-nav-demo&claim_type=retaliation');
+    await page.locator('#builder-nav-review').click();
+    await expect(page).toHaveURL(/\/claim-support-review\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Abuilder-nav-demo/);
+
+    await page.goto('/document?user_id=did:key:builder-nav-demo&claim_type=retaliation');
+    await page.locator('#builder-nav-builder').click();
     await expect(page).toHaveURL(/\/document/);
     await expect(page.locator('body')).toContainText(/Formal Complaint Builder/i);
   });
 
   test('editor and sdk dashboards are part of the same unified navigation experience', async ({ page }) => {
-    await page.goto('/mlwysiwyg');
+    await page.goto('/mlwysiwyg?user_id=did:key:editor-nav-demo&case_synopsis=Jordan%20Example%20needs%20corroboration.&claim_type=retaliation');
     await expect(page.locator('[data-surface-nav="primary"]')).toBeVisible();
     await expect(page.locator('#draft-preview')).toContainText(/Retaliation Complaint Draft/i);
-    await page.locator('a[href="/workspace"]').first().click();
+    await expect(page.locator('#editor-nav-chat')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-nav-profile')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-nav-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await expect(page.locator('#editor-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Aeditor-nav-demo/);
+    await page.locator('#editor-nav-workspace').click();
 
     await expect(page).toHaveURL(/\/workspace/);
     await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i);
@@ -390,12 +421,23 @@ test.describe('website surface navigation', () => {
   });
 
   test('review surface exposes explicit next-step workflow actions', async ({ page }) => {
-    await page.goto('/claim-support-review');
+    await page.goto('/claim-support-review?claim_type=retaliation&user_id=did:key:review-nav-demo&workspace_user_id=did:key:review-nav-demo');
     await expect(page.locator('[aria-label="Review next steps"]')).toBeVisible();
     await expect(page.locator('#review-open-workspace-link')).toBeVisible();
     await expect(page.locator('#review-open-chat-link')).toBeVisible();
     await expect(page.locator('#review-open-builder-link')).toBeVisible();
     await expect(page.locator('#review-open-trace-link')).toBeVisible();
+    await expect(page.locator('#review-nav-chat')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await expect(page.locator('#review-nav-profile')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await expect(page.locator('#review-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await expect(page.locator('#review-nav-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await expect(page.locator('#review-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await expect(page.locator('#review-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await expect(page.locator('#review-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await page.locator('#review-nav-profile').click();
+    await expect(page).toHaveURL(/\/profile\?/);
+    await expect(page).toHaveURL(/user_id=did%3Akey%3Areview-nav-demo/);
+    await page.goto('/claim-support-review?claim_type=retaliation&user_id=did:key:review-nav-demo&workspace_user_id=did:key:review-nav-demo');
     await page.locator('#review-open-builder-link').click();
     await expect(page).toHaveURL(/\/document/);
   });
@@ -427,11 +469,15 @@ test.describe('website surface navigation', () => {
   });
 
   test('workspace page uses the browser MCP SDK to drive intake, evidence, draft, and tool discovery', async ({ page }) => {
+    test.slow();
     await page.addInitScript(() => {
       window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-workspace-flow');
     });
     await page.goto('/workspace');
+    await expect(page.locator('body')).toContainText(/Unified Complaint Workspace/i, { timeout: 30000 });
+    await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 30000 });
     await page.getByRole('button', { name: 'Draft', exact: true }).click();
+    await expect(page.locator('#reset-session-button')).toBeVisible({ timeout: 10000 });
     await page.locator('#reset-session-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/reset to a clean state/i);
     await page.getByRole('button', { name: 'Intake', exact: true }).click();

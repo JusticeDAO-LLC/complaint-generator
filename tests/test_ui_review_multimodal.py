@@ -150,6 +150,9 @@ def test_build_complaint_output_review_prompt_includes_claim_type_context():
     assert "Claim-type filing guidance:" in prompt
     assert "Shared case synopsis:" in prompt
     assert '"claim_type_alignment_score": 0' in prompt
+    assert '"missing_formal_sections": [' in prompt
+    assert '"ui_priority_repairs": [' in prompt
+    assert '"critic_gate": {' in prompt
 
 
 def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback(monkeypatch):
@@ -171,8 +174,12 @@ def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback
                 '"filing_shape_score":82,'
                 '"claim_type_alignment_score":91,'
                 '"strengths":["Caption is present","Prayer for relief is present"],'
+                '"missing_formal_sections":["signature_block"],'
                 '"issues":[{"severity":"medium","finding":"Exhibit grounding is thin","complaint_impact":"The filing reads under-supported","ui_implication":"Evidence and draft surfaces are not tying exhibits into the pleading clearly enough"}],'
-                '"ui_suggestions":[{"title":"Expose exhibit references in the draft builder","target_surface":"evidence,draft","recommendation":"Show saved exhibits beside the pleading sections they support","why_it_matters":"The final complaint will read more like a supported court filing"}]}'
+                '"ui_suggestions":[{"title":"Expose exhibit references in the draft builder","target_surface":"evidence,draft","recommendation":"Show saved exhibits beside the pleading sections they support","why_it_matters":"The final complaint will read more like a supported court filing"}],'
+                '"ui_priority_repairs":[{"priority":"high","target_surface":"draft","repair":"Keep filing posture warnings visible before export","filing_benefit":"Stops weak complaints from looking filing-ready too early"}],'
+                '"actor_risk_summary":"The actor can reach export without realizing the signature posture is still too thin.",'
+                '"critic_gate":{"verdict":"warning","blocking_reason":"Signature posture is still weak","required_repairs":["Preserve signature guidance in the draft view"]}}'
             )
 
     monkeypatch.setattr(ui_review_module, "LLMRouterBackend", FakeTextBackend)
@@ -187,8 +194,12 @@ def test_review_complaint_output_with_llm_router_generates_filing_shape_feedback
     assert report["backend"]["strategy"] == "llm_router"
     assert report["review"]["filing_shape_score"] == 82
     assert report["review"]["claim_type_alignment_score"] == 91
+    assert report["review"]["missing_formal_sections"] == ["signature_block"]
     assert report["review"]["issues"][0]["finding"] == "Exhibit grounding is thin"
     assert report["review"]["ui_suggestions"][0]["target_surface"] == "evidence,draft"
+    assert report["review"]["ui_priority_repairs"][0]["priority"] == "high"
+    assert report["review"]["actor_risk_summary"].startswith("The actor can reach export")
+    assert report["review"]["critic_gate"]["verdict"] == "warning"
 
 
 def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatch):
@@ -212,8 +223,12 @@ def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatc
                 "summary": "Looks closer to a filing.",
                 "filing_shape_score": 88,
                 "claim_type_alignment_score": 93,
+                "missing_formal_sections": ["signature_block"],
                 "issues": [{"finding": "Exhibit grounding is thin"}],
                 "ui_suggestions": [{"title": "Expose exhibit references"}],
+                "ui_priority_repairs": [{"priority": "high", "target_surface": "draft"}],
+                "actor_risk_summary": "The actor still cannot tell whether the draft is ready to sign.",
+                "critic_gate": {"verdict": "warning", "blocking_reason": "Signature posture unclear"},
             },
         }
 
@@ -225,4 +240,10 @@ def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatc
     assert report["aggregate"]["average_filing_shape_score"] == 88
     assert report["aggregate"]["average_claim_type_alignment_score"] == 93
     assert report["aggregate"]["issue_findings"] == ["Exhibit grounding is thin"]
+    assert report["aggregate"]["missing_formal_sections"] == ["signature_block"]
     assert report["aggregate"]["ui_suggestions"][0]["title"] == "Expose exhibit references"
+    assert report["aggregate"]["ui_priority_repairs"][0]["target_surface"] == "draft"
+    assert report["aggregate"]["actor_risk_summaries"][0].startswith("The actor still cannot tell")
+    assert report["aggregate"]["critic_gates"][0]["verdict"] == "warning"
+    assert report["aggregate"]["optimizer_repair_brief"]["top_formal_section_gaps"] == ["signature_block"]
+    assert report["aggregate"]["optimizer_repair_brief"]["recommended_surface_targets"] == ["draft"]

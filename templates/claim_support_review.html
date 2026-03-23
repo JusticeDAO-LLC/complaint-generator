@@ -777,13 +777,13 @@
                 <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                     <a class="surface-link" href="/">Landing</a>
                     <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" href="/chat">Chat</a>
-                <a class="surface-link" href="/profile">Profile</a>
-                <a class="surface-link" href="/results">Results</a>
-                <a class="surface-link" href="/workspace">Workspace</a>
-                <a class="surface-link" href="/claim-support-review">Review</a>
-                <a class="surface-link" href="/document">Builder</a>
-                    <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" id="review-nav-chat" href="/chat">Chat</a>
+                <a class="surface-link" id="review-nav-profile" href="/profile">Profile</a>
+                <a class="surface-link" id="review-nav-results" href="/results">Results</a>
+                <a class="surface-link" id="review-nav-workspace" href="/workspace">Workspace</a>
+                <a class="surface-link" id="review-nav-review" href="/claim-support-review">Review</a>
+                <a class="surface-link" id="review-nav-builder" href="/document">Builder</a>
+                    <a class="surface-link" id="review-nav-trace" href="/document/optimization-trace">Trace</a>
                     <a class="surface-link" href="/mlwysiwyg">Editor</a>
                     <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                     <a class="surface-link" href="/dashboards">Dashboards</a>
@@ -1404,6 +1404,34 @@
                 traceParams.set('claim_type', claimType);
             }
             traceLink.href = traceParams.toString() ? `/document/optimization-trace?${traceParams.toString()}` : '/document/optimization-trace';
+
+            const profileParams = new URLSearchParams();
+            if (normalizedUserId) {
+                profileParams.set('user_id', normalizedUserId);
+            }
+            profileParams.set('source', 'review');
+            const profileHref = profileParams.toString() ? `/profile?${profileParams.toString()}` : '/profile';
+
+            const resultsParams = new URLSearchParams(profileParams.toString());
+            const resultsHref = resultsParams.toString() ? `/results?${resultsParams.toString()}` : '/results';
+
+            const reviewParams = new URLSearchParams();
+            if (normalizedUserId) {
+                reviewParams.set('user_id', normalizedUserId);
+                reviewParams.set('workspace_user_id', normalizedUserId);
+            }
+            if (claimType) {
+                reviewParams.set('claim_type', claimType);
+            }
+            const reviewHref = reviewParams.toString() ? `/claim-support-review?${reviewParams.toString()}` : '/claim-support-review';
+
+            document.getElementById('review-nav-chat').href = chatLink.href;
+            document.getElementById('review-nav-profile').href = profileHref;
+            document.getElementById('review-nav-results').href = resultsHref;
+            document.getElementById('review-nav-workspace').href = workspaceLink.href;
+            document.getElementById('review-nav-review').href = reviewHref;
+            document.getElementById('review-nav-builder').href = builderLink.href;
+            document.getElementById('review-nav-trace').href = traceLink.href;
         }
 
         function getComplaintWorkspaceClient() {
@@ -1414,17 +1442,22 @@
 
         async function syncSharedCaseSynopsis() {
             const complaintWorkspaceClient = getComplaintWorkspaceClient();
-            if (!complaintWorkspaceClient) {
-                return;
-            }
             const requestedWorkspaceUserId = new URLSearchParams(window.location.search).get('workspace_user_id') || null;
             const explicitUserId = String(document.getElementById('user-id').value || '').trim();
-            const cachedDid = typeof complaintWorkspaceClient.getCachedDid === 'function'
-                ? complaintWorkspaceClient.getCachedDid()
-                : null;
+            let cachedDid = null;
+            try {
+                cachedDid = complaintWorkspaceClient && typeof complaintWorkspaceClient.getCachedDid === 'function'
+                    ? complaintWorkspaceClient.getCachedDid()
+                    : window.localStorage.getItem('complaintGenerator.did');
+            } catch (error) {
+                cachedDid = null;
+            }
             const userId = requestedWorkspaceUserId || explicitUserId || cachedDid || null;
             updateSharedCaseSynopsisLink(userId);
             updateReviewNextStepLinks(userId);
+            if (!complaintWorkspaceClient) {
+                return;
+            }
             if (!userId) {
                 renderSharedCaseSynopsisText('', 'Shared case framing');
                 return;

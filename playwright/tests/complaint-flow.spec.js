@@ -486,9 +486,11 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#homepage-complaint-readiness-summary')).toContainText(/Not ready to draft|Still building the record|Ready for first draft|Draft in progress/i);
     await expect(page.locator('a[href="/workspace"]').first()).toBeVisible();
 
-    await page.locator('a[href="/workspace"]').first().click();
+    await page.goto('/workspace');
     await expect(page).toHaveURL(/\/workspace/);
-    await expect(page.locator('#workspace-status')).toContainText(/synchronized/i);
+    await expect(page.locator('#save-intake-button')).toBeVisible();
+    await expect.poll(async () => page.locator('#intake-question-grid textarea').count()).toBeGreaterThan(0);
+    await expect(page.locator('#intake-party_name')).toBeVisible();
 
     await page.locator('#intake-party_name').fill('Taylor Smith');
     await page.locator('#intake-opposing_party').fill('Acme Logistics');

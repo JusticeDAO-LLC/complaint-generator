@@ -3623,6 +3623,23 @@ class Optimizer:
                     "sdk_considerations": "Preserve the shared ComplaintMcpClient export, analysis, and optimizer path while improving filing guidance.",
                 }
             )
+        draft_normalizations = [
+            str(item).strip()
+            for item in list(complaint_output_feedback.get("draft_normalizations") or [])
+            if str(item).strip()
+        ]
+        if draft_normalizations:
+            recommended_changes.append(
+                {
+                    "title": "LLM draft cleanup warning",
+                    "implementation_notes": (
+                        "The generated complaint required post-generation cleanup before it resembled a filing. "
+                        f"Normalization steps observed: {', '.join(draft_normalizations[:5])}."
+                    ),
+                    "shared_code_path": "applications/complaint_workspace.py",
+                    "sdk_considerations": "Preserve MCP SDK draft generation while exposing when LLM outputs required cleanup before export.",
+                }
+            )
         alignment_score = int(complaint_output_feedback.get("claim_type_alignment_score") or 0)
         if 0 <= alignment_score < 80:
             recommended_changes.append(
@@ -3708,6 +3725,7 @@ class Optimizer:
                     "complaint_output_feedback": dict(bundle.complaint_output_feedback or {}),
                     "complaint_output_suggestions": list((bundle.complaint_output_feedback or {}).get("ui_suggestions") or []),
                     "claim_type_alignment_score": int((bundle.complaint_output_feedback or {}).get("claim_type_alignment_score") or 0),
+                    "draft_normalizations": list((bundle.complaint_output_feedback or {}).get("draft_normalizations") or []),
                     "recommended_target_files": list(bundle.target_files or []),
                 },
                 "ui_review_report": dict(ui_review_report or {}),

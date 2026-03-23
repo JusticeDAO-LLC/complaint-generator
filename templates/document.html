@@ -943,13 +943,13 @@
                 <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                     <a class="surface-link" href="/">Landing</a>
                     <a class="surface-link" href="/home">Account</a>
-                    <a class="surface-link" href="/chat">Chat</a>
-                    <a class="surface-link" href="/profile">Profile</a>
-                    <a class="surface-link" href="/results">Results</a>
-                    <a class="surface-link" href="/workspace">Workspace</a>
-                    <a class="surface-link" href="/claim-support-review">Review</a>
-                    <a class="surface-link" href="/document">Builder</a>
-                    <a class="surface-link" href="/document/optimization-trace">Trace</a>
+                    <a class="surface-link" id="builder-nav-chat" href="/chat">Chat</a>
+                    <a class="surface-link" id="builder-nav-profile" href="/profile">Profile</a>
+                    <a class="surface-link" id="builder-nav-results" href="/results">Results</a>
+                    <a class="surface-link" id="builder-nav-workspace" href="/workspace">Workspace</a>
+                    <a class="surface-link" id="builder-nav-review" href="/claim-support-review">Review</a>
+                    <a class="surface-link" id="builder-nav-builder" href="/document">Builder</a>
+                    <a class="surface-link" id="builder-nav-trace" href="/document/optimization-trace">Trace</a>
                     <a class="surface-link" href="/mlwysiwyg">Editor</a>
                     <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                     <a class="surface-link" href="/dashboards">Dashboards</a>
@@ -1344,16 +1344,109 @@
             link.href = `/workspace?${params.toString()}`;
         }
 
+        function buildBuilderSurfaceUrl(path, paramsObject) {
+            const params = new URLSearchParams();
+            Object.entries(paramsObject || {}).forEach(([key, value]) => {
+                const normalized = String(value || '').trim();
+                if (normalized) {
+                    params.set(key, normalized);
+                }
+            });
+            const query = params.toString();
+            return query ? `${path}?${query}` : path;
+        }
+
+        function resolveBuilderCaseSynopsis(userId) {
+            try {
+                if (!userId) {
+                    return '';
+                }
+                return String(window.localStorage.getItem(`complaint-workspace-synopsis:${userId}`) || '').trim();
+            } catch (error) {
+                return '';
+            }
+        }
+
+        function updateBuilderNavigationLinks(userId) {
+            const normalizedUserId = String(userId || '').trim();
+            const reviewIntent = normalizeReviewIntent(state.reviewIntent);
+            const claimType = String((reviewIntent && reviewIntent.claim_type) || new URLSearchParams(window.location.search).get('claim_type') || '').trim();
+            const caseSynopsis = resolveBuilderCaseSynopsis(normalizedUserId);
+            const hasContext = Boolean(normalizedUserId || caseSynopsis || claimType);
+            const chatHref = hasContext
+                ? buildBuilderSurfaceUrl('/chat', {
+                    user_id: normalizedUserId,
+                    case_synopsis: caseSynopsis,
+                    claim_type: claimType,
+                    source: 'builder',
+                    return_to: buildBuilderSurfaceUrl('/document', {
+                        user_id: normalizedUserId,
+                        claim_type: claimType,
+                    }),
+                })
+                : '/chat';
+            const profileHref = hasContext
+                ? buildBuilderSurfaceUrl('/profile', {
+                    user_id: normalizedUserId,
+                    case_synopsis: caseSynopsis,
+                    source: 'builder',
+                })
+                : '/profile';
+            const resultsHref = hasContext
+                ? buildBuilderSurfaceUrl('/results', {
+                    user_id: normalizedUserId,
+                    case_synopsis: caseSynopsis,
+                    source: 'builder',
+                })
+                : '/results';
+            const workspaceHref = hasContext
+                ? buildBuilderSurfaceUrl('/workspace', {
+                    user_id: normalizedUserId,
+                    target_tab: 'draft',
+                    status_message: 'Opened Workspace from the formal builder.',
+                })
+                : '/workspace';
+            const reviewHref = hasContext
+                ? buildBuilderSurfaceUrl('/claim-support-review', {
+                    user_id: normalizedUserId,
+                    workspace_user_id: normalizedUserId,
+                    claim_type: claimType,
+                })
+                : '/claim-support-review';
+            const builderHref = hasContext
+                ? buildBuilderSurfaceUrl('/document', {
+                    user_id: normalizedUserId,
+                    claim_type: claimType,
+                })
+                : '/document';
+            const traceHref = hasContext
+                ? buildBuilderSurfaceUrl('/document/optimization-trace', {
+                    user_id: normalizedUserId,
+                    claim_type: claimType,
+                    source: 'builder',
+                })
+                : '/document/optimization-trace';
+
+            document.getElementById('builder-nav-chat').href = chatHref;
+            document.getElementById('builder-nav-profile').href = profileHref;
+            document.getElementById('builder-nav-results').href = resultsHref;
+            document.getElementById('builder-nav-workspace').href = workspaceHref;
+            document.getElementById('builder-nav-review').href = reviewHref;
+            document.getElementById('builder-nav-builder').href = builderHref;
+            document.getElementById('builder-nav-trace').href = traceHref;
+        }
+
         async function syncBuilderSynopsis() {
             const complaintWorkspaceClient = getComplaintWorkspaceClient();
+            const userId = state.userId
+                || getRequestedUserId()
+                || (complaintWorkspaceClient && typeof complaintWorkspaceClient.getCachedDid === 'function' ? complaintWorkspaceClient.getCachedDid() : null)
+                || null;
+            updateBuilderSynopsisLink(userId);
+            updateBuilderNavigationLinks(userId);
             if (!complaintWorkspaceClient) {
                 return;
             }
-            const userId = state.userId
-                || getRequestedUserId()
-                || (typeof complaintWorkspaceClient.getCachedDid === 'function' ? complaintWorkspaceClient.getCachedDid() : null)
-                || null;
-            updateBuilderSynopsisLink(userId);
             if (!userId) {
                 renderBuilderSynopsis('', 'Shared case framing');
                 return;

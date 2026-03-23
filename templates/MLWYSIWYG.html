@@ -236,14 +236,14 @@
             <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                 <a class="surface-link" href="/">Landing</a>
                 <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" href="/chat">Chat</a>
-                <a class="surface-link" href="/profile">Profile</a>
-                <a class="surface-link" href="/results">Results</a>
-                <a class="surface-link" href="/workspace">Workspace</a>
-                <a class="surface-link" href="/claim-support-review">Review</a>
-                <a class="surface-link" href="/document">Builder</a>
-                <a class="surface-link" href="/document/optimization-trace">Trace</a>
-                <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                <a class="surface-link" id="editor-nav-chat" href="/chat">Chat</a>
+                <a class="surface-link" id="editor-nav-profile" href="/profile">Profile</a>
+                <a class="surface-link" id="editor-nav-results" href="/results">Results</a>
+                <a class="surface-link" id="editor-nav-workspace" href="/workspace">Workspace</a>
+                <a class="surface-link" id="editor-nav-review" href="/claim-support-review">Review</a>
+                <a class="surface-link" id="editor-nav-builder" href="/document">Builder</a>
+                <a class="surface-link" id="editor-nav-trace" href="/document/optimization-trace">Trace</a>
+                <a class="surface-link" id="editor-nav-editor" href="/mlwysiwyg">Editor</a>
                 <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
                 <a class="surface-link" href="/dashboards">Dashboards</a>
             </div>
@@ -293,6 +293,114 @@
         const defaultTitle = 'Retaliation Complaint Draft';
         const defaultBody = 'Plaintiff Jane Doe alleges that Acme Corporation retaliated against her after she reported discrimination to human resources.';
 
+        function readEditorContext() {
+            const params = new URLSearchParams(window.location.search || '');
+            return {
+                userId: String(params.get('user_id') || '').trim(),
+                caseSynopsis: String(params.get('case_synopsis') || '').trim(),
+                claimType: String(params.get('claim_type') || '').trim(),
+            };
+        }
+
+        function buildEditorSurfaceUrl(path, paramsObject) {
+            const params = new URLSearchParams();
+            Object.entries(paramsObject || {}).forEach(([key, value]) => {
+                const normalized = String(value || '').trim();
+                if (normalized) {
+                    params.set(key, normalized);
+                }
+            });
+            const query = params.toString();
+            return query ? `${path}?${query}` : path;
+        }
+
+        function updateEditorWorkflowLinks() {
+            const context = readEditorContext();
+            const hasContext = Boolean(context.userId || context.caseSynopsis || context.claimType);
+            const chatHref = hasContext
+                ? buildEditorSurfaceUrl('/chat', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    claim_type: context.claimType,
+                    source: 'editor',
+                    return_to: buildEditorSurfaceUrl('/mlwysiwyg', {
+                        user_id: context.userId,
+                        case_synopsis: context.caseSynopsis,
+                        claim_type: context.claimType,
+                    }),
+                })
+                : '/chat';
+            const profileHref = hasContext
+                ? buildEditorSurfaceUrl('/profile', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: 'editor',
+                })
+                : '/profile';
+            const resultsHref = hasContext
+                ? buildEditorSurfaceUrl('/results', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: 'editor',
+                })
+                : '/results';
+            const workspaceDraftHref = hasContext
+                ? buildEditorSurfaceUrl('/workspace', {
+                    user_id: context.userId,
+                    target_tab: 'draft',
+                    status_message: 'Opened Workspace draft from the editor workshop.',
+                })
+                : '/workspace?target_tab=draft';
+            const workspaceToolsHref = hasContext
+                ? buildEditorSurfaceUrl('/workspace', {
+                    user_id: context.userId,
+                    target_tab: 'integrations',
+                    status_message: 'Opened Workspace tools from the editor workshop.',
+                })
+                : '/workspace?target_tab=integrations';
+            const reviewHref = hasContext
+                ? buildEditorSurfaceUrl('/claim-support-review', {
+                    user_id: context.userId,
+                    workspace_user_id: context.userId,
+                    claim_type: context.claimType,
+                })
+                : '/claim-support-review';
+            const builderHref = hasContext
+                ? buildEditorSurfaceUrl('/document', {
+                    user_id: context.userId,
+                    claim_type: context.claimType,
+                })
+                : '/document';
+            const traceHref = hasContext
+                ? buildEditorSurfaceUrl('/document/optimization-trace', {
+                    user_id: context.userId,
+                    claim_type: context.claimType,
+                    source: 'editor',
+                })
+                : '/document/optimization-trace';
+            const editorHref = hasContext
+                ? buildEditorSurfaceUrl('/mlwysiwyg', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    claim_type: context.claimType,
+                })
+                : '/mlwysiwyg';
+
+            document.getElementById('editor-open-workspace').href = workspaceDraftHref;
+            document.getElementById('editor-open-tools').href = workspaceToolsHref;
+            document.getElementById('editor-open-review').href = reviewHref;
+            document.getElementById('editor-open-builder').href = builderHref;
+            document.getElementById('editor-open-trace').href = traceHref;
+            document.getElementById('editor-nav-chat').href = chatHref;
+            document.getElementById('editor-nav-profile').href = profileHref;
+            document.getElementById('editor-nav-results').href = resultsHref;
+            document.getElementById('editor-nav-workspace').href = workspaceDraftHref;
+            document.getElementById('editor-nav-review').href = reviewHref;
+            document.getElementById('editor-nav-builder').href = builderHref;
+            document.getElementById('editor-nav-trace').href = traceHref;
+            document.getElementById('editor-nav-editor').href = editorHref;
+        }
+
         function renderPreview() {
             const title = document.getElementById('editor-title').value.trim() || defaultTitle;
             const body = document.getElementById('editor-body').value.trim() || defaultBody;
@@ -306,6 +414,7 @@
             renderPreview();
         });
 
+        updateEditorWorkflowLinks();
         renderPreview();
     </script>
 </body>

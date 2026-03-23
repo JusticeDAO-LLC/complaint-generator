@@ -110,6 +110,11 @@ function sentenceFragment(value, fallback) {
   return /^[A-Za-z]/.test(text) ? `${text.charAt(0).toLowerCase()}${text.slice(1)}` : text;
 }
 
+function eventFragment(value, fallback) {
+  const text = sentenceFragment(value, fallback);
+  return text.startsWith('was ') ? text.slice(4) : text;
+}
+
 const reviewPayload = {
   claim_coverage_summary: {
     retaliation: {
@@ -480,7 +485,7 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
   const claimType = String(state.claim_type || 'retaliation');
   const claimTypeTitle = claimType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
   const protectedActivity = sentenceFragment(answers.protected_activity, 'engaged in protected activity');
-  const adverseAction = sentenceFragment(answers.adverse_action, 'suffered an adverse action');
+  const adverseAction = eventFragment(answers.adverse_action, 'suffered an adverse action');
   const timeline = sentenceFragment(answers.timeline, 'the events occurred close in time');
   const harm = sentenceFragment(answers.harm, 'suffered compensable harm');
   const complaintHeading = claimType === 'retaliation'
@@ -490,19 +495,19 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
     ? 'COUNT I - RETALIATION'
     : `COUNT I - ${claimType.replace(/_/g, ' ').toUpperCase()}`;
   const natureOfAction = {
-    retaliation: `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${protectedActivity}.`,
+    retaliation: `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} engaged in protected activity described as ${protectedActivity}.`,
     employment_discrimination: `1. ${answers.party_name || 'Plaintiff'} brings this employment discrimination complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from discriminatory workplace treatment, unequal terms or conditions, and resulting harm.`,
     housing_discrimination: `1. ${answers.party_name || 'Plaintiff'} brings this housing discrimination complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from discriminatory denial, limitation, interference, or retaliation affecting housing rights or benefits.`,
     due_process_failure: `1. ${answers.party_name || 'Plaintiff'} brings this due process complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from adverse action imposed without the notice, hearing, review, or procedural protections required by law.`,
     consumer_protection: `1. ${answers.party_name || 'Plaintiff'} brings this consumer protection complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unfair, deceptive, fraudulent, or otherwise unlawful business practices that caused injury.`,
   }[claimType] || `1. ${answers.party_name || 'Plaintiff'} brings this ${claimType.replace(/_/g, ' ')} complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unlawful conduct that injured ${answers.party_name || 'Plaintiff'}.`;
   const reliefParagraph = {
-    retaliation: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, restore lost compensation, and address the harm flowing from ${adverseAction}.`,
-    employment_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, restore lost opportunities, and address the harm flowing from ${adverseAction}.`,
-    housing_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory housing practices, preserve housing stability, and address the harm flowing from ${adverseAction}.`,
-    due_process_failure: `2. Plaintiff seeks declaratory relief, equitable relief, damages, and such further relief as may be just to remedy the procedural deprivation and the harm flowing from ${adverseAction}.`,
-    consumer_protection: `2. Plaintiff seeks damages, restitution, equitable relief, and such further relief as may be just to remedy deceptive or unfair consumer practices and the harm flowing from ${adverseAction}.`,
-  }[claimType] || `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm flowing from ${adverseAction}.`;
+    retaliation: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, restore lost compensation, and address the harm caused by the following adverse action: ${adverseAction}.`,
+    employment_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, restore lost opportunities, and address the harm caused by the following adverse action: ${adverseAction}.`,
+    housing_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory housing practices, preserve housing stability, and address the harm caused by the following adverse action: ${adverseAction}.`,
+    due_process_failure: `2. Plaintiff seeks declaratory relief, equitable relief, damages, and such further relief as may be just to remedy the procedural deprivation and the harm caused by the following challenged action: ${adverseAction}.`,
+    consumer_protection: `2. Plaintiff seeks damages, restitution, equitable relief, and such further relief as may be just to remedy deceptive or unfair consumer practices and the harm caused by the following adverse action or consequence: ${adverseAction}.`,
+  }[claimType] || `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm caused by the following adverse action: ${adverseAction}.`;
   const jurisdictionParagraph = {
     retaliation: '3. Jurisdiction is alleged in this Court because the controversy arises from retaliation for protected conduct and from the remedial obligations governing materially adverse acts taken in response to that conduct.',
     employment_discrimination: '3. Jurisdiction is alleged in this Court because the controversy arises from discriminatory employment practices, workplace bias, and related remedies for unlawful employment actions.',
@@ -531,71 +536,71 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
   }[claimType] || `6. Defendant ${answers.opposing_party || 'Defendant'} is the party from whom relief is sought and is responsible for the unlawful actions alleged in this pleading.`;
   const factualParagraphs = {
     retaliation: [
-      `7. ${answers.party_name || 'Plaintiff'} alleges that they ${protectedActivity}.`,
+      `7. ${answers.party_name || 'Plaintiff'} alleges protected activity described as ${protectedActivity}.`,
       '8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.',
-      `9. After that protected activity, ${answers.party_name || 'Plaintiff'} experienced ${adverseAction}.`,
-      `10. The chronology currently available in the record shows that ${timeline}.`,
+      `9. After that protected activity, ${answers.party_name || 'Plaintiff'} experienced adverse action described as ${adverseAction}.`,
+      `10. The chronology currently available in the record shows the following sequence: ${timeline}.`,
       `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${harm}.`,
     ],
     employment_discrimination: [
-      `7. ${answers.party_name || 'Plaintiff'} alleges facts showing discriminatory employment treatment, including that they ${protectedActivity}.`,
-      `8. Defendant thereafter took or maintained adverse employment action, including ${adverseAction}.`,
-      `9. The employment chronology currently available in the record shows that ${timeline}.`,
+      `7. ${answers.party_name || 'Plaintiff'} alleges facts showing discriminatory employment treatment, including protected conduct or circumstances described as ${protectedActivity}.`,
+      `8. Defendant thereafter took or maintained adverse employment action described as ${adverseAction}.`,
+      `9. The employment chronology currently available in the record shows the following sequence: ${timeline}.`,
       '10. The present record supports an inference of discriminatory motive, disparate treatment, prohibited bias, retaliation, or other unlawful employment decision-making.',
       `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${harm}.`,
     ],
     housing_discrimination: [
-      `7. ${answers.party_name || 'Plaintiff'} alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including that they ${protectedActivity}.`,
-      `8. Defendant thereafter denied, burdened, interfered with, or threatened housing-related rights or benefits, including ${adverseAction}.`,
-      `9. The housing-related chronology currently available in the record shows that ${timeline}.`,
+      `7. ${answers.party_name || 'Plaintiff'} alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including conduct described as ${protectedActivity}.`,
+      `8. Defendant thereafter denied, burdened, interfered with, or threatened housing-related rights or benefits through adverse action described as ${adverseAction}.`,
+      `9. The housing-related chronology currently available in the record shows the following sequence: ${timeline}.`,
       '10. The present record supports an inference that Defendant acted in a discriminatory manner, interfered with protected housing rights, or retaliated in connection with protected housing activity.',
       `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${harm}.`,
     ],
     due_process_failure: [
       '7. Plaintiff alleges that Defendant imposed or maintained a deprivation affecting protected rights, interests, status, benefits, or property.',
-      `8. The challenged action included ${adverseAction}.`,
-      `9. The chronology currently available in the record shows that ${timeline}.`,
+      `8. The challenged action is described as ${adverseAction}.`,
+      `9. The chronology currently available in the record shows the following sequence: ${timeline}.`,
       '10. Plaintiff alleges that the deprivation occurred without adequate notice, hearing, review, appeal, or other required procedural protection.',
       `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${harm}.`,
     ],
     consumer_protection: [
       '7. Plaintiff alleges that Defendant engaged in deceptive, misleading, unfair, or otherwise unlawful consumer-facing conduct.',
-      `8. That conduct included or resulted in ${adverseAction}.`,
-      `9. The chronology currently available in the record shows that ${timeline}.`,
+      `8. That conduct included or resulted in adverse action or consequences described as ${adverseAction}.`,
+      `9. The chronology currently available in the record shows the following sequence: ${timeline}.`,
       '10. Plaintiff alleges that the challenged conduct caused consumer harm, financial loss, or other compensable injury in a transactional or service context.',
       `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${harm}.`,
     ],
   }[claimType] || [
-    `7. ${answers.party_name || 'Plaintiff'} alleges that they ${protectedActivity}.`,
-    `8. Defendant engaged in conduct including ${adverseAction}.`,
-    `9. The chronology currently available in the record shows that ${timeline}.`,
+    `7. ${answers.party_name || 'Plaintiff'} alleges conduct or circumstances described as ${protectedActivity}.`,
+    `8. Defendant engaged in conduct including adverse action described as ${adverseAction}.`,
+    `9. The chronology currently available in the record shows the following sequence: ${timeline}.`,
     '10. Plaintiff alleges facts supporting a plausible claim for relief.',
     `11. As a direct and proximate result of Defendant's conduct, ${answers.party_name || 'Plaintiff'} suffered ${harm}.`,
   ];
   const claimParagraphs = {
     retaliation: [
-      `${answers.party_name || 'Plaintiff'} engaged in protected activity by ${protectedActivity}, and Defendant knew or should have known of that protected conduct.`,
-      `Defendant thereafter subjected Plaintiff to materially adverse action, including ${adverseAction}, under circumstances supporting retaliatory motive and causation.`,
+      `${answers.party_name || 'Plaintiff'} engaged in protected activity described as ${protectedActivity}, and Defendant knew or should have known of that protected conduct.`,
+      `Defendant thereafter subjected Plaintiff to materially adverse action described as ${adverseAction}, under circumstances supporting retaliatory motive and causation.`,
       'The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.',
     ],
     employment_discrimination: [
-      `Plaintiff was subjected to adverse employment treatment, including ${adverseAction}, in a manner that was discriminatory, disparate, or otherwise unlawful.`,
+      `Plaintiff was subjected to adverse employment treatment described as ${adverseAction}, in a manner that was discriminatory, disparate, or otherwise unlawful.`,
       'The pleaded facts support an inference that Defendant\'s conduct was motivated by unlawful bias, protected status, protected conduct, or a prohibited employment practice.',
       'The evidentiary record and resulting harm support a plausible employment discrimination claim.',
     ],
     housing_discrimination: [
-      `Defendant denied, limited, burdened, or interfered with housing-related rights, opportunities, services, or benefits, including conduct reflected in ${adverseAction}.`,
+      `Defendant denied, limited, burdened, or interfered with housing-related rights, opportunities, services, or benefits through conduct described as ${adverseAction}.`,
       'The pleaded facts support an inference that Defendant acted in a discriminatory manner or retaliated in connection with protected housing activity, status, or rights.',
       'The evidentiary record and resulting harm support a plausible housing discrimination claim.',
     ],
     due_process_failure: [
       'Defendant imposed or maintained adverse consequences without the notice, review, hearing, or procedural protections required by law.',
-      `The resulting deprivation included ${adverseAction} and related harms without adequate procedural safeguards.`,
+      `The resulting deprivation included challenged action described as ${adverseAction} and related harms without adequate procedural safeguards.`,
       'The pleaded facts and evidentiary record support a plausible due process claim.',
     ],
     consumer_protection: [
       'Defendant engaged in unfair, deceptive, misleading, or unlawful conduct in connection with a consumer transaction or obligation.',
-      `That conduct resulted in ${adverseAction} and caused economic or other compensable harm, including ${harm}.`,
+      `That conduct resulted in adverse action or consequences described as ${adverseAction} and caused economic or other compensable harm, including ${harm}.`,
       'The pleaded facts and evidentiary record support a plausible consumer protection claim.',
     ],
   }[claimType] || [

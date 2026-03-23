@@ -142,6 +142,17 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
             for item in exports
             if str(item.get("pdf_filename") or "").strip()
         ],
+        "release_gate_verdicts": [
+            str(((item.get("release_gate") or {}) if isinstance(item.get("release_gate"), dict) else {}).get("verdict") or "").strip()
+            for item in exports
+            if str(((item.get("release_gate") or {}) if isinstance(item.get("release_gate"), dict) else {}).get("verdict") or "").strip()
+        ],
+        "formal_section_gaps": [
+            str(item)
+            for export in exports
+            for item in list(export.get("formal_section_gaps") or [])
+            if str(item).strip()
+        ],
         "ui_suggestions": suggestions,
     }
 
@@ -168,6 +179,10 @@ def review_complaint_export_artifacts(
     alignment_scores: List[int] = []
     aggregate_issue_findings: List[str] = []
     aggregate_ui_suggestions: List[Dict[str, Any]] = []
+    aggregate_missing_formal_sections: List[str] = []
+    aggregate_priority_repairs: List[Dict[str, Any]] = []
+    actor_risk_summaries: List[str] = []
+    critic_gates: List[Dict[str, Any]] = []
 
     for export in exports:
         markdown_text = str(export.get("markdown_excerpt") or export.get("text_excerpt") or "").strip()
@@ -192,9 +207,21 @@ def review_complaint_export_artifacts(
             for item in list(review.get("issues") or [])
             if isinstance(item, dict) and str(item.get("finding") or "").strip()
         )
+        aggregate_missing_formal_sections.extend(
+            str(item).strip()
+            for item in list(review.get("missing_formal_sections") or [])
+            if str(item).strip()
+        )
         aggregate_ui_suggestions.extend(
             [dict(item) for item in list(review.get("ui_suggestions") or []) if isinstance(item, dict)]
         )
+        aggregate_priority_repairs.extend(
+            [dict(item) for item in list(review.get("ui_priority_repairs") or []) if isinstance(item, dict)]
+        )
+        if str(review.get("actor_risk_summary") or "").strip():
+            actor_risk_summaries.append(str(review.get("actor_risk_summary") or "").strip())
+        if isinstance(review.get("critic_gate"), dict):
+            critic_gates.append(dict(review.get("critic_gate") or {}))
         reviews.append(
             {
                 "artifact": {
@@ -222,7 +249,22 @@ def review_complaint_export_artifacts(
             if alignment_scores
             else 0,
             "issue_findings": aggregate_issue_findings,
+            "missing_formal_sections": sorted({item for item in aggregate_missing_formal_sections if item}),
             "ui_suggestions": aggregate_ui_suggestions,
+            "ui_priority_repairs": aggregate_priority_repairs,
+            "actor_risk_summaries": actor_risk_summaries,
+            "critic_gates": critic_gates,
+            "optimizer_repair_brief": {
+                "top_formal_section_gaps": sorted({item for item in aggregate_missing_formal_sections if item})[:6],
+                "top_issue_findings": aggregate_issue_findings[:6],
+                "recommended_surface_targets": [
+                    str(item.get("target_surface") or "").strip()
+                    for item in aggregate_priority_repairs[:6]
+                    if str(item.get("target_surface") or "").strip()
+                ],
+                "actor_risk_summary": actor_risk_summaries[0] if actor_risk_summaries else "",
+                "critic_gate_verdict": str((critic_gates[0] or {}).get("verdict") or "").strip() if critic_gates else "",
+            },
         },
     }
 
@@ -234,8 +276,12 @@ def _parse_complaint_output_json_response(text: str) -> Dict[str, Any]:
         "filing_shape_score": int(parsed.get("filing_shape_score") or 0),
         "claim_type_alignment_score": int(parsed.get("claim_type_alignment_score") or 0),
         "strengths": [str(item) for item in list(parsed.get("strengths") or []) if str(item).strip()],
+        "missing_formal_sections": [str(item) for item in list(parsed.get("missing_formal_sections") or []) if str(item).strip()],
         "issues": [dict(item) for item in list(parsed.get("issues") or []) if isinstance(item, dict)],
         "ui_suggestions": [dict(item) for item in list(parsed.get("ui_suggestions") or []) if isinstance(item, dict)],
+        "ui_priority_repairs": [dict(item) for item in list(parsed.get("ui_priority_repairs") or []) if isinstance(item, dict)],
+        "actor_risk_summary": str(parsed.get("actor_risk_summary") or "").strip(),
+        "critic_gate": dict(parsed.get("critic_gate") or {}) if isinstance(parsed.get("critic_gate"), dict) else {},
         "raw_response": parsed.get("raw_response"),
     }
 
@@ -267,6 +313,7 @@ def build_complaint_output_review_prompt(
         '  "filing_shape_score": 0,\n'
         '  "claim_type_alignment_score": 0,\n'
         '  "strengths": ["what already feels filing-shaped"],\n'
+        '  "missing_formal_sections": ["caption|jurisdiction_and_venue|factual_allegations|claim_count|prayer_for_relief|signature_block"],\n'
         '  "issues": [\n'
         "    {\n"
         '      "severity": "high|medium|low",\n'
@@ -282,7 +329,21 @@ def build_complaint_output_review_prompt(
         '      "recommendation": "what UI/UX should change to produce a stronger complaint",\n'
         '      "why_it_matters": "how this improves the final filing"\n'
         "    }\n"
-        "  ]\n"
+        "  ],\n"
+        '  "ui_priority_repairs": [\n'
+        "    {\n"
+        '      "priority": "high|medium|low",\n'
+        '      "target_surface": "intake|evidence|review|draft|integrations",\n'
+        '      "repair": "most important UI change to strengthen the filing",\n'
+        '      "filing_benefit": "how the complaint artifact improves"\n'
+        "    }\n"
+        "  ],\n"
+        '  "actor_risk_summary": "how a real complainant ends up with a weak filing because of the current UI",\n'
+        '  "critic_gate": {\n'
+        '    "verdict": "pass|warning|fail",\n'
+        '    "blocking_reason": "why the export should or should not be trusted",\n'
+        '    "required_repairs": ["what must be fixed before treating the export as client-safe"]\n'
+        "  }\n"
         "}\n\n"
         "Complaint draft:\n"
         f"{excerpt}\n"

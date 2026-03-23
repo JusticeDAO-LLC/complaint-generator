@@ -109,6 +109,13 @@ def _sentence_fragment(value: Optional[str], fallback: str) -> str:
     return f"{text[0].lower()}{text[1:]}" if text[:1].isalpha() else text
 
 
+def _event_fragment(value: Optional[str], fallback: str) -> str:
+    text = _sentence_fragment(value, fallback)
+    if text.startswith("was "):
+        return text[4:]
+    return text
+
+
 def _slugify_filename(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip().lower())
     return normalized.strip("-") or "complaint-packet"
@@ -621,7 +628,7 @@ class ComplaintWorkspaceService:
             answers.get("protected_activity"),
             "engaged in protected activity",
         )
-        adverse_action = _sentence_fragment(
+        adverse_action = _event_fragment(
             answers.get("adverse_action"),
             "suffered an adverse action",
         )
@@ -663,7 +670,7 @@ class ComplaintWorkspaceService:
         nature_of_action = {
             "retaliation": (
                 f"1. {plaintiff} brings this retaliation complaint against {defendant}. "
-                f"This civil action arises from {defendant}'s retaliatory response after {plaintiff} {protected_activity}."
+                f"This civil action arises from {defendant}'s retaliatory response after {plaintiff} engaged in protected activity described as {protected_activity}."
             ),
             "employment_discrimination": (
                 f"1. {plaintiff} brings this employment discrimination complaint against {defendant}. "
@@ -689,27 +696,27 @@ class ComplaintWorkspaceService:
         relief_paragraph = {
             "retaliation": (
                 f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, "
-                f"restore lost compensation, and address the harm flowing from {adverse_action}."
+                f"restore lost compensation, and address the harm caused by the following adverse action: {adverse_action}."
             ),
             "employment_discrimination": (
                 f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, "
-                f"restore lost opportunities, and address the harm flowing from {adverse_action}."
+                f"restore lost opportunities, and address the harm caused by the following adverse action: {adverse_action}."
             ),
             "housing_discrimination": (
                 f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory housing practices, "
-                f"preserve housing stability, and address the harm flowing from {adverse_action}."
+                f"preserve housing stability, and address the harm caused by the following adverse action: {adverse_action}."
             ),
             "due_process_failure": (
                 f"2. Plaintiff seeks declaratory relief, equitable relief, damages, and such further relief as may be just to remedy the procedural deprivation "
-                f"and the harm flowing from {adverse_action}."
+                f"and the harm caused by the following challenged action: {adverse_action}."
             ),
             "consumer_protection": (
                 f"2. Plaintiff seeks damages, restitution, equitable relief, and such further relief as may be just to remedy deceptive or unfair consumer practices "
-                f"and the harm flowing from {adverse_action}."
+                f"and the harm caused by the following adverse action or consequence: {adverse_action}."
             ),
         }.get(
             claim_type,
-            f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm flowing from {adverse_action}.",
+            f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm caused by the following adverse action: {adverse_action}.",
         )
         jurisdiction_paragraph = {
             "retaliation": (
@@ -780,46 +787,46 @@ class ComplaintWorkspaceService:
         )
         factual_allegation_lines = {
             "retaliation": [
-                f"7. {plaintiff} alleges that they {protected_activity}.",
+                f"7. {plaintiff} alleges protected activity described as {protected_activity}.",
                 "8. Plaintiff provided or attempted to provide protected information, opposition, reporting, or participation activity that should not have triggered reprisal.",
-                f"9. After that protected activity, {plaintiff} experienced {adverse_action}.",
-                f"10. The chronology currently available in the record shows that {timeline}.",
+                f"9. After that protected activity, {plaintiff} experienced adverse action described as {adverse_action}.",
+                f"10. The chronology currently available in the record shows the following sequence: {timeline}.",
                 f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
             ],
             "employment_discrimination": [
-                f"7. {plaintiff} alleges facts showing discriminatory employment treatment, including that they {protected_activity}.",
-                f"8. Defendant thereafter took or maintained adverse employment action, including {adverse_action}.",
-                f"9. The employment chronology currently available in the record shows that {timeline}.",
+                f"7. {plaintiff} alleges facts showing discriminatory employment treatment, including protected conduct or circumstances described as {protected_activity}.",
+                f"8. Defendant thereafter took or maintained adverse employment action described as {adverse_action}.",
+                f"9. The employment chronology currently available in the record shows the following sequence: {timeline}.",
                 "10. The present record supports an inference of discriminatory motive, disparate treatment, prohibited bias, retaliation, or other unlawful employment decision-making.",
                 f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
             ],
             "housing_discrimination": [
-                f"7. {plaintiff} alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including that they {protected_activity}.",
-                f"8. Defendant thereafter denied, burdened, interfered with, or threatened housing-related rights or benefits, including {adverse_action}.",
-                f"9. The housing-related chronology currently available in the record shows that {timeline}.",
+                f"7. {plaintiff} alleges that they sought, used, requested, or protected housing-related rights, accommodations, benefits, tenancy rights, or fair treatment, including conduct described as {protected_activity}.",
+                f"8. Defendant thereafter denied, burdened, interfered with, or threatened housing-related rights or benefits through adverse action described as {adverse_action}.",
+                f"9. The housing-related chronology currently available in the record shows the following sequence: {timeline}.",
                 "10. The present record supports an inference that Defendant acted in a discriminatory manner, interfered with protected housing rights, or retaliated in connection with protected housing activity.",
                 f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
             ],
             "due_process_failure": [
                 "7. Plaintiff alleges that Defendant imposed or maintained a deprivation affecting protected rights, interests, status, benefits, or property.",
-                f"8. The challenged action included {adverse_action}.",
-                f"9. The chronology currently available in the record shows that {timeline}.",
+                f"8. The challenged action is described as {adverse_action}.",
+                f"9. The chronology currently available in the record shows the following sequence: {timeline}.",
                 "10. Plaintiff alleges that the deprivation occurred without adequate notice, hearing, review, appeal, or other required procedural protection.",
                 f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
             ],
             "consumer_protection": [
                 "7. Plaintiff alleges that Defendant engaged in deceptive, misleading, unfair, or otherwise unlawful consumer-facing conduct.",
-                f"8. That conduct included or resulted in {adverse_action}.",
-                f"9. The chronology currently available in the record shows that {timeline}.",
+                f"8. That conduct included or resulted in adverse action or consequences described as {adverse_action}.",
+                f"9. The chronology currently available in the record shows the following sequence: {timeline}.",
                 "10. Plaintiff alleges that the challenged conduct caused consumer harm, financial loss, or other compensable injury in a transactional or service context.",
                 f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
             ],
         }.get(
             claim_type,
             [
-                f"7. {plaintiff} alleges that they {protected_activity}.",
-                f"8. Defendant engaged in conduct including {adverse_action}.",
-                f"9. The chronology currently available in the record shows that {timeline}.",
+                f"7. {plaintiff} alleges conduct or circumstances described as {protected_activity}.",
+                f"8. Defendant engaged in conduct including adverse action described as {adverse_action}.",
+                f"9. The chronology currently available in the record shows the following sequence: {timeline}.",
                 "10. Plaintiff alleges facts supporting a plausible claim for relief.",
                 f"11. As a direct and proximate result of Defendant's conduct, {plaintiff} suffered {harm}.",
             ],
@@ -833,28 +840,28 @@ class ComplaintWorkspaceService:
         }.get(claim_type, f"COUNT I - {claim_label.upper()}")
         claim_paragraphs = {
             "retaliation": [
-                f"{plaintiff} engaged in protected activity by {protected_activity}, and Defendant knew or should have known of that protected conduct.",
-                f"Defendant thereafter subjected Plaintiff to materially adverse action, including {adverse_action}, under circumstances supporting retaliatory motive and causation.",
+                f"{plaintiff} engaged in protected activity described as {protected_activity}, and Defendant knew or should have known of that protected conduct.",
+                f"Defendant thereafter subjected Plaintiff to materially adverse action described as {adverse_action}, under circumstances supporting retaliatory motive and causation.",
                 "The pleaded chronology, evidentiary record, and resulting harm support a plausible retaliation claim because protected activity was followed by materially adverse conduct and damages.",
             ],
             "employment_discrimination": [
-                f"Plaintiff was subjected to adverse employment treatment, including {adverse_action}, in a manner that was discriminatory, disparate, or otherwise unlawful.",
+                f"Plaintiff was subjected to adverse employment treatment described as {adverse_action}, in a manner that was discriminatory, disparate, or otherwise unlawful.",
                 "The pleaded facts support an inference that Defendant's conduct was motivated by unlawful bias, protected status, protected conduct, or a prohibited employment practice.",
                 "The evidentiary record and resulting harm support a plausible employment discrimination claim.",
             ],
             "housing_discrimination": [
-                f"Defendant denied, limited, burdened, or interfered with housing-related rights, opportunities, services, or benefits, including conduct reflected in {adverse_action}.",
+                f"Defendant denied, limited, burdened, or interfered with housing-related rights, opportunities, services, or benefits through conduct described as {adverse_action}.",
                 "The pleaded facts support an inference that Defendant acted in a discriminatory manner or retaliated in connection with protected housing activity, status, or rights.",
                 "The evidentiary record and resulting harm support a plausible housing discrimination claim.",
             ],
             "due_process_failure": [
                 "Defendant imposed or maintained adverse consequences without the notice, review, hearing, or procedural protections required by law.",
-                f"The resulting deprivation included {adverse_action} and related harms without adequate procedural safeguards.",
+                f"The resulting deprivation included challenged action described as {adverse_action} and related harms without adequate procedural safeguards.",
                 "The pleaded facts and evidentiary record support a plausible due process claim.",
             ],
             "consumer_protection": [
                 "Defendant engaged in unfair, deceptive, misleading, or unlawful conduct in connection with a consumer transaction or obligation.",
-                f"That conduct resulted in {adverse_action} and caused economic or other compensable harm, including {harm}.",
+                f"That conduct resulted in adverse action or consequences described as {adverse_action} and caused economic or other compensable harm, including {harm}.",
                 "The pleaded facts and evidentiary record support a plausible consumer protection claim.",
             ],
         }.get(
@@ -1664,6 +1671,7 @@ class ComplaintWorkspaceService:
                 "draft_strategy": str(draft.get("draft_strategy") or "template"),
                 "draft_fallback_reason": draft_fallback_reason,
                 "draft_normalization_count": len(list(draft.get("draft_normalizations") or [])),
+                "draft_normalizations": list(draft.get("draft_normalizations") or []),
                 "complaint_readiness": self.get_complaint_readiness(user_id),
                 "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
                 "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
@@ -2152,6 +2160,11 @@ class ComplaintWorkspaceService:
                 "pdf_header": str(pdf_artifact.get("content_type") or "application/pdf"),
                 "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
                 "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+                "formal_section_gaps": [
+                    key
+                    for key, present in dict(ui_feedback.get("formal_sections_present") or {}).items()
+                    if not present
+                ],
                 "formal_defect_count": len(
                     [
                         item
@@ -2161,6 +2174,7 @@ class ComplaintWorkspaceService:
                 ),
                 "claim_type_alignment": dict(ui_feedback.get("claim_type_alignment") or {}),
                 "release_gate": dict(ui_feedback.get("release_gate") or {}),
+                "router_export_critic": dict(((ui_feedback.get("router_review") or {}).get("review") or {})),
                 "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),
             }
         ]

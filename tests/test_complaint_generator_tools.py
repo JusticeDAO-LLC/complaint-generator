@@ -659,6 +659,11 @@ def test_llm_draft_can_salvage_near_miss_formal_complaint_output(monkeypatch, tm
     assert "workflow summary" not in payload["draft"]["body"].lower()
     assert "current complaint record" not in payload["draft"]["body"].lower()
 
+    export_payload = service.export_complaint_packet("llm-salvage-user")
+    assert export_payload["packet_summary"]["draft_strategy"] == "llm_router"
+    assert export_payload["packet_summary"]["draft_normalization_count"] >= 1
+    assert "trimmed_workspace_appendices" in export_payload["packet_summary"]["draft_normalizations"]
+
 
 def test_llm_draft_normalizes_claim_specific_headings_for_housing_output(monkeypatch, tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-housing-normalize-sessions")
