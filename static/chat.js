@@ -135,6 +135,7 @@ window.ChatPage = (function() {
     function updateChatNextStepLinks(handoff) {
         const activeUserId = getActiveComplaintUserId(handoff);
         const caseSynopsis = String((handoff && handoff.caseSynopsis) || '').trim();
+        const hasActiveContext = Boolean(activeUserId || caseSynopsis);
         const profileLink = document.getElementById('chat-open-profile');
         const resultsLink = document.getElementById('chat-open-results');
         const builderLink = document.getElementById('chat-open-builder');
@@ -152,13 +153,15 @@ window.ChatPage = (function() {
         setHrefForIds(['chat-hero-workspace', 'chat-open-workspace'], workspaceHref);
 
         const profileParams = new URLSearchParams();
-        if (activeUserId) {
-            profileParams.set('user_id', activeUserId);
+        if (hasActiveContext) {
+            if (activeUserId) {
+                profileParams.set('user_id', activeUserId);
+            }
+            if (caseSynopsis) {
+                profileParams.set('case_synopsis', caseSynopsis);
+            }
+            profileParams.set('source', 'chat');
         }
-        if (caseSynopsis) {
-            profileParams.set('case_synopsis', caseSynopsis);
-        }
-        profileParams.set('source', 'chat');
         const profileHref = profileParams.toString() ? `/profile?${profileParams.toString()}` : '/profile';
         profileLink.href = profileHref;
 

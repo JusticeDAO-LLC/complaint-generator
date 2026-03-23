@@ -343,36 +343,49 @@
 
         function updateProfileWorkflowLinks() {
             const context = readProfileContext();
+            const hasContext = Boolean(context.userId || context.caseSynopsis);
             updateProfileContextCard(context);
-            const currentProfileUrl = buildProfileSurfaceUrl('/profile', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-                source: context.source || 'profile',
-            });
-            const chatHref = buildProfileSurfaceUrl('/chat', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-                source: 'profile',
-                return_to: currentProfileUrl,
-            });
-            const resultsHref = buildProfileSurfaceUrl('/results', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-                source: 'profile',
-            });
-            const reviewHref = buildProfileSurfaceUrl('/claim-support-review', {
-                user_id: context.userId,
-                workspace_user_id: context.userId,
-            });
-            const builderHref = buildProfileSurfaceUrl('/document', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-            });
-            const workspaceHref = buildProfileSurfaceUrl('/workspace', {
-                user_id: context.userId,
-                target_tab: 'review',
-                status_message: 'Opened Workspace from the profile data surface.',
-            });
+            const currentProfileUrl = hasContext
+                ? buildProfileSurfaceUrl('/profile', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: context.source || 'profile',
+                })
+                : '/profile';
+            const chatHref = hasContext
+                ? buildProfileSurfaceUrl('/chat', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: 'profile',
+                    return_to: currentProfileUrl,
+                })
+                : '/chat';
+            const resultsHref = hasContext
+                ? buildProfileSurfaceUrl('/results', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: 'profile',
+                })
+                : '/results';
+            const reviewHref = hasContext
+                ? buildProfileSurfaceUrl('/claim-support-review', {
+                    user_id: context.userId,
+                    workspace_user_id: context.userId,
+                })
+                : '/claim-support-review';
+            const builderHref = hasContext
+                ? buildProfileSurfaceUrl('/document', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                })
+                : '/document';
+            const workspaceHref = hasContext
+                ? buildProfileSurfaceUrl('/workspace', {
+                    user_id: context.userId,
+                    target_tab: 'review',
+                    status_message: 'Opened Workspace from the profile data surface.',
+                })
+                : '/workspace';
 
             document.getElementById('profile-open-chat').href = chatHref;
             document.getElementById('profile-open-results').href = resultsHref;

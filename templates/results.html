@@ -275,31 +275,42 @@
 
         function updateResultsWorkflowLinks() {
             const context = readResultsContext();
+            const hasContext = Boolean(context.userId || context.caseSynopsis);
             updateResultsContextCard(context);
-            const currentResultsUrl = buildResultsSurfaceUrl('/results', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-                source: context.source || 'results',
-            });
-            const chatHref = buildResultsSurfaceUrl('/chat', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-                source: 'results',
-                return_to: currentResultsUrl,
-            });
-            const workspaceHref = buildResultsSurfaceUrl('/workspace', {
-                user_id: context.userId,
-                target_tab: 'review',
-                status_message: 'Opened Workspace from the results surface.',
-            });
-            const reviewHref = buildResultsSurfaceUrl('/claim-support-review', {
-                user_id: context.userId,
-                workspace_user_id: context.userId,
-            });
-            const builderHref = buildResultsSurfaceUrl('/document', {
-                user_id: context.userId,
-                case_synopsis: context.caseSynopsis,
-            });
+            const currentResultsUrl = hasContext
+                ? buildResultsSurfaceUrl('/results', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: context.source || 'results',
+                })
+                : '/results';
+            const chatHref = hasContext
+                ? buildResultsSurfaceUrl('/chat', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                    source: 'results',
+                    return_to: currentResultsUrl,
+                })
+                : '/chat';
+            const workspaceHref = hasContext
+                ? buildResultsSurfaceUrl('/workspace', {
+                    user_id: context.userId,
+                    target_tab: 'review',
+                    status_message: 'Opened Workspace from the results surface.',
+                })
+                : '/workspace';
+            const reviewHref = hasContext
+                ? buildResultsSurfaceUrl('/claim-support-review', {
+                    user_id: context.userId,
+                    workspace_user_id: context.userId,
+                })
+                : '/claim-support-review';
+            const builderHref = hasContext
+                ? buildResultsSurfaceUrl('/document', {
+                    user_id: context.userId,
+                    case_synopsis: context.caseSynopsis,
+                })
+                : '/document';
 
             document.getElementById('results-open-chat').href = chatHref;
             document.getElementById('results-open-workspace').href = workspaceHref;
