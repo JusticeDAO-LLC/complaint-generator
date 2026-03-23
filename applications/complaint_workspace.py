@@ -1054,6 +1054,10 @@ class ComplaintWorkspaceService:
             raw_text = _strip_code_fences(raw_response)
             if _has_required_formal_complaint_markers(raw_text):
                 llm_body = raw_text
+        llm_body = _normalize_llm_complaint_body(
+            llm_body,
+            base_draft.get("claim_type") or state.get("claim_type"),
+        )
         validation_issues = _formal_complaint_validation_issues(
             llm_body,
             base_draft.get("claim_type") or state.get("claim_type"),

@@ -346,7 +346,12 @@ test.describe('complaint generation workflow', () => {
     await expect(page).toHaveURL(/\/chat\?/);
     await expect(page.locator('#chat-context-summary')).toContainText(/Jane Doe alleges retaliation/i);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
-    await page.goto('/workspace');
+    await expect(page.locator('#chat-hero-workspace')).toHaveAttribute('href', /user_id=/);
+    await page.locator('#chat-hero-workspace').click();
+    await expect(page).toHaveURL(/\/workspace\?/);
+    await expect(page).toHaveURL(/user_id=/);
+    await expect(page.locator('#workspace-status')).toContainText(/Opened Workspace from the chat narrative surface\./i);
+    await expect(page.locator('#case-synopsis')).toHaveValue(/Jane Doe alleges retaliation/i);
 
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();
 

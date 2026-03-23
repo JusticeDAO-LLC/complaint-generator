@@ -2,6 +2,7 @@ import json
 import zipfile
 from io import BytesIO
 
+import backends
 from fastapi import FastAPI
 import pytest
 from typer.testing import CliRunner
@@ -576,6 +577,84 @@ def test_llm_draft_timeout_falls_back_to_template_with_reason(monkeypatch, tmp_p
     assert export_payload["packet_summary"]["high_severity_issue_count"] >= 0
     assert isinstance(export_payload["packet_summary"]["release_gate"], dict)
     assert "verdict" in export_payload["packet_summary"]["release_gate"]
+
+
+def test_llm_draft_can_salvage_near_miss_formal_complaint_output(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-salvage-sessions")
+    service.submit_intake_answers(
+        "llm-salvage-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+
+        def __call__(self, prompt):
+            assert "Match the tone and paragraph style of this example snippet" in prompt
+            return json.dumps(
+                {
+                    "title": "Jordan Example v. Acme Corporation Complaint",
+                    "body": (
+                        "IN THE UNITED STATES DISTRICT COURT\n\n"
+                        "Civil Action No. ________________\n"
+                        "COMPLAINT FOR RETALIATION OVERVIEW\n"
+                        "JURY TRIAL DEMANDED\n\n"
+                        "NATURE OF THE ACTION\n"
+                        "1. Plaintiff reported discrimination to HR.\n\n"
+                        "JURISDICTION AND VENUE\n"
+                        "2. Jurisdiction and venue are proper in this Court.\n\n"
+                        "PARTIES\n"
+                        "3. Plaintiff Jordan Example was employed by Defendant.\n\n"
+                        "FACTUAL ALLEGATIONS\n"
+                        "4. Plaintiff engaged in protected activity by reporting discrimination to HR.\n"
+                        "5. Defendant terminated Plaintiff two days later.\n\n"
+                        "EVIDENTIARY SUPPORT AND NOTICE\n"
+                        "6. The current complaint record includes testimony and documents supporting causation.\n\n"
+                        "CLAIM FOR RELIEF\n"
+                        "COUNT I - WRONG HEADING\n"
+                        "7. Defendant retaliated against Plaintiff for protected activity.\n\n"
+                        "PRAYER FOR RELIEF\n"
+                        "8. Plaintiff seeks back pay and damages.\n\n"
+                        "JURY DEMAND\n"
+                        "9. Plaintiff demands a jury trial.\n\n"
+                        "SIGNATURE BLOCK\n"
+                        "Jordan Example\n\n"
+                        "APPENDIX A - CASE SYNOPSIS\n"
+                        "Workflow summary prepared through the SDK."
+                    ),
+                    "requested_relief": ["Back pay", "Damages"],
+                }
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = service.generate_complaint(
+        "llm-salvage-user",
+        requested_relief=["Back pay", "Damages"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert payload["draft"]["draft_backend"]["model"] == "stub-model"
+    assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
+    assert "COUNT I - RETALIATION" in payload["draft"]["body"]
+    assert "APPENDIX A - CASE SYNOPSIS" not in payload["draft"]["body"]
+    assert "workflow summary" not in payload["draft"]["body"].lower()
+    assert "current complaint record" not in payload["draft"]["body"].lower()
 
 
 def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(tmp_path):

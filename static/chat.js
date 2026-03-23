@@ -123,14 +123,21 @@ window.ChatPage = (function() {
         }
     }
 
+    function setHrefForIds(linkIds, href) {
+        linkIds.forEach((id) => {
+            const node = document.getElementById(id);
+            if (node) {
+                node.href = href;
+            }
+        });
+    }
+
     function updateChatNextStepLinks(handoff) {
         const activeUserId = getActiveComplaintUserId(handoff);
         const caseSynopsis = String((handoff && handoff.caseSynopsis) || '').trim();
-        const workspaceLink = document.getElementById('chat-open-workspace');
         const profileLink = document.getElementById('chat-open-profile');
-        const reviewLink = document.getElementById('chat-open-review');
         const builderLink = document.getElementById('chat-open-builder');
-        if (!workspaceLink || !profileLink || !reviewLink || !builderLink) {
+        if (!profileLink || !builderLink) {
             return;
         }
 
@@ -140,7 +147,8 @@ window.ChatPage = (function() {
         }
         workspaceParams.set('target_tab', 'review');
         workspaceParams.set('status_message', 'Opened Workspace from the chat narrative surface.');
-        workspaceLink.href = `/workspace?${workspaceParams.toString()}`;
+        const workspaceHref = `/workspace?${workspaceParams.toString()}`;
+        setHrefForIds(['chat-hero-workspace', 'chat-open-workspace'], workspaceHref);
 
         profileLink.href = '/profile';
 
@@ -149,7 +157,8 @@ window.ChatPage = (function() {
             reviewParams.set('user_id', activeUserId);
             reviewParams.set('workspace_user_id', activeUserId);
         }
-        reviewLink.href = reviewParams.toString() ? `/claim-support-review?${reviewParams.toString()}` : '/claim-support-review';
+        const reviewHref = reviewParams.toString() ? `/claim-support-review?${reviewParams.toString()}` : '/claim-support-review';
+        setHrefForIds(['chat-hero-review', 'chat-open-review'], reviewHref);
 
         const builderParams = new URLSearchParams();
         if (activeUserId) {

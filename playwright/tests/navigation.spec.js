@@ -200,7 +200,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
     await expect(page.locator('#chat-open-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-open-review')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
-    await expect(page.locator('#chat-open-builder')).toHaveAttribute('href', /case_synopsis=Jordan%20Example/);
+    await expect(page.locator('#chat-open-builder')).toHaveAttribute('href', /case_synopsis=Jordan\+Example/);
     await expect(page.locator('#chat-open-review')).toBeVisible();
     await expect(page.locator('#chat-open-builder')).toBeVisible();
 
@@ -229,7 +229,7 @@ test.describe('website surface navigation', () => {
     await page.locator('#chat-open-builder').click();
     await expect(page).toHaveURL(/\/document\?/);
     await expect(page).toHaveURL(/user_id=did%3Akey%3Achat-step-demo/);
-    await expect(page).toHaveURL(/case_synopsis=Jordan%20Example/);
+    await expect(page).toHaveURL(/case_synopsis=Jordan\+Example/);
   });
 
   test('workspace handoff cards keep the complaint context visible and capture a screenshot', async ({ page }, testInfo) => {
