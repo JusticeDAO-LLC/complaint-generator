@@ -141,19 +141,27 @@ def build_ui_ux_review_prompt(
     sdk_source = _read_text(REPO_ROOT / "static" / "complaint_mcp_sdk.js", limit=8000)
     artifact_blocks = []
     for artifact in artifacts:
-        artifact_blocks.append(
-            "\n".join(
+        lines = [
+            f"Surface: {artifact.get('name', 'unknown')}",
+            f"URL: {artifact.get('url', '')}",
+            f"Title: {artifact.get('title', '')}",
+            f"Screenshot path: {artifact.get('screenshot_path', '')}",
+            f"Viewport: {json.dumps(artifact.get('viewport', {}), sort_keys=True)}",
+            "Visible text excerpt:",
+            str(artifact.get("text_excerpt", "")).strip(),
+        ]
+        if artifact.get("artifact_type") == "complaint_export":
+            lines.extend(
                 [
-                    f"Surface: {artifact.get('name', 'unknown')}",
-                    f"URL: {artifact.get('url', '')}",
-                    f"Title: {artifact.get('title', '')}",
-                    f"Screenshot path: {artifact.get('screenshot_path', '')}",
-                    f"Viewport: {json.dumps(artifact.get('viewport', {}), sort_keys=True)}",
-                    "Visible text excerpt:",
-                    str(artifact.get("text_excerpt", "")).strip(),
+                    f"Export artifact type: {artifact.get('artifact_type')}",
+                    f"Markdown filename: {artifact.get('markdown_filename', '')}",
+                    f"PDF filename: {artifact.get('pdf_filename', '')}",
+                    "Exported complaint markdown excerpt:",
+                    str(artifact.get("markdown_excerpt", "")).strip(),
+                    f"PDF header: {artifact.get('pdf_header', '')}",
                 ]
             )
-        )
+        artifact_blocks.append("\n".join(lines))
 
     prompt_sections = [
         "You are reviewing the complaint-generator MCP workspace and related complaint site surfaces.",
@@ -237,6 +245,9 @@ def build_ui_ux_review_prompt(
             ),
             (
                 "Under `Playwright Assertions To Add`, include a control audit matrix that names the exact button, link, or tab to click, the expected route or state transition, and the expected visible text confirming success."
+            ),
+            (
+                "If exported complaint markdown or PDF artifacts are present, critique whether the final complaint output is coherent, filing-shaped, and consistent with what the UI promised the user during intake, review, and draft generation."
             ),
         ]
     )

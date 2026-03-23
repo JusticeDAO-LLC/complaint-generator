@@ -497,6 +497,41 @@ def _capture_screenshot(page, target_dir: Path, name: str) -> Path:
     return screenshot_path
 
 
+def _write_export_artifact_metadata(
+    target_dir: Path,
+    *,
+    name: str,
+    route_url: str,
+    markdown_filename: str,
+    markdown_text: str,
+    pdf_filename: str,
+    pdf_bytes: bytes,
+) -> Path:
+    target_dir = _artifact_dir(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = target_dir / f"{name}.json"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "name": name,
+                "artifact_type": "complaint_export",
+                "url": route_url,
+                "title": "Exported Complaint Artifacts",
+                "viewport": dict(LAYOUT_AUDIT_VIEWPORT),
+                "text_excerpt": markdown_text[:4000],
+                "screenshot_path": "",
+                "markdown_filename": markdown_filename,
+                "markdown_excerpt": markdown_text[:2000],
+                "pdf_filename": pdf_filename,
+                "pdf_header": pdf_bytes[:16].decode("latin1", errors="ignore"),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return metadata_path
+
+
 def _assert_surface_layout(page, *, min_content_height: int = 160) -> None:
     metrics = page.evaluate(
         """() => {
@@ -1436,14 +1471,31 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
-            with page.expect_download() as download_info:
-                page.locator("[data-tab-panel='integrations'] #download-packet-tool-button").click()
-            download = download_info.value
-            download_path = download.path()
-            assert download.suggested_filename.endswith(".json")
-            assert download_path is not None
-            exported_packet = json.loads(Path(download_path).read_text())
-            assert exported_packet["draft"]["body"].startswith("Jordan Example brings this retaliation complaint against Acme Corporation.")
+            with page.expect_download() as markdown_download_info:
+                page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
+            markdown_download = markdown_download_info.value
+            markdown_download_path = markdown_download.path()
+            assert markdown_download.suggested_filename.endswith(".md")
+            assert markdown_download_path is not None
+            markdown_text = Path(markdown_download_path).read_text()
+            assert "Jordan Example brings this retaliation complaint against Acme Corporation." in markdown_text
+            with page.expect_download() as pdf_download_info:
+                page.locator("[data-tab-panel='integrations'] #download-packet-tool-pdf-button").click()
+            pdf_download = pdf_download_info.value
+            pdf_download_path = pdf_download.path()
+            assert pdf_download.suggested_filename.endswith(".pdf")
+            assert pdf_download_path is not None
+            pdf_bytes = Path(pdf_download_path).read_bytes()
+            assert pdf_bytes.startswith(b"%PDF-1.4")
+            _write_export_artifact_metadata(
+                screenshot_dir,
+                name="workspace-export-artifacts",
+                route_url=page.url,
+                markdown_filename=markdown_download.suggested_filename,
+                markdown_text=markdown_text,
+                pdf_filename=pdf_download.suggested_filename,
+                pdf_bytes=pdf_bytes,
+            )
             _capture_screenshot(page, screenshot_dir, "workspace-operations")
 
             artifact_paths = sorted(screenshot_dir.glob("*.png"))
@@ -1587,14 +1639,31 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             page.wait_for_function(
                 "() => document.getElementById('packet-preview').innerText.includes('Jordan Example brings this retaliation complaint against Acme Corporation.')"
             )
-            with page.expect_download() as download_info:
-                page.locator("[data-tab-panel='integrations'] #download-packet-tool-button").click()
-            download = download_info.value
-            download_path = download.path()
-            assert download.suggested_filename.endswith(".json")
-            assert download_path is not None
-            exported_packet = json.loads(Path(download_path).read_text())
-            assert exported_packet["draft"]["body"].startswith("Jordan Example brings this retaliation complaint against Acme Corporation.")
+            with page.expect_download() as markdown_download_info:
+                page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
+            markdown_download = markdown_download_info.value
+            markdown_download_path = markdown_download.path()
+            assert markdown_download.suggested_filename.endswith(".md")
+            assert markdown_download_path is not None
+            markdown_text = Path(markdown_download_path).read_text()
+            assert "Jordan Example brings this retaliation complaint against Acme Corporation." in markdown_text
+            with page.expect_download() as pdf_download_info:
+                page.locator("[data-tab-panel='integrations'] #download-packet-tool-pdf-button").click()
+            pdf_download = pdf_download_info.value
+            pdf_download_path = pdf_download.path()
+            assert pdf_download.suggested_filename.endswith(".pdf")
+            assert pdf_download_path is not None
+            pdf_bytes = Path(pdf_download_path).read_bytes()
+            assert pdf_bytes.startswith(b"%PDF-1.4")
+            _write_export_artifact_metadata(
+                screenshot_dir,
+                name="homepage-export-artifacts",
+                route_url=page.url,
+                markdown_filename=markdown_download.suggested_filename,
+                markdown_text=markdown_text,
+                pdf_filename=pdf_download.suggested_filename,
+                pdf_bytes=pdf_bytes,
+            )
             _capture_screenshot(page, screenshot_dir, "workspace-final-packet")
 
             artifact_paths = sorted(screenshot_dir.glob("*.png"))

@@ -112,17 +112,15 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
         return workspace.reset_session(request.get("user_id"))
 
     @router.get("/api/complaint-workspace/export/download")
-    async def download_complaint_packet(user_id: Optional[str] = Query(default=None)) -> Response:
-        payload = workspace.export_complaint_packet(user_id)
-        packet = payload.get("packet") or {}
-        filename_root = str(packet.get("title") or "complaint-packet").strip() or "complaint-packet"
-        safe_filename = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in filename_root).strip("-") or "complaint-packet"
-        if not safe_filename.lower().endswith(".json"):
-            safe_filename = f"{safe_filename}.json"
+    async def download_complaint_packet(
+        user_id: Optional[str] = Query(default=None),
+        output_format: str = Query(default="json"),
+    ) -> Response:
+        artifact = workspace.build_export_artifact(user_id, output_format=output_format)
         return Response(
-            content=json.dumps(packet, indent=2, sort_keys=True),
-            media_type="application/json",
-            headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+            content=artifact["body"],
+            media_type=str(artifact["media_type"]),
+            headers={"Content-Disposition": f'attachment; filename="{artifact["filename"]}"'},
         )
 
     @router.get("/api/complaint-workspace/mcp/tools")

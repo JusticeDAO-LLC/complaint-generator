@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from base64 import b64encode
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +81,11 @@ def _slugify_user_id(user_id: str) -> str:
 
 def _split_lines(value: Optional[str]) -> List[str]:
     return [line.strip() for line in str(value or "").splitlines() if line.strip()]
+
+
+def _slugify_filename(value: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip().lower())
+    return normalized.strip("-") or "complaint-packet"
 
 
 def generate_decentralized_id() -> Dict[str, Any]:
@@ -303,6 +309,128 @@ class ComplaintWorkspaceService:
             f"Current support posture: {supported_elements} supported elements, "
             f"{missing_elements} open gaps, {evidence_count} saved evidence items."
         )
+
+    def _build_packet_markdown(self, packet: Dict[str, Any]) -> str:
+        draft = dict(packet.get("draft") or {})
+        review = dict(packet.get("review") or {})
+        overview = dict(review.get("overview") or {})
+        evidence = dict(packet.get("evidence") or {})
+        testimony = list(evidence.get("testimony") or [])
+        documents = list(evidence.get("documents") or [])
+        requested_relief = list(draft.get("requested_relief") or [])
+        question_lines = [
+            f"- **{item.get('label') or item.get('id') or 'Question'}:** {item.get('answer') or 'Not answered'}"
+            for item in list(packet.get("questions") or [])
+        ]
+        testimony_lines = [
+            f"- **{item.get('title') or 'Testimony'}** ({item.get('claim_element_id') or 'unmapped'}): {item.get('content') or ''}".strip()
+            for item in testimony
+        ]
+        document_lines = [
+            f"- **{item.get('title') or 'Document'}** ({item.get('claim_element_id') or 'unmapped'}): {item.get('content') or ''}".strip()
+            for item in documents
+        ]
+        relief_lines = [f"- {item}" for item in requested_relief]
+        sections = [
+            f"# {draft.get('title') or packet.get('title') or 'Complaint Packet'}",
+            "",
+            f"Claim type: {packet.get('claim_type') or 'retaliation'}",
+            f"User ID: {packet.get('user_id') or 'unknown'}",
+            f"Exported at: {packet.get('exported_at') or _utc_now()}",
+            "",
+            "## Working Case Synopsis",
+            packet.get("case_synopsis") or "No case synopsis recorded.",
+            "",
+            "## Complaint Draft",
+            draft.get("body") or "No complaint body available.",
+            "",
+            "## Requested Relief",
+            "\n".join(relief_lines) if relief_lines else "- No requested relief recorded.",
+            "",
+            "## Intake Answers",
+            "\n".join(question_lines) if question_lines else "- No intake answers recorded.",
+            "",
+            "## Evidence",
+            "### Testimony",
+            "\n".join(testimony_lines) if testimony_lines else "- No testimony saved.",
+            "",
+            "### Documents",
+            "\n".join(document_lines) if document_lines else "- No documents saved.",
+            "",
+            "## Review Overview",
+            f"- Supported elements: {overview.get('supported_elements') or 0}",
+            f"- Missing elements: {overview.get('missing_elements') or 0}",
+            f"- Testimony items: {overview.get('testimony_items') or 0}",
+            f"- Document items: {overview.get('document_items') or 0}",
+        ]
+        return "\n".join(sections).strip() + "\n"
+
+    def _escape_pdf_text(self, value: str) -> str:
+        return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    def _build_packet_pdf_bytes(self, packet: Dict[str, Any], markdown_text: str) -> bytes:
+        title = str((packet.get("draft") or {}).get("title") or packet.get("title") or "Complaint Packet")
+        lines = [title, ""] + [line[:100] for line in markdown_text.splitlines() if line.strip()]
+        lines = lines[:38]
+        content_lines = ["BT", "/F1 12 Tf", "72 780 Td"]
+        for index, line in enumerate(lines):
+            safe_line = self._escape_pdf_text(line)
+            if index == 0:
+                content_lines.append(f"({safe_line}) Tj")
+            else:
+                content_lines.append(f"0 -18 Td ({safe_line}) Tj")
+        content_lines.append("ET")
+        content_stream = "\n".join(content_lines).encode("utf-8")
+
+        objects = [
+            b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+            b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+            b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
+            b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+            f"5 0 obj << /Length {len(content_stream)} >> stream\n".encode("utf-8") + content_stream + b"\nendstream endobj\n",
+        ]
+
+        output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        offsets = [0]
+        for obj in objects:
+            offsets.append(len(output))
+            output.extend(obj)
+        xref_start = len(output)
+        output.extend(f"xref\n0 {len(offsets)}\n".encode("utf-8"))
+        output.extend(b"0000000000 65535 f \n")
+        for offset in offsets[1:]:
+            output.extend(f"{offset:010d} 00000 n \n".encode("utf-8"))
+        output.extend(
+            f"trailer << /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_start}\n%%EOF\n".encode("utf-8")
+        )
+        return bytes(output)
+
+    def _build_export_artifacts(self, packet: Dict[str, Any]) -> Dict[str, Any]:
+        draft = dict(packet.get("draft") or {})
+        filename_root = _slugify_filename(draft.get("title") or packet.get("title") or "complaint-packet")
+        markdown_text = self._build_packet_markdown(packet)
+        pdf_bytes = self._build_packet_pdf_bytes(packet, markdown_text)
+        json_text = json.dumps(packet, indent=2, sort_keys=True)
+        return {
+            "json": {
+                "filename": f"{filename_root}.json",
+                "content_type": "application/json",
+                "size_bytes": len(json_text.encode("utf-8")),
+            },
+            "markdown": {
+                "filename": f"{filename_root}.md",
+                "content_type": "text/markdown",
+                "size_bytes": len(markdown_text.encode("utf-8")),
+                "content": markdown_text,
+                "excerpt": markdown_text[:2000],
+            },
+            "pdf": {
+                "filename": f"{filename_root}.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": len(pdf_bytes),
+                "header_b64": b64encode(pdf_bytes[:32]).decode("ascii"),
+            },
+        }
 
     def get_session(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         normalized_user_id = str(user_id or DEFAULT_USER_ID)
@@ -577,8 +705,10 @@ class ComplaintWorkspaceService:
             "draft": draft,
             "exported_at": _utc_now(),
         }
+        artifacts = self._build_export_artifacts(packet)
         return {
             "packet": packet,
+            "artifacts": artifacts,
             "packet_summary": {
                 "question_count": len(packet["questions"]),
                 "answered_question_count": len([item for item in packet["questions"] if item.get("is_answered")]),
@@ -588,8 +718,37 @@ class ComplaintWorkspaceService:
                 "document_items": int((review.get("overview") or {}).get("document_items") or 0),
                 "has_draft": bool(state.get("draft")),
                 "complaint_readiness": self.get_complaint_readiness(user_id),
+                "artifact_formats": sorted(artifacts.keys()),
             },
         }
+
+    def build_export_artifact(self, user_id: Optional[str], output_format: str = "json") -> Dict[str, Any]:
+        payload = self.export_complaint_packet(user_id)
+        packet = payload.get("packet") or {}
+        artifacts = payload.get("artifacts") or {}
+        normalized_format = str(output_format or "json").strip().lower()
+        if normalized_format == "json":
+            filename = ((artifacts.get("json") or {}).get("filename")) or "complaint-packet.json"
+            body = json.dumps(packet, indent=2, sort_keys=True).encode("utf-8")
+            return {"filename": filename, "media_type": "application/json", "body": body}
+        if normalized_format in {"markdown", "md"}:
+            artifact = artifacts.get("markdown") or {}
+            content = artifact.get("content") or self._build_packet_markdown(packet)
+            return {
+                "filename": artifact.get("filename") or "complaint-packet.md",
+                "media_type": "text/markdown",
+                "body": str(content).encode("utf-8"),
+            }
+        if normalized_format == "pdf":
+            artifact = artifacts.get("markdown") or {}
+            markdown_text = artifact.get("content") or self._build_packet_markdown(packet)
+            pdf_bytes = self._build_packet_pdf_bytes(packet, str(markdown_text))
+            return {
+                "filename": ((artifacts.get("pdf") or {}).get("filename")) or "complaint-packet.pdf",
+                "media_type": "application/pdf",
+                "body": pdf_bytes,
+            }
+        raise ValueError(f"Unsupported complaint export format: {output_format}")
 
     def submit_intake_answers(self, user_id: Optional[str], answers: Dict[str, Any]) -> Dict[str, Any]:
         state = self._load_state(str(user_id or DEFAULT_USER_ID))

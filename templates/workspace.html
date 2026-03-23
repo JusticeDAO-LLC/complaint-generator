@@ -1477,7 +1477,8 @@
                         <button class="primary" id="generate-draft-button" type="button">Generate First Draft</button>
                         <button class="secondary" id="save-draft-button" type="button">Save Draft Changes</button>
                         <button class="secondary" id="export-packet-button" type="button">Export Complaint Packet</button>
-                        <button class="secondary" id="download-packet-button" type="button" disabled>Download Exported Complaint</button>
+                        <button class="secondary" id="download-packet-markdown-button" type="button" data-output-format="markdown" disabled>Download Markdown</button>
+                        <button class="secondary" id="download-packet-pdf-button" type="button" data-output-format="pdf" disabled>Download PDF</button>
                         <button class="secondary" id="reset-session-button" type="button">Reset Workspace</button>
                     </div>
                     <div class="soft-note" id="draft-soft-note">Treat the first draft as a working document. Review is still the place to decide whether the record behind it feels strong enough.</div>
@@ -1537,7 +1538,8 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
-                                <button class="secondary" id="download-packet-tool-button" type="button" disabled>Download Exported Complaint</button>
+                                <button class="secondary" id="download-packet-tool-markdown-button" type="button" data-output-format="markdown" disabled>Download Markdown</button>
+                                <button class="secondary" id="download-packet-tool-pdf-button" type="button" data-output-format="pdf" disabled>Download PDF</button>
                             </div>
                             <div class="field-grid">
                                 <div>
@@ -2411,8 +2413,10 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
 
         function syncPacketDownloadState() {
             const downloadButtons = [
-                document.getElementById('download-packet-button'),
-                document.getElementById('download-packet-tool-button'),
+                document.getElementById('download-packet-markdown-button'),
+                document.getElementById('download-packet-pdf-button'),
+                document.getElementById('download-packet-tool-markdown-button'),
+                document.getElementById('download-packet-tool-pdf-button'),
             ].filter(Boolean);
             if (!latestPacketExport || !latestPacketExport.packet) {
                 downloadButtons.forEach((button) => {
@@ -2423,12 +2427,12 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 return;
             }
             const packet = latestPacketExport.packet;
-            const suggestedName = `${slugifyFilename(packet.title || 'complaint-packet')}.json`;
-            const downloadUrl = client.downloadComplaintPacketUrl(workspaceUserId);
             downloadButtons.forEach((button) => {
+                const outputFormat = (button.dataset.outputFormat || '').trim() || 'markdown';
+                const suffix = outputFormat === 'pdf' ? 'pdf' : 'md';
                 button.disabled = false;
-                button.dataset.downloadFilename = suggestedName;
-                button.dataset.downloadUrl = downloadUrl;
+                button.dataset.downloadFilename = `${slugifyFilename(packet.title || 'complaint-packet')}.${suffix}`;
+                button.dataset.downloadUrl = client.downloadComplaintPacketUrl(workspaceUserId, outputFormat);
             });
         }
 
@@ -3383,22 +3387,19 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setStatus('Complaint packet exported.');
         }
 
-        function downloadPacket() {
+        function downloadPacket(event) {
             if (!latestPacketExport) {
                 setStatus('Export the complaint packet before downloading it.');
                 return;
             }
-            const preferredButton = document.getElementById('download-packet-tool-button');
-            const fallbackButton = document.getElementById('download-packet-button');
-            const filenameSource = [preferredButton, fallbackButton].find((button) => button && button.dataset.downloadFilename);
-            const urlSource = [preferredButton, fallbackButton].find((button) => button && button.dataset.downloadUrl);
-            if (!urlSource || !urlSource.dataset.downloadUrl) {
+            const trigger = event && event.currentTarget ? event.currentTarget : null;
+            if (!trigger || !trigger.dataset.downloadUrl) {
                 setStatus('Export the complaint packet before downloading it.');
                 return;
             }
             const link = document.createElement('a');
-            link.href = urlSource.dataset.downloadUrl;
-            link.download = (filenameSource && filenameSource.dataset.downloadFilename) || 'complaint-packet.json';
+            link.href = trigger.dataset.downloadUrl;
+            link.download = trigger.dataset.downloadFilename || 'complaint-packet.md';
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -3545,13 +3546,15 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('export-packet-button').addEventListener('click', exportPacket);
-        document.getElementById('download-packet-button').addEventListener('click', downloadPacket);
+        document.getElementById('download-packet-markdown-button').addEventListener('click', downloadPacket);
+        document.getElementById('download-packet-pdf-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
         document.getElementById('refresh-complaint-readiness-button').addEventListener('click', refreshComplaintReadinessPanel);
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
-        document.getElementById('download-packet-tool-button').addEventListener('click', downloadPacket);
+        document.getElementById('download-packet-tool-markdown-button').addEventListener('click', downloadPacket);
+        document.getElementById('download-packet-tool-pdf-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);

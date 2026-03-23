@@ -205,10 +205,13 @@ class ComplaintMcpClient {
         });
     }
 
-    downloadComplaintPacketUrl(userId) {
+    downloadComplaintPacketUrl(userId, outputFormat) {
         const url = new URL(`${this.baseUrl}/export/download`, this.origin);
         if (userId) {
             url.searchParams.set('user_id', userId);
+        }
+        if (outputFormat) {
+            url.searchParams.set('output_format', outputFormat);
         }
         return url.toString();
     }

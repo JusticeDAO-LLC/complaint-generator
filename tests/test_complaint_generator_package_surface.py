@@ -208,6 +208,9 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     export_payload = export_complaint_packet("package-wrapper-user", service=service)
     tools_payload = list_mcp_tools(service=service)
     assert export_payload["packet_summary"]["has_draft"] is True
+    assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
+    assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
+    assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
     assert any(tool["name"] == "complaint.run_browser_audit" for tool in tools_payload["tools"])
 
     reset_payload = reset_session("package-wrapper-user", service=service)

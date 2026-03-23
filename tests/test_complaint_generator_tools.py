@@ -306,6 +306,10 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert export_payload["packet"]["draft"]["title"] == "Updated MCP complaint"
     assert export_payload["packet_summary"]["has_draft"] is True
     assert "complaint_readiness" in export_payload["packet_summary"]
+    assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
+    assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
+    assert "Jordan Example" in export_payload["artifacts"]["markdown"]["content"]
+    assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
 
     synopsis_payload = _call_mcp_tool(
         service,
