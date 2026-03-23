@@ -3,14 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Lex Publicus helps clients prepare a legal complaint through guided intake, evidence collection, support review, drafting, and revision.">
+    <meta name="description" content="Lex Publicus Complaint Generator guides clients through secure intake, factual development, support review, and complaint drafting.">
     <title>Lex Publicus Complaint Generator</title>
+    <link rel="stylesheet" href="/static/complaint_app_shell.css">
     <script defer src="/static/complaint_mcp_sdk.js"></script>
+    <script defer src="/static/complaint_app_shell.js"></script>
     <style>
         :root {
             --bg-top: #f7f0e4;
-            --bg-bottom: #eee3d3;
-            --paper: rgba(255, 252, 247, 0.95);
+            --bg-bottom: #ede2d1;
+            --paper: rgba(255, 252, 247, 0.96);
             --paper-strong: #fffdfa;
             --line: rgba(84, 59, 37, 0.12);
             --ink: #1f1b16;
@@ -26,31 +28,27 @@
             --radius-xl: 28px;
             --radius-lg: 22px;
             --radius-md: 16px;
-            --content-width: 1220px;
+            --content-width: 1180px;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
             color: var(--ink);
-            font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+            font-family: "Segoe UI", Arial, sans-serif;
             background:
                 radial-gradient(circle at top left, rgba(212, 139, 87, 0.24), transparent 30%),
                 radial-gradient(circle at 84% 0%, rgba(74, 126, 95, 0.1), transparent 18%),
                 linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
         }
 
-        a {
-            color: inherit;
-        }
+        a { color: inherit; }
 
         .page {
-            width: min(var(--content-width), calc(100% - 32px));
+            width: min(var(--content-width), calc(100% - 24px));
             margin: 0 auto;
-            padding: 24px 0 72px;
+            padding: 18px 0 52px;
         }
 
         .topbar,
@@ -58,38 +56,48 @@
         .resume-card,
         .panel,
         .step-card,
-        .support-card {
+        .route-card {
             background: var(--paper);
             border: 1px solid var(--line);
             box-shadow: var(--shadow);
-            backdrop-filter: blur(14px);
+            backdrop-filter: blur(12px);
         }
 
         .topbar {
+            padding: 18px 20px;
+            border-radius: 24px;
+        }
+
+        .topbar-row,
+        .surface-links,
+        .cta-row,
+        .resume-actions {
             display: flex;
             flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .topbar-row {
             justify-content: space-between;
             align-items: center;
-            gap: 16px;
-            padding: 20px 22px;
-            border-radius: 999px;
+            gap: 14px;
         }
 
         .brand {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
         }
 
         .brand-mark {
-            width: 52px;
-            height: 52px;
-            border-radius: 18px;
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
             display: grid;
             place-items: center;
             background: linear-gradient(135deg, #8c2f0d, #d16d33);
             color: #fff8f3;
-            font: 800 24px/1 "Segoe UI", Arial, sans-serif;
+            font: 800 22px/1 "Segoe UI", Arial, sans-serif;
         }
 
         .brand-copy {
@@ -97,70 +105,65 @@
             gap: 4px;
         }
 
-        .eyebrow,
-        .brand-eyebrow,
-        .step-eyebrow {
+        .eyebrow {
             color: var(--accent);
-            font: 800 11px/1.25 "Segoe UI", Arial, sans-serif;
+            font-size: 11px;
+            font-weight: 800;
             letter-spacing: 0.16em;
             text-transform: uppercase;
         }
 
         .brand-title {
-            font: 800 20px/1.2 "Segoe UI", Arial, sans-serif;
+            font-size: 20px;
+            font-weight: 800;
         }
 
         .brand-subtitle {
             color: var(--muted);
-            font: 14px/1.45 "Segoe UI", Arial, sans-serif;
-            max-width: 46ch;
+            font-size: 14px;
+            line-height: 1.45;
+            max-width: 48ch;
+        }
+
+        .topbar-note,
+        .surface-link,
+        .primary-cta,
+        .secondary-cta,
+        .resume-link,
+        .route-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0 16px;
+            border-radius: 999px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 700;
         }
 
         .topbar-note {
-            padding: 10px 14px;
-            border-radius: 999px;
             background: rgba(255, 248, 241, 0.92);
             border: 1px solid rgba(154, 61, 19, 0.12);
             color: var(--accent-deep);
-            font: 700 13px/1.3 "Segoe UI", Arial, sans-serif;
         }
 
-        .process-menu {
-            display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-            gap: 12px;
-            margin-top: 16px;
+        .surface-links {
+            margin-top: 12px;
         }
 
-        .process-step {
-            display: grid;
-            gap: 6px;
-            padding: 16px 18px;
-            border-radius: var(--radius-lg);
-            background: rgba(255, 249, 243, 0.88);
-            border: 1px solid rgba(154, 61, 19, 0.1);
-            text-decoration: none;
-        }
-
-        .process-step strong,
-        .process-step span {
-            display: block;
-        }
-
-        .process-step strong {
-            font: 700 15px/1.3 "Segoe UI", Arial, sans-serif;
-        }
-
-        .process-step span {
-            color: var(--muted);
-            font: 13px/1.45 "Segoe UI", Arial, sans-serif;
+        .surface-link {
+            background: rgba(255, 249, 243, 0.9);
+            border: 1px solid rgba(84, 59, 37, 0.1);
+            color: var(--accent-deep);
+            font-size: 13px;
         }
 
         .hero {
             display: grid;
-            grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-            gap: 22px;
-            margin-top: 18px;
+            grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+            gap: 18px;
+            margin-top: 16px;
             align-items: start;
         }
 
@@ -168,68 +171,49 @@
         .resume-card,
         .panel {
             border-radius: var(--radius-xl);
-            padding: 30px;
+            padding: 26px;
+        }
+
+        h1, h2, h3 {
+            margin: 0;
+            font-family: "Iowan Old Style", Georgia, serif;
+            letter-spacing: -0.03em;
         }
 
         h1 {
-            margin: 12px 0 0;
-            max-width: 12ch;
-            font-size: clamp(1.95rem, 3.2vw, 3.1rem);
-            line-height: 0.98;
-            letter-spacing: -0.04em;
+            margin-top: 10px;
+            max-width: 9ch;
+            font-size: clamp(2.3rem, 4vw, 3.8rem);
+            line-height: 0.95;
+        }
+
+        .lead,
+        .resume-copy,
+        .step-card p,
+        .route-card p,
+        .panel p,
+        .metric-detail,
+        .hero-point span {
+            color: var(--muted);
+            line-height: 1.6;
         }
 
         .lead {
-            max-width: 58ch;
             margin: 16px 0 0;
-            color: var(--muted);
-            font: 1.03rem/1.65 "Segoe UI", Arial, sans-serif;
+            max-width: 58ch;
+            font-size: 1rem;
         }
 
-        .hero-points {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 12px;
-            margin-top: 24px;
-        }
-
-        .hero-point {
-            padding: 16px;
-            border-radius: var(--radius-md);
-            background: rgba(255, 247, 238, 0.92);
-            border: 1px solid rgba(84, 59, 37, 0.1);
-        }
-
-        .hero-point strong {
-            display: block;
-            margin-bottom: 8px;
-            font: 700 14px/1.3 "Segoe UI", Arial, sans-serif;
-        }
-
-        .hero-point span {
-            color: var(--muted);
-            font: 14px/1.5 "Segoe UI", Arial, sans-serif;
-        }
-
-        .cta-row,
-        .resume-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 22px;
+        .cta-row {
+            margin-top: 18px;
         }
 
         .primary-cta,
         .secondary-cta,
-        .resume-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
+        .resume-link,
+        .route-link {
             min-height: 48px;
             padding: 0 18px;
-            border-radius: 999px;
-            text-decoration: none;
-            font: 700 14px/1.25 "Segoe UI", Arial, sans-serif;
         }
 
         .primary-cta {
@@ -239,10 +223,35 @@
         }
 
         .secondary-cta,
-        .resume-link {
+        .resume-link,
+        .route-link {
             background: rgba(255, 255, 255, 0.92);
             border: 1px solid rgba(84, 59, 37, 0.12);
             color: var(--ink);
+        }
+
+        .hero-points {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .hero-point,
+        .step-card,
+        .route-card {
+            padding: 16px;
+            border-radius: var(--radius-lg);
+            background: rgba(255, 247, 238, 0.92);
+            border: 1px solid rgba(84, 59, 37, 0.1);
+        }
+
+        .hero-point strong,
+        .step-card h3,
+        .route-card h3 {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 15px;
         }
 
         .resume-card {
@@ -250,12 +259,32 @@
             border-color: rgba(33, 77, 60, 0.15);
         }
 
-        .session-banner {
-            padding: 14px 16px;
-            border-radius: var(--radius-md);
-            background: var(--info-bg);
-            color: var(--info-ink);
-            font: 14px/1.55 "Segoe UI", Arial, sans-serif;
+        .resume-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .resume-title {
+            margin-top: 8px;
+            font: 700 18px/1.25 "Segoe UI", Arial, sans-serif;
+        }
+
+        .resume-copy {
+            margin-top: 8px;
+            font-size: 14px;
+        }
+
+        .status-badge {
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--forest-soft);
+            color: var(--forest);
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
         }
 
         .resume-grid {
@@ -266,7 +295,7 @@
         }
 
         .metric {
-            padding: 16px;
+            padding: 14px;
             border-radius: var(--radius-md);
             background: rgba(255, 255, 255, 0.88);
             border: 1px solid rgba(33, 77, 60, 0.12);
@@ -276,7 +305,6 @@
         .metric-value,
         .metric-detail {
             display: block;
-            font-family: "Segoe UI", Arial, sans-serif;
         }
 
         .metric-label {
@@ -297,136 +325,83 @@
 
         .metric-detail {
             margin-top: 6px;
-            color: var(--muted);
             font-size: 13px;
-            line-height: 1.45;
         }
 
         .recommended-step {
-            margin-top: 16px;
-            padding: 16px;
+            margin-top: 14px;
+            padding: 14px 16px;
             border-radius: var(--radius-md);
-            background: rgba(255, 248, 241, 0.9);
-            border: 1px solid rgba(154, 61, 19, 0.12);
+            background: var(--info-bg);
+            color: var(--info-ink);
         }
 
         .recommended-step strong {
             display: block;
             margin-bottom: 8px;
-            color: var(--accent-deep);
-            font: 700 14px/1.3 "Segoe UI", Arial, sans-serif;
+            font-size: 14px;
         }
 
         .recommended-step span {
-            color: var(--muted);
-            font: 14px/1.5 "Segoe UI", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .resume-actions {
+            margin-top: 14px;
         }
 
         .section {
-            margin-top: 28px;
+            margin-top: 18px;
         }
 
         .section-heading {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            gap: 14px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .section-heading h2 {
-            margin: 8px 0 0;
-            font-size: clamp(1.85rem, 3.2vw, 2.85rem);
-            line-height: 1;
-            letter-spacing: -0.03em;
+            margin-top: 8px;
+            font-size: clamp(1.8rem, 3vw, 2.7rem);
+            line-height: 1.02;
         }
 
         .section-heading p {
-            margin: 0;
-            max-width: 56ch;
+            margin: 10px 0 0;
+            max-width: 62ch;
             color: var(--muted);
-            font: 1rem/1.65 "Segoe UI", Arial, sans-serif;
-        }
-
-        .step-grid,
-        .support-grid {
-            display: grid;
-            gap: 14px;
+            font-size: 1rem;
+            line-height: 1.6;
         }
 
         .step-grid {
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
-
-        .step-card,
-        .support-card {
-            padding: 22px;
-            border-radius: var(--radius-lg);
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
         }
 
         .step-number {
-            width: 38px;
-            height: 38px;
+            width: 36px;
+            height: 36px;
             display: grid;
             place-items: center;
             border-radius: 50%;
             background: var(--accent-soft);
             color: var(--accent-deep);
-            font: 800 14px/1 "Segoe UI", Arial, sans-serif;
-            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 800;
+            margin-bottom: 10px;
         }
 
-        .step-card h3,
-        .support-card h3 {
-            margin: 0 0 10px;
-            font: 700 1.05rem/1.3 "Segoe UI", Arial, sans-serif;
-        }
-
-        .step-card p,
-        .support-card p,
-        .support-card li {
-            margin: 0;
-            color: var(--muted);
-            font: 15px/1.56 "Segoe UI", Arial, sans-serif;
-        }
-
-        .support-grid {
-            grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
-        }
-
-        .support-list {
-            margin: 14px 0 0;
-            padding-left: 20px;
+        .routes-grid {
             display: grid;
-            gap: 10px;
-        }
-
-        .footer-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 18px;
-        }
-
-        .footer-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 42px;
-            padding: 0 16px;
-            border-radius: 999px;
-            background: rgba(255, 249, 243, 0.88);
-            border: 1px solid rgba(84, 59, 37, 0.12);
-            color: var(--accent-deep);
-            text-decoration: none;
-            font: 700 13px/1.25 "Segoe UI", Arial, sans-serif;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
         }
 
         @media (max-width: 1120px) {
-            .process-menu,
             .hero,
             .step-grid,
-            .support-grid,
+            .routes-grid,
             .hero-points {
                 grid-template-columns: 1fr;
             }
@@ -434,7 +409,7 @@
 
         @media (max-width: 760px) {
             .page {
-                width: min(var(--content-width), calc(100% - 22px));
+                width: min(var(--content-width), calc(100% - 18px));
                 padding-top: 14px;
             }
 
@@ -446,20 +421,32 @@
                 padding: 22px;
             }
 
+            .topbar-row,
+            .surface-links,
+            .cta-row,
+            .resume-actions {
+                flex-direction: column;
+            }
+
             .resume-grid {
                 grid-template-columns: 1fr;
             }
 
-            .cta-row,
-            .resume-actions,
-            .footer-links {
-                flex-direction: column;
+            .surface-links {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+            }
+
+            .surface-link {
+                width: auto;
+                flex: 0 0 auto;
             }
 
             .primary-cta,
             .secondary-cta,
             .resume-link,
-            .footer-link {
+            .route-link,
+            .topbar-note {
                 width: 100%;
             }
         }
@@ -468,82 +455,70 @@
 <body data-complaint-shell="off">
     <div class="page">
         <header class="topbar">
-            <div class="brand">
-                <div class="brand-mark">LP</div>
-                <div class="brand-copy">
-                    <span class="brand-eyebrow">Guided Legal Complaint Preparation</span>
-                    <span class="brand-title">Lex Publicus</span>
-                    <span class="brand-subtitle">A guided path from intake to evidence to draft, designed to help a client prepare a complaint without guessing where to go next.</span>
+            <div class="topbar-row">
+                <div class="brand">
+                    <div class="brand-mark">LP</div>
+                    <div class="brand-copy">
+                        <span class="eyebrow">Guided Legal Complaint Preparation</span>
+                        <span class="brand-title">Lex Publicus</span>
+                        <span class="brand-subtitle">A clearer first step for legal clients who need to move from intake to support review to drafting without getting lost.</span>
+                    </div>
                 </div>
+                <div class="topbar-note">Use this page to start, resume, or review a complaint. Everything else is secondary.</div>
             </div>
-            <div class="topbar-note">Progress is saved on this device through your complaint workspace identity.</div>
-        </header>
 
-        <nav class="process-menu" data-surface-nav="primary" aria-label="Complaint process menu">
-            <a class="process-step" href="/workspace">
-                <span class="step-eyebrow">Step 1</span>
-                <strong>Start Intake</strong>
-                <span>Answer guided questions about what happened.</span>
-            </a>
-            <a class="process-step" href="/workspace">
-                <span class="step-eyebrow">Step 2</span>
-                <strong>Add Evidence</strong>
-                <span>Attach documents and testimony to the complaint.</span>
-            </a>
-            <a class="process-step" href="/claim-support-review">
-                <span class="step-eyebrow">Step 3</span>
-                <strong>Review Support</strong>
-                <span>Check what claim elements still need proof.</span>
-            </a>
-            <a class="process-step" href="/document">
-                <span class="step-eyebrow">Step 4</span>
-                <strong>Draft Complaint</strong>
-                <span>Generate the complaint after the facts are organized.</span>
-            </a>
-            <a class="process-step" href="/mlwysiwyg">
-                <span class="step-eyebrow">Step 5</span>
-                <strong>Edit Final Draft</strong>
-                <span>Revise the complaint language before filing or review.</span>
-            </a>
-        </nav>
+            <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint process menu">
+                <a class="surface-link" href="/home">Secure Intake</a>
+                <a class="surface-link" href="/workspace">Workspace</a>
+                <a class="surface-link" href="/claim-support-review">Review</a>
+                <a class="surface-link" href="/document">Builder</a>
+                <a class="surface-link" href="/chat">Chat</a>
+            </nav>
+        </header>
 
         <section class="hero">
             <article class="hero-card">
-                <span class="eyebrow">Client-Facing Entry Point</span>
-                <h1>Prepare your complaint in the order a real case should be built.</h1>
+                <span class="eyebrow">Client-Safe Entry Point</span>
+                <h1>Lex Publicus Complaint Generator</h1>
                 <p class="lead">
-                    Start with the story, connect the evidence, review what support is missing, then move into drafting.
-                    This homepage is meant to guide a legal client through the process, not overwhelm them with internal tooling or disconnected dashboards.
+                    Build your complaint one step at a time. Start in secure intake, answer guided questions about what happened,
+                    review whether the case is actually supported, and then move into drafting.
                 </p>
                 <div class="cta-row">
-                    <a class="primary-cta" id="homepage-open-workspace" href="/workspace">Start Guided Complaint Intake</a>
-                    <a class="secondary-cta" id="homepage-open-review" href="/claim-support-review">Review Claim Support</a>
-                    <a class="secondary-cta" href="#resume-panel">Resume This Device</a>
+                    <a class="primary-cta" id="homepage-open-intake" href="/home">Start Secure Intake</a>
+                    <a class="secondary-cta" id="homepage-open-workspace" href="/workspace">Resume Complaint</a>
+                    <a class="secondary-cta" href="/claim-support-review">Review Support First</a>
                 </div>
                 <div class="hero-points">
                     <div class="hero-point">
-                        <strong>One clear path</strong>
-                        <span>The process menu above mirrors the actual complaint workflow from intake to final editing.</span>
+                        <strong>Start with the facts</strong>
+                        <span>Clients explain what happened in plain language before the system ever asks them to draft.</span>
                     </div>
                     <div class="hero-point">
-                        <strong>Evidence before drafting</strong>
-                        <span>The site encourages proof review before a client relies on the generated complaint text.</span>
+                        <strong>Check support before drafting</strong>
+                        <span>The workflow is meant to surface proof gaps before a complaint is generated.</span>
                     </div>
                     <div class="hero-point">
-                        <strong>Resume where you left off</strong>
-                        <span>Your browser identity reconnects the homepage to the same complaint session used by the rest of the generator.</span>
+                        <strong>Return without confusion</strong>
+                        <span>The same session follows the user across intake, workspace, review, and builder.</span>
                     </div>
                 </div>
             </article>
 
             <aside class="resume-card" id="resume-panel">
-                <span class="eyebrow">Resume Your Complaint</span>
-                <div class="session-banner" id="homepage-session-status">Connecting to the complaint workspace on this device.</div>
+                <div class="resume-header">
+                    <div>
+                        <span class="eyebrow">Continue From This Device</span>
+                        <h2 class="resume-title">Resume an existing complaint</h2>
+                        <p class="resume-copy">If this browser already has a complaint session, the best next step appears here.</p>
+                    </div>
+                    <span class="status-badge" id="homepage-session-badge">Loading</span>
+                </div>
                 <div class="resume-grid">
                     <div class="metric">
                         <span class="metric-label">Identity</span>
                         <span class="metric-value" id="homepage-did">Checking session...</span>
-                        <span class="metric-detail" id="homepage-session-badge">Loading</span>
+                        <span class="metric-detail" id="homepage-session-status">Connecting to the complaint workspace on this device.</span>
                     </div>
                     <div class="metric">
                         <span class="metric-label">MCP Tools</span>
@@ -563,13 +538,12 @@
                 </div>
                 <div class="recommended-step">
                     <strong>Recommended next step</strong>
-                    <span id="homepage-next-step">Open the workspace to start a new complaint intake session.</span>
+                    <span id="homepage-next-step">Open secure intake to create an account, or resume the complaint workspace from this device.</span>
                 </div>
                 <div class="resume-actions">
-                    <a class="resume-link" id="homepage-resume-link" href="/workspace">Resume In Workspace</a>
+                    <a class="resume-link" id="homepage-resume-link" href="/workspace">Open Workspace</a>
                     <a class="resume-link" id="homepage-resume-review" href="/claim-support-review">Open Review</a>
                     <a class="resume-link" href="/document">Open Builder</a>
-                    <a class="resume-link" href="/mlwysiwyg">Open Editor</a>
                 </div>
             </aside>
         </section>
@@ -577,32 +551,25 @@
         <section class="section">
             <div class="panel">
                 <div class="section-heading">
-                    <div>
-                        <span class="eyebrow">How The Process Works</span>
-                        <h2>A simpler guided path through the complaint generator</h2>
-                    </div>
-                    <p>The homepage should tell a client what to do first, what to do next, and where to go when they return. These steps are the complaint process in plain language.</p>
+                    <span class="eyebrow">Three Simple Steps</span>
+                    <h2>A guided path through the complaint process</h2>
+                    <p>The homepage should tell a legal client what to do first, what to do next, and where to go when they return.</p>
                 </div>
                 <div class="step-grid">
                     <article class="step-card">
                         <div class="step-number">1</div>
                         <h3>Start intake</h3>
-                        <p>Capture the parties, timeline, protected activity, adverse action, and harm in a guided form before trying to draft anything.</p>
+                        <p>Create an account or resume one, then capture the parties, timeline, adverse action, and harm.</p>
                     </article>
                     <article class="step-card">
                         <div class="step-number">2</div>
-                        <h3>Organize evidence</h3>
-                        <p>Add documents and testimony to the complaint record so the system can connect facts to the claim elements they support.</p>
+                        <h3>Build the record</h3>
+                        <p>Use chat or workspace to organize facts and supporting evidence before relying on generated text.</p>
                     </article>
                     <article class="step-card">
                         <div class="step-number">3</div>
-                        <h3>Review support gaps</h3>
-                        <p>Use the review surface to see what legal elements are still weak before relying on a draft as final.</p>
-                    </article>
-                    <article class="step-card">
-                        <div class="step-number">4</div>
-                        <h3>Draft and revise</h3>
-                        <p>Generate the complaint only after the factual record is organized, then refine the result in the editor.</p>
+                        <h3>Review, then draft</h3>
+                        <p>Open review to see support gaps, then move into the builder once the complaint is ready.</p>
                     </article>
                 </div>
             </div>
@@ -611,35 +578,31 @@
         <section class="section">
             <div class="panel">
                 <div class="section-heading">
-                    <div>
-                        <span class="eyebrow">Before You Begin</span>
-                        <h2>What a client should know before using this tool</h2>
-                    </div>
-                    <p>The homepage should set expectations clearly, rather than throwing a client into technical navigation without context.</p>
+                    <span class="eyebrow">Choose Your Next Step</span>
+                    <h2>Only the routes a client or operator actually needs</h2>
+                    <p>This page now keeps the decision surface small: start intake, resume the complaint, review support, or open the builder.</p>
                 </div>
-                <div class="support-grid">
-                    <article class="support-card">
-                        <h3>What to gather first</h3>
-                        <ul class="support-list">
-                            <li>Names of the parties and the organization you are complaining against.</li>
-                            <li>A short timeline of what happened and when it happened.</li>
-                            <li>Messages, documents, notes, or testimony that support the complaint.</li>
-                            <li>The harm you suffered and what relief you may seek.</li>
-                        </ul>
+                <div class="routes-grid">
+                    <article class="route-card">
+                        <h3>New client</h3>
+                        <p>Start with account setup and secure intake.</p>
+                        <a class="route-link" href="/home">Open secure intake</a>
                     </article>
-                    <article class="support-card">
-                        <h3>How this site helps</h3>
-                        <ul class="support-list">
-                            <li>It keeps intake, evidence, review, drafting, and editing connected through one complaint session.</li>
-                            <li>It saves progress on this device through the same browser identity used across the complaint generator.</li>
-                            <li>It helps organize the complaint, but the result should still be reviewed by counsel or the filing person before submission.</li>
-                        </ul>
+                    <article class="route-card">
+                        <h3>Returning client</h3>
+                        <p>Resume the complaint session and continue the guided workflow.</p>
+                        <a class="route-link" href="/workspace">Open workspace</a>
                     </article>
-                </div>
-                <div class="footer-links">
-                    <a class="footer-link" href="/document/optimization-trace">View Optimization Trace</a>
-                    <a class="footer-link" href="/ipfs-datasets/sdk-playground">Open SDK Playground</a>
-                    <a class="footer-link" href="/dashboards">View Dashboard Hub</a>
+                    <article class="route-card">
+                        <h3>Operator review</h3>
+                        <p>Inspect support gaps and complaint readiness before drafting.</p>
+                        <a class="route-link" href="/claim-support-review">Open review</a>
+                    </article>
+                    <article class="route-card">
+                        <h3>Drafting</h3>
+                        <p>Generate or revise the formal complaint when the record is ready.</p>
+                        <a class="route-link" href="/document">Open builder</a>
+                    </article>
                 </div>
             </div>
         </section>
@@ -668,13 +631,12 @@
                 const reviewOverview = overview(payload);
                 const evidenceCount = Number(reviewOverview.testimony_items || 0) + Number(reviewOverview.document_items || 0);
                 const missing = Number(reviewOverview.missing_elements || 0);
-                const supported = Number(reviewOverview.supported_elements || 0);
                 const draft = payload && payload.session ? payload.session.draft : null;
 
                 if (answered < 6) {
                     return {
                         href: '/workspace',
-                        label: answered > 0 ? 'Resume Guided Intake' : 'Start Guided Complaint Intake',
+                        label: answered > 0 ? 'Resume Complaint' : 'Start Secure Intake',
                         detail: 'Continue the guided intake so the complaint has a complete factual record before drafting.',
                     };
                 }
@@ -682,7 +644,7 @@
                 if (evidenceCount === 0 || missing > 0) {
                     return {
                         href: '/claim-support-review',
-                        label: 'Review Claim Support',
+                        label: 'Review Support First',
                         detail: 'Inspect missing claim elements and add supporting evidence before relying on the draft.',
                     };
                 }
@@ -690,24 +652,21 @@
                 if (!draft) {
                     return {
                         href: '/document',
-                        label: 'Generate Complaint Draft',
+                        label: 'Open Builder',
                         detail: 'Your intake and support record are in place. Move into the builder to generate the complaint text.',
                     };
                 }
 
                 return {
-                    href: '/mlwysiwyg',
-                    label: 'Edit Final Draft',
-                    detail: supported > 0
-                        ? 'A complaint draft already exists. Open the editor to refine the final language.'
-                        : 'Open the editor to continue revising the complaint draft.',
+                    href: '/document',
+                    label: 'Return To Draft',
+                    detail: 'A complaint draft already exists. Continue revising the draft.',
                 };
             }
 
             async function hydrateHomepageSession() {
                 const badge = document.getElementById('homepage-session-badge');
                 const workspaceLink = document.getElementById('homepage-open-workspace');
-                const reviewLink = document.getElementById('homepage-open-review');
                 const resumeLink = document.getElementById('homepage-resume-link');
 
                 try {
@@ -741,11 +700,8 @@
                         workspaceLink.href = action.href;
                         workspaceLink.textContent = action.label;
                     }
-                    if (reviewLink) {
-                        reviewLink.href = '/claim-support-review';
-                    }
                     if (resumeLink) {
-                        resumeLink.href = action.href === '/claim-support-review' || action.href === '/document' || action.href === '/mlwysiwyg'
+                        resumeLink.href = action.href === '/claim-support-review' || action.href === '/document'
                             ? action.href
                             : '/workspace';
                     }
@@ -757,9 +713,13 @@
                     setText('homepage-supported-count', '0');
                     setText('homepage-evidence-count', '0');
                     setText('homepage-session-status', 'The complaint workspace is not connected yet on this device.');
-                    setText('homepage-next-step', 'Open the workspace to begin a guided complaint intake session.');
+                    setText('homepage-next-step', 'Open secure intake to create an account, or resume the complaint workspace from this device.');
                     if (badge) {
                         badge.textContent = 'Offline';
+                    }
+                    if (workspaceLink) {
+                        workspaceLink.href = '/workspace';
+                        workspaceLink.textContent = 'Resume Complaint';
                     }
                 }
             }
