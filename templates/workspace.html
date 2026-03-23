@@ -1500,6 +1500,7 @@
                         <button class="secondary" id="save-draft-button" type="button">Save Draft Changes</button>
                         <button class="secondary" id="export-packet-button" type="button">Export Complaint Packet</button>
                         <button class="secondary" id="download-packet-markdown-button" type="button" data-output-format="markdown" disabled>Download Markdown</button>
+                        <button class="secondary" id="download-packet-docx-button" type="button" data-output-format="docx" disabled>Download DOCX</button>
                         <button class="secondary" id="download-packet-pdf-button" type="button" data-output-format="pdf" disabled>Download PDF</button>
                         <button class="secondary" id="reset-session-button" type="button">Reset Workspace</button>
                     </div>
@@ -1567,6 +1568,7 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="analyze-complaint-output-button" type="button">Analyze Exported Complaint</button>
                                 <button class="secondary" id="review-generated-exports-button" type="button">Run Export Critic</button>
                                 <button class="secondary" id="download-packet-tool-markdown-button" type="button" data-output-format="markdown" disabled>Download Markdown</button>
+                                <button class="secondary" id="download-packet-tool-docx-button" type="button" data-output-format="docx" disabled>Download DOCX</button>
                                 <button class="secondary" id="download-packet-tool-pdf-button" type="button" data-output-format="pdf" disabled>Download PDF</button>
                             </div>
                             <div class="field-grid">
@@ -1590,6 +1592,10 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>Packet Export Summary</label>
                                 <div class="status draft-preview-shell"><pre id="packet-export-summary">No packet export run yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Formal Complaint Release Gate</label>
+                                <div class="status draft-preview-shell"><pre id="formal-complaint-release-gate">No export release-gate review run yet.</pre></div>
                             </div>
                             <div>
                                 <label>Complaint Output UI Suggestions</label>
@@ -2420,6 +2426,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const complaintReadinessNode = document.getElementById('complaint-readiness-preview');
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
+            const releaseGateNode = document.getElementById('formal-complaint-release-gate');
             const outputAnalysisNode = document.getElementById('complaint-output-analysis-preview');
             const claimAlignmentNode = document.getElementById('claim-alignment-preview');
 
@@ -2487,8 +2494,18 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                         ? 'Claim type appears aligned.'
                         : 'Complaint may be drifting into the wrong legal theory.',
                 };
+                releaseGateNode.textContent = JSON.stringify({
+                    verdict: releaseVerdict || 'unknown',
+                    reason: String(releaseGate.reason || '').trim() || 'No release-gate reason provided yet.',
+                    claim_type_label: String(releaseGate.claim_type_label || '').trim() || 'Unknown',
+                    draft_strategy: String(releaseGate.draft_strategy || '').trim() || 'template',
+                    filing_shape_score: Number(releaseGate.filing_shape_score || 0),
+                    claim_type_alignment_score: Number(releaseGate.claim_type_alignment_score || 0),
+                    draft_fallback_reason: String((((latestPacketExport || {}).packet || {}).draft || {}).draft_fallback_reason || '').trim(),
+                }, null, 2);
                 claimAlignmentNode.textContent = JSON.stringify(claimAlignmentSummary, null, 2);
             } else {
+                releaseGateNode.textContent = 'No export release-gate review run yet.';
                 outputAnalysisNode.textContent = 'No complaint-output analysis run yet.';
                 claimAlignmentNode.textContent = 'No claim-alignment review run yet.';
             }
@@ -2497,8 +2514,10 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         function syncPacketDownloadState() {
             const downloadButtons = [
                 document.getElementById('download-packet-markdown-button'),
+                document.getElementById('download-packet-docx-button'),
                 document.getElementById('download-packet-pdf-button'),
                 document.getElementById('download-packet-tool-markdown-button'),
+                document.getElementById('download-packet-tool-docx-button'),
                 document.getElementById('download-packet-tool-pdf-button'),
             ].filter(Boolean);
             if (!latestPacketExport || !latestPacketExport.packet) {
@@ -2512,7 +2531,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const packet = latestPacketExport.packet;
             downloadButtons.forEach((button) => {
                 const outputFormat = (button.dataset.outputFormat || '').trim() || 'markdown';
-                const suffix = outputFormat === 'pdf' ? 'pdf' : 'md';
+                const suffix = outputFormat === 'pdf' ? 'pdf' : outputFormat === 'docx' ? 'docx' : 'md';
                 button.disabled = false;
                 button.dataset.downloadFilename = `${slugifyFilename(packet.title || 'complaint-packet')}.${suffix}`;
                 button.dataset.downloadUrl = client.downloadComplaintPacketUrl(workspaceUserId, outputFormat);
@@ -3664,6 +3683,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('export-packet-button').addEventListener('click', exportPacket);
         document.getElementById('download-packet-markdown-button').addEventListener('click', downloadPacket);
+        document.getElementById('download-packet-docx-button').addEventListener('click', downloadPacket);
         document.getElementById('download-packet-pdf-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
         document.getElementById('refresh-complaint-readiness-button').addEventListener('click', refreshComplaintReadinessPanel);
@@ -3673,6 +3693,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('review-generated-exports-button').addEventListener('click', reviewGeneratedExportsPanel);
         document.getElementById('export-packet-tool-button').addEventListener('click', exportPacket);
         document.getElementById('download-packet-tool-markdown-button').addEventListener('click', downloadPacket);
+        document.getElementById('download-packet-tool-docx-button').addEventListener('click', downloadPacket);
         document.getElementById('download-packet-tool-pdf-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);

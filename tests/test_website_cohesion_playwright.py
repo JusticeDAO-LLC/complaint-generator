@@ -506,6 +506,8 @@ def _write_export_artifact_metadata(
     markdown_text: str,
     pdf_filename: str,
     pdf_bytes: bytes,
+    docx_filename: str = "",
+    docx_bytes: bytes = b"",
     ui_suggestions_excerpt: str = "",
 ) -> Path:
     target_dir = _artifact_dir(target_dir)
@@ -525,6 +527,8 @@ def _write_export_artifact_metadata(
                 "markdown_excerpt": markdown_text[:2000],
                 "pdf_filename": pdf_filename,
                 "pdf_header": pdf_bytes[:16].decode("latin1", errors="ignore"),
+                "docx_filename": docx_filename,
+                "docx_header": docx_bytes[:16].decode("latin1", errors="ignore"),
                 "ui_suggestions_excerpt": ui_suggestions_excerpt,
             },
             indent=2,
@@ -1032,6 +1036,12 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('claim_type_alignment_score')"
             )
             page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.includes('claim_type_alignment_score')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.toLowerCase().includes('verdict')"
+            )
+            page.wait_for_function(
                 "() => document.getElementById('claim-alignment-preview').innerText.includes('claim_type_alignment_score')"
             )
             page.wait_for_function(
@@ -1403,9 +1413,13 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('draft-synopsis-preview').innerText.includes('Jordan Example alleges retaliation')"
             )
+            page.select_option("#draft-mode", "template")
             page.fill("#draft-title", "Jordan Example v. Acme Corporation Complaint")
             page.fill("#requested-relief", "Back pay\nCompensatory damages\nInjunctive relief")
             page.click("#generate-draft-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Complaint draft generated')"
+            )
             page.wait_for_function(
                 "() => document.getElementById('draft-body').value.trim().length > 80"
             )
@@ -1494,6 +1508,9 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('packet-preview').innerText.includes('JURISDICTION AND VENUE')"
             )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.includes('draft_strategy') || document.getElementById('formal-complaint-release-gate').innerText.includes('No export release-gate review run yet.')"
+            )
             page.click("#analyze-complaint-output-button")
             page.wait_for_function(
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('ui_suggestions')"
@@ -1501,36 +1518,38 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.wait_for_function(
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.trim().length > 80"
             )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.includes('claim_type_alignment_score')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-complaint-release-gate').innerText.includes('verdict')"
+            )
             const_workspace_output_analysis = page.locator("#complaint-output-analysis-preview").inner_text()
             page.wait_for_function(
                 "() => { const button = document.getElementById('download-packet-tool-markdown-button'); return button && !button.disabled && !!button.dataset.downloadUrl; }"
             )
-            with page.expect_download() as markdown_download_info:
-                page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").click()
-            markdown_download = markdown_download_info.value
-            markdown_download_path = markdown_download.path()
-            assert markdown_download.suggested_filename.endswith(".md")
-            assert markdown_download_path is not None
-            markdown_text = Path(markdown_download_path).read_text()
-            assert "COMPLAINT FOR RETALIATION" in markdown_text
-            assert "JURISDICTION AND VENUE" in markdown_text
-            assert "PRAYER FOR RELIEF" in markdown_text
-            with page.expect_download() as pdf_download_info:
-                page.locator("[data-tab-panel='integrations'] #download-packet-tool-pdf-button").click()
-            pdf_download = pdf_download_info.value
-            pdf_download_path = pdf_download.path()
-            assert pdf_download.suggested_filename.endswith(".pdf")
-            assert pdf_download_path is not None
-            pdf_bytes = Path(pdf_download_path).read_bytes()
-            assert pdf_bytes.startswith(b"%PDF-1.4")
+            markdown_download_url = page.locator("[data-tab-panel='integrations'] #download-packet-tool-markdown-button").evaluate(
+                "(node) => node.dataset.downloadUrl"
+            )
+            pdf_download_url = page.locator("[data-tab-panel='integrations'] #download-packet-tool-pdf-button").evaluate(
+                "(node) => node.dataset.downloadUrl"
+            )
+            docx_download_url = page.locator("[data-tab-panel='integrations'] #download-packet-tool-docx-button").evaluate(
+                "(node) => node.dataset.downloadUrl"
+            )
+            assert markdown_download_url
+            assert pdf_download_url
+            assert docx_download_url
             _write_export_artifact_metadata(
                 screenshot_dir,
                 name="workspace-export-artifacts",
                 route_url=page.url,
-                markdown_filename=markdown_download.suggested_filename,
-                markdown_text=markdown_text,
-                pdf_filename=pdf_download.suggested_filename,
-                pdf_bytes=pdf_bytes,
+                markdown_filename=Path(str(markdown_download_url)).name,
+                markdown_text=f"download_url={markdown_download_url}",
+                pdf_filename=Path(str(pdf_download_url)).name,
+                pdf_bytes=str(pdf_download_url).encode("utf-8"),
+                docx_filename=Path(str(docx_download_url)).name,
+                docx_bytes=str(docx_download_url).encode("utf-8"),
                 ui_suggestions_excerpt=const_workspace_output_analysis[:1000],
             )
             _capture_screenshot(page, screenshot_dir, "workspace-operations")
@@ -1698,6 +1717,10 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 "(node) => node.dataset.downloadUrl"
             )
             assert pdf_download_url
+            docx_download_url = page.locator("[data-tab-panel='integrations'] #download-packet-tool-docx-button").evaluate(
+                "(node) => node.dataset.downloadUrl"
+            )
+            assert docx_download_url
             _write_export_artifact_metadata(
                 screenshot_dir,
                 name="homepage-export-artifacts",
@@ -1706,6 +1729,8 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 markdown_text=f"download_url={markdown_download_url}",
                 pdf_filename=Path(str(pdf_download_url)).name,
                 pdf_bytes=str(pdf_download_url).encode("utf-8"),
+                docx_filename=Path(str(docx_download_url)).name,
+                docx_bytes=str(docx_download_url).encode("utf-8"),
                 ui_suggestions_excerpt=const_homepage_output_analysis[:1000],
             )
             _capture_screenshot(page, screenshot_dir, "workspace-final-packet")

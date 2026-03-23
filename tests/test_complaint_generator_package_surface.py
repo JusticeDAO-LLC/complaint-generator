@@ -237,6 +237,10 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     tools_payload = list_mcp_tools(service=service)
     assert export_payload["packet_summary"]["has_draft"] is True
     assert export_payload["packet_summary"]["artifact_formats"] == ["json", "markdown", "pdf"]
+    assert export_payload["packet_summary"]["draft_strategy"] == "template"
+    assert isinstance(export_payload["packet_summary"]["release_gate"], dict)
+    assert "verdict" in export_payload["packet_summary"]["release_gate"]
+    assert "claim_type_alignment_score" in export_payload["packet_summary"]
     assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
     assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
     assert export_payload["ui_feedback"]["ui_suggestions"]

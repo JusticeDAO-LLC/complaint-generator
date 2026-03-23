@@ -105,6 +105,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.export_complaint_docx": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
     "complaint.export_complaint_pdf": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},

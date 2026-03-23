@@ -158,6 +158,11 @@ def export_markdown(user_id: str = "demo-user") -> None:
     _print(service.export_complaint_markdown(user_id))
 
 
+@app.command("export-docx")
+def export_docx(user_id: str = "demo-user") -> None:
+    _print(service.export_complaint_docx(user_id))
+
+
 @app.command("export-pdf")
 def export_pdf(user_id: str = "demo-user") -> None:
     _print(service.export_complaint_pdf(user_id))

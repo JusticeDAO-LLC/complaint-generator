@@ -5,11 +5,14 @@ import re
 import signal
 import threading
 import uuid
+import zipfile
 from base64 import b64encode
 from copy import deepcopy
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from xml.sax.saxutils import escape
 
 
 DEFAULT_USER_ID = "did:key:anonymous"
@@ -936,11 +939,73 @@ class ComplaintWorkspaceService:
         )
         return bytes(output)
 
+    def _build_packet_docx_bytes(self, packet: Dict[str, Any], markdown_text: str) -> bytes:
+        title = str((packet.get("draft") or {}).get("title") or packet.get("title") or "Complaint Packet")
+        paragraphs = [title, ""] + str(markdown_text or "").replace("\r\n", "\n").split("\n")
+
+        def _paragraph_xml(text: str) -> str:
+            if not str(text or ""):
+                return "<w:p/>"
+            return (
+                "<w:p><w:r><w:t xml:space=\"preserve\">"
+                f"{escape(str(text))}"
+                "</w:t></w:r></w:p>"
+            )
+
+        document_xml = (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+            "<w:body>"
+            f"{''.join(_paragraph_xml(item) for item in paragraphs)}"
+            "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/></w:sectPr>"
+            "</w:body></w:document>"
+        )
+        content_types_xml = (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+            "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+            "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+            "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+            "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>"
+            "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>"
+            "</Types>"
+        )
+        root_rels_xml = (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+            "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>"
+            "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>"
+            "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>"
+            "</Relationships>"
+        )
+        app_xml = (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">"
+            "<Application>Complaint Workspace</Application>"
+            "</Properties>"
+        )
+        core_xml = (
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+            f"<dc:title>{escape(title)}</dc:title>"
+            "<dc:creator>Complaint Workspace</dc:creator>"
+            "</cp:coreProperties>"
+        )
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("[Content_Types].xml", content_types_xml)
+            archive.writestr("_rels/.rels", root_rels_xml)
+            archive.writestr("docProps/app.xml", app_xml)
+            archive.writestr("docProps/core.xml", core_xml)
+            archive.writestr("word/document.xml", document_xml)
+        return buffer.getvalue()
+
     def _build_export_artifacts(self, packet: Dict[str, Any]) -> Dict[str, Any]:
         draft = dict(packet.get("draft") or {})
         filename_root = _slugify_filename(draft.get("title") or packet.get("title") or "complaint-packet")
         markdown_text = self._build_packet_markdown(packet)
         pdf_bytes = self._build_packet_pdf_bytes(packet, markdown_text)
+        docx_bytes = self._build_packet_docx_bytes(packet, markdown_text)
         json_text = json.dumps(packet, indent=2, sort_keys=True)
         return {
             "json": {
@@ -954,6 +1019,11 @@ class ComplaintWorkspaceService:
                 "size_bytes": len(markdown_text.encode("utf-8")),
                 "content": markdown_text,
                 "excerpt": markdown_text[:2000],
+            },
+            "docx": {
+                "filename": f"{filename_root}.docx",
+                "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "size_bytes": len(docx_bytes),
             },
             "pdf": {
                 "filename": f"{filename_root}.pdf",
@@ -1268,6 +1338,7 @@ class ComplaintWorkspaceService:
             "has_case_synopsis": bool(str(packet.get("case_synopsis") or "").strip()),
         }
         ui_feedback = self._analyze_complaint_output(packet, artifact_analysis)
+        draft_fallback_reason = str(draft.get("draft_fallback_reason") or "").strip()
         return {
             "packet": packet,
             "artifacts": artifacts,
@@ -1281,7 +1352,12 @@ class ComplaintWorkspaceService:
                 "testimony_items": int((review.get("overview") or {}).get("testimony_items") or 0),
                 "document_items": int((review.get("overview") or {}).get("document_items") or 0),
                 "has_draft": bool(state.get("draft")),
+                "draft_strategy": str(draft.get("draft_strategy") or "template"),
+                "draft_fallback_reason": draft_fallback_reason,
                 "complaint_readiness": self.get_complaint_readiness(user_id),
+                "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
+                "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+                "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
                 "artifact_formats": sorted(artifacts.keys()),
             },
         }
@@ -1759,6 +1835,21 @@ class ComplaintWorkspaceService:
             "artifact_analysis": deepcopy(packet_payload.get("artifact_analysis") or {}),
         }
 
+    def export_complaint_docx(self, user_id: Optional[str]) -> Dict[str, Any]:
+        artifact = self.build_export_artifact(user_id, "docx")
+        packet_payload = self.export_complaint_packet(user_id)
+        return {
+            "artifact": {
+                "format": "docx",
+                "filename": artifact["filename"],
+                "media_type": artifact["media_type"],
+                "size_bytes": len(artifact["body"]),
+                "header_b64": b64encode(artifact["body"][:32]).decode("ascii"),
+            },
+            "packet_summary": deepcopy(packet_payload.get("packet_summary") or {}),
+            "artifact_analysis": deepcopy(packet_payload.get("artifact_analysis") or {}),
+        }
+
     def build_export_artifact(self, user_id: Optional[str], output_format: str = "json") -> Dict[str, Any]:
         payload = self.export_complaint_packet(user_id)
         packet = payload.get("packet") or {}
@@ -1784,6 +1875,15 @@ class ComplaintWorkspaceService:
                 "filename": ((artifacts.get("pdf") or {}).get("filename")) or "complaint-packet.pdf",
                 "media_type": "application/pdf",
                 "body": pdf_bytes,
+            }
+        if normalized_format == "docx":
+            artifact = artifacts.get("markdown") or {}
+            markdown_text = artifact.get("content") or self._build_packet_markdown(packet)
+            docx_bytes = self._build_packet_docx_bytes(packet, str(markdown_text))
+            return {
+                "filename": ((artifacts.get("docx") or {}).get("filename")) or "complaint-packet.docx",
+                "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "body": docx_bytes,
             }
         raise ValueError(f"Unsupported complaint export format: {output_format}")
 
@@ -1928,6 +2028,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
                 {"name": "complaint.export_complaint_packet", "description": "Export the current lawsuit complaint packet with intake, evidence, review, and draft content."},
                 {"name": "complaint.export_complaint_markdown", "description": "Export the generated complaint as a downloadable Markdown artifact."},
+                {"name": "complaint.export_complaint_docx", "description": "Export the generated complaint as a downloadable DOCX artifact."},
                 {"name": "complaint.export_complaint_pdf", "description": "Export the generated complaint as a downloadable PDF artifact."},
                 {"name": "complaint.analyze_complaint_output", "description": "Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions."},
                 {"name": "complaint.review_generated_exports", "description": "Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions."},
@@ -2006,6 +2107,8 @@ class ComplaintWorkspaceService:
             return self.export_complaint_packet(args.get("user_id"))
         if tool_name == "complaint.export_complaint_markdown":
             return self.export_complaint_markdown(args.get("user_id"))
+        if tool_name == "complaint.export_complaint_docx":
+            return self.export_complaint_docx(args.get("user_id"))
         if tool_name == "complaint.export_complaint_pdf":
             return self.export_complaint_pdf(args.get("user_id"))
         if tool_name == "complaint.analyze_complaint_output":

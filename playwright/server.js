@@ -541,6 +541,9 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
         filename: `${slugifyFilename(draft.title || 'complaint-packet')}.md`,
         content: markdownContent,
       },
+      docx: {
+        filename: `${slugifyFilename(draft.title || 'complaint-packet')}.docx`,
+      },
       pdf: {
         filename: `${slugifyFilename(draft.title || 'complaint-packet')}.pdf`,
       },
@@ -554,7 +557,7 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       document_items: sessionPayload.review.overview.document_items || 0,
       has_draft: Boolean(sessionPayload.draft),
       complaint_readiness: complaintReadinessPayload(userId),
-      artifact_formats: ['json', 'markdown', 'pdf'],
+      artifact_formats: ['json', 'markdown', 'docx', 'pdf'],
     },
     artifact_analysis: {
       draft_word_count: String(draft.body || '').split(/\s+/).filter(Boolean).length,
@@ -565,6 +568,94 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       has_case_synopsis: Boolean(String(sessionPayload.case_synopsis || '').trim()),
     },
   };
+}
+
+function escapeXml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function createStoredZipBuffer(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const [name, content] of files) {
+    const nameBuffer = Buffer.from(name, 'utf-8');
+    const contentBuffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
+    const localHeader = Buffer.alloc(30 + nameBuffer.length);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(0, 14);
+    localHeader.writeUInt32LE(contentBuffer.length, 18);
+    localHeader.writeUInt32LE(contentBuffer.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    nameBuffer.copy(localHeader, 30);
+
+    const centralHeader = Buffer.alloc(46 + nameBuffer.length);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(0, 16);
+    centralHeader.writeUInt32LE(contentBuffer.length, 20);
+    centralHeader.writeUInt32LE(contentBuffer.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    nameBuffer.copy(centralHeader, 46);
+
+    localParts.push(localHeader, contentBuffer);
+    centralParts.push(centralHeader);
+    offset += localHeader.length + contentBuffer.length;
+  }
+  const centralDirectory = Buffer.concat(centralParts);
+  const endRecord = Buffer.alloc(22);
+  endRecord.writeUInt32LE(0x06054b50, 0);
+  endRecord.writeUInt16LE(0, 4);
+  endRecord.writeUInt16LE(0, 6);
+  endRecord.writeUInt16LE(files.length, 8);
+  endRecord.writeUInt16LE(files.length, 10);
+  endRecord.writeUInt32LE(centralDirectory.length, 12);
+  endRecord.writeUInt32LE(offset, 16);
+  endRecord.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, centralDirectory, endRecord]);
+}
+
+function buildComplaintDocxBuffer(packet, markdownContent) {
+  const title = String((((packet || {}).draft || {}).title) || packet.title || 'Complaint Packet');
+  const paragraphs = [title, '', ...String(markdownContent || '').replace(/\r\n/g, '\n').split('\n')];
+  const documentXml = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+    paragraphs.map((line) => (
+      line ? `<w:p><w:r><w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r></w:p>` : '<w:p/>'
+    )).join('') +
+    '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>' +
+    '</w:body></w:document>'
+  );
+  return createStoredZipBuffer([
+    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>'],
+    ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>'],
+    ['docProps/app.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Complaint Workspace Stub</Application></Properties>'],
+    ['docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(title)}</dc:title><dc:creator>Complaint Workspace Stub</dc:creator></cp:coreProperties>`],
+    ['word/document.xml', documentXml],
+  ]);
 }
 
 function buildComplaintDownloadArtifact(userId = 'did:key:playwright-demo', outputFormat = 'json') {
@@ -593,6 +684,14 @@ function buildComplaintDownloadArtifact(userId = 'did:key:playwright-demo', outp
       filename: ((artifacts.pdf || {}).filename) || 'complaint-packet.pdf',
       mediaType: 'application/pdf',
       body: Buffer.from(pdfStub, 'utf-8'),
+    };
+  }
+  if (normalizedFormat === 'docx') {
+    const markdownContent = String((artifacts.markdown || {}).content || 'Complaint packet');
+    return {
+      filename: ((artifacts.docx || {}).filename) || 'complaint-packet.docx',
+      mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      body: buildComplaintDocxBuffer(packet, markdownContent),
     };
   }
   return buildComplaintDownloadArtifact(userId, 'json');

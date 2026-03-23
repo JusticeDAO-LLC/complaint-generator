@@ -224,6 +224,7 @@ def build_ui_ux_review_prompt(
                 "complaint_generator.export_complaint_packet, "
                 "complaint_generator.export_complaint_markdown, "
                 "complaint_generator.export_complaint_pdf, "
+                "complaint_generator.export_complaint_docx, "
                 "complaint_generator.analyze_complaint_output, "
                 "complaint_generator.review_generated_exports, "
                 "complaint_generator.update_case_synopsis, "
@@ -235,9 +236,9 @@ def build_ui_ux_review_prompt(
                 "complaint_generator.run_closed_loop_ui_ux_improvement, "
                 "complaint_generator.run_end_to_end_complaint_browser_audit, "
                 "complaint_generator.create_ui_review_report\n"
-                "CLI tools: complaint-generator, complaint-workspace, complaint-generator-workspace, complaint-mcp-server, complaint-workspace export-packet, complaint-workspace export-markdown, complaint-workspace export-pdf, complaint-workspace analyze-output, complaint-workspace review-ui, complaint-workspace optimize-ui, complaint-workspace browser-audit\n"
-                "MCP server tools: complaint.create_identity, complaint.list_intake_questions, complaint.list_claim_elements, complaint.start_session, complaint.submit_intake, complaint.save_evidence, complaint.review_case, complaint.build_mediator_prompt, complaint.get_workflow_capabilities, complaint.generate_complaint, complaint.update_draft, complaint.export_complaint_packet, complaint.export_complaint_markdown, complaint.export_complaint_pdf, complaint.analyze_complaint_output, complaint.review_generated_exports, complaint.update_case_synopsis, complaint.reset_session, complaint.review_ui, complaint.optimize_ui, complaint.run_browser_audit\n"
-                "Browser SDK: window.ComplaintMcpSdk.ComplaintMcpClient with bootstrapWorkspace(), getOrCreateDid(), callTool(), exportComplaintPacket(), exportComplaintMarkdown(), exportComplaintPdf(), analyzeComplaintOutput(), reviewGeneratedExports(), reviewUiArtifacts(), optimizeUiArtifacts(), and runBrowserAudit()"
+                "CLI tools: complaint-generator, complaint-workspace, complaint-generator-workspace, complaint-mcp-server, complaint-workspace export-packet, complaint-workspace export-markdown, complaint-workspace export-pdf, complaint-workspace export-docx, complaint-workspace analyze-output, complaint-workspace review-ui, complaint-workspace optimize-ui, complaint-workspace browser-audit\n"
+                "MCP server tools: complaint.create_identity, complaint.list_intake_questions, complaint.list_claim_elements, complaint.start_session, complaint.submit_intake, complaint.save_evidence, complaint.review_case, complaint.build_mediator_prompt, complaint.get_workflow_capabilities, complaint.generate_complaint, complaint.update_draft, complaint.export_complaint_packet, complaint.export_complaint_markdown, complaint.export_complaint_pdf, complaint.export_complaint_docx, complaint.analyze_complaint_output, complaint.review_generated_exports, complaint.update_case_synopsis, complaint.reset_session, complaint.review_ui, complaint.optimize_ui, complaint.run_browser_audit\n"
+                "Browser SDK: window.ComplaintMcpSdk.ComplaintMcpClient with bootstrapWorkspace(), getOrCreateDid(), callTool(), exportComplaintPacket(), exportComplaintMarkdown(), exportComplaintPdf(), exportComplaintDocx(), analyzeComplaintOutput(), reviewGeneratedExports(), reviewUiArtifacts(), optimizeUiArtifacts(), and runBrowserAudit()"
             ),
             "Current workspace HTML:",
             workspace_html,

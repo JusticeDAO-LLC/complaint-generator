@@ -10,6 +10,8 @@ async function writeComplaintExportArtifact({
   markdownText,
   pdfFilename,
   pdfBuffer,
+  docxFilename,
+  docxBuffer,
   uiSuggestionsExcerpt,
   claimType,
   draftStrategy,
@@ -38,6 +40,8 @@ async function writeComplaintExportArtifact({
     markdown_excerpt: String(markdownText || '').slice(0, 2000),
     pdf_filename: pdfFilename,
     pdf_header: Buffer.from(pdfBuffer || []).subarray(0, 16).toString('latin1'),
+    docx_filename: docxFilename,
+    docx_header: Buffer.from(docxBuffer || []).subarray(0, 16).toString('latin1'),
     ui_suggestions_excerpt: String(uiSuggestionsExcerpt || '').slice(0, 1000),
   };
   await fs.writeFile(metadataPath, JSON.stringify(payload, null, 2));
@@ -515,6 +519,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#packet-export-summary')).toContainText(/"has_draft": true/i);
     await expect(page.locator('#packet-export-summary')).toContainText(/"complaint_readiness":/i);
     await expect(page.locator('#packet-export-summary')).toContainText(/"artifact_formats":/i);
+    await expect(page.locator('#packet-export-summary')).toContainText(/docx/i);
     await expect(page.locator('#packet-preview')).toContainText(/Title: Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#packet-preview')).toContainText(/Taylor Smith brings this retaliation complaint against Acme Logistics\./i);
     await expect(page.locator('#packet-preview')).toContainText(/Civil Action No\./i);
@@ -559,12 +564,25 @@ test.describe('complaint generation workflow', () => {
     expect(pdfBody.subarray(0, 8).toString('utf-8')).toContain('%PDF-1.4');
     expect(pdfBody.toString('utf-8')).toContain('COMPLAINT FOR RETALIATION');
     expect(pdfBody.toString('utf-8')).toContain('SIGNATURE BLOCK');
+
+    const [docxDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#download-packet-tool-docx-button').click(),
+    ]);
+    const docxPath = testInfo.outputPath(docxDownload.suggestedFilename());
+    await docxDownload.saveAs(docxPath);
+    const docxBody = await fs.readFile(docxPath);
+    expect(docxDownload.suggestedFilename()).toMatch(/taylor-smith-v\.?-acme-logistics-retaliation-complaint\.docx$/i);
+    expect(docxBody.subarray(0, 2).toString('utf-8')).toBe('PK');
+
     await writeComplaintExportArtifact({
       routeUrl: page.url(),
       markdownFilename: markdownDownload.suggestedFilename(),
       markdownText: markdownBody,
       pdfFilename: pdfDownload.suggestedFilename(),
       pdfBuffer: pdfBody,
+      docxFilename: docxDownload.suggestedFilename(),
+      docxBuffer: docxBody,
       uiSuggestionsExcerpt: await page.locator('#complaint-output-analysis-preview').textContent(),
       claimType: 'retaliation',
       draftStrategy: 'llm_router',

@@ -210,6 +210,15 @@ def export_complaint_pdf(
     return _resolve_service(service, root_dir=root_dir).export_complaint_pdf(user_id)
 
 
+def export_complaint_docx(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).export_complaint_docx(user_id)
+
+
 def analyze_complaint_output(
     user_id: Optional[str],
     *,
@@ -381,6 +390,7 @@ __all__ = [
     "export_complaint_packet",
     "export_complaint_markdown",
     "export_complaint_pdf",
+    "export_complaint_docx",
     "analyze_complaint_output",
     "review_generated_exports",
     "update_claim_type",
