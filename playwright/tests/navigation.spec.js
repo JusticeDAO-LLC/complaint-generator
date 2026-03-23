@@ -150,6 +150,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#chat_history')).toBeVisible();
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Profile/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Results/i);
+    await expect(page.locator('#profile-open-chat')).toHaveAttribute('href', '/chat');
+    await expect(page.locator('#profile-open-trace')).toHaveAttribute('href', '/document/optimization-trace');
 
     const profileScreenshotPath = testInfo.outputPath('profile-overview.png');
     await page.screenshot({ path: profileScreenshotPath, fullPage: true });
@@ -166,6 +168,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#profile_data')).toBeVisible();
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Review/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
+    await expect(page.locator('#results-open-chat')).toHaveAttribute('href', '/chat');
+    await expect(page.locator('#results-open-trace')).toHaveAttribute('href', '/document/optimization-trace');
 
     const resultsScreenshotPath = testInfo.outputPath('results-overview.png');
     await page.screenshot({ path: resultsScreenshotPath, fullPage: true });
@@ -197,7 +201,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('a[href="/document"]').first()).toBeVisible();
 
     const screenshotPath = testInfo.outputPath('chat-handoff-overview.png');
-    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await page.locator('.page-shell').screenshot({ path: screenshotPath });
     await testInfo.attach('chat-handoff-overview', {
       path: screenshotPath,
       contentType: 'image/png',
@@ -283,28 +287,62 @@ test.describe('website surface navigation', () => {
   test('profile, results, and editor expose direct next-step actions instead of nav-only handoffs', async ({ page }) => {
     await page.goto('/profile');
     await expect(page.locator('[aria-label="Profile next steps"]')).toBeVisible();
+    await expect(page.locator('#profile-open-chat')).toBeVisible();
     await expect(page.locator('#profile-open-results')).toBeVisible();
     await expect(page.locator('#profile-open-review')).toBeVisible();
     await expect(page.locator('#profile-open-builder')).toBeVisible();
     await expect(page.locator('#profile-open-workspace')).toBeVisible();
+    await expect(page.locator('#profile-open-trace')).toBeVisible();
     await page.locator('#profile-open-results').click();
     await expect(page).toHaveURL(/\/results/);
 
     await expect(page.locator('[aria-label="Results next steps"]')).toBeVisible();
+    await expect(page.locator('#results-open-chat')).toBeVisible();
     await expect(page.locator('#results-open-workspace')).toBeVisible();
     await expect(page.locator('#results-open-review')).toBeVisible();
     await expect(page.locator('#results-open-builder')).toBeVisible();
     await expect(page.locator('#results-open-editor')).toBeVisible();
+    await expect(page.locator('#results-open-trace')).toBeVisible();
     await page.locator('#results-open-editor').click();
     await expect(page).toHaveURL(/\/mlwysiwyg/);
 
     await expect(page.locator('[aria-label="Editor next steps"]')).toBeVisible();
+    await expect(page.locator('body')).toContainText(/Return to the workspace for packet export, release-gate review, actor\/critic analysis/i);
     await expect(page.locator('#editor-open-workspace')).toBeVisible();
+    await expect(page.locator('#editor-open-tools')).toBeVisible();
     await expect(page.locator('#editor-open-review')).toBeVisible();
     await expect(page.locator('#editor-open-builder')).toBeVisible();
     await expect(page.locator('#editor-open-trace')).toBeVisible();
     await page.locator('#editor-open-trace').click();
     await expect(page).toHaveURL(/\/document\/optimization-trace/);
+  });
+
+  test('intake and review surfaces expose explicit next-step workflow actions', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.clear();
+        window.sessionStorage.clear();
+      } catch (error) {
+        // Ignore storage reset issues in the stub browser harness.
+      }
+    });
+    await page.goto('/home');
+    await expect(page.locator('[aria-label="Intake next steps"]')).toBeVisible();
+    await expect(page.locator('#intake-open-workspace')).toBeVisible();
+    await expect(page.locator('#intake-open-review')).toBeVisible();
+    await expect(page.locator('#intake-open-builder')).toBeVisible();
+    await expect(page.locator('#intake-open-editor')).toBeVisible();
+    await page.locator('#intake-open-review').click();
+    await expect(page).toHaveURL(/\/claim-support-review/);
+
+    await expect(page.locator('[aria-label="Review next steps"]')).toBeVisible();
+    await expect(page.locator('#review-open-workspace-link')).toBeVisible();
+    await expect(page.locator('#review-open-chat-link')).toBeVisible();
+    await expect(page.locator('#review-open-builder-link')).toBeVisible();
+    await expect(page.locator('#review-open-trace-link')).toBeVisible();
+    await page.locator('#review-open-builder-link').click();
+    await expect(page).toHaveURL(/\/document/);
   });
 
   test('dashboard hub and every mounted shell route are reachable in the JS stub surface', async ({ page }) => {

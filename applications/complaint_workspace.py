@@ -791,18 +791,18 @@ class ComplaintWorkspaceService:
                 "",
                 "EVIDENTIARY SUPPORT AND NOTICE",
                 (
-                    f"12. The current complaint record includes {evidence_count} saved evidence items, including testimony such as {testimony_summary}."
+                    f"12. Plaintiff presently relies on {evidence_count} identified evidentiary items, including testimony summarized as {testimony_summary}."
                 ),
                 (
-                    f"13. The current documentary record includes the following summarized exhibits or records: {document_summary}."
+                    f"13. Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: {document_summary}."
                 ),
                 (
-                    f"14. The present support review reflects {support_count} supported claim elements and {missing_count} open support gaps, "
-                    "which Plaintiff identifies so the pleading can be refined rather than to concede any deficiency in the claim."
+                    f"14. Based on the information presently available, Plaintiff contends that {support_count} core claim elements are already supported "
+                    f"and that {missing_count} areas may be further corroborated through discovery, amendment, or additional evidentiary development."
                 ),
                 (
-                    "15. Plaintiff incorporates the current testimony summaries, documentary exhibits, chronology notes, and support review findings "
-                    "as the preliminary exhibit and notice record for this pleading."
+                    "15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials are part of the evidentiary basis for this pleading "
+                    "and may be supplemented as discovery proceeds."
                 ),
                 *[
                     f"{16 + index}. {line}"

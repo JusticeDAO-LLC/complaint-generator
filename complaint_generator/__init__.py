@@ -4,13 +4,7 @@ from .apps import (
     create_review_dashboard_app,
     create_review_surface_app,
 )
-from .cli import app as complaint_workspace_cli_app
-from .cli import main as complaint_cli_main
-from .cli import main as complaint_workspace_cli_main
-from .entrypoints import main as complaint_generator_main
-from .entrypoints import run_main
 from .mcp import handle_jsonrpc_message, tool_list_payload
-from .mcp_server import main as complaint_mcp_server_main
 from .ui_ux_workflow import (
     build_ui_ux_review_prompt,
     collect_screenshot_artifacts,
@@ -109,3 +103,23 @@ __all__ = [
 ]
 
 __version__ = "0.1.0"
+
+_LAZY_EXPORTS = {
+    "complaint_workspace_cli_app": (".cli", "app"),
+    "complaint_cli_main": (".cli", "main"),
+    "complaint_workspace_cli_main": (".cli", "main"),
+    "complaint_mcp_server_main": (".mcp_server", "main"),
+    "complaint_generator_main": (".entrypoints", "main"),
+    "run_main": (".entrypoints", "run_main"),
+}
+
+
+def __getattr__(name: str):
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    module = __import__(f"{__name__}{module_name}", fromlist=[attribute_name])
+    value = getattr(module, attribute_name)
+    globals()[name] = value
+    return value

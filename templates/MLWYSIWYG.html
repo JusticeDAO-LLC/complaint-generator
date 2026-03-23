@@ -266,9 +266,10 @@
 
                 <section class="next-step-panel" aria-label="Editor next steps">
                     <h3>Connected next steps</h3>
-                    <p>Use the editor for quick text reshaping, then move back into the richer workflow surface that matches the job you need to do next.</p>
+                    <p>Use the editor for quick text reshaping only. Return to the workspace for packet export, release-gate review, actor/critic analysis, and the complaint MCP tool workflow.</p>
                     <div class="action-grid">
-                        <a class="action-link" id="editor-open-workspace" href="/workspace">Return to workspace</a>
+                        <a class="action-link" id="editor-open-workspace" href="/workspace?target_tab=draft">Return to workspace draft</a>
+                        <a class="action-link" id="editor-open-tools" href="/workspace?target_tab=integrations">Open workspace tools</a>
                         <a class="action-link" id="editor-open-review" href="/claim-support-review">Open review</a>
                         <a class="action-link" id="editor-open-builder" href="/document">Open builder</a>
                         <a class="action-link" id="editor-open-trace" href="/document/optimization-trace">Open trace</a>
@@ -280,7 +281,7 @@
                 <div class="preview-header">
                     <div>
                         <h2>Live Preview</h2>
-                        <div class="preview-meta">A quick editing surface linked into the same complaint website.</div>
+                        <div class="preview-meta">A quick editing surface linked into the same complaint website. Export review, release-gate checks, and optimizer actions still live in the workspace tools panel.</div>
                     </div>
                 </div>
                 <div id="draft-preview" class="draft-preview"></div>

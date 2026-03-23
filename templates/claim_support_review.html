@@ -145,6 +145,48 @@
             text-decoration: none;
         }
 
+        .next-step-panel {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.76);
+            border: 1px solid var(--line);
+        }
+
+        .next-step-panel h2 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+
+        .next-step-panel p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .next-step-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .next-step-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 10px 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 250, 242, 0.92);
+            color: var(--accent);
+            font-size: 0.92rem;
+            font-weight: 700;
+            text-decoration: none;
+            text-align: center;
+        }
+
         .stat {
             background: var(--panel-strong);
             border: 1px solid var(--line);
@@ -713,8 +755,9 @@
             }
 
             .control-grid,
-            .summary-grid,
-            .hero-stats {
+            .hero-guidance,
+            .hero-stats,
+            .next-step-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -768,6 +811,16 @@
                         <a class="surface-link" id="shared-case-synopsis-edit-link" href="/workspace?target_tab=intake&focus=case-synopsis">Edit case framing</a>
                     </div>
                 </div>
+                <section class="next-step-panel" aria-label="Review next steps">
+                    <h2>Connected next steps</h2>
+                    <p>When review shows what is missing, route the case deliberately instead of backing out through generic navigation.</p>
+                    <div class="next-step-grid">
+                        <a class="next-step-link" id="review-open-workspace-link" href="/workspace?target_tab=review">Return to workspace</a>
+                        <a class="next-step-link" id="review-open-chat-link" href="/chat?source=review">Open chat handoff</a>
+                        <a class="next-step-link" id="review-open-builder-link" href="/document">Open builder</a>
+                        <a class="next-step-link" id="review-open-trace-link" href="/document/optimization-trace">Open trace</a>
+                    </div>
+                </section>
                 <div class="hero-stats">
                     <div class="stat">
                         <span class="stat-label">Covered</span>
@@ -1307,6 +1360,52 @@
             link.href = `/workspace?${params.toString()}`;
         }
 
+        function updateReviewNextStepLinks(userId) {
+            const normalizedUserId = String(userId || '').trim();
+            const claimType = String(document.getElementById('claim-type').value || '').trim();
+            const workspaceLink = document.getElementById('review-open-workspace-link');
+            const chatLink = document.getElementById('review-open-chat-link');
+            const builderLink = document.getElementById('review-open-builder-link');
+            const traceLink = document.getElementById('review-open-trace-link');
+
+            const workspaceParams = new URLSearchParams();
+            if (normalizedUserId) {
+                workspaceParams.set('user_id', normalizedUserId);
+            }
+            workspaceParams.set('target_tab', 'review');
+            workspaceParams.set('status_message', 'Returned from review to the workspace.');
+            workspaceLink.href = `/workspace?${workspaceParams.toString()}`;
+
+            const chatParams = new URLSearchParams();
+            chatParams.set('source', 'review');
+            if (normalizedUserId) {
+                chatParams.set('user_id', normalizedUserId);
+            }
+            if (claimType) {
+                chatParams.set('claim_type', claimType);
+            }
+            chatParams.set('return_to', '/claim-support-review');
+            chatLink.href = `/chat?${chatParams.toString()}`;
+
+            const builderParams = new URLSearchParams();
+            if (normalizedUserId) {
+                builderParams.set('user_id', normalizedUserId);
+            }
+            if (claimType) {
+                builderParams.set('claim_type', claimType);
+            }
+            builderLink.href = builderParams.toString() ? `/document?${builderParams.toString()}` : '/document';
+
+            const traceParams = new URLSearchParams();
+            if (normalizedUserId) {
+                traceParams.set('user_id', normalizedUserId);
+            }
+            if (claimType) {
+                traceParams.set('claim_type', claimType);
+            }
+            traceLink.href = traceParams.toString() ? `/document/optimization-trace?${traceParams.toString()}` : '/document/optimization-trace';
+        }
+
         function getComplaintWorkspaceClient() {
             return window.ComplaintMcpSdk
                 ? new window.ComplaintMcpSdk.ComplaintMcpClient()
@@ -1325,6 +1424,7 @@
                 : null;
             const userId = requestedWorkspaceUserId || explicitUserId || cachedDid || null;
             updateSharedCaseSynopsisLink(userId);
+            updateReviewNextStepLinks(userId);
             if (!userId) {
                 renderSharedCaseSynopsisText('', 'Shared case framing');
                 return;
