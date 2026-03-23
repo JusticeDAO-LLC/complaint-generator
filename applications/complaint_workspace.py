@@ -623,13 +623,6 @@ class ComplaintWorkspaceService:
             for item in document_items[:3]
         ) or "No documentary exhibits have been summarized yet"
         complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
-        relief_description = {
-            "retaliation": "retaliation",
-            "employment_discrimination": "employment discrimination",
-            "housing_discrimination": "housing discrimination",
-            "due_process_failure": "due process violations",
-            "consumer_protection": "consumer-protection violations",
-        }.get(claim_type, "unlawful conduct")
         nature_of_action = {
             "retaliation": (
                 f"1. {plaintiff} brings this retaliation complaint against {defendant}. "
@@ -655,6 +648,31 @@ class ComplaintWorkspaceService:
             claim_type,
             f"1. {plaintiff} brings this {claim_label.lower()} complaint against {defendant}. "
             f"This civil action arises from unlawful conduct that injured {plaintiff}.",
+        )
+        relief_paragraph = {
+            "retaliation": (
+                f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, "
+                f"restore lost compensation, and address the harm flowing from {adverse_action}."
+            ),
+            "employment_discrimination": (
+                f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, "
+                f"restore lost opportunities, and address the harm flowing from {adverse_action}."
+            ),
+            "housing_discrimination": (
+                f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory housing practices, "
+                f"preserve housing stability, and address the harm flowing from {adverse_action}."
+            ),
+            "due_process_failure": (
+                f"2. Plaintiff seeks declaratory relief, equitable relief, damages, and such further relief as may be just to remedy the procedural deprivation "
+                f"and the harm flowing from {adverse_action}."
+            ),
+            "consumer_protection": (
+                f"2. Plaintiff seeks damages, restitution, equitable relief, and such further relief as may be just to remedy deceptive or unfair consumer practices "
+                f"and the harm flowing from {adverse_action}."
+            ),
+        }.get(
+            claim_type,
+            f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm flowing from {adverse_action}.",
         )
         jurisdiction_paragraph = {
             "retaliation": (
@@ -830,10 +848,7 @@ class ComplaintWorkspaceService:
                 "",
                 "NATURE OF THE ACTION",
                 nature_of_action,
-                (
-                    f"2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the {relief_description} "
-                    f"conduct, restore lost compensation, and prevent additional harm flowing from {adverse_action}."
-                ),
+                relief_paragraph,
                 "",
                 "JURISDICTION AND VENUE",
                 jurisdiction_paragraph,

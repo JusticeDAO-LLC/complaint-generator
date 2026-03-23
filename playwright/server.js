@@ -935,13 +935,6 @@ function generateWorkspaceDraft(workspaceState, requestedRelief, options = {}) {
   const countHeading = claimType === 'retaliation'
     ? 'COUNT I - RETALIATION'
     : `COUNT I - ${claimType.replace(/_/g, ' ').toUpperCase()}`;
-  const reliefDescription = {
-    retaliation: 'retaliation',
-    employment_discrimination: 'employment discrimination',
-    housing_discrimination: 'housing discrimination',
-    due_process_failure: 'due process violations',
-    consumer_protection: 'consumer-protection violations',
-  }[claimType] || 'unlawful conduct';
   const natureOfAction = {
     retaliation: `1. ${answers.party_name || 'Plaintiff'} brings this retaliation complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from ${answers.opposing_party || 'Defendant'}'s retaliatory response after ${answers.party_name || 'Plaintiff'} ${answers.protected_activity || 'engaged in protected activity'}.`,
     employment_discrimination: `1. ${answers.party_name || 'Plaintiff'} brings this employment discrimination complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from discriminatory workplace treatment, unequal terms or conditions, and resulting harm.`,
@@ -950,12 +943,12 @@ function generateWorkspaceDraft(workspaceState, requestedRelief, options = {}) {
     consumer_protection: `1. ${answers.party_name || 'Plaintiff'} brings this consumer protection complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unfair, deceptive, fraudulent, or otherwise unlawful business practices that caused injury.`,
   }[claimType] || `1. ${answers.party_name || 'Plaintiff'} brings this ${claimType.replace(/_/g, ' ')} complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unlawful conduct that injured ${answers.party_name || 'Plaintiff'} and is being framed in the correct claim-specific pleading posture.`;
   const reliefParagraph = {
-    retaliation: `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the ${reliefDescription}, restore lost compensation, and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`,
-    employment_discrimination: `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the ${reliefDescription}, restore lost opportunities, and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`,
-    housing_discrimination: `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the ${reliefDescription}, restore housing stability, and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`,
-    due_process_failure: `2. Plaintiff seeks damages, declaratory relief, equitable relief, and any further relief necessary to remedy the ${reliefDescription} and resulting harm flowing from ${answers.adverse_action || 'adverse action'}.`,
-    consumer_protection: `2. Plaintiff seeks damages, restitution, equitable relief, and any further relief necessary to remedy the ${reliefDescription} and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`,
-  }[claimType] || `2. Plaintiff seeks damages, equitable relief, and any further relief necessary to remedy the ${reliefDescription} and prevent additional harm flowing from ${answers.adverse_action || 'adverse action'}.`;
+    retaliation: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, restore lost compensation, and address the harm flowing from ${answers.adverse_action || 'adverse action'}.`,
+    employment_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, restore lost opportunities, and address the harm flowing from ${answers.adverse_action || 'adverse action'}.`,
+    housing_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory housing practices, preserve housing stability, and address the harm flowing from ${answers.adverse_action || 'adverse action'}.`,
+    due_process_failure: `2. Plaintiff seeks declaratory relief, equitable relief, damages, and such further relief as may be just to remedy the procedural deprivation and the harm flowing from ${answers.adverse_action || 'adverse action'}.`,
+    consumer_protection: `2. Plaintiff seeks damages, restitution, equitable relief, and such further relief as may be just to remedy deceptive or unfair consumer practices and the harm flowing from ${answers.adverse_action || 'adverse action'}.`,
+  }[claimType] || `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm flowing from ${answers.adverse_action || 'adverse action'}.`;
   const jurisdictionParagraph = {
     retaliation: '3. Jurisdiction is alleged in this Court because the controversy arises from retaliation for protected conduct and from the remedial obligations governing materially adverse acts taken in response to that conduct.',
     employment_discrimination: '3. Jurisdiction is alleged in this Court because the controversy arises from discriminatory employment practices, workplace bias, and related remedies for unlawful employment actions.',

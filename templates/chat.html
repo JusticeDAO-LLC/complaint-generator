@@ -346,6 +346,13 @@
             width: fit-content;
         }
 
+        .panel-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
         @media (max-width: 1120px) {
             .hero,
             .workspace-grid {
@@ -515,7 +522,10 @@
                     <div class="panel-card">
                         <h3>Profile and results</h3>
                         <p>Use these surfaces to inspect what the intake has already captured and how the complaint record is being structured.</p>
-                        <a class="action-link" id="chat-open-profile" href="/profile">Open profile</a>
+                        <div class="panel-actions">
+                            <a class="action-link" id="chat-open-profile" href="/profile">Open profile</a>
+                            <a class="action-link" id="chat-open-results" href="/results">Open results</a>
+                        </div>
                     </div>
                     <div class="panel-card">
                         <h3>Support review</h3>

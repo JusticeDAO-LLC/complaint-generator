@@ -657,6 +657,89 @@ def test_llm_draft_can_salvage_near_miss_formal_complaint_output(monkeypatch, tm
     assert "current complaint record" not in payload["draft"]["body"].lower()
 
 
+def test_llm_draft_normalizes_claim_specific_headings_for_housing_output(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-housing-normalize-sessions")
+    service.submit_intake_answers(
+        "llm-housing-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Housing Group",
+            "protected_activity": "Requested a reasonable accommodation and reported discriminatory housing treatment",
+            "adverse_action": "Was denied a lease renewal and housing assistance",
+            "timeline": "Requested accommodation in April and lost the housing opportunity in May.",
+            "harm": "Lost stable housing and incurred relocation costs.",
+        },
+    )
+    service.update_claim_type("llm-housing-user", "housing_discrimination")
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+
+        def __call__(self, prompt):
+            assert "Preferred complaint heading: COMPLAINT FOR HOUSING DISCRIMINATION" in prompt
+            assert "Preferred count heading: COUNT I - HOUSING DISCRIMINATION" in prompt
+            return json.dumps(
+                {
+                    "title": "Jordan Example v. Acme Housing Group Complaint",
+                    "body": (
+                        "IN THE UNITED STATES DISTRICT COURT\n\n"
+                        "Civil Action No. ________________\n"
+                        "COMPLAINT FOR RETALIATION OVERVIEW\n"
+                        "JURY TRIAL DEMANDED\n\n"
+                        "NATURE OF THE ACTION\n"
+                        "1. Plaintiff sought equal housing access and a reasonable accommodation.\n\n"
+                        "JURISDICTION AND VENUE\n"
+                        "2. Jurisdiction and venue are proper in this Court.\n\n"
+                        "PARTIES\n"
+                        "3. Plaintiff Jordan Example sought to retain housing rights protected by law.\n\n"
+                        "FACTUAL ALLEGATIONS\n"
+                        "4. Plaintiff requested a reasonable accommodation and reported discriminatory housing treatment.\n"
+                        "5. Defendant denied lease renewal and housing assistance soon after that protected activity.\n\n"
+                        "EVIDENTIARY SUPPORT AND NOTICE\n"
+                        "6. The current complaint record includes notices and correspondence supporting housing interference.\n\n"
+                        "CLAIM FOR RELIEF\n"
+                        "COUNT I - WRONG HEADING\n"
+                        "7. Defendant interfered with Plaintiff's housing rights after protected conduct.\n\n"
+                        "PRAYER FOR RELIEF\n"
+                        "8. Plaintiff seeks injunctive relief and damages.\n\n"
+                        "JURY DEMAND\n"
+                        "9. Plaintiff demands a jury trial.\n\n"
+                        "SIGNATURE BLOCK\n"
+                        "Jordan Example\n\n"
+                        "APPENDIX A - CASE SYNOPSIS\n"
+                        "Workflow summary prepared through the SDK."
+                    ),
+                    "requested_relief": ["Injunctive relief", "Damages"],
+                }
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = service.generate_complaint(
+        "llm-housing-user",
+        requested_relief=["Injunctive relief", "Damages"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert payload["draft"]["draft_backend"]["model"] == "stub-model"
+    assert "COMPLAINT FOR HOUSING DISCRIMINATION" in payload["draft"]["body"]
+    assert "COUNT I - HOUSING DISCRIMINATION" in payload["draft"]["body"]
+    assert "COMPLAINT FOR RETALIATION OVERVIEW" not in payload["draft"]["body"]
+    assert "COUNT I - WRONG HEADING" not in payload["draft"]["body"]
+    assert "APPENDIX A - CASE SYNOPSIS" not in payload["draft"]["body"]
+    assert "workflow summary" not in payload["draft"]["body"].lower()
+    assert "current complaint record" not in payload["draft"]["body"].lower()
+    assert "present evidentiary record" in payload["draft"]["body"].lower()
+
+
 def test_formal_complaint_prompt_includes_claim_specific_pleading_requirements(tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "prompt-sessions")
     service.submit_intake_answers(

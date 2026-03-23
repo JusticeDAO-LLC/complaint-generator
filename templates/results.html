@@ -233,6 +233,80 @@
         }
     </style>
     <script>
+        function readResultsContext() {
+            const params = new URLSearchParams(window.location.search || '');
+            return {
+                userId: String(params.get('user_id') || '').trim(),
+                caseSynopsis: String(params.get('case_synopsis') || '').trim(),
+                source: String(params.get('source') || '').trim(),
+            };
+        }
+
+        function buildResultsSurfaceUrl(path, paramsObject) {
+            const params = new URLSearchParams();
+            Object.entries(paramsObject || {}).forEach(([key, value]) => {
+                const normalized = String(value || '').trim();
+                if (normalized) {
+                    params.set(key, normalized);
+                }
+            });
+            const query = params.toString();
+            return query ? `${path}?${query}` : path;
+        }
+
+        function updateResultsContextCard(context) {
+            const card = document.getElementById('results-context-card');
+            const summary = document.getElementById('results-context-summary');
+            const synopsis = document.getElementById('results-context-synopsis');
+            if (!card || !summary || !synopsis) {
+                return;
+            }
+            if (!(context.userId || context.caseSynopsis)) {
+                card.hidden = true;
+                return;
+            }
+            const sourceLabel = context.source ? ` from ${context.source}` : '';
+            summary.textContent = context.userId
+                ? `Active complaint session${sourceLabel}: ${context.userId}`
+                : `Active complaint session${sourceLabel}`;
+            synopsis.textContent = context.caseSynopsis || 'The current complaint synopsis will continue across connected workflow surfaces.';
+            card.hidden = false;
+        }
+
+        function updateResultsWorkflowLinks() {
+            const context = readResultsContext();
+            updateResultsContextCard(context);
+            const currentResultsUrl = buildResultsSurfaceUrl('/results', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+                source: context.source || 'results',
+            });
+            const chatHref = buildResultsSurfaceUrl('/chat', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+                source: 'results',
+                return_to: currentResultsUrl,
+            });
+            const workspaceHref = buildResultsSurfaceUrl('/workspace', {
+                user_id: context.userId,
+                target_tab: 'review',
+                status_message: 'Opened Workspace from the results surface.',
+            });
+            const reviewHref = buildResultsSurfaceUrl('/claim-support-review', {
+                user_id: context.userId,
+                workspace_user_id: context.userId,
+            });
+            const builderHref = buildResultsSurfaceUrl('/document', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+            });
+
+            document.getElementById('results-open-chat').href = chatHref;
+            document.getElementById('results-open-workspace').href = workspaceHref;
+            document.getElementById('results-open-review').href = reviewHref;
+            document.getElementById('results-open-builder').href = builderHref;
+        }
+
         hostname = "localhost:19000";
 
         function load_profile(username, password, email) {
@@ -283,6 +357,7 @@
             testdata = profile["data"];
             testdata = JSON.parse(testdata);
             $("#profile_data").html(JSON.stringify(testdata, null, 2));
+            updateResultsWorkflowLinks();
         });
     </script>
 </head>
@@ -322,6 +397,10 @@
                 <div class="eyebrow">Why This Page Exists</div>
                 <h2 style="margin-top: 8px;">Use it to verify what the system knows</h2>
                 <p style="margin-top: 12px;">This is the page to inspect what the account has stored so far before moving into review or drafting.</p>
+                <div class="panel-card" id="results-context-card" hidden style="margin-top: 16px; padding: 16px; border-radius: var(--radius-lg); box-shadow: none;">
+                    <h3 id="results-context-summary" style="margin: 0; font-size: 15px;">Active complaint session</h3>
+                    <p id="results-context-synopsis" style="margin-top: 8px;">The current complaint synopsis will continue across connected workflow surfaces.</p>
+                </div>
                 <div class="action-stack" aria-label="Results next steps">
                     <a class="action-link" id="results-open-chat" href="/chat">Open chat</a>
                     <a class="action-link" id="results-open-workspace" href="/workspace">Open workspace</a>

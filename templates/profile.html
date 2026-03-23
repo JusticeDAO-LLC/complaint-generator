@@ -301,12 +301,93 @@
     <script src="/static/chat_entry_utils.js"></script>
     <script src="/static/profile_data.js"></script>
     <script>
+        function readProfileContext() {
+            const params = new URLSearchParams(window.location.search || '');
+            return {
+                userId: String(params.get('user_id') || '').trim(),
+                caseSynopsis: String(params.get('case_synopsis') || '').trim(),
+                source: String(params.get('source') || '').trim(),
+            };
+        }
+
+        function buildProfileSurfaceUrl(path, paramsObject) {
+            const params = new URLSearchParams();
+            Object.entries(paramsObject || {}).forEach(([key, value]) => {
+                const normalized = String(value || '').trim();
+                if (normalized) {
+                    params.set(key, normalized);
+                }
+            });
+            const query = params.toString();
+            return query ? `${path}?${query}` : path;
+        }
+
+        function updateProfileContextCard(context) {
+            const card = document.getElementById('profile-context-card');
+            const summary = document.getElementById('profile-context-summary');
+            const synopsis = document.getElementById('profile-context-synopsis');
+            if (!card || !summary || !synopsis) {
+                return;
+            }
+            if (!(context.userId || context.caseSynopsis)) {
+                card.hidden = true;
+                return;
+            }
+            const sourceLabel = context.source ? ` from ${context.source}` : '';
+            summary.textContent = context.userId
+                ? `Active complaint session${sourceLabel}: ${context.userId}`
+                : `Active complaint session${sourceLabel}`;
+            synopsis.textContent = context.caseSynopsis || 'The current complaint synopsis will continue across connected workflow surfaces.';
+            card.hidden = false;
+        }
+
+        function updateProfileWorkflowLinks() {
+            const context = readProfileContext();
+            updateProfileContextCard(context);
+            const currentProfileUrl = buildProfileSurfaceUrl('/profile', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+                source: context.source || 'profile',
+            });
+            const chatHref = buildProfileSurfaceUrl('/chat', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+                source: 'profile',
+                return_to: currentProfileUrl,
+            });
+            const resultsHref = buildProfileSurfaceUrl('/results', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+                source: 'profile',
+            });
+            const reviewHref = buildProfileSurfaceUrl('/claim-support-review', {
+                user_id: context.userId,
+                workspace_user_id: context.userId,
+            });
+            const builderHref = buildProfileSurfaceUrl('/document', {
+                user_id: context.userId,
+                case_synopsis: context.caseSynopsis,
+            });
+            const workspaceHref = buildProfileSurfaceUrl('/workspace', {
+                user_id: context.userId,
+                target_tab: 'review',
+                status_message: 'Opened Workspace from the profile data surface.',
+            });
+
+            document.getElementById('profile-open-chat').href = chatHref;
+            document.getElementById('profile-open-results').href = resultsHref;
+            document.getElementById('profile-open-review').href = reviewHref;
+            document.getElementById('profile-open-builder').href = builderHref;
+            document.getElementById('profile-open-workspace').href = workspaceHref;
+        }
+
         $(document).ready(function() {
             window.ProfileDataPage.initialize({
                 jsonSelector: '#profile_data',
                 historySelector: '#chat_history',
                 refreshMs: 5000,
             });
+            updateProfileWorkflowLinks();
         });
     </script>
 </head>
@@ -361,6 +442,10 @@
                 <div class="eyebrow">How To Use This</div>
                 <h2 style="margin-top: 8px;">What to check here</h2>
                 <p style="margin-top: 12px;">Use this page to confirm that the right complaint account is loaded, check the saved data that will feed later stages, and compare the structured profile with the intake conversation.</p>
+                <div class="mini-card" id="profile-context-card" hidden style="margin-top: 16px;">
+                    <strong id="profile-context-summary">Active complaint session</strong>
+                    <span id="profile-context-synopsis">The current complaint synopsis will continue across connected workflow surfaces.</span>
+                </div>
                 <div class="action-stack" aria-label="Profile next steps">
                     <a class="action-link" id="profile-open-chat" href="/chat">Open chat</a>
                     <a class="action-link" id="profile-open-results" href="/results">Open results</a>

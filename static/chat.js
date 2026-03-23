@@ -136,8 +136,9 @@ window.ChatPage = (function() {
         const activeUserId = getActiveComplaintUserId(handoff);
         const caseSynopsis = String((handoff && handoff.caseSynopsis) || '').trim();
         const profileLink = document.getElementById('chat-open-profile');
+        const resultsLink = document.getElementById('chat-open-results');
         const builderLink = document.getElementById('chat-open-builder');
-        if (!profileLink || !builderLink) {
+        if (!profileLink || !resultsLink || !builderLink) {
             return;
         }
 
@@ -150,7 +151,20 @@ window.ChatPage = (function() {
         const workspaceHref = `/workspace?${workspaceParams.toString()}`;
         setHrefForIds(['chat-hero-workspace', 'chat-open-workspace'], workspaceHref);
 
-        profileLink.href = '/profile';
+        const profileParams = new URLSearchParams();
+        if (activeUserId) {
+            profileParams.set('user_id', activeUserId);
+        }
+        if (caseSynopsis) {
+            profileParams.set('case_synopsis', caseSynopsis);
+        }
+        profileParams.set('source', 'chat');
+        const profileHref = profileParams.toString() ? `/profile?${profileParams.toString()}` : '/profile';
+        profileLink.href = profileHref;
+
+        const resultsParams = new URLSearchParams(profileParams.toString());
+        const resultsHref = resultsParams.toString() ? `/results?${resultsParams.toString()}` : '/results';
+        resultsLink.href = resultsHref;
 
         const reviewParams = new URLSearchParams();
         if (activeUserId) {
