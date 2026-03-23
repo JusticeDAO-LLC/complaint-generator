@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "synthesize_hacc_complaint.py"
@@ -1479,6 +1480,66 @@ def test_refresh_snippet_from_source_trims_admin_plan_denial_leadin(tmp_path):
 
     assert refreshed.startswith("Notice to the Applicant")
     assert "Denial of assistance includes" not in refreshed
+
+
+def test_grounding_results_to_seed_evidence_skips_refresh_for_substantive_excerpt(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "HACC must provide written notice before denying assistance. The family may request an informal review and receive a prompt decision.",
+        encoding="utf-8",
+    )
+
+    grounding_bundle = {
+        "search_payload": {
+            "results": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "source_path": str(source_path),
+                    "snippet": "HACC must provide written notice before denying assistance. The family may request an informal review and receive a prompt decision.",
+                    "matched_rules": [],
+                    "matched_entities": [],
+                }
+            ]
+        }
+    }
+
+    with mock.patch.object(MODULE, "_refresh_snippet_from_source") as refresh_mock:
+        evidence = MODULE._grounding_results_to_seed_evidence(grounding_bundle)
+
+    refresh_mock.assert_not_called()
+    assert evidence[0]["snippet"].startswith("HACC must provide written notice")
+
+
+def test_grounding_results_to_seed_evidence_refreshes_placeholder_excerpt(tmp_path):
+    source_path = tmp_path / "policy.txt"
+    source_path.write_text(
+        "Notice to the Applicant HACC must give prompt written notice of a decision denying assistance. Scheduling an Informal Review The request must be made in writing.",
+        encoding="utf-8",
+    )
+
+    grounding_bundle = {
+        "search_payload": {
+            "results": [
+                {
+                    "title": "ADMINISTRATIVE PLAN",
+                    "source_path": str(source_path),
+                    "snippet": "[INSERT POLICY TEXT]",
+                    "matched_rules": [],
+                    "matched_entities": [],
+                }
+            ]
+        }
+    }
+
+    with mock.patch.object(
+        MODULE,
+        "_refresh_snippet_from_source",
+        return_value="Notice to the Applicant HACC must give prompt written notice of a decision denying assistance.",
+    ) as refresh_mock:
+        evidence = MODULE._grounding_results_to_seed_evidence(grounding_bundle)
+
+    refresh_mock.assert_called_once()
+    assert evidence[0]["snippet"].startswith("Notice to the Applicant")
 
 
 def test_specific_refresh_terms_add_notice_headings_for_admin_plan_toc_seed():

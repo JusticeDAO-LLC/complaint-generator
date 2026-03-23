@@ -6,12 +6,29 @@ from .loader import import_attr_optional, run_async_compat
 from .types import with_adapter_metadata
 
 
-_search_us_code_async, _us_code_error = import_attr_optional(
-    "ipfs_datasets_py.processors.legal_scrapers.us_code_scraper",
+def _import_attr_from_candidates(module_names: List[str], attr_name: str) -> tuple[Any | None, Any | None]:
+    first_error: Any | None = None
+    for module_name in module_names:
+        value, error = import_attr_optional(module_name, attr_name)
+        if value is not None:
+            return value, None
+        if first_error is None and error is not None:
+            first_error = error
+    return None, first_error
+
+
+_search_us_code_async, _us_code_error = _import_attr_from_candidates(
+    [
+        "ipfs_datasets_py.processors.legal_scrapers.us_code_scraper",
+        "ipfs_datasets_py.processors.legal_scrapers.federal_scrapers.us_code_scraper",
+    ],
     "search_us_code",
 )
-_search_federal_register_async, _federal_register_error = import_attr_optional(
-    "ipfs_datasets_py.processors.legal_scrapers.federal_register_scraper",
+_search_federal_register_async, _federal_register_error = _import_attr_from_candidates(
+    [
+        "ipfs_datasets_py.processors.legal_scrapers.federal_register_scraper",
+        "ipfs_datasets_py.processors.legal_scrapers.federal_scrapers.federal_register_scraper",
+    ],
     "search_federal_register",
 )
 _search_recap_documents_async, _recap_error = import_attr_optional(

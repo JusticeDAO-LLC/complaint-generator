@@ -1,11 +1,13 @@
 """Tests for the complaint-generator ipfs_datasets adapter layer."""
 
+import importlib
 from io import BytesIO
 import json
 import tempfile
 import integrations.ipfs_datasets.vector_store as vector_store_module
 import integrations.ipfs_datasets as adapter
 from pathlib import Path
+import pytest
 from unittest.mock import Mock, patch
 import zipfile
 
@@ -63,6 +65,9 @@ from integrations.ipfs_datasets.vector_store import (
 )
 from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend, ensure_ipfs_backend
 from mediator.integrations import adapter as mediator_adapter_module
+
+
+pytestmark = pytest.mark.no_auto_network
 
 
 def test_mediator_adapter_capability_detection_uses_module_paths_without_importing():
@@ -180,6 +185,35 @@ def test_search_us_code_normalizes_results():
     assert results[0]['metadata']['details']['operation'] == 'search_us_code'
     assert results[0]['metadata']['details']['query'] == 'civil rights'
     assert results[0]['metadata']['details']['source'] == 'us_code'
+
+
+def test_legal_adapter_import_helper_tries_current_scraper_fallback_paths():
+    legal_module = importlib.import_module('integrations.ipfs_datasets.legal')
+    sentinel = object()
+
+    with patch.object(
+        legal_module,
+        'import_attr_optional',
+        side_effect=[
+            (None, ModuleNotFoundError('legacy path missing')),
+            (sentinel, None),
+        ],
+    ) as import_mock:
+        resolved, error = legal_module._import_attr_from_candidates(
+            [
+                'ipfs_datasets_py.processors.legal_scrapers.us_code_scraper',
+                'ipfs_datasets_py.processors.legal_scrapers.federal_scrapers.us_code_scraper',
+            ],
+            'search_us_code',
+        )
+
+    assert resolved is sentinel
+    assert error is None
+    assert import_mock.call_count == 2
+    assert import_mock.call_args_list[1].args == (
+        'ipfs_datasets_py.processors.legal_scrapers.federal_scrapers.us_code_scraper',
+        'search_us_code',
+    )
 
 
 def test_search_federal_register_normalizes_documents():

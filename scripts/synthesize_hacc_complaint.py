@@ -1591,6 +1591,30 @@ def _policy_text_quality(text: str) -> int:
     return score
 
 
+def _should_refresh_grounding_excerpt(
+    excerpt: str,
+    *,
+    source_path: str,
+    anchor_terms: List[str],
+) -> bool:
+    cleaned = _clean_policy_text(excerpt)
+    if not source_path or not cleaned:
+        return False
+    if _is_probably_toc_text(cleaned) or _is_placeholder_policy_text(cleaned) or _is_generic_chapter_intro_text(cleaned):
+        return True
+    if _looks_truncated_rule_text(cleaned):
+        return True
+    if _policy_text_quality(cleaned) >= 4:
+        return False
+    if len(cleaned) >= 220 and re.search(
+        r"\b(?:must|shall|will|may request|written notice|informal review|informal hearing|grievance)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    ):
+        return False
+    return bool(anchor_terms)
+
+
 def _is_placeholder_policy_text(text: str) -> bool:
     normalized = _clean_policy_text(text)
     if not normalized:
@@ -2451,18 +2475,21 @@ def _grounding_results_to_seed_evidence(grounding_bundle: Dict[str, Any], limit:
     evidence: List[Dict[str, Any]] = []
     for item in results[:limit]:
         excerpt = _best_grounding_result_excerpt(item)
-        refreshed_excerpt = _refresh_snippet_from_source(
-            str(item.get("source_path") or "").strip(),
-            anchor_terms=_grounding_item_anchor_terms(item, excerpt),
-            fallback_snippet=excerpt,
-        )
-        if _policy_text_quality(refreshed_excerpt) > _policy_text_quality(excerpt):
-            excerpt = refreshed_excerpt
+        source_path = str(item.get("source_path") or "").strip()
+        anchor_terms = _grounding_item_anchor_terms(item, excerpt)
+        if _should_refresh_grounding_excerpt(excerpt, source_path=source_path, anchor_terms=anchor_terms):
+            refreshed_excerpt = _refresh_snippet_from_source(
+                source_path,
+                anchor_terms=anchor_terms,
+                fallback_snippet=excerpt,
+            )
+            if _policy_text_quality(refreshed_excerpt) > _policy_text_quality(excerpt):
+                excerpt = refreshed_excerpt
         evidence.append(
             {
                 "title": str(item.get("title") or item.get("document_id") or "Grounding evidence"),
                 "snippet": excerpt,
-                "source_path": str(item.get("source_path") or "").strip(),
+                "source_path": source_path,
             }
         )
     return evidence
