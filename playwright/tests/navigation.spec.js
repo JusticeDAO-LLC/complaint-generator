@@ -204,6 +204,52 @@ test.describe('website surface navigation', () => {
     });
   });
 
+  test('workspace handoff cards keep the complaint context visible and capture a screenshot', async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('complaintGenerator.did', 'did:key:workspace-handoff-demo');
+    });
+
+    await page.goto('/workspace');
+    await page.waitForFunction(
+      () => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp'),
+    );
+
+    await page.locator('#intake-party_name').fill('Jordan Example');
+    await page.locator('#intake-opposing_party').fill('Acme Corporation');
+    await page.locator('#intake-protected_activity').fill('Reported discrimination to HR');
+    await page.locator('#intake-adverse_action').fill('Termination two days later');
+    await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
+    await page.locator('#intake-harm').fill('Lost wages and emotional distress');
+    await page.locator('#save-intake-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);
+
+    await page.locator('#case-synopsis').fill(
+      'Jordan Example alleges retaliation after reporting discrimination to HR, with the clearest current support on timeline and the main remaining need being corroboration.',
+    );
+    await page.locator('#save-synopsis-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Shared case synopsis saved/i);
+
+    await expect(page.locator('#handoff-chat-summary')).toContainText(/Open Chat/i);
+    await expect(page.locator('#handoff-review-summary')).toContainText(/Open the review dashboard/i);
+    await expect(page.locator('#handoff-builder-summary')).toContainText(/Open the formal builder/i);
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /\/chat\?/);
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /source=workspace/);
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /prefill_message=/);
+    await expect(page.locator('#handoff-chat-button')).toHaveAttribute('href', /return_to=%2Fworkspace/);
+    await expect(page.locator('#handoff-review-button')).toHaveAttribute('href', /\/claim-support-review\?/);
+    await expect(page.locator('#handoff-review-button')).toHaveAttribute('href', /workspace_user_id=did%3Akey%3Aworkspace-handoff-demo/);
+    await expect(page.locator('#handoff-builder-button')).toHaveAttribute('href', /\/document\?/);
+    await expect(page.locator('#handoff-builder-button')).toHaveAttribute('href', /user_id=did%3Akey%3Aworkspace-handoff-demo/);
+
+    const screenshotPath = testInfo.outputPath('workspace-handoffs-overview.png');
+    await page.locator('[aria-label="Connected surface handoffs"]').screenshot({ path: screenshotPath });
+    await testInfo.attach('workspace-handoffs-overview', {
+      path: screenshotPath,
+      contentType: 'image/png',
+    });
+  });
+
   test('document and dashboard remain mutually navigable as one website', async ({ page }) => {
     await page.goto('/document');
     await page.locator('a[href="/claim-support-review"]').first().click();
@@ -376,6 +422,10 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/Iterative UI\/UX review completed/i);
     await expect(page.locator('#ux-review-summary')).toContainText(/Top Risks/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/Client readiness gate/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/Do not send to clients yet|Needs repair|Client-safe/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/Workflow coverage/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/Shared contract exposure/i);
     await expect(page.locator('#ux-review-actor-critic')).toContainText(/Actor journey/i);
     await expect(page.locator('#ux-review-actor-critic')).toContainText(/Critic obligations/i);
     await expect(page.locator('#ux-review-runs')).toContainText(/Iteration 1/i);
@@ -388,6 +438,9 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('#workspace-status')).toContainText(/Closed-loop UI\/UX optimization completed/i);
     await expect(page.locator('#ux-review-metadata')).toContainText(/rounds:/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/Critic release gate/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/Broken control pressure/i);
+    await expect(page.locator('#ux-review-scorecard')).toContainText(/complaint\.review_ui|complaint\.optimize_ui/i);
     await expect(page.locator('#ux-review-actor-critic')).toContainText(/Verify the actor can save the mediator synopsis, upload evidence, review support, generate the complaint, and revise the draft/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/Intake/i);
     await expect(page.locator('#ux-review-stage-findings')).toContainText(/The evidence panel still needs stronger claim-element guidance after optimization/i);
@@ -400,6 +453,10 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#ux-review-artifacts')).toContainText(/round-01\.patch/i);
     await expect(page.locator('#ux-review-artifacts')).toContainText(/bafyuiuxround01/i);
     await expect(page.locator('#ux-review-artifacts')).toContainText(/static\/complaint_mcp_sdk\.js/i);
+
+    await page.goto('/');
+    await expect(page.locator('#homepage-ui-readiness-summary')).toContainText(/Do not send to clients yet|Needs repair|Client-safe/i);
+    await expect(page.locator('#homepage-ui-readiness-summary')).toContainText(/100|release blocker|No release blocker/i);
   });
 
   test('first-class pages share the same DID-backed application sidebar and session summary', async ({ page, request }) => {

@@ -282,6 +282,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
     await page.locator('#case-synopsis').fill('Jane Doe alleges retaliation after reporting discrimination to HR, and the next priority is proving the timing and motive with corroborating evidence.');
     await page.locator('#save-synopsis-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Shared case synopsis saved/i);
     await expect(page.locator('#review-synopsis-preview')).toContainText(/Jane Doe alleges retaliation/i);
     await expect(page.locator('#draft-synopsis-preview')).toContainText(/next priority is proving the timing and motive/i);
 

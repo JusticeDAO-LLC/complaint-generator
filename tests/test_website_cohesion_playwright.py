@@ -957,6 +957,68 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             browser.close()
 
 
+def test_workspace_connected_handoffs_preserve_case_context_and_capture_screenshot(tmp_path):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    app, _mediator = _launch_fixture_site()
+    screenshot_dir = tmp_path / "playwright-workspace-handoff-snapshots"
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport=LAYOUT_AUDIT_VIEWPORT)
+
+            page.goto(f"{base_url}/workspace")
+            page.wait_for_function(
+                "() => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp')"
+            )
+
+            page.fill("#intake-party_name", "Jordan Example")
+            page.fill("#intake-opposing_party", "Acme Corporation")
+            page.fill("#intake-protected_activity", "Reported discrimination to HR")
+            page.fill("#intake-adverse_action", "Terminated two days later")
+            page.fill("#intake-timeline", "Complaint on March 8, termination on March 10")
+            page.fill("#intake-harm", "Lost wages and emotional distress")
+            page.click("#save-intake-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"
+            )
+
+            page.fill(
+                "#case-synopsis",
+                "Jordan Example alleges retaliation after reporting discrimination to HR, with the clearest current support on timeline and the main remaining need being corroboration.",
+            )
+            page.click("#save-synopsis-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Shared case synopsis saved.')"
+            )
+
+            workspace_user_id = page.locator("#did-chip").inner_text().replace("did: ", "").strip()
+            chat_href = page.locator("#handoff-chat-button").get_attribute("href") or ""
+            review_href = page.locator("#handoff-review-button").get_attribute("href") or ""
+            builder_href = page.locator("#handoff-builder-button").get_attribute("href") or ""
+
+            assert "Open Chat" in page.locator("#handoff-chat-summary").inner_text()
+            assert "Open the review dashboard" in page.locator("#handoff-review-summary").inner_text()
+            assert "Open the formal builder" in page.locator("#handoff-builder-summary").inner_text()
+            assert chat_href.startswith("/chat?")
+            assert "source=workspace" in chat_href
+            assert f"user_id={workspace_user_id}" in unquote(chat_href)
+            assert "prefill_message=" in chat_href
+            assert "return_to=/workspace" in unquote(chat_href)
+            assert review_href.startswith("/claim-support-review?")
+            assert f"workspace_user_id={workspace_user_id}" in unquote(review_href)
+            assert builder_href.startswith("/document?")
+            assert f"user_id={workspace_user_id}" in unquote(builder_href)
+
+            screenshot_path = _capture_screenshot(page, screenshot_dir, "workspace-handoffs")
+            assert screenshot_path.exists()
+            assert screenshot_path.stat().st_size > 0
+
+            browser.close()
+
+
 def test_user_interfaces_capture_screenshots_and_preserve_coherent_layout(tmp_path):
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")

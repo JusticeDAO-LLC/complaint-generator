@@ -1616,6 +1616,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                         <div class="tool-card">
                             <h3>Latest Review</h3>
                             <div class="chip-row" id="ux-review-metadata"></div>
+                            <div class="feature-grid" id="ux-review-scorecard"></div>
                             <div class="status"><pre id="ux-review-summary">No UI review has been run yet.</pre></div>
                             <div class="list" id="ux-review-actor-critic"></div>
                             <div class="list" id="ux-review-stage-findings"></div>
@@ -1641,6 +1642,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceSessionTools = [];
         let workspaceCapabilities = null;
         let workspaceMediatorPrompt = null;
+        const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
         function setStatus(message) {
             const statusNode = document.getElementById('workspace-status');
@@ -1845,19 +1847,28 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             return `${url.pathname}${url.search}`;
         }
 
+        function resolveCurrentCaseSynopsis(sessionPayload) {
+            const editorValue = String((document.getElementById('case-synopsis') || {}).value || '').trim();
+            const sessionSynopsis = String((sessionPayload && sessionPayload.case_synopsis) || ((sessionPayload && sessionPayload.session) || {}).case_synopsis || '').trim();
+            const promptSynopsis = String((workspaceMediatorPrompt && workspaceMediatorPrompt.case_synopsis) || '').trim();
+            return editorValue || sessionSynopsis || promptSynopsis || buildDefaultSynopsis(sessionPayload || {});
+        }
+
         function buildMediatorPrefillMessage(sessionPayload) {
+            const currentSynopsis = resolveCurrentCaseSynopsis(sessionPayload);
             if (workspaceMediatorPrompt && workspaceMediatorPrompt.prefill_message) {
-                return String(workspaceMediatorPrompt.prefill_message);
+                const promptSynopsis = String(workspaceMediatorPrompt.case_synopsis || '').trim();
+                if (!promptSynopsis || promptSynopsis === currentSynopsis) {
+                    return String(workspaceMediatorPrompt.prefill_message);
+                }
             }
             const review = (sessionPayload && sessionPayload.review) || {};
             const supportMatrix = review.support_matrix || [];
             const firstGap = supportMatrix.find((item) => !item.supported);
-            const synopsis = String(document.getElementById('case-synopsis').value || '').trim()
-                || buildDefaultSynopsis(sessionPayload || {});
             const gapFocus = firstGap
                 ? `Focus especially on clarifying ${firstGap.label.toLowerCase()} and what proof could corroborate it.`
                 : 'Focus on sharpening the strongest testimony, identifying corroboration, and confirming the cleanest sequence of events.';
-            return `${synopsis}\n\nMediator, help turn this into testimony-ready narrative for the complaint record. Ask the single most useful next follow-up question, keep the tone calm, and explain what support would strengthen the case. ${gapFocus}`;
+            return `${currentSynopsis}\n\nMediator, help turn this into testimony-ready narrative for the complaint record. Ask the single most useful next follow-up question, keep the tone calm, and explain what support would strengthen the case. ${gapFocus}`;
         }
 
         function renderConnectedHandoffs(sessionPayload) {
@@ -1865,7 +1876,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const review = (sessionPayload && sessionPayload.review) || {};
             const overview = review.overview || {};
             const claimType = String(session.claim_type || sessionPayload.claim_type || 'retaliation').trim() || 'retaliation';
-            const synopsis = String((workspaceMediatorPrompt && workspaceMediatorPrompt.case_synopsis) || document.getElementById('case-synopsis').value || '').trim() || buildDefaultSynopsis(sessionPayload || {});
+            const synopsis = resolveCurrentCaseSynopsis(sessionPayload);
             const missingCount = Number(overview.missing_elements || 0);
             const supportedCount = Number(overview.supported_elements || 0);
             const chatUrl = buildSurfaceUrl('/chat', {
@@ -2533,6 +2544,185 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             return 'Review completed, but no summary text was returned.';
         }
 
+        function countIssuesBySeverity(items) {
+            const counts = { high: 0, medium: 0, low: 0 };
+            (items || []).forEach((item) => {
+                const severity = String((item && item.severity) || '').trim().toLowerCase();
+                if (severity === 'high' || severity === 'medium' || severity === 'low') {
+                    counts[severity] += 1;
+                }
+            });
+            return counts;
+        }
+
+        function computeUiReviewAssessment(result) {
+            const review = (result && result.review) || {};
+            const complaintJourney = (review.complaint_journey && typeof review.complaint_journey === 'object')
+                ? review.complaint_journey
+                : (result && result.complaint_journey && typeof result.complaint_journey === 'object')
+                    ? result.complaint_journey
+                    : {};
+            const criticReview = (review.critic_review && typeof review.critic_review === 'object')
+                ? review.critic_review
+                : (result && result.critic_review && typeof result.critic_review === 'object')
+                    ? result.critic_review
+                    : {};
+            const actorPathBreaks = Array.isArray(review.actor_path_breaks)
+                ? review.actor_path_breaks
+                : Array.isArray(result && result.actor_path_breaks)
+                    ? result.actor_path_breaks
+                    : [];
+            const brokenControls = Array.isArray(review.broken_controls)
+                ? review.broken_controls
+                : Array.isArray(result && result.broken_controls)
+                    ? result.broken_controls
+                    : [];
+            const issues = Array.isArray(review.issues)
+                ? review.issues
+                : Array.isArray(result && result.issues)
+                    ? result.issues
+                    : [];
+            const severityCounts = countIssuesBySeverity(issues);
+            const releaseBlockers = Array.isArray(complaintJourney.release_blockers) ? complaintJourney.release_blockers : [];
+            const acceptanceChecks = Array.isArray(criticReview.acceptance_checks) ? criticReview.acceptance_checks : [];
+            const testedStages = Array.isArray(complaintJourney.tested_stages) ? complaintJourney.tested_stages : [];
+            const sdkInvocations = Array.isArray(complaintJourney.sdk_tool_invocations) ? complaintJourney.sdk_tool_invocations : [];
+            const requiredTools = [
+                'complaint.start_session',
+                'complaint.submit_intake',
+                'complaint.save_evidence',
+                'complaint.review_case',
+                'complaint.generate_complaint',
+                'complaint.update_draft',
+                'complaint.export_complaint_packet',
+                'complaint.review_ui',
+                'complaint.optimize_ui',
+            ];
+            const toolNames = new Set((workspaceSessionTools || []).map((tool) => tool.name));
+            const exposedTools = requiredTools.filter((name) => toolNames.has(name));
+
+            let score = 100;
+            score -= releaseBlockers.length * 14;
+            score -= actorPathBreaks.length * 9;
+            score -= brokenControls.length * 8;
+            score -= severityCounts.high * 12;
+            score -= severityCounts.medium * 6;
+            score -= severityCounts.low * 3;
+            if (String(criticReview.verdict || '').trim().toLowerCase() === 'fail') {
+                score -= 25;
+            } else if (String(criticReview.verdict || '').trim().toLowerCase() === 'warning') {
+                score -= 10;
+            }
+            if (testedStages.length >= 6) {
+                score += 4;
+            }
+            if (sdkInvocations.length >= 2) {
+                score += 4;
+            }
+            if (acceptanceChecks.length >= 3) {
+                score += 4;
+            }
+            score = Math.max(0, Math.min(100, score));
+
+            let verdict = 'Needs repair';
+            let verdictTone = 'warn';
+            if (score >= 85 && releaseBlockers.length === 0 && String(criticReview.verdict || '').trim().toLowerCase() !== 'fail') {
+                verdict = 'Client-safe';
+                verdictTone = 'good';
+            } else if (score < 65 || releaseBlockers.length > 1 || String(criticReview.verdict || '').trim().toLowerCase() === 'fail') {
+                verdict = 'Do not send to clients yet';
+                verdictTone = 'warn';
+            }
+
+            return {
+                score,
+                verdict,
+                verdictTone,
+                releaseBlockers,
+                acceptanceChecks,
+                testedStages,
+                sdkInvocations,
+                actorPathBreaks,
+                brokenControls,
+                severityCounts,
+                exposedTools,
+                requiredTools,
+                criticVerdict: String(criticReview.verdict || 'warning').trim() || 'warning',
+            };
+        }
+
+        function persistUiReviewAssessment(assessment, result) {
+            if (typeof localStorage === 'undefined') {
+                return;
+            }
+            try {
+                localStorage.setItem(readinessStorageKey, JSON.stringify({
+                    verdict: assessment.verdict,
+                    score: assessment.score,
+                    critic_verdict: assessment.criticVerdict,
+                    release_blockers: assessment.releaseBlockers,
+                    acceptance_checks: assessment.acceptanceChecks,
+                    tested_stages: assessment.testedStages,
+                    sdk_invocations: assessment.sdkInvocations,
+                    exposed_tools: assessment.exposedTools,
+                    updated_at: new Date().toISOString(),
+                    workflow_type: String((result && result.workflow_type) || (result && result.backend && result.backend.strategy) || 'review'),
+                }));
+            } catch (error) {
+                console.warn('Unable to persist UI readiness summary.', error);
+            }
+        }
+
+        function renderUiReviewScorecard(result) {
+            const container = document.getElementById('ux-review-scorecard');
+            const assessment = computeUiReviewAssessment(result || {});
+            const workflowCoverage = `${assessment.testedStages.length}/7 stages`;
+            const exposureCoverage = `${assessment.exposedTools.length}/${assessment.requiredTools.length} tools`;
+            persistUiReviewAssessment(assessment, result);
+            container.innerHTML = `
+                <div class="feature-item">
+                    <strong>Client readiness gate</strong>
+                    <div class="chip-row">
+                        <span class="chip ${assessment.verdictTone}">${escapeHtml(assessment.verdict)}</span>
+                        <span class="chip">${escapeHtml(String(assessment.score))}/100</span>
+                    </div>
+                    <span>${escapeHtml(assessment.releaseBlockers.length ? assessment.releaseBlockers[0] : 'No release blocker is currently preventing the complaint UI from being used for a guided end-to-end journey.')}</span>
+                </div>
+                <div class="feature-item">
+                    <strong>Workflow coverage</strong>
+                    <div class="chip-row">
+                        <span class="chip ${assessment.testedStages.length >= 6 ? 'good' : 'warn'}">${escapeHtml(workflowCoverage)}</span>
+                        <span class="chip">${escapeHtml(`${assessment.actorPathBreaks.length} actor breaks`)}</span>
+                    </div>
+                    <span>${escapeHtml(assessment.testedStages.length ? `Validated stages: ${assessment.testedStages.join(', ')}.` : 'No structured tested-stage list was returned by the review.')}</span>
+                </div>
+                <div class="feature-item">
+                    <strong>Shared contract exposure</strong>
+                    <div class="chip-row">
+                        <span class="chip ${assessment.exposedTools.length === assessment.requiredTools.length ? 'good' : 'warn'}">${escapeHtml(exposureCoverage)}</span>
+                        <span class="chip">${escapeHtml(`${assessment.sdkInvocations.length} SDK expectations`)}</span>
+                    </div>
+                    <span>${escapeHtml(assessment.sdkInvocations.length ? `Expected SDK-visible actions: ${assessment.sdkInvocations.join(', ')}.` : 'The review did not return structured MCP SDK expectations.')} ${escapeHtml(assessment.exposedTools.length ? `Browser-visible complaint tools: ${assessment.exposedTools.join(', ')}.` : 'No required complaint tools were visible in the current MCP tool list.')}</span>
+                </div>
+                <div class="feature-item">
+                    <strong>Critic release gate</strong>
+                    <div class="chip-row">
+                        <span class="chip ${String(assessment.criticVerdict).toLowerCase() === 'pass' ? 'good' : 'warn'}">${escapeHtml(assessment.criticVerdict)}</span>
+                        <span class="chip">${escapeHtml(`${assessment.acceptanceChecks.length} acceptance checks`)}</span>
+                    </div>
+                    <span>${escapeHtml(assessment.acceptanceChecks.length ? assessment.acceptanceChecks[0] : 'No structured acceptance checks were returned.')}</span>
+                </div>
+                <div class="feature-item">
+                    <strong>Broken control pressure</strong>
+                    <div class="chip-row">
+                        <span class="chip ${assessment.brokenControls.length === 0 ? 'good' : 'warn'}">${escapeHtml(`${assessment.brokenControls.length} broken controls`)}</span>
+                        <span class="chip">${escapeHtml(`${assessment.severityCounts.high} high / ${assessment.severityCounts.medium} medium / ${assessment.severityCounts.low} low`)}</span>
+                    </div>
+                    <span>${escapeHtml(assessment.brokenControls.length ? 'The actor/critic review still sees broken or misleading UI controls that need repair before trusting the flow.' : 'No structured broken-control findings were returned in this run.')}</span>
+                </div>
+            `;
+        }
+
         function renderActorCriticResult(result) {
             const container = document.getElementById('ux-review-actor-critic');
             const review = (result && result.review) || {};
@@ -2740,6 +2930,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             ].filter(Boolean).join('');
 
             summary.textContent = normalizeUiReviewSummary(result);
+            renderUiReviewScorecard(result);
             renderActorCriticResult(result);
             renderStageFindings(result);
 
@@ -2829,6 +3020,16 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 ? `End-to-end complaint browser audit completed with ${artifactCount} screenshot artifact${artifactCount === 1 ? '' : 's'}.`
                 : 'End-to-end complaint browser audit completed, but no screenshot artifacts were returned.';
 
+            document.getElementById('ux-review-scorecard').innerHTML = `
+                <div class="feature-item">
+                    <strong>Browser journey gate</strong>
+                    <div class="chip-row">
+                        <span class="chip ${result && result.returncode === 0 ? 'good' : 'warn'}">${result && result.returncode === 0 ? 'browser path passed' : 'browser path failed'}</span>
+                        <span class="chip">${escapeHtml(`${artifactCount} artifacts`)}</span>
+                    </div>
+                    <span>${escapeHtml(result && result.returncode === 0 ? 'Playwright completed the dashboard journey through complaint generation without a tool-level failure.' : 'Playwright reported a failing browser journey, so the UI should not be treated as client-safe yet.')}</span>
+                </div>
+            `;
             actorCritic.innerHTML = `
                 <div class="item">
                     <strong>Shared browser path</strong>

@@ -540,6 +540,10 @@
                     <strong>Recommended next step</strong>
                     <span id="homepage-next-step">Open secure intake to create an account, or resume the complaint workspace from this device.</span>
                 </div>
+                <div class="recommended-step" id="homepage-ui-readiness-panel">
+                    <strong>Current UI readiness</strong>
+                    <span id="homepage-ui-readiness-summary">No actor/critic verdict is cached on this device yet. Run UX Audit from the workspace before trusting the client flow.</span>
+                </div>
                 <div class="resume-actions">
                     <a class="resume-link" id="homepage-resume-link" href="/workspace">Open Workspace</a>
                     <a class="resume-link" id="homepage-resume-review" href="/claim-support-review">Open Review</a>
@@ -610,10 +614,25 @@
 
     <script>
         (function () {
+            const readinessStorageKey = 'complaintGenerator.uiReadiness';
+
             function setText(id, value) {
                 const node = document.getElementById(id);
                 if (node) {
                     node.textContent = value;
+                }
+            }
+
+            function loadCachedReadiness() {
+                try {
+                    const raw = window.localStorage.getItem(readinessStorageKey);
+                    if (!raw) {
+                        return null;
+                    }
+                    const parsed = JSON.parse(raw);
+                    return parsed && typeof parsed === 'object' ? parsed : null;
+                } catch (error) {
+                    return null;
                 }
             }
 
@@ -668,6 +687,14 @@
                 const badge = document.getElementById('homepage-session-badge');
                 const workspaceLink = document.getElementById('homepage-open-workspace');
                 const resumeLink = document.getElementById('homepage-resume-link');
+                const readiness = loadCachedReadiness();
+
+                if (readiness) {
+                    const blocker = Array.isArray(readiness.release_blockers) && readiness.release_blockers.length
+                        ? readiness.release_blockers[0]
+                        : 'No release blocker was cached by the latest UI review.';
+                    setText('homepage-ui-readiness-summary', `${readiness.verdict || 'Needs review'} (${readiness.score || 'pending'}/100). ${blocker}`);
+                }
 
                 try {
                     if (!globalThis.ComplaintMcpSdk || !globalThis.ComplaintMcpSdk.ComplaintMcpClient) {
@@ -720,6 +747,9 @@
                     if (workspaceLink) {
                         workspaceLink.href = '/workspace';
                         workspaceLink.textContent = 'Resume Complaint';
+                    }
+                    if (!readiness) {
+                        setText('homepage-ui-readiness-summary', 'No actor/critic verdict is cached on this device yet. Run UX Audit from the workspace before trusting the client flow.');
                     }
                 }
             }

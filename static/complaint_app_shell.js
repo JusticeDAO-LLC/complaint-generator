@@ -1,4 +1,5 @@
 (function () {
+    const readinessStorageKey = 'complaintGenerator.uiReadiness';
     const navItems = [
         ['Landing', '/'],
         ['Account', '/home'],
@@ -76,6 +77,22 @@
         return 'Shared complaint workflow shell powered by the same browser MCP SDK and workspace service.';
     }
 
+    function loadCachedReadiness() {
+        if (typeof localStorage === 'undefined') {
+            return null;
+        }
+        try {
+            const raw = localStorage.getItem(readinessStorageKey);
+            if (!raw) {
+                return null;
+            }
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
     function renderShell(state) {
         const existing = document.getElementById('cg-app-shell');
         if (existing) {
@@ -92,6 +109,18 @@
             const active = window.location.pathname === href ? ' is-active' : '';
             return '<a class="cg-app-shell__nav-link' + active + '" href="' + href + '">' + label + '</a>';
         }).join('');
+        const readiness = loadCachedReadiness();
+        const readinessVerdict = readiness && readiness.verdict ? readiness.verdict : 'No UI verdict cached';
+        const readinessScore = readiness && Number.isFinite(Number(readiness.score)) ? String(readiness.score) + '/100' : 'pending';
+        const readinessUpdated = readiness && readiness.updated_at ? readiness.updated_at : '';
+        const readinessStages = readiness && Array.isArray(readiness.tested_stages) ? readiness.tested_stages : [];
+        const readinessBlockers = readiness && Array.isArray(readiness.release_blockers) ? readiness.release_blockers : [];
+        const readinessTools = readiness && Array.isArray(readiness.exposed_tools) ? readiness.exposed_tools : [];
+        const readinessTone = readiness && String(readiness.verdict || '').toLowerCase() === 'client-safe'
+            ? ' is-good'
+            : readiness
+                ? ' is-warn'
+                : '';
 
         shell.innerHTML = [
             '<div class="cg-app-shell__inner">',
@@ -111,6 +140,15 @@
             '<div class="cg-app-shell__stat"><span class="cg-app-shell__stat-label">Intake</span><span class="cg-app-shell__stat-value" id="cg-app-shell-intake-count">' + summary.answeredQuestions + '</span><span class="cg-app-shell__stat-detail">' + safeText(summary.nextQuestion, 'Intake complete.') + '</span></div>',
             '<div class="cg-app-shell__stat"><span class="cg-app-shell__stat-label">Support Review</span><span class="cg-app-shell__stat-value" id="cg-app-shell-supported-count">' + summary.supportedElements + '</span><span class="cg-app-shell__stat-detail">' + summary.missingElements + ' claim elements still need support.</span></div>',
             '<div class="cg-app-shell__stat"><span class="cg-app-shell__stat-label">Evidence</span><span class="cg-app-shell__stat-value" id="cg-app-shell-evidence-count">' + summary.evidenceCount + '</span><span class="cg-app-shell__stat-detail">' + safeText(summary.draftSummary, 'No draft generated yet.') + '</span></div>',
+            '</div>',
+            '<div class="cg-app-shell__section-title">UI Readiness</div>',
+            '<div class="cg-app-shell__readiness' + readinessTone + '" id="cg-app-shell-readiness">',
+            '<div class="cg-app-shell__readiness-header"><strong>' + safeText(readinessVerdict, 'No UI verdict cached') + '</strong><span>' + safeText(readinessScore, 'pending') + '</span></div>',
+            '<div class="cg-app-shell__readiness-copy">' + safeText(readinessBlockers[0], readiness ? 'The latest actor/critic review did not return a release blocker.' : 'Run UX Audit in the workspace to cache an actor/critic verdict for the rest of the site.') + '</div>',
+            '<div class="cg-app-shell__readiness-meta">' + (readinessStages.length ? ('Stages: ' + readinessStages.join(', ')) : 'Stages: not reviewed yet') + '</div>',
+            '<div class="cg-app-shell__readiness-meta">' + (readinessTools.length ? ('Shared tools: ' + readinessTools.slice(0, 3).join(', ')) : 'Shared tools: not cached yet') + '</div>',
+            (readinessUpdated ? '<div class="cg-app-shell__readiness-meta">Updated: ' + safeText(readinessUpdated, '') + '</div>' : ''),
+            '<a class="cg-app-shell__action" href="/workspace?target_tab=ux-review">Open UX Audit</a>',
             '</div>',
             '<div class="cg-app-shell__section-title">Next Actions</div>',
             '<div class="cg-app-shell__actions">',

@@ -699,6 +699,70 @@ def test_review_surface_dashboard_actions_update_live_review(tmp_path: Path):
                 browser.close()
 
 
+def test_review_surface_live_dashboard_captures_loaded_and_updated_review_screenshots(tmp_path: Path):
+    _require_browser_stack()
+
+    mediator = _SiteFlowMediator(tmp_path / "artifacts")
+    app = create_review_surface_app(mediator)
+    screenshot_dir = tmp_path / "review-surface-live-dashboard-snapshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport={"width": 1440, "height": 1200})
+            try:
+                page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation",
+                    wait_until="domcontentloaded",
+                )
+                page.get_by_role("button", name="Load Review").click()
+                _wait_for_text(page, "#status-line", "Review payload loaded.")
+                _wait_for_text(page, "#confirm-intake-summary-status", "awaiting complainant confirmation")
+                _wait_for_text(page, "body", "Operator Review Surface")
+
+                loaded_screenshot = screenshot_dir / "review-loaded.png"
+                page.screenshot(path=str(loaded_screenshot), full_page=True)
+                assert loaded_screenshot.exists()
+                assert loaded_screenshot.stat().st_size > 0
+
+                page.locator("#testimony-element-id").fill("retaliation:1")
+                page.locator("#testimony-element-text").fill("Protected activity")
+                page.locator("#testimony-actor").fill("Jane Doe")
+                page.locator("#testimony-act").fill("Reported discrimination to HR")
+                page.locator("#testimony-harm").fill("Supervisor retaliation")
+                page.locator("#testimony-narrative").fill(
+                    "I reported discrimination to HR, and my supervisor started retaliating the next day."
+                )
+                page.get_by_role("button", name="Save Testimony").click()
+                _wait_for_text(page, "#testimony-summary-chips", "Records: 1")
+                _wait_for_text(page, "#testimony-list", "Protected activity")
+
+                page.locator("#document-element-id").fill("retaliation:1")
+                page.locator("#document-element-text").fill("Protected activity")
+                page.locator("#document-label").fill("Supervisor write-up")
+                page.locator("#document-filename").fill("writeup.txt")
+                page.locator("#document-text").fill(
+                    "Supervisor issued a disciplinary write-up immediately after the protected report."
+                )
+                page.get_by_role("button", name="Save Document").click()
+                _wait_for_text(page, "#document-summary-chips", "Documents: 1")
+                _wait_for_text(page, "#document-list", "Supervisor write-up")
+
+                page.locator("#confirm-intake-summary-note").fill("Reviewed with complainant on the dashboard.")
+                page.locator("#confirm-intake-summary-button").click()
+                _wait_for_text(page, "#status-line", "Intake summary confirmed.")
+                _wait_for_text(page, "#confirm-intake-summary-status", "Intake summary confirmed")
+                assert page.locator("#confirm-intake-summary-button").is_disabled()
+
+                updated_screenshot = screenshot_dir / "review-updated.png"
+                page.screenshot(path=str(updated_screenshot), full_page=True)
+                assert updated_screenshot.exists()
+                assert updated_screenshot.stat().st_size > 0
+            finally:
+                browser.close()
+
+
 def test_review_surface_restores_review_focus_after_reopen(tmp_path: Path):
     _require_browser_stack()
 
@@ -786,6 +850,78 @@ def test_review_surface_restores_document_builder_state_and_review_resume_link(t
                 resumed_builder.wait_for_url("**/claim-support-review?*")
                 _wait_for_input_value(resumed_builder, "#claim-type", "retaliation")
                 _wait_for_input_value(resumed_builder, "#user-id", "resume-user")
+            finally:
+                context.close()
+                browser.close()
+
+
+def test_review_surface_resume_loop_captures_builder_and_review_screenshots(tmp_path: Path):
+    _require_browser_stack()
+
+    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    screenshot_dir = tmp_path / "review-surface-resume-snapshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            context = browser.new_context(viewport={"width": 1440, "height": 1200})
+            try:
+                review_page = context.new_page()
+                review_page.goto(
+                    f"{base_url}/claim-support-review?claim_type=retaliation",
+                    wait_until="domcontentloaded",
+                )
+                review_page.locator("#user-id").fill("resume-user")
+                review_page.get_by_role("button", name="Load Review").click()
+                _wait_for_text(review_page, "#status-line", "Review payload loaded.")
+                review_page.locator("a[href='/document']").first.click(force=True)
+                review_page.wait_for_url(f"{base_url}/document")
+                review_page.locator("#district").fill("Northern District of California")
+                review_page.locator("#plaintiffs").fill("Jane Doe")
+                review_page.locator("#defendants").fill("Acme Corporation")
+                review_page.locator("#enableAgenticOptimization").check()
+                review_page.locator("#optimizationPersistArtifacts").check()
+                review_page.get_by_role("button", name="Generate Formal Complaint").click()
+                review_page.locator("#successBox").wait_for(state="visible")
+                _wait_for_text(
+                    review_page,
+                    "#previewRoot",
+                    "Plaintiff Jane Doe alleges retaliation after protected activity.",
+                )
+                review_page.close()
+
+                resumed_builder = context.new_page()
+                resumed_builder.goto(f"{base_url}/document", wait_until="domcontentloaded")
+                _wait_for_input_value(resumed_builder, "#district", "Northern District of California")
+                _wait_for_input_value(resumed_builder, "#plaintiffs", "Jane Doe")
+                _wait_for_input_value(resumed_builder, "#defendants", "Acme Corporation")
+                _wait_for_text(
+                    resumed_builder,
+                    "#previewRoot",
+                    "Plaintiff Jane Doe alleges retaliation after protected activity.",
+                )
+                resume_link = resumed_builder.get_by_role("link", name="Resume Review Focus")
+                assert resume_link.is_visible()
+                builder_screenshot = screenshot_dir / "builder-resume-link.png"
+                resumed_builder.screenshot(path=str(builder_screenshot), full_page=True)
+                assert builder_screenshot.exists()
+                assert builder_screenshot.stat().st_size > 0
+
+                resume_href = resume_link.get_attribute("href") or ""
+                assert resume_href.startswith("/claim-support-review?")
+                assert "claim_type=retaliation" in resume_href
+                assert "user_id=resume-user" in resume_href
+
+                resume_link.click()
+                resumed_builder.wait_for_url("**/claim-support-review?*")
+                _wait_for_input_value(resumed_builder, "#claim-type", "retaliation")
+                _wait_for_input_value(resumed_builder, "#user-id", "resume-user")
+                _wait_for_text(resumed_builder, "#status-line", "Review payload loaded.")
+                review_screenshot = screenshot_dir / "review-resumed-focus.png"
+                resumed_builder.screenshot(path=str(review_screenshot), full_page=True)
+                assert review_screenshot.exists()
+                assert review_screenshot.stat().st_size > 0
             finally:
                 context.close()
                 browser.close()

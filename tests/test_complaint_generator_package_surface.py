@@ -14,17 +14,32 @@ except ModuleNotFoundError:
 
 from complaint_generator import (
     ComplaintWorkspaceService,
+    build_mediator_prompt,
     build_ui_ux_review_prompt,
+    create_identity,
     run_closed_loop_ui_ux_improvement,
     run_end_to_end_complaint_browser_audit,
     create_review_dashboard_app,
     create_ui_review_report,
     create_review_surface_app,
+    export_complaint_packet,
     generate_decentralized_id,
+    generate_complaint,
+    get_workflow_capabilities,
     handle_jsonrpc_message,
+    list_claim_elements,
+    list_intake_questions,
+    list_mcp_tools,
+    reset_session,
+    review_case,
     run_iterative_ui_ux_workflow,
     run_playwright_screenshot_audit,
+    save_evidence,
+    start_session,
+    submit_intake_answers,
     tool_list_payload,
+    update_case_synopsis,
+    update_draft,
 )
 from complaint_generator import cli as cli_module
 from applications import complaint_cli as applications_cli_module
@@ -83,6 +98,21 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(run_end_to_end_complaint_browser_audit)
     assert callable(run_iterative_ui_ux_workflow)
     assert callable(run_playwright_screenshot_audit)
+    assert callable(create_identity)
+    assert callable(start_session)
+    assert callable(list_intake_questions)
+    assert callable(list_claim_elements)
+    assert callable(submit_intake_answers)
+    assert callable(save_evidence)
+    assert callable(review_case)
+    assert callable(build_mediator_prompt)
+    assert callable(get_workflow_capabilities)
+    assert callable(generate_complaint)
+    assert callable(update_draft)
+    assert callable(export_complaint_packet)
+    assert callable(update_case_synopsis)
+    assert callable(reset_session)
+    assert callable(list_mcp_tools)
     if HAS_MULTIPART:
         app = create_review_surface_app(mediator=object())
         assert any(
@@ -96,6 +126,86 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
         )
     else:
         assert callable(create_review_surface_app)
+
+
+def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "package-wrapper-sessions")
+
+    identity_payload = create_identity(service=service)
+    assert str(identity_payload["did"]).startswith("did:key:")
+
+    session_payload = start_session("package-wrapper-user", service=service)
+    assert session_payload["session"]["user_id"] == "package-wrapper-user"
+
+    questions_payload = list_intake_questions(service=service)
+    claim_elements_payload = list_claim_elements(service=service)
+    assert questions_payload["questions"][0]["id"] == "party_name"
+    assert claim_elements_payload["claim_elements"][0]["id"] == "protected_activity"
+
+    intake_payload = submit_intake_answers(
+        "package-wrapper-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+        service=service,
+    )
+    assert intake_payload["session"]["intake_answers"]["party_name"] == "Jordan Example"
+
+    evidence_payload = save_evidence(
+        "package-wrapper-user",
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="Termination followed immediately after the report.",
+        source="Inbox export",
+        attachment_names=["termination-email.txt"],
+        service=service,
+    )
+    assert evidence_payload["saved"]["title"] == "Termination email"
+
+    synopsis_payload = update_case_synopsis(
+        "package-wrapper-user",
+        "Jordan Example alleges retaliation after reporting discrimination to HR.",
+        service=service,
+    )
+    assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
+
+    review_payload = review_case("package-wrapper-user", service=service)
+    mediator_payload = build_mediator_prompt("package-wrapper-user", service=service)
+    capabilities_payload = get_workflow_capabilities("package-wrapper-user", service=service)
+    assert "case_synopsis" in review_payload["review"]
+    assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
+    assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
+
+    draft_payload = generate_complaint(
+        "package-wrapper-user",
+        requested_relief=["Back pay", "Injunctive relief"],
+        title_override="Package wrapper complaint",
+        service=service,
+    )
+    assert draft_payload["draft"]["title"] == "Package wrapper complaint"
+
+    updated_payload = update_draft(
+        "package-wrapper-user",
+        title="Edited package wrapper complaint",
+        body="Edited body from package wrapper flow.",
+        requested_relief=["Reinstatement"],
+        service=service,
+    )
+    assert updated_payload["draft"]["title"] == "Edited package wrapper complaint"
+
+    export_payload = export_complaint_packet("package-wrapper-user", service=service)
+    tools_payload = list_mcp_tools(service=service)
+    assert export_payload["packet_summary"]["has_draft"] is True
+    assert any(tool["name"] == "complaint.run_browser_audit" for tool in tools_payload["tools"])
+
+    reset_payload = reset_session("package-wrapper-user", service=service)
+    assert reset_payload["session"]["intake_answers"] == {}
 
 
 def test_complaint_generator_cli_wrapper_exposes_workspace_commands(tmp_path, monkeypatch):

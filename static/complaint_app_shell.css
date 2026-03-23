@@ -55,7 +55,8 @@
 .cg-app-shell__chip-row,
 .cg-app-shell__nav,
 .cg-app-shell__stats,
-.cg-app-shell__actions {
+.cg-app-shell__actions,
+.cg-app-shell__readiness {
     display: grid;
     gap: 10px;
 }
@@ -135,6 +136,50 @@
     border-radius: 16px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
+}
+
+.cg-app-shell__readiness {
+    margin-top: 4px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: #fffaf0;
+    border: 1px solid #fcd34d;
+}
+
+.cg-app-shell__readiness.is-good {
+    background: #ecfdf5;
+    border-color: #86efac;
+}
+
+.cg-app-shell__readiness.is-warn {
+    background: #fff7ed;
+    border-color: #fdba74;
+}
+
+.cg-app-shell__readiness-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+}
+
+.cg-app-shell__readiness-header strong {
+    color: #0f172a;
+    font-size: 14px;
+}
+
+.cg-app-shell__readiness-header span,
+.cg-app-shell__readiness-meta {
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.cg-app-shell__readiness-copy {
+    color: #1f2937;
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 .cg-app-shell__stat-label {
