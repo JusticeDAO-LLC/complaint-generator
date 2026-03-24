@@ -2356,6 +2356,63 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                 keys.add(f"{prefix}:{cleaned}")
         return keys
 
+    def _canonical_authority_key(item: Dict[str, Any]) -> str:
+        combined = " ".join(
+            str(value or "")
+            for value in (
+                item.get("citation"),
+                item.get("title"),
+                item.get("url"),
+            )
+            if str(value or "").strip()
+        )
+        lowered = combined.lower().replace("\u00a7", " § ")
+        compact = re.sub(r"[^a-z0-9.]+", " ", lowered)
+
+        cfr_section_patterns = (
+            r"\b(\d+)\s*c\.?f\.?r\.?\s*(?:§\s*)?(\d+(?:\.\d+)*)\b",
+            r"\b(\d+)\s*cfr\s*(\d+(?:\.\d+)*)\b",
+            r"/cfr/text/(\d+)/(\d+(?:\.\d+)*)\b",
+            r"section-(\d+(?:\.\d+)*)\b",
+        )
+        for pattern in cfr_section_patterns:
+            match = re.search(pattern, lowered) or re.search(pattern, compact)
+            if not match:
+                continue
+            groups = match.groups()
+            if len(groups) == 2:
+                return f"cfr-section:{groups[0]}:{groups[1]}"
+            if len(groups) == 1:
+                title_match = re.search(r"\b(\d+)\s*c\.?f\.?r\.?\b", lowered) or re.search(r"\b(\d+)\s*cfr\b", compact)
+                if title_match:
+                    return f"cfr-section:{title_match.group(1)}:{groups[0]}"
+
+        cfr_part_match = re.search(r"\b(\d+)\s*c\.?f\.?r\.?\s*part\s*(\d+)\s*subpart\s*([a-z])\b", lowered) or re.search(
+            r"\b(\d+)\s*cfr\s*part\s*(\d+)\s*subpart\s*([a-z])\b",
+            compact,
+        )
+        if cfr_part_match:
+            return f"cfr-part:{cfr_part_match.group(1)}:{cfr_part_match.group(2)}:{cfr_part_match.group(3)}"
+
+        usc_match = re.search(r"\b(\d+)\s*u\.?s\.?c\.?\s*(?:§\s*)?(\d+[a-z0-9\-]*)\b", lowered) or re.search(
+            r"\b(\d+)\s*usc\s*(\d+[a-z0-9\-]*)\b",
+            compact,
+        )
+        if usc_match:
+            return f"usc:{usc_match.group(1)}:{usc_match.group(2)}"
+        usc_url_match = re.search(r"/uscode/text/(\d+)/(\d+[a-z0-9\-]*)\b", lowered)
+        if usc_url_match:
+            return f"usc:{usc_url_match.group(1)}:{usc_url_match.group(2)}"
+
+        return ""
+
+    def _authority_keys(item: Dict[str, Any]) -> set[str]:
+        keys = set(_research_item_keys(item))
+        canonical_key = _canonical_authority_key(item)
+        if canonical_key:
+            keys.add(f"canonical:{canonical_key}")
+        return keys
+
     promoted_web_authorities = [
         item for item in web_results if _looks_like_formal_authority(item) and _is_relevant_authority_item(item)
     ]
@@ -2371,9 +2428,12 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         and not (_research_item_keys(item) & legal_authority_keys)
         and _is_relevant_corroborating_web_item(item)
     ]
+    accepted_authority_keys: set[str] = set()
 
     for item in legal_results:
         if not _is_relevant_authority_item(item):
+            continue
+        if _authority_keys(item) & accepted_authority_keys:
             continue
         citation = str(item.get("citation") or "").strip()
         title = str(item.get("title") or "").strip()
@@ -2415,12 +2475,15 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                 "line": line,
             }
         )
+        accepted_authority_keys.update(_authority_keys(item))
         if len(authority_lines) >= limit:
             break
 
     remaining = max(0, limit - len(authority_lines))
     if remaining:
         for item in promoted_web_authorities[:remaining]:
+            if _authority_keys(item) & accepted_authority_keys:
+                continue
             title = str(item.get("title") or item.get("url") or "").strip()
             url = str(item.get("url") or "").strip()
             reasons = [str(value).strip() for value in list(item.get("research_priority_reasons") or []) if str(value).strip()]
@@ -2450,6 +2513,7 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                     "line": line,
                 }
             )
+            accepted_authority_keys.update(_authority_keys(item))
             if len(authority_lines) >= limit:
                 break
 

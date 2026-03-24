@@ -485,6 +485,69 @@ def test_external_authority_basis_deduplicates_web_results_already_used_as_legal
     assert lines["corroborating_web_research_records"][0]["url"] == "https://housinghelp.example.org/grievance-hearing-checklist"
 
 
+def test_external_authority_basis_deduplicates_equivalent_cfr_authorities_across_mirrors():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "24 CFR 982.555--",
+                        "title": "eCFR::24 CFR 982.555-- Informal hearing for participant.",
+                        "authority_source": "web_legal_search",
+                        "url": "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-982/subpart-L/section-982.555",
+                        "summary": "A PHA must give a participant family an opportunity for an informal hearing.",
+                    },
+                    {
+                        "citation": "24CFR§982.555- Informal hearing for participant ...",
+                        "title": "24CFR§982.555- Informal hearing for participant ...",
+                        "authority_source": "web_legal_search",
+                        "url": "https://www.law.cornell.edu/cfr/text/24/982.555",
+                        "summary": "A PHA must give a participant family an opportunity for an informal hearing.",
+                    },
+                ]
+            },
+            "web_discovery": {"results": []},
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["url"] == "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-982/subpart-L/section-982.555"
+
+
+def test_external_authority_basis_deduplicates_promoted_authority_already_present_in_legal_results():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "24 CFR Part 966 Subpart B",
+                        "title": "24 CFR Part 966 Subpart B -- Grievance Procedures and Requirements",
+                        "authority_source": "web_fallback",
+                        "url": "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-966/subpart-B",
+                        "summary": "Public housing grievance procedures and hearing requirements.",
+                    }
+                ]
+            },
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "24 CFR Part 966 Subpart B -- Grievance Procedures and Requirements",
+                        "url": "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-966/subpart-B",
+                        "summary": "Public housing grievance procedures and hearing requirements.",
+                    }
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["url"] == "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-966/subpart-B"
+
+
 def test_proposed_allegations_use_blocker_follow_up_summary_when_available():
     seed = {
         "description": "Retaliation complaint anchored to HACC core housing policies.",
