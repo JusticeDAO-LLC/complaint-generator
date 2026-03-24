@@ -936,7 +936,7 @@ function buildWorkspacePacketExport(state) {
     exported_at: '2026-03-22T12:30:00Z',
   };
   const filenameRoot = slugifyWorkspaceFilename(draft.title);
-  const markdown = [
+  const packetMarkdown = [
     draft.body,
     '',
     'APPENDIX A - CASE SYNOPSIS',
@@ -966,6 +966,7 @@ function buildWorkspacePacketExport(state) {
     `- User ID: ${String(state.user_id || 'did:key:playwright-demo')}`,
     '- Exported at: 2026-03-22T12:30:00Z',
   ].join('\n');
+  const complaintMarkdown = `${String(draft.body || '').trim()}\n`;
   return {
     packet,
     packet_summary: {
@@ -987,8 +988,9 @@ function buildWorkspacePacketExport(state) {
       markdown: {
         filename: `${filenameRoot}.md`,
         content_type: 'text/markdown',
-        content: markdown,
-        excerpt: markdown.slice(0, 2000),
+        content: complaintMarkdown,
+        packet_content: packetMarkdown,
+        excerpt: complaintMarkdown.slice(0, 2000),
       },
       pdf: {
         filename: `${filenameRoot}.pdf`,

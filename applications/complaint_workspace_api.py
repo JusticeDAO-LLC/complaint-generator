@@ -25,6 +25,19 @@ class EvidenceRequest(BaseModel):
     source: Optional[str] = None
 
 
+class GmailEvidenceImportRequest(BaseModel):
+    user_id: Optional[str] = None
+    addresses: List[str] = Field(default_factory=list)
+    claim_element_id: str = "causation"
+    folder: str = "INBOX"
+    limit: Optional[int] = None
+    date_after: Optional[str] = None
+    date_before: Optional[str] = None
+    evidence_root: Optional[str] = None
+    gmail_user: Optional[str] = None
+    gmail_app_password: Optional[str] = None
+
+
 class GenerateRequest(BaseModel):
     user_id: Optional[str] = None
     requested_relief: List[str] = Field(default_factory=list)
@@ -80,6 +93,21 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             title=request.title,
             content=request.content,
             source=request.source,
+        )
+
+    @router.post("/api/complaint-workspace/import-gmail-evidence")
+    async def import_gmail_evidence_route(request: GmailEvidenceImportRequest) -> Dict[str, Any]:
+        return workspace.import_gmail_evidence(
+            request.user_id,
+            addresses=list(request.addresses or []),
+            claim_element_id=request.claim_element_id,
+            folder=request.folder,
+            limit=request.limit,
+            date_after=request.date_after,
+            date_before=request.date_before,
+            evidence_root=request.evidence_root,
+            gmail_user=request.gmail_user,
+            gmail_app_password=request.gmail_app_password,
         )
 
     @router.post("/api/complaint-workspace/review")

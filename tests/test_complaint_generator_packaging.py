@@ -14,6 +14,7 @@ from complaint_generator import (
     create_complaint_workspace_router,
     create_review_surface_app,
     handle_jsonrpc_message,
+    import_gmail_evidence,
     run_main,
     tool_list_payload,
 )
@@ -60,6 +61,7 @@ def test_package_exports_expose_workspace_review_and_entrypoint_helpers():
     assert create_complaint_workspace_router is not None
     assert create_review_surface_app is not None
     assert handle_jsonrpc_message is not None
+    assert import_gmail_evidence is not None
     assert tool_list_payload is not None
     assert ComplaintWorkspaceService is complaint_workspace_module.ComplaintWorkspaceService
     assert handle_jsonrpc_message is complaint_mcp_module.handle_jsonrpc_message

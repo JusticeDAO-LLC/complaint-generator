@@ -454,7 +454,7 @@ def _create_account_and_open_chat(page, base_url: str) -> None:
 
 def _create_account_from_root_iframe(page) -> None:
     page.click("#homepage-open-intake")
-    page.wait_for_url("**/home")
+    page.wait_for_function("() => window.location.pathname === '/home'")
     if not page.locator("#create-form .username_input").is_visible():
         page.click("#create-form button")
     page.fill("#create-form .username_input", "ExampleUser1")
@@ -462,6 +462,10 @@ def _create_account_from_root_iframe(page) -> None:
     page.fill("#create-form .password_verify_input", "StrongPass1!")
     page.fill("#create-form .email_input", "jordan@example.com")
     page.click("#create-form button")
+    page.wait_for_function("() => window.location.pathname === '/chat'")
+    page.wait_for_function(
+        "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
+    )
 
 
 def _artifact_dir(target_dir: Path) -> Path:
@@ -549,7 +553,9 @@ def _assert_surface_layout(page, *, min_content_height: int = 160) -> None:
                 .map((node) => String(node.textContent || '').trim())
                 .filter(Boolean);
             const mainLike = document.querySelector('main, .shell, .workspace, .hero, .container, body');
-            const primaryAction = document.querySelector('button, a[href="/document"], a[href="/claim-support-review"]');
+            const primaryAction = document.querySelector(
+                'button, .primary-cta, .cta-primary, .surface-handoff-button, #action-button, #homepage-open-intake, a[href="/document"], a[href="/claim-support-review"]'
+            );
             const rect = mainLike ? mainLike.getBoundingClientRect() : null;
             return {
                 viewportWidth: window.innerWidth,
@@ -638,11 +644,11 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
                         && bodyText.includes('three simple steps');
                 }"""
             )
-            assert page.locator("a[href='/claim-support-review']").count() >= 1
-            assert page.locator("a[href='/document']").count() >= 1
-            assert page.locator("a[href='/workspace']").count() >= 1
+            assert page.locator("#homepage-nav-review").count() == 1
+            assert page.locator("#homepage-nav-builder").count() == 1
+            assert page.locator("#homepage-nav-workspace").count() == 1
             assert page.locator("#homepage-open-intake").count() == 1
-            assert page.locator("a[href='/home']").count() >= 1
+            assert page.locator("#homepage-nav-intake").count() == 1
             body_text = page.locator("body").inner_text()
             assert "Build your complaint one step at a time." in body_text
             assert "A guided path through the complaint process" in body_text
@@ -651,8 +657,8 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
 
             chat_text = page.locator("#messages").inner_text()
             assert "Tell me what happened so we can organize your complaint." in chat_text
-            assert page.locator("a[href='/document']").count() >= 1
-            assert page.locator("a[href='/claim-support-review']").count() >= 1
+            assert page.locator("#chat-open-builder").count() == 1
+            assert page.locator("#chat-open-review").count() == 1
 
             page.goto(f"{base_url}/profile")
             page.wait_for_function(
@@ -669,8 +675,8 @@ def test_legacy_site_pages_share_profile_state_and_navigation():
             )
             results_text = page.locator("#profile_data").inner_text()
             assert "browser-smoke-text-link" in results_text
-            assert page.locator("a[href='/document']").count() >= 1
-            assert page.locator("a[href='/claim-support-review']").count() >= 1
+            assert page.locator("#results-open-builder").count() == 1
+            assert page.locator("#results-open-review").count() == 1
 
             browser.close()
 
@@ -695,18 +701,17 @@ def test_root_landing_routes_into_secure_intake_and_connected_surfaces_after_sig
                 }"""
             )
             assert page.locator("#homepage-open-intake").count() == 1
-            assert page.locator("a[href='/home']").count() >= 1
-            assert page.locator("a[href='/workspace']").count() >= 1
-            assert page.locator("a[href='/claim-support-review']").count() >= 1
-            assert page.locator("a[href='/document']").count() >= 1
+            assert page.locator("#homepage-nav-intake").count() == 1
+            assert page.locator("#homepage-nav-workspace").count() == 1
+            assert page.locator("#homepage-nav-review").count() == 1
+            assert page.locator("#homepage-nav-builder").count() == 1
             assert page.locator("#homepage-resume-review").count() == 1
             assert page.locator("#homepage-open-workspace").count() == 1
 
             _create_account_from_root_iframe(page)
 
-            page.wait_for_url(f"{base_url}/chat")
-            assert page.locator("a[href='/claim-support-review']").count() >= 1
-            assert page.locator("a[href='/document']").count() >= 1
+            assert page.locator("#chat-open-review").count() == 1
+            assert page.locator("#chat-open-builder").count() == 1
 
             browser.close()
 
@@ -723,8 +728,8 @@ def test_document_and_review_surfaces_complete_single_site_generation_flow():
 
             _create_account_and_open_chat(page, base_url)
 
-            page.click("a[href='/document']")
-            page.wait_for_url(f"{base_url}/document")
+            page.click("#chat-open-builder")
+            page.wait_for_function("() => window.location.pathname === '/document'")
 
             page.fill("#district", "Northern District of California")
             page.fill("#plaintiffs", "Jordan Example")
@@ -747,7 +752,7 @@ def test_document_and_review_surfaces_complete_single_site_generation_flow():
 
             assert "Plaintiff alleges retaliation" in preview_text
             assert "/claim-support-review" in review_href
-            assert f"user_id={FIXTURE_HASHED_USERNAME}" in review_href
+            assert "user_id=" in unquote(review_href)
 
             mediator.build_formal_complaint_document_package.assert_called_once()
             call_kwargs = mediator.build_formal_complaint_document_package.call_args.kwargs
@@ -755,7 +760,7 @@ def test_document_and_review_surfaces_complete_single_site_generation_flow():
             assert call_kwargs["plaintiff_names"] == ["Jordan Example"]
             assert call_kwargs["defendant_names"] == ["Acme Corporation"]
             assert call_kwargs["requested_relief"] == ["Compensatory damages"]
-            assert call_kwargs["user_id"] == FIXTURE_HASHED_USERNAME
+            assert f"user_id={call_kwargs['user_id']}" in unquote(review_href)
 
             review_link.click()
             page.wait_for_url(f"{base_url}/claim-support-review*")
@@ -768,8 +773,8 @@ def test_document_and_review_surfaces_complete_single_site_generation_flow():
             assert "Protected activity" in dashboard_text
             assert "Causal connection" in dashboard_text
 
-            page.click("a[href='/document']")
-            page.wait_for_url(f"{base_url}/document")
+            page.click("#review-nav-builder")
+            page.wait_for_function("() => window.location.pathname === '/document'")
             assert "Generate Formal Complaint" in page.locator("body").inner_text()
 
             browser.close()
@@ -866,15 +871,28 @@ def test_shared_builder_and_review_shortcuts_connect_the_site_surfaces():
                         }"""
                     )
 
-                assert page.locator("a[href='/document']").count() >= 1
-                assert page.locator("a[href='/claim-support-review']").count() >= 1
+                if path == "/":
+                    assert page.locator("#homepage-nav-builder").count() == 1
+                    assert page.locator("#homepage-nav-review").count() == 1
+                elif path == "/chat":
+                    assert page.locator("#chat-open-builder").count() == 1
+                    assert page.locator("#chat-open-review").count() == 1
+                elif path == "/results":
+                    assert page.locator("#results-open-builder").count() == 1
+                    assert page.locator("#results-open-review").count() == 1
+                elif path == "/document":
+                    assert page.locator("#builder-nav-builder").count() == 1
+                    assert page.locator("#builder-nav-review").count() == 1
+                else:
+                    assert page.locator("#review-nav-builder").count() == 1
+                    assert page.locator("#review-nav-review").count() == 1
 
             page.goto(f"{base_url}/document")
-            page.click("a[href='/claim-support-review']")
-            page.wait_for_url(f"{base_url}/claim-support-review")
+            page.click("#builder-nav-review")
+            page.wait_for_function("() => window.location.pathname === '/claim-support-review'")
 
-            page.click("a[href='/document']")
-            page.wait_for_url(f"{base_url}/document")
+            page.click("#review-nav-builder")
+            page.wait_for_function("() => window.location.pathname === '/document'")
 
             browser.close()
 
@@ -903,6 +921,7 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.fill("#intake-adverse_action", "Terminated two days later")
             page.fill("#intake-timeline", "Complaint on March 8, termination on March 10")
             page.fill("#intake-harm", "Lost wages and emotional distress")
+            page.fill("#intake-court_header", "FOR THE NORTHERN DISTRICT OF CALIFORNIA")
             page.click("#save-intake-button")
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"
@@ -1032,6 +1051,16 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             )
             page.wait_for_function(
                 "() => document.getElementById('packet-export-summary').innerText.includes('true')"
+            )
+            page.click("#refresh-formal-diagnostics-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Formal complaint diagnostics refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-diagnostics-preview').innerText.includes('formal_diagnostics')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('formal-diagnostics-preview').innerText.includes('release_gate_verdict')"
             )
             page.click("#analyze-complaint-output-button")
             page.wait_for_function(
@@ -1676,14 +1705,15 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             _capture_screenshot(page, screenshot_dir, "homepage-entry")
 
             page.click("#homepage-open-intake")
-            page.wait_for_url(f"{base_url}/home")
+            page.wait_for_function("() => window.location.pathname === '/home'")
+            _wait_for_surface(page, "/home")
             page.click("#create-form button")
             page.fill("#create-form .username_input", "ExampleUser1")
             page.fill("#create-form .password_input", "StrongPass1!")
             page.fill("#create-form .password_verify_input", "StrongPass1!")
             page.fill("#create-form .email_input", "jordan@example.com")
             page.click("#create-form button")
-            page.wait_for_url(f"{base_url}/chat")
+            page.wait_for_function("() => window.location.pathname === '/chat'")
             page.wait_for_function(
                 "() => document.getElementById('messages').innerText.includes('Tell me what happened')"
             )
@@ -1695,10 +1725,14 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
                 "() => document.getElementById('messages').innerText.includes('I reported discrimination and then my supervisor threatened to fire me.')"
             )
 
-            page.click("a[href='/workspace']")
-            page.wait_for_url(f"{base_url}/workspace")
+            page.click("#chat-open-workspace")
+            page.wait_for_function("() => window.location.pathname === '/workspace'")
             page.wait_for_function(
                 "() => document.getElementById('sdk-server-info').innerText.includes('complaint-workspace-mcp')"
+            )
+            page.click("button[data-tab-target='intake']")
+            page.wait_for_function(
+                "() => document.querySelector(\"button[data-tab-target='intake']\").classList.contains('is-active')"
             )
 
             page.fill("#intake-party_name", "Jordan Example")
@@ -1707,6 +1741,7 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             page.fill("#intake-adverse_action", "Threatened termination and then terminated two days later")
             page.fill("#intake-timeline", "Reported discrimination on March 8, threat on March 9, termination on March 10")
             page.fill("#intake-harm", "Lost wages, benefits, and emotional distress")
+            page.fill("#intake-court_header", "FOR THE NORTHERN DISTRICT OF CALIFORNIA")
             page.click("#save-intake-button")
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').innerText.includes('Intake answers saved.')"

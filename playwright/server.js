@@ -527,6 +527,95 @@ function uiReadinessPayload(userId = 'did:key:playwright-demo') {
   };
 }
 
+function releaseGateScoreFromVerdict(verdict) {
+  const normalized = String(verdict || '').trim().toLowerCase();
+  if (normalized === 'pass' || normalized === 'client_safe') {
+    return 100;
+  }
+  if (normalized === 'warning') {
+    return 70;
+  }
+  if (normalized === 'blocked') {
+    return 20;
+  }
+  return 35;
+}
+
+function clientReleaseGatePayload(userId = 'did:key:playwright-demo') {
+  const complaintReadiness = complaintReadinessPayload(userId);
+  const uiReadiness = uiReadinessPayload(userId);
+  const workspaceState = getWorkspaceState(userId);
+  const complaintOutputGate = workspaceState.draft
+    ? ((exportComplaintPacketPayload(userId).packet_summary || {}).release_gate || {})
+    : {
+        verdict: 'blocked',
+        reason: 'No complaint draft exists yet, so the exported filing quality has not been validated.',
+        claim_type: String(workspaceState.claim_type || 'retaliation'),
+        claim_type_label: String(workspaceState.claim_type || 'retaliation').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+        draft_strategy: null,
+        filing_shape_score: 0,
+        claim_type_alignment_score: 0,
+        missing_elements: Number(complaintReadiness.missing_elements || 0),
+        evidence_item_count: Number(complaintReadiness.evidence_count || 0),
+        status: 'unavailable',
+      };
+
+  const complaintScore = Number(complaintReadiness.score || 0);
+  const uiScore = uiReadiness.score == null ? 35 : Number(uiReadiness.score || 0);
+  const outputScore = releaseGateScoreFromVerdict(complaintOutputGate.verdict);
+  const score = Math.max(0, Math.min(100, Math.round((complaintScore * 0.3) + (uiScore * 0.3) + (outputScore * 0.4))));
+  const uiVerdict = String(uiReadiness.verdict || '').trim().toLowerCase();
+  const outputVerdict = String(complaintOutputGate.verdict || '').trim().toLowerCase();
+  const complaintVerdict = String(complaintReadiness.verdict || '').trim().toLowerCase();
+
+  const blockers = [];
+  if (outputVerdict === 'blocked') {
+    blockers.push(String(complaintOutputGate.reason || 'The exported complaint is not yet client-safe.'));
+  }
+  if (uiVerdict === 'no ui verdict cached') {
+    blockers.push('No actor/critic UI verdict is cached yet. Run the UX Audit before sending legal clients here.');
+  } else if (uiVerdict === 'needs repair' || uiVerdict === 'do not send to clients yet') {
+    blockers.push(String(uiReadiness.summary || 'The dashboard UI still needs repair before it should be treated as client-safe.'));
+  }
+  if (complaintVerdict === 'not ready to draft' || complaintVerdict === 'still building the record') {
+    blockers.push(String(complaintReadiness.detail || 'The complaint record is not ready for drafting.'));
+  }
+
+  let verdict = 'blocked';
+  let detail = 'The current combination of UI readiness, complaint readiness, and exported complaint quality is not safe enough to treat this workflow as client-ready.';
+  let recommendedRoute = uiVerdict === 'no ui verdict cached'
+    ? '/workspace'
+    : outputVerdict === 'blocked' && workspaceState.draft
+      ? '/document'
+      : String(complaintReadiness.recommended_route || '/workspace');
+  let recommendedAction = 'Fix the highlighted complaint-output and UI blockers before sending legal clients through this workflow.';
+
+  if (outputVerdict === 'pass' && uiVerdict === 'client-safe' && (complaintVerdict === 'ready for first draft' || complaintVerdict === 'draft in progress')) {
+    verdict = 'client_safe';
+    detail = 'The complaint workflow has a client-safe UI verdict, a filing-shaped complaint export, and a complaint record strong enough to keep drafting or refinement on track.';
+    recommendedRoute = String(complaintReadiness.recommended_route || '/document');
+    recommendedAction = 'Continue refining the complaint and review the export artifacts before filing.';
+  } else if (score >= 65 && outputVerdict !== 'blocked') {
+    verdict = 'warning';
+    detail = 'The complaint workflow is usable, but either the UI audit, the complaint record, or the exported filing still needs more work before this should be treated as safe for legal clients.';
+    recommendedRoute = uiVerdict === 'no ui verdict cached' ? '/workspace' : String(complaintReadiness.recommended_route || '/workspace');
+    recommendedAction = 'Review the blockers, tighten the record, and rerun the UX Audit or export critic before relying on this flow.';
+  }
+
+  return {
+    user_id: userId,
+    score,
+    verdict,
+    detail,
+    recommended_route: recommendedRoute,
+    recommended_action: recommendedAction,
+    blockers: blockers.slice(0, 6),
+    complaint_readiness: complaintReadiness,
+    ui_readiness: uiReadiness,
+    complaint_output_release_gate: complaintOutputGate,
+  };
+}
+
 function persistUiReadiness(userId = 'did:key:playwright-demo', result = {}) {
   const workspaceState = getWorkspaceState(userId);
   const review = (result && result.review) || {};
@@ -610,6 +699,7 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
     draft_strategy: draftStrategy,
     complaint_readiness: complaintReadinessPayload(userId),
     ui_readiness: uiReadinessPayload(userId),
+    client_release_gate: clientReleaseGatePayload(userId),
     capabilities: [
       { id: 'intake_questions', label: 'Complaint intake questions', available: questions.length > 0, detail: `${answeredCount} of ${questions.length} intake questions answered.` },
       { id: 'mediator_prompt', label: 'Chat mediator handoff', available: true, detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.' },
@@ -632,7 +722,7 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
     .map((item) => `- **${item.title || 'Testimony'}** (${item.claim_element_id || 'unmapped'}): ${item.content || ''}`.trim());
   const documentLines = (((sessionPayload.session || {}).evidence || {}).documents || [])
     .map((item) => `- **${item.title || 'Document'}** (${item.claim_element_id || 'unmapped'}): ${item.content || ''}`.trim());
-  const markdownContent = [
+  const packetMarkdown = [
     draft.body || 'No complaint draft has been generated yet.',
     '',
     'APPENDIX A - CASE SYNOPSIS',
@@ -662,6 +752,7 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
     `- User ID: ${String(userId)}`,
     '- Exported at: 2026-03-23T00:00:00+00:00',
   ].join('\n');
+  const complaintMarkdown = `${String(draft.body || 'No complaint draft has been generated yet.').trim()}\n`;
   return {
     packet: {
       title: draft.title,
@@ -680,7 +771,8 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       },
       markdown: {
         filename: `${slugifyFilename(draft.title || 'complaint-packet')}.md`,
-        content: markdownContent,
+        content: complaintMarkdown,
+        packet_content: packetMarkdown,
       },
       docx: {
         filename: `${slugifyFilename(draft.title || 'complaint-packet')}.docx`,
@@ -1492,6 +1584,7 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_ui_readiness', description: 'Return the latest cached actor/critic UI readiness verdict for this complaint session.', inputSchema: { type: 'object' } },
+        { name: 'complaint.get_client_release_gate', description: 'Combine complaint readiness, UI readiness, and complaint-output quality into one client-safety release gate.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
         { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
@@ -1533,6 +1626,7 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_ui_readiness', description: 'Return the latest cached actor/critic UI readiness verdict for this complaint session.', inputSchema: { type: 'object' } },
+            { name: 'complaint.get_client_release_gate', description: 'Combine complaint readiness, UI readiness, and complaint-output quality into one client-safety release gate.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.', inputSchema: { type: 'object' } },
             { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_draft', description: 'Persist edits to the complaint draft.', inputSchema: { type: 'object' } },
@@ -1592,6 +1686,8 @@ const server = http.createServer(async (request, response) => {
         structuredContent = complaintReadinessPayload(userId);
       } else if (toolName === 'complaint.get_ui_readiness') {
         structuredContent = uiReadinessPayload(userId);
+      } else if (toolName === 'complaint.get_client_release_gate') {
+        structuredContent = clientReleaseGatePayload(userId);
       } else if (toolName === 'complaint.get_workflow_capabilities') {
         structuredContent = workflowCapabilitiesPayload(userId);
       } else if (toolName === 'complaint.generate_complaint') {
@@ -1838,6 +1934,9 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.get_ui_readiness') {
       return sendJson(response, uiReadinessPayload(userId));
+    }
+    if (toolName === 'complaint.get_client_release_gate') {
+      return sendJson(response, clientReleaseGatePayload(userId));
     }
     if (toolName === 'complaint.get_workflow_capabilities') {
       return sendJson(response, workflowCapabilitiesPayload(userId));

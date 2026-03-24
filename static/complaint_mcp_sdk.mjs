@@ -181,6 +181,12 @@ class ComplaintMcpClient {
         });
     }
 
+    getClientReleaseGate(userId) {
+        return this.callTool('complaint.get_client_release_gate', {
+            user_id: userId,
+        });
+    }
+
     getWorkflowCapabilities(userId) {
         return this.callTool('complaint.get_workflow_capabilities', {
             user_id: userId,
@@ -219,6 +225,12 @@ class ComplaintMcpClient {
 
     analyzeComplaintOutput(userId) {
         return this.callTool('complaint.analyze_complaint_output', {
+            user_id: userId,
+        });
+    }
+
+    getFormalDiagnostics(userId) {
+        return this.callTool('complaint.get_formal_diagnostics', {
             user_id: userId,
         });
     }

@@ -315,6 +315,7 @@ test.describe('website surface navigation', () => {
     await page.locator('#intake-adverse_action').fill('Termination two days later');
     await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
     await page.locator('#intake-harm').fill('Lost wages and emotional distress');
+    await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     await page.locator('#save-intake-button').click();
     await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);
 
@@ -548,6 +549,7 @@ test.describe('website surface navigation', () => {
     await page.locator('#intake-adverse_action').fill('Termination two days later');
     await page.locator('#intake-timeline').fill('Complaint on March 8, termination on March 10');
     await page.locator('#intake-harm').fill('Lost wages and benefits');
+    await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     await page.locator('#save-intake-button').click();
 
     await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved/i);

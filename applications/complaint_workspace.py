@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anyio
 import json
 import re
 import signal
@@ -580,6 +581,53 @@ def _build_complaint_output_release_gate(
         "missing_elements": int(missing_elements or 0),
         "evidence_item_count": int(evidence_item_count or 0),
     }
+
+
+def _release_gate_score_from_verdict(verdict: Optional[str]) -> int:
+    normalized = str(verdict or "").strip().lower()
+    if normalized in {"pass", "client_safe"}:
+        return 100
+    if normalized == "warning":
+        return 70
+    if normalized == "blocked":
+        return 20
+    return 35
+
+
+def _build_local_client_release_gate_for_state(state: Dict[str, Any], review: Dict[str, Any]) -> Dict[str, Any]:
+    overview = dict(review.get("overview") or {})
+    draft = dict(state.get("draft") or {})
+    claim_type = _normalize_claim_type(state.get("claim_type"))
+    if not draft:
+        return {
+            "verdict": "blocked",
+            "reason": "No complaint draft exists yet, so the exported filing quality has not been validated.",
+            "claim_type": claim_type,
+            "claim_type_label": _claim_type_display_name(claim_type),
+            "draft_strategy": None,
+            "filing_shape_score": 0,
+            "claim_type_alignment_score": 0,
+            "missing_elements": int(overview.get("missing_elements") or 0),
+            "evidence_item_count": int(overview.get("testimony_items") or 0) + int(overview.get("document_items") or 0),
+            "status": "unavailable",
+        }
+
+    body = str(draft.get("body") or "")
+    validation_issues = _formal_complaint_validation_issues(body, claim_type)
+    evidence_item_count = int(overview.get("testimony_items") or 0) + int(overview.get("document_items") or 0)
+    filing_shape_score = max(0, min(100, 100 - (len(validation_issues) * 10)))
+    expected_heading = f"COMPLAINT FOR {_claim_type_display_name(claim_type).upper()}"
+    expected_count_heading = _claim_type_count_heading(claim_type)
+    alignment_matches = int(expected_heading in body) + int(expected_count_heading in body)
+    claim_type_alignment_score = 100 if alignment_matches == 2 else 50 if alignment_matches == 1 else 0
+    return _build_complaint_output_release_gate(
+        claim_type=claim_type,
+        draft_strategy=str(draft.get("draft_strategy") or "template"),
+        filing_shape_score=filing_shape_score,
+        claim_type_alignment_score=claim_type_alignment_score,
+        missing_elements=int(overview.get("missing_elements") or 0),
+        evidence_item_count=evidence_item_count,
+    )
 
 
 def _has_required_formal_complaint_markers(body: str) -> bool:
@@ -1385,6 +1433,11 @@ class ComplaintWorkspaceService:
         ]
         return "\n".join(sections).strip() + "\n"
 
+    def _build_complaint_export_markdown(self, packet: Dict[str, Any]) -> str:
+        draft = dict(packet.get("draft") or {})
+        body = str(draft.get("body") or "").strip()
+        return f"{body}\n" if body else "No complaint body available.\n"
+
     def _escape_pdf_text(self, value: str) -> str:
         return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
@@ -1489,7 +1542,7 @@ class ComplaintWorkspaceService:
     def _build_export_artifacts(self, packet: Dict[str, Any]) -> Dict[str, Any]:
         draft = dict(packet.get("draft") or {})
         filename_root = _slugify_filename(draft.get("title") or packet.get("title") or "complaint-packet")
-        markdown_text = self._build_packet_markdown(packet)
+        markdown_text = self._build_complaint_export_markdown(packet)
         pdf_bytes = self._build_packet_pdf_bytes(packet, markdown_text)
         docx_bytes = self._build_packet_docx_bytes(packet, markdown_text)
         json_text = json.dumps(packet, indent=2, sort_keys=True)
@@ -1720,6 +1773,89 @@ class ComplaintWorkspaceService:
             "updated_at": None,
         }
 
+    def get_client_release_gate(self, user_id: Optional[str]) -> Dict[str, Any]:
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        resolved_user_id = str(state.get("user_id") or user_id or DEFAULT_USER_ID)
+        complaint_readiness = self.get_complaint_readiness(resolved_user_id)
+        ui_readiness = self.get_ui_readiness(resolved_user_id)
+        current_draft = dict(state.get("draft") or {})
+        complaint_output_gate = _build_local_client_release_gate_for_state(state, self._build_review(state))
+
+        complaint_score = int(complaint_readiness.get("score") or 0)
+        ui_score = int(ui_readiness.get("score") or 35) if ui_readiness.get("score") is not None else 35
+        output_score = _release_gate_score_from_verdict(complaint_output_gate.get("verdict"))
+        score = round((complaint_score * 0.3) + (ui_score * 0.3) + (output_score * 0.4))
+
+        ui_verdict = str(ui_readiness.get("verdict") or "").strip().lower()
+        output_verdict = str(complaint_output_gate.get("verdict") or "").strip().lower()
+        complaint_verdict = str(complaint_readiness.get("verdict") or "").strip().lower()
+
+        blockers: List[str] = []
+        if output_verdict == "blocked":
+            blockers.append(str(complaint_output_gate.get("reason") or "The exported complaint is not yet client-safe."))
+        if ui_verdict in {"do not send to clients yet", "needs repair", "no ui verdict cached"}:
+            ui_reason = str(ui_readiness.get("summary") or "").strip()
+            if ui_verdict == "no ui verdict cached":
+                blockers.append("No actor/critic UI verdict is cached yet. Run the UX Audit before sending legal clients here.")
+            elif ui_reason:
+                blockers.append(ui_reason)
+            else:
+                blockers.append("The dashboard UI still needs repair before it should be treated as client-safe.")
+        if complaint_verdict in {"not ready to draft", "still building the record"}:
+            blockers.append(str(complaint_readiness.get("detail") or "The complaint record is not ready for drafting."))
+
+        if output_verdict == "pass" and ui_verdict == "client-safe" and complaint_verdict in {"ready for first draft", "draft in progress"}:
+            verdict = "client_safe"
+            detail = (
+                "The complaint workflow has a client-safe UI verdict, a filing-shaped complaint export, "
+                "and a complaint record strong enough to keep drafting or refinement on track."
+            )
+            recommended_route = str(complaint_readiness.get("recommended_route") or "/document")
+            recommended_action = "Continue refining the complaint and review the export artifacts before filing."
+        elif score >= 65 and output_verdict != "blocked":
+            verdict = "warning"
+            detail = (
+                "The complaint workflow is usable, but either the UI audit, the complaint record, or the exported filing "
+                "still needs more work before this should be treated as safe for legal clients."
+            )
+            recommended_route = (
+                "/workspace"
+                if ui_verdict == "no ui verdict cached"
+                else str(complaint_readiness.get("recommended_route") or "/workspace")
+            )
+            recommended_action = (
+                "Review the blockers, tighten the record, and rerun the UX Audit or export critic before relying on this flow."
+            )
+        else:
+            verdict = "blocked"
+            detail = (
+                "The current combination of UI readiness, complaint readiness, and exported complaint quality is not safe enough "
+                "to treat this workflow as client-ready."
+            )
+            recommended_route = (
+                "/workspace"
+                if ui_verdict == "no ui verdict cached"
+                else "/document"
+                if output_verdict == "blocked" and current_draft
+                else str(complaint_readiness.get("recommended_route") or "/workspace")
+            )
+            recommended_action = (
+                "Fix the highlighted complaint-output and UI blockers before sending legal clients through this workflow."
+            )
+
+        return {
+            "user_id": resolved_user_id,
+            "score": max(0, min(100, score)),
+            "verdict": verdict,
+            "detail": detail,
+            "recommended_route": recommended_route,
+            "recommended_action": recommended_action,
+            "blockers": blockers[:6],
+            "complaint_readiness": complaint_readiness,
+            "ui_readiness": ui_readiness,
+            "complaint_output_release_gate": complaint_output_gate,
+        }
+
     def get_workflow_capabilities(self, user_id: Optional[str]) -> Dict[str, Any]:
         session = self.get_session(user_id)
         review = session["review"]
@@ -1794,10 +1930,49 @@ class ComplaintWorkspaceService:
             "draft_strategy": draft_strategy,
             "complaint_readiness": readiness,
             "ui_readiness": self.get_ui_readiness(user_id),
+            "client_release_gate": self.get_client_release_gate(user_id),
             "capabilities": capabilities,
         }
 
     def export_complaint_packet(self, user_id: Optional[str]) -> Dict[str, Any]:
+        snapshot = self._build_packet_snapshot(user_id)
+        packet = snapshot["packet"]
+        artifacts = snapshot["artifacts"]
+        artifact_analysis = snapshot["artifact_analysis"]
+        packet_summary = snapshot["packet_summary"]
+        draft = dict(packet.get("draft") or {})
+        review = dict(packet.get("review") or {})
+        state = dict(packet)
+        state["draft"] = draft
+        state["review"] = review
+        state["artifacts"] = artifacts
+        state["artifact_analysis"] = artifact_analysis
+        session = self.get_session(user_id)
+        ui_feedback = self._analyze_complaint_output(packet, artifact_analysis)
+        draft_fallback_reason = str(draft.get("draft_fallback_reason") or "").strip()
+        complaint_issues = list(ui_feedback.get("issues") or [])
+        return {
+            "packet": packet,
+            "artifacts": artifacts,
+            "artifact_analysis": artifact_analysis,
+            "ui_feedback": ui_feedback,
+            "packet_summary": {
+                **packet_summary,
+                "draft_fallback_reason": draft_fallback_reason,
+                "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
+                "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+                "formal_defect_count": len(
+                    [item for item in complaint_issues if str((item or {}).get("source") or "").startswith("complaint_output")]
+                ),
+                "high_severity_issue_count": len(
+                    [item for item in complaint_issues if str((item or {}).get("severity") or "").lower() == "high"]
+                ),
+                "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
+                "formal_diagnostics": deepcopy(ui_feedback.get("formal_diagnostics") or {}),
+            },
+        }
+
+    def _build_packet_snapshot(self, user_id: Optional[str]) -> Dict[str, Any]:
         session = self.get_session(user_id)
         state = session["session"]
         draft = deepcopy(state.get("draft") or self._build_draft(state))
@@ -1823,39 +1998,25 @@ class ComplaintWorkspaceService:
             "missing_elements": int((review.get("overview") or {}).get("missing_elements") or 0),
             "has_case_synopsis": bool(str(packet.get("case_synopsis") or "").strip()),
         }
-        ui_feedback = self._analyze_complaint_output(packet, artifact_analysis)
-        draft_fallback_reason = str(draft.get("draft_fallback_reason") or "").strip()
-        complaint_issues = list(ui_feedback.get("issues") or [])
+        packet_summary = {
+            "question_count": len(packet["questions"]),
+            "answered_question_count": len([item for item in packet["questions"] if item.get("is_answered")]),
+            "supported_elements": int((review.get("overview") or {}).get("supported_elements") or 0),
+            "missing_elements": int((review.get("overview") or {}).get("missing_elements") or 0),
+            "testimony_items": int((review.get("overview") or {}).get("testimony_items") or 0),
+            "document_items": int((review.get("overview") or {}).get("document_items") or 0),
+            "has_draft": bool(state.get("draft")),
+            "draft_strategy": str(draft.get("draft_strategy") or "template"),
+            "draft_normalization_count": len(list(draft.get("draft_normalizations") or [])),
+            "draft_normalizations": list(draft.get("draft_normalizations") or []),
+            "complaint_readiness": self.get_complaint_readiness(user_id),
+            "artifact_formats": sorted(artifacts.keys()),
+        }
         return {
             "packet": packet,
             "artifacts": artifacts,
             "artifact_analysis": artifact_analysis,
-            "ui_feedback": ui_feedback,
-            "packet_summary": {
-                "question_count": len(packet["questions"]),
-                "answered_question_count": len([item for item in packet["questions"] if item.get("is_answered")]),
-                "supported_elements": int((review.get("overview") or {}).get("supported_elements") or 0),
-                "missing_elements": int((review.get("overview") or {}).get("missing_elements") or 0),
-                "testimony_items": int((review.get("overview") or {}).get("testimony_items") or 0),
-                "document_items": int((review.get("overview") or {}).get("document_items") or 0),
-                "has_draft": bool(state.get("draft")),
-                "draft_strategy": str(draft.get("draft_strategy") or "template"),
-                "draft_fallback_reason": draft_fallback_reason,
-                "draft_normalization_count": len(list(draft.get("draft_normalizations") or [])),
-                "draft_normalizations": list(draft.get("draft_normalizations") or []),
-                "complaint_readiness": self.get_complaint_readiness(user_id),
-                "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
-                "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
-                "formal_defect_count": len(
-                    [item for item in complaint_issues if str((item or {}).get("source") or "").startswith("complaint_output")]
-                ),
-                "high_severity_issue_count": len(
-                    [item for item in complaint_issues if str((item or {}).get("severity") or "").lower() == "high"]
-                ),
-                "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
-                "formal_diagnostics": deepcopy(ui_feedback.get("formal_diagnostics") or {}),
-                "artifact_formats": sorted(artifacts.keys()),
-            },
+            "packet_summary": packet_summary,
         }
 
     def _analyze_complaint_output(self, packet: Dict[str, Any], artifact_analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -2263,6 +2424,25 @@ class ComplaintWorkspaceService:
             "ui_feedback": deepcopy(payload.get("ui_feedback") or {}),
         }
 
+    def get_formal_diagnostics(self, user_id: Optional[str]) -> Dict[str, Any]:
+        analysis = self.analyze_complaint_output(user_id)
+        ui_feedback = dict(analysis.get("ui_feedback") or {})
+        diagnostics = dict(ui_feedback.get("formal_diagnostics") or {})
+        packet_summary = dict(analysis.get("packet_summary") or {})
+        return {
+            "user_id": str(analysis.get("user_id") or user_id or DEFAULT_USER_ID),
+            "claim_type_alignment_score": int(ui_feedback.get("claim_type_alignment_score") or 0),
+            "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
+            "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
+            "formal_diagnostics": diagnostics,
+            "packet_summary": {
+                "has_draft": bool(packet_summary.get("has_draft")),
+                "draft_strategy": str(packet_summary.get("draft_strategy") or "template"),
+                "formal_defect_count": int(packet_summary.get("formal_defect_count") or 0),
+                "high_severity_issue_count": int(packet_summary.get("high_severity_issue_count") or 0),
+            },
+        }
+
     def review_generated_exports(
         self,
         user_id: Optional[str],
@@ -2386,7 +2566,7 @@ class ComplaintWorkspaceService:
 
     def export_complaint_markdown(self, user_id: Optional[str]) -> Dict[str, Any]:
         artifact = self.build_export_artifact(user_id, "markdown")
-        packet_payload = self.export_complaint_packet(user_id)
+        packet_payload = self._build_packet_snapshot(user_id)
         return {
             "artifact": {
                 "format": "markdown",
@@ -2401,7 +2581,7 @@ class ComplaintWorkspaceService:
 
     def export_complaint_pdf(self, user_id: Optional[str]) -> Dict[str, Any]:
         artifact = self.build_export_artifact(user_id, "pdf")
-        packet_payload = self.export_complaint_packet(user_id)
+        packet_payload = self._build_packet_snapshot(user_id)
         return {
             "artifact": {
                 "format": "pdf",
@@ -2416,7 +2596,7 @@ class ComplaintWorkspaceService:
 
     def export_complaint_docx(self, user_id: Optional[str]) -> Dict[str, Any]:
         artifact = self.build_export_artifact(user_id, "docx")
-        packet_payload = self.export_complaint_packet(user_id)
+        packet_payload = self._build_packet_snapshot(user_id)
         return {
             "artifact": {
                 "format": "docx",
@@ -2430,7 +2610,7 @@ class ComplaintWorkspaceService:
         }
 
     def build_export_artifact(self, user_id: Optional[str], output_format: str = "json") -> Dict[str, Any]:
-        payload = self.export_complaint_packet(user_id)
+        payload = self._build_packet_snapshot(user_id)
         packet = payload.get("packet") or {}
         artifacts = payload.get("artifacts") or {}
         normalized_format = str(output_format or "json").strip().lower()
@@ -2440,7 +2620,7 @@ class ComplaintWorkspaceService:
             return {"filename": filename, "media_type": "application/json", "body": body}
         if normalized_format in {"markdown", "md"}:
             artifact = artifacts.get("markdown") or {}
-            content = artifact.get("content") or self._build_packet_markdown(packet)
+            content = artifact.get("content") or self._build_complaint_export_markdown(packet)
             return {
                 "filename": artifact.get("filename") or "complaint-packet.md",
                 "media_type": "text/markdown",
@@ -2448,7 +2628,7 @@ class ComplaintWorkspaceService:
             }
         if normalized_format == "pdf":
             artifact = artifacts.get("markdown") or {}
-            markdown_text = artifact.get("content") or self._build_packet_markdown(packet)
+            markdown_text = artifact.get("content") or self._build_complaint_export_markdown(packet)
             pdf_bytes = self._build_packet_pdf_bytes(packet, str(markdown_text))
             return {
                 "filename": ((artifacts.get("pdf") or {}).get("filename")) or "complaint-packet.pdf",
@@ -2457,7 +2637,7 @@ class ComplaintWorkspaceService:
             }
         if normalized_format == "docx":
             artifact = artifacts.get("markdown") or {}
-            markdown_text = artifact.get("content") or self._build_packet_markdown(packet)
+            markdown_text = artifact.get("content") or self._build_complaint_export_markdown(packet)
             docx_bytes = self._build_packet_docx_bytes(packet, str(markdown_text))
             return {
                 "filename": ((artifacts.get("docx") or {}).get("filename")) or "complaint-packet.docx",
@@ -2511,6 +2691,40 @@ class ComplaintWorkspaceService:
             "session": deepcopy(state),
             "case_synopsis": self._build_case_synopsis(state),
         }
+
+    def import_gmail_evidence(
+        self,
+        user_id: Optional[str],
+        *,
+        addresses: List[str],
+        claim_element_id: str = "causation",
+        folder: str = "INBOX",
+        limit: Optional[int] = None,
+        date_after: Optional[str] = None,
+        date_before: Optional[str] = None,
+        evidence_root: Optional[str] = None,
+        gmail_user: Optional[str] = None,
+        gmail_app_password: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        async def _run_import() -> Dict[str, Any]:
+            from complaint_generator.email_import import import_gmail_evidence
+
+            return await import_gmail_evidence(
+                addresses=addresses,
+                user_id=str(user_id or DEFAULT_USER_ID),
+                claim_element_id=claim_element_id,
+                workspace_root=self._session_dir,
+                evidence_root=Path(evidence_root) if evidence_root else None,
+                folder=folder,
+                limit=limit,
+                date_after=date_after,
+                date_before=date_before,
+                gmail_user=gmail_user,
+                gmail_app_password=gmail_app_password,
+                service=self,
+            )
+
+        return anyio.run(_run_import)
 
     def generate_complaint(
         self,
@@ -2598,10 +2812,12 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.start_session", "description": "Load or initialize a complaint workspace session."},
                 {"name": "complaint.submit_intake", "description": "Save complaint intake answers."},
                 {"name": "complaint.save_evidence", "description": "Save testimony or document evidence to the workspace."},
+                {"name": "complaint.import_gmail_evidence", "description": "Import matching Gmail messages and attachments into the complaint evidence workspace."},
                 {"name": "complaint.review_case", "description": "Return the current support matrix and evidence review."},
                 {"name": "complaint.build_mediator_prompt", "description": "Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps."},
                 {"name": "complaint.get_complaint_readiness", "description": "Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement."},
                 {"name": "complaint.get_ui_readiness", "description": "Return the latest cached actor/critic UI readiness verdict for this complaint session."},
+                {"name": "complaint.get_client_release_gate", "description": "Combine complaint readiness, UI readiness, and complaint-output quality into one client-safety release gate."},
                 {"name": "complaint.get_workflow_capabilities", "description": "Summarize which complaint-workflow abilities are currently available for the session."},
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
@@ -2610,6 +2826,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.export_complaint_docx", "description": "Export the generated complaint as a downloadable DOCX artifact."},
                 {"name": "complaint.export_complaint_pdf", "description": "Export the generated complaint as a downloadable PDF artifact."},
                 {"name": "complaint.analyze_complaint_output", "description": "Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions."},
+                {"name": "complaint.get_formal_diagnostics", "description": "Return the compact formal-complaint diagnostics summary for the current complaint draft and export state."},
                 {"name": "complaint.review_generated_exports", "description": "Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions."},
                 {"name": "complaint.update_claim_type", "description": "Set the current complaint type so drafting and review stay aligned to the right legal claim shape."},
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
@@ -2642,6 +2859,19 @@ class ComplaintWorkspaceService:
                 source=args.get("source"),
                 attachment_names=args.get("attachment_names"),
             )
+        if tool_name == "complaint.import_gmail_evidence":
+            return self.import_gmail_evidence(
+                args.get("user_id"),
+                addresses=[str(item).strip() for item in list(args.get("addresses") or []) if str(item).strip()],
+                claim_element_id=str(args.get("claim_element_id") or "causation"),
+                folder=str(args.get("folder") or "INBOX"),
+                limit=int(args["limit"]) if args.get("limit") is not None else None,
+                date_after=str(args.get("date_after") or "") or None,
+                date_before=str(args.get("date_before") or "") or None,
+                evidence_root=str(args.get("evidence_root") or "") or None,
+                gmail_user=str(args.get("gmail_user") or "") or None,
+                gmail_app_password=str(args.get("gmail_app_password") or "") or None,
+            )
         if tool_name == "complaint.review_case":
             session = self.get_session(args.get("user_id"))
             return {
@@ -2657,6 +2887,8 @@ class ComplaintWorkspaceService:
             return self.get_complaint_readiness(args.get("user_id"))
         if tool_name == "complaint.get_ui_readiness":
             return self.get_ui_readiness(args.get("user_id"))
+        if tool_name == "complaint.get_client_release_gate":
+            return self.get_client_release_gate(args.get("user_id"))
         if tool_name == "complaint.get_workflow_capabilities":
             return self.get_workflow_capabilities(args.get("user_id"))
         if tool_name == "complaint.generate_complaint":
@@ -2692,6 +2924,8 @@ class ComplaintWorkspaceService:
             return self.export_complaint_pdf(args.get("user_id"))
         if tool_name == "complaint.analyze_complaint_output":
             return self.analyze_complaint_output(args.get("user_id"))
+        if tool_name == "complaint.get_formal_diagnostics":
+            return self.get_formal_diagnostics(args.get("user_id"))
         if tool_name == "complaint.review_generated_exports":
             return self.review_generated_exports(
                 args.get("user_id"),

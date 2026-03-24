@@ -531,6 +531,10 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#intake-caption-preview')).toContainText(/Taylor Smith, Plaintiff,/i);
     await expect(page.locator('#intake-caption-preview')).toContainText(/Acme Logistics, Defendant\./i);
     await expect(page.locator('#intake-caption-preview')).toContainText(/FOR THE NORTHERN DISTRICT OF CALIFORNIA/i);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/COMPLAINT FOR RETALIATION/i);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/JURY TRIAL DEMANDED/i);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/COUNT I - RETALIATION/i);
+    await expect(page.locator('#intake-caption-preview')).toContainText(/Requested relief will appear here once it is entered in the draft panel/i);
     await page.locator('#save-intake-button').click();
     await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
 
@@ -567,6 +571,10 @@ test.describe('complaint generation workflow', () => {
 
     await page.getByRole('button', { name: 'Draft', exact: true }).click();
     await page.locator('#requested-relief').fill('Back pay\nFront pay\nAttorney fees');
+    await expect(page.locator('#draft-caption-preview')).toContainText(/PRAYER FOR RELIEF/i);
+    await expect(page.locator('#draft-caption-preview')).toContainText(/1\. Back pay/i);
+    await expect(page.locator('#draft-caption-preview')).toContainText(/2\. Front pay/i);
+    await expect(page.locator('#draft-caption-preview')).toContainText(/3\. Attorney fees/i);
     await page.locator('#generate-draft-button').click();
 
     await expect(page.locator('#draft-preview')).toContainText(/Taylor Smith brings this retaliation complaint/i);
@@ -584,6 +592,10 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Complaint readiness refreshed/i);
     await expect(page.locator('#complaint-readiness-preview')).toContainText(/"verdict":\s*"Draft in progress"/i);
     await expect(page.locator('#complaint-readiness-preview')).toContainText(/"has_draft":\s*true/i);
+    await page.locator('#refresh-client-release-gate-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Client release gate refreshed/i);
+    await expect(page.locator('#client-release-gate-preview')).toContainText(/"verdict":\s*"(client_safe|warning|blocked)"/i);
+    await expect(page.locator('#client-release-gate-preview')).toContainText(/"complaint_output_release_gate":/i);
 
     await page.locator('#export-packet-tool-button').click();
     await expect(page.locator('#packet-export-summary')).toContainText(/"has_draft": true/i);
@@ -647,7 +659,8 @@ test.describe('complaint generation workflow', () => {
     expect(markdownBody).toContain('SIGNATURE BLOCK');
     expect(markdownBody).toContain('Plaintiff, Pro Se');
     expect(markdownBody).toContain('Address: ____________________');
-    expect(markdownBody).toContain('APPENDIX A - CASE SYNOPSIS');
+    expect(markdownBody).not.toContain('APPENDIX A - CASE SYNOPSIS');
+    expect(markdownBody).not.toContain('APPENDIX B - REQUESTED RELIEF CHECKLIST');
     expect(markdownBody).not.toContain('WORKING CASE SYNOPSIS');
 
     const [pdfDownload] = await Promise.all([

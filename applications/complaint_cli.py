@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import argparse
+import anyio
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
 import typer
 
+from complaint_generator.email_credentials import resolve_gmail_credentials
+from complaint_generator.email_import import import_gmail_evidence
 from .complaint_workspace import ComplaintWorkspaceService
 from .ui_review import run_ui_review_workflow
 
@@ -86,6 +91,52 @@ def add_evidence(
     )
 
 
+@app.command("import-gmail-evidence")
+def import_gmail_evidence_command(
+    user_id: str = "demo-user",
+    address: list[str] = typer.Option(..., "--address", help="Target address to match in From/To/Cc headers. Repeat for multiple addresses."),
+    claim_element_id: str = "causation",
+    folder: str = "INBOX",
+    limit: Optional[int] = None,
+    date_after: Optional[str] = None,
+    date_before: Optional[str] = None,
+    evidence_root: Optional[str] = None,
+    gmail_user: Optional[str] = typer.Option(os.environ.get("GMAIL_USER") or os.environ.get("EMAIL_USER"), "--gmail-user"),
+    gmail_app_password: Optional[str] = typer.Option(os.environ.get("GMAIL_APP_PASSWORD") or os.environ.get("EMAIL_PASS"), "--gmail-app-password"),
+    prompt_for_credentials: bool = typer.Option(False, "--prompt-for-credentials"),
+    use_keyring: bool = typer.Option(False, "--use-keyring"),
+    save_to_keyring: bool = typer.Option(False, "--save-to-keyring"),
+) -> None:
+    parser = argparse.ArgumentParser(prog="complaint-workspace import-gmail-evidence")
+    resolved_gmail_user, resolved_gmail_app_password = resolve_gmail_credentials(
+        gmail_user=str(gmail_user or ""),
+        gmail_app_password=str(gmail_app_password or ""),
+        prompt_for_credentials=prompt_for_credentials,
+        use_keyring=use_keyring,
+        save_to_keyring_flag=save_to_keyring,
+        parser=parser,
+    )
+
+    async def _run_import() -> dict[str, object]:
+        return await import_gmail_evidence(
+            addresses=address,
+            user_id=user_id,
+            claim_element_id=claim_element_id,
+            workspace_root=service._session_dir,
+            evidence_root=Path(evidence_root) if evidence_root else None,
+            folder=folder,
+            limit=limit,
+            date_after=date_after,
+            date_before=date_before,
+            gmail_user=resolved_gmail_user,
+            gmail_app_password=resolved_gmail_app_password,
+            service=service,
+        )
+
+    payload = anyio.run(_run_import)
+    _print(payload)
+
+
 @app.command("review")
 def review(user_id: str = "demo-user") -> None:
     _print(service.call_mcp_tool("complaint.review_case", {"user_id": user_id}))
@@ -104,6 +155,11 @@ def complaint_readiness(user_id: str = "demo-user") -> None:
 @app.command("ui-readiness")
 def ui_readiness(user_id: str = "demo-user") -> None:
     _print(service.get_ui_readiness(user_id))
+
+
+@app.command("client-release-gate")
+def client_release_gate(user_id: str = "demo-user") -> None:
+    _print(service.get_client_release_gate(user_id))
 
 
 @app.command("capabilities")
@@ -171,6 +227,11 @@ def export_pdf(user_id: str = "demo-user") -> None:
 @app.command("analyze-output")
 def analyze_output(user_id: str = "demo-user") -> None:
     _print(service.analyze_complaint_output(user_id))
+
+
+@app.command("formal-diagnostics")
+def formal_diagnostics(user_id: str = "demo-user") -> None:
+    _print(service.get_formal_diagnostics(user_id))
 
 
 @app.command("review-exports")

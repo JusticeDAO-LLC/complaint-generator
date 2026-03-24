@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from applications import complaint_cli as complaint_cli_impl
 from applications.complaint_workspace_api import attach_complaint_workspace_routes
 from applications.complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, optimize_ui, review_generated_exports, review_ui, run_browser_audit
+from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, get_client_release_gate, get_formal_diagnostics, optimize_ui, review_generated_exports, review_ui, run_browser_audit
 
 
 pytestmark = [pytest.mark.no_auto_network]
@@ -58,10 +58,12 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.start_session",
         "complaint.submit_intake",
         "complaint.save_evidence",
+        "complaint.import_gmail_evidence",
         "complaint.review_case",
         "complaint.build_mediator_prompt",
         "complaint.get_complaint_readiness",
         "complaint.get_ui_readiness",
+        "complaint.get_client_release_gate",
         "complaint.get_workflow_capabilities",
         "complaint.generate_complaint",
         "complaint.update_draft",
@@ -70,6 +72,7 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.export_complaint_docx",
         "complaint.export_complaint_pdf",
         "complaint.analyze_complaint_output",
+        "complaint.get_formal_diagnostics",
         "complaint.review_generated_exports",
         "complaint.update_claim_type",
         "complaint.update_case_synopsis",
@@ -81,6 +84,247 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
     assert tool_names == expected_tool_names or sorted(tool_names) == sorted(expected_tool_names)
     assert len(tool_names) == len(set(tool_names))
     assert all("inputSchema" in tool for tool in payload["tools"])
+
+
+def test_client_release_gate_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "release-gate-sessions")
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+
+    service.submit_intake_answers(
+        "gate-user",
+        {
+            "party_name": "Taylor Smith",
+            "opposing_party": "Acme Logistics",
+            "protected_activity": "Reported wage-and-hour violations to HR",
+            "adverse_action": "Was terminated three days later",
+            "timeline": "Report on April 2, termination on April 5",
+            "harm": "Lost wages, benefits, and housing stability",
+        },
+    )
+    service.save_evidence(
+        "gate-user",
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="Termination followed within days of the report.",
+    )
+    service.generate_complaint("gate-user", requested_relief=["Back pay"])
+    service._persist_ui_readiness(
+        "gate-user",
+        {
+            "review": {
+                "summary": "The complaint journey is usable but still needs polish.",
+                "critic_review": {"verdict": "warning", "acceptance_checks": ["Keep the draft and export path stable."]},
+                "complaint_journey": {"tested_stages": ["intake", "evidence", "review", "draft", "export"]},
+            }
+        },
+    )
+
+    cli_payload = _invoke_cli(runner, "client-release-gate", "--user-id", "gate-user")
+    assert cli_payload["verdict"] in {"client_safe", "warning", "blocked"}
+
+    mcp_payload = _call_mcp_tool(service, 91, "complaint.get_client_release_gate", {"user_id": "gate-user"})
+    assert mcp_payload["verdict"] in {"client_safe", "warning", "blocked"}
+    assert mcp_payload["complaint_output_release_gate"]["verdict"] in {"pass", "warning", "blocked"}
+
+    package_payload = get_client_release_gate("gate-user", service=service)
+    assert package_payload["user_id"] == "gate-user"
+    assert package_payload["complaint_readiness"]["has_draft"] is True
+
+
+def test_import_gmail_evidence_cli_command(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "gmail-import-cli-sessions")
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+
+    async def fake_import_gmail_evidence(**kwargs):
+        service.save_evidence(
+            kwargs["user_id"],
+            kind="document",
+            claim_element_id=kwargs["claim_element_id"],
+            title="Email import: Termination email",
+            content="Imported from Gmail",
+            source="gmail_imap_import",
+            attachment_names=["message.eml", "termination.pdf", "message.json"],
+        )
+        return {
+            "status": "success",
+            "user_id": kwargs["user_id"],
+            "claim_element_id": kwargs["claim_element_id"],
+            "matched_addresses": list(kwargs["addresses"]),
+            "searched_message_count": 3,
+            "imported_count": 1,
+            "evidence_root": str(kwargs["evidence_root"] or (tmp_path / "evidence")),
+            "imported": [
+                {
+                    "subject": "Termination email",
+                    "artifact_dir": str(tmp_path / "evidence" / "case"),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(complaint_cli_impl, "import_gmail_evidence", fake_import_gmail_evidence)
+
+    payload = _invoke_cli(
+        runner,
+        "import-gmail-evidence",
+        "--user-id",
+        "cli-user",
+        "--address",
+        "hr@example.com",
+        "--address",
+        "manager@example.com",
+        "--claim-element-id",
+        "causation",
+        "--gmail-user",
+        "user@gmail.com",
+        "--gmail-app-password",
+        "app-password",
+    )
+
+    assert payload["status"] == "success"
+    assert payload["matched_addresses"] == ["hr@example.com", "manager@example.com"]
+    assert payload["imported_count"] == 1
+
+    session = service.get_session("cli-user")["session"]
+    documents = session["evidence"]["documents"]
+    assert len(documents) == 1
+    assert documents[0]["title"] == "Email import: Termination email"
+    assert documents[0]["attachment_names"] == ["message.eml", "termination.pdf", "message.json"]
+
+
+def test_import_gmail_evidence_mcp_tool(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "gmail-import-mcp-sessions")
+
+    def fake_import_gmail_evidence(
+        user_id,
+        *,
+        addresses,
+        claim_element_id="causation",
+        folder="INBOX",
+        limit=None,
+        date_after=None,
+        date_before=None,
+        evidence_root=None,
+        gmail_user=None,
+        gmail_app_password=None,
+    ):
+        service.save_evidence(
+            user_id,
+            kind="document",
+            claim_element_id=claim_element_id,
+            title="Email import: Termination email",
+            content="Imported from Gmail via MCP",
+            source="gmail_imap_import",
+            attachment_names=["message.eml", "termination.pdf", "message.json"],
+        )
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "claim_element_id": claim_element_id,
+            "matched_addresses": list(addresses),
+            "searched_message_count": 2,
+            "imported_count": 1,
+            "evidence_root": str(evidence_root or (tmp_path / "evidence")),
+            "imported": [
+                {
+                    "subject": "Termination email",
+                    "artifact_dir": str(tmp_path / "evidence" / "case"),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(service, "import_gmail_evidence", fake_import_gmail_evidence)
+
+    payload = _call_mcp_tool(
+        service,
+        21_1,
+        "complaint.import_gmail_evidence",
+        {
+            "user_id": "mcp-user",
+            "addresses": ["hr@example.com", "manager@example.com"],
+            "claim_element_id": "causation",
+            "gmail_user": "user@gmail.com",
+            "gmail_app_password": "app-password",
+        },
+    )
+
+    assert payload["status"] == "success"
+    assert payload["matched_addresses"] == ["hr@example.com", "manager@example.com"]
+    assert payload["imported_count"] == 1
+
+    session = service.get_session("mcp-user")["session"]
+    documents = session["evidence"]["documents"]
+    assert len(documents) == 1
+    assert documents[0]["title"] == "Email import: Termination email"
+    assert documents[0]["attachment_names"] == ["message.eml", "termination.pdf", "message.json"]
+
+
+def test_import_gmail_evidence_api_route(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "gmail-import-api-sessions")
+    app = FastAPI()
+    attach_complaint_workspace_routes(app, service)
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    def fake_import_gmail_evidence(
+        user_id,
+        *,
+        addresses,
+        claim_element_id="causation",
+        folder="INBOX",
+        limit=None,
+        date_after=None,
+        date_before=None,
+        evidence_root=None,
+        gmail_user=None,
+        gmail_app_password=None,
+    ):
+        service.save_evidence(
+            user_id,
+            kind="document",
+            claim_element_id=claim_element_id,
+            title="Email import: Termination email",
+            content="Imported from Gmail via API",
+            source="gmail_imap_import",
+            attachment_names=["message.eml", "termination.pdf", "message.json"],
+        )
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "matched_addresses": list(addresses),
+            "imported_count": 1,
+            "searched_message_count": 2,
+            "evidence_root": str(evidence_root or (tmp_path / "evidence")),
+            "imported": [{"subject": "Termination email", "artifact_dir": str(tmp_path / "evidence" / "case")}],
+        }
+
+    monkeypatch.setattr(service, "import_gmail_evidence", fake_import_gmail_evidence)
+
+    response = client.post(
+        "/api/complaint-workspace/import-gmail-evidence",
+        json={
+            "user_id": "api-user",
+            "addresses": ["hr@example.com", "manager@example.com"],
+            "claim_element_id": "causation",
+            "gmail_user": "user@gmail.com",
+            "gmail_app_password": "app-password",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["matched_addresses"] == ["hr@example.com", "manager@example.com"]
+    assert payload["imported_count"] == 1
+
+    session = service.get_session("api-user")["session"]
+    documents = session["evidence"]["documents"]
+    assert len(documents) == 1
+    assert documents[0]["title"] == "Email import: Termination email"
+    assert documents[0]["attachment_names"] == ["message.eml", "termination.pdf", "message.json"]
 
 
 def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
@@ -109,8 +353,38 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert any(tool["name"] == "complaint.export_complaint_pdf" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.export_complaint_docx" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.get_formal_diagnostics" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.review_generated_exports" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.update_claim_type" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.get_client_release_gate" for tool in tools_payload["tools"])
+
+    async def fake_import_gmail_evidence(**kwargs):
+        service.save_evidence(
+            kwargs["user_id"],
+            kind="document",
+            claim_element_id=kwargs["claim_element_id"],
+            title="Email import: Termination email",
+            content="Imported from Gmail",
+            source="gmail_imap_import",
+            attachment_names=["message.eml", "termination.pdf", "message.json"],
+        )
+        return {
+            "status": "success",
+            "user_id": kwargs["user_id"],
+            "claim_element_id": kwargs["claim_element_id"],
+            "matched_addresses": list(kwargs["addresses"]),
+            "searched_message_count": 3,
+            "imported_count": 1,
+            "evidence_root": str(kwargs["evidence_root"] or (tmp_path / "evidence")),
+            "imported": [
+                {
+                    "subject": "Termination email",
+                    "artifact_dir": str(tmp_path / "evidence" / "case"),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(complaint_cli_impl, "import_gmail_evidence", fake_import_gmail_evidence)
 
     answer_payload = _invoke_cli(
         runner,
@@ -146,6 +420,26 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert evidence_payload["saved"]["title"] == "Termination email"
     assert evidence_payload["saved"]["attachment_names"] == ["termination-email.txt", "timeline-notes.txt"]
 
+    gmail_import_payload = _invoke_cli(
+        runner,
+        "import-gmail-evidence",
+        "--user-id",
+        "cli-user",
+        "--address",
+        "hr@example.com",
+        "--address",
+        "manager@example.com",
+        "--claim-element-id",
+        "causation",
+        "--gmail-user",
+        "user@gmail.com",
+        "--gmail-app-password",
+        "app-password",
+    )
+    assert gmail_import_payload["status"] == "success"
+    assert gmail_import_payload["matched_addresses"] == ["hr@example.com", "manager@example.com"]
+    assert gmail_import_payload["imported_count"] == 1
+
     review_payload = _invoke_cli(runner, "review", "--user-id", "cli-user")
     assert review_payload["review"]["claim_type"] == "retaliation"
     assert review_payload["session"]["user_id"] == "cli-user"
@@ -162,10 +456,16 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     ui_readiness_payload = _invoke_cli(runner, "ui-readiness", "--user-id", "cli-user")
     assert ui_readiness_payload["verdict"] in {"No UI verdict cached", "Needs repair", "Client-safe", "Do not send to clients yet"}
 
+    client_release_gate_payload = _invoke_cli(runner, "client-release-gate", "--user-id", "cli-user")
+    assert client_release_gate_payload["verdict"] in {"client_safe", "warning", "blocked"}
+    assert "complaint_readiness" in client_release_gate_payload
+    assert "ui_readiness" in client_release_gate_payload
+
     capabilities_payload = _invoke_cli(runner, "capabilities", "--user-id", "cli-user")
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
     assert "complaint_readiness" in capabilities_payload
     assert "ui_readiness" in capabilities_payload
+    assert "client_release_gate" in capabilities_payload
 
     generate_payload = _invoke_cli(
         runner,
@@ -244,6 +544,11 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
         item["title"] == "Enforce formal pleading structure"
         for item in output_analysis_payload["ui_feedback"]["ui_suggestions"]
     )
+
+    formal_diagnostics_payload = _invoke_cli(runner, "formal-diagnostics", "--user-id", "cli-user")
+    assert formal_diagnostics_payload["packet_summary"]["has_draft"] is True
+    assert formal_diagnostics_payload["formal_diagnostics"]["release_gate_verdict"] in {"pass", "warning", "blocked"}
+    assert isinstance(formal_diagnostics_payload["release_gate"], dict)
 
     claim_type_payload = _invoke_cli(
         runner,
@@ -443,6 +748,9 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     output_analysis_payload = _call_mcp_tool(service, 32, "complaint.analyze_complaint_output", {"user_id": "mcp-user"})
     assert output_analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
     assert output_analysis_payload["packet_summary"]["has_draft"] is True
+    formal_diagnostics_payload = _call_mcp_tool(service, 33, "complaint.get_formal_diagnostics", {"user_id": "mcp-user"})
+    assert formal_diagnostics_payload["packet_summary"]["has_draft"] is True
+    assert formal_diagnostics_payload["formal_diagnostics"]["release_gate_verdict"] in {"pass", "warning", "blocked"}
     assert output_analysis_payload["ui_feedback"]["filing_shape_score"] < 70
     assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["signature_block"] is False
     assert any(
@@ -1324,7 +1632,7 @@ def test_workspace_download_route_serves_json_markdown_and_pdf_exports(tmp_path)
     assert "Civil Action No. ________________" in markdown_response.text
     assert "EVIDENTIARY SUPPORT AND NOTICE" in markdown_response.text
     assert "COUNT I - RETALIATION" in markdown_response.text
-    assert "APPENDIX A - CASE SYNOPSIS" in markdown_response.text
+    assert "APPENDIX A - CASE SYNOPSIS" not in markdown_response.text
 
     pdf_response = client.get(
         "/api/complaint-workspace/export/download",

@@ -27,6 +27,8 @@ from complaint_generator import (
     create_ui_review_report,
     create_review_surface_app,
     analyze_complaint_output,
+    get_client_release_gate,
+    get_formal_diagnostics,
     review_generated_exports,
     export_complaint_packet,
     export_complaint_markdown,
@@ -104,6 +106,8 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(build_ui_ux_review_prompt)
     assert callable(create_ui_review_report)
     assert callable(analyze_complaint_output)
+    assert callable(get_client_release_gate)
+    assert callable(get_formal_diagnostics)
     assert callable(review_generated_exports)
     assert callable(create_review_dashboard_app)
     assert callable(review_ui)
@@ -128,6 +132,7 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(export_complaint_markdown)
     assert callable(export_complaint_pdf)
     assert callable(analyze_complaint_output)
+    assert callable(get_formal_diagnostics)
     assert callable(update_case_synopsis)
     assert callable(reset_session)
     assert callable(list_mcp_tools)
@@ -196,11 +201,13 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     review_payload = review_case("package-wrapper-user", service=service)
     mediator_payload = build_mediator_prompt("package-wrapper-user", service=service)
     capabilities_payload = get_workflow_capabilities("package-wrapper-user", service=service)
+    release_gate_payload = get_client_release_gate("package-wrapper-user", service=service)
     assert "case_synopsis" in review_payload["review"]
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
     assert capabilities_payload["claim_type"] == "retaliation"
     assert capabilities_payload["draft_strategy"] == "template"
+    assert release_gate_payload["verdict"] in {"client_safe", "warning", "blocked"}
 
     claim_type_payload = update_claim_type(
         "package-wrapper-user",
@@ -235,6 +242,7 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     markdown_payload = export_complaint_markdown("package-wrapper-user", service=service)
     pdf_payload = export_complaint_pdf("package-wrapper-user", service=service)
     analysis_payload = analyze_complaint_output("package-wrapper-user", service=service)
+    diagnostics_payload = get_formal_diagnostics("package-wrapper-user", service=service)
     export_review_payload = review_generated_exports("package-wrapper-user", service=service)
     tools_payload = list_mcp_tools(service=service)
     assert export_payload["packet_summary"]["has_draft"] is True
@@ -251,10 +259,13 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert markdown_payload["artifact"]["filename"].endswith(".md")
     assert pdf_payload["artifact"]["filename"].endswith(".pdf")
     assert analysis_payload["ui_feedback"]["summary"].startswith("The exported complaint artifact was analyzed")
+    assert diagnostics_payload["packet_summary"]["has_draft"] is True
+    assert diagnostics_payload["formal_diagnostics"]["release_gate_verdict"] in {"pass", "warning", "blocked"}
     assert analysis_payload["ui_feedback"]["formal_sections_present"]["claim_count"] is False
     assert export_review_payload["artifact_count"] >= 1
     assert any(tool["name"] == "complaint.run_browser_audit" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.get_formal_diagnostics" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.review_generated_exports" for tool in tools_payload["tools"])
 
     reset_payload = reset_session("package-wrapper-user", service=service)

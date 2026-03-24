@@ -49,6 +49,25 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         },
         "required": ["kind", "claim_element_id", "title", "content"],
     },
+    "complaint.import_gmail_evidence": {
+        "type": "object",
+        "properties": {
+            "user_id": {"type": "string"},
+            "addresses": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "claim_element_id": {"type": "string"},
+            "folder": {"type": "string"},
+            "limit": {"type": "integer"},
+            "date_after": {"type": "string"},
+            "date_before": {"type": "string"},
+            "evidence_root": {"type": "string"},
+            "gmail_user": {"type": "string"},
+            "gmail_app_password": {"type": "string"},
+        },
+        "required": ["addresses"],
+    },
     "complaint.review_case": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
@@ -62,6 +81,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "properties": {"user_id": {"type": "string"}},
     },
     "complaint.get_ui_readiness": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.get_client_release_gate": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
@@ -114,6 +137,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "properties": {"user_id": {"type": "string"}},
     },
     "complaint.analyze_complaint_output": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
+    "complaint.get_formal_diagnostics": {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },

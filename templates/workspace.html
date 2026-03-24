@@ -1391,6 +1391,54 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="evidence-form-shell" style="margin-top: 18px;">
+                            <div class="section-intro">
+                                <strong>Import Gmail evidence</strong>
+                                <span>Pull matching emails and their attachments straight into the evidence workspace. Use a Gmail app password, not your normal account password.</span>
+                            </div>
+                            <div class="field-grid">
+                                <div class="field-row">
+                                    <div>
+                                        <label for="gmail-import-addresses">Addresses To Match</label>
+                                        <textarea id="gmail-import-addresses" placeholder="hr@example.com&#10;manager@example.com"></textarea>
+                                        <div class="helper-text">One address per line. Messages are imported if any address appears in From, To, or Cc.</div>
+                                    </div>
+                                    <div>
+                                        <label for="gmail-import-claim-element">Claim Element</label>
+                                        <select id="gmail-import-claim-element">
+                                            <option value="protected_activity">Protected activity</option>
+                                            <option value="employer_knowledge">Employer knowledge</option>
+                                            <option value="adverse_action">Adverse action</option>
+                                            <option value="causation" selected>Causal link</option>
+                                            <option value="harm">Damages</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="field-row">
+                                    <div>
+                                        <label for="gmail-import-user">Gmail Address</label>
+                                        <input id="gmail-import-user" type="email" placeholder="you@gmail.com" autocomplete="username">
+                                    </div>
+                                    <div>
+                                        <label for="gmail-import-password">Gmail App Password</label>
+                                        <input id="gmail-import-password" type="password" placeholder="Google app password" autocomplete="current-password">
+                                    </div>
+                                </div>
+                                <div class="field-row">
+                                    <div>
+                                        <label for="gmail-import-date-after">Date After</label>
+                                        <input id="gmail-import-date-after" type="date">
+                                    </div>
+                                    <div>
+                                        <label for="gmail-import-date-before">Date Before</label>
+                                        <input id="gmail-import-date-before" type="date">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="button-row" style="margin-top: 16px;">
+                                <button class="secondary" id="import-gmail-evidence-button" type="button">Import Gmail Evidence</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="button-row">
                         <button class="primary" id="save-evidence-button" type="button">Save Evidence Item</button>
@@ -1571,6 +1619,8 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="refresh-capabilities-button" type="button">Refresh Capabilities</button>
                                 <button class="secondary" id="refresh-complaint-readiness-button" type="button">Refresh Complaint Readiness</button>
                                 <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
+                                <button class="secondary" id="refresh-client-release-gate-button" type="button">Refresh Client Release Gate</button>
+                                <button class="secondary" id="refresh-formal-diagnostics-button" type="button">Refresh Formal Diagnostics</button>
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
                                 <button class="secondary" id="analyze-complaint-output-button" type="button">Analyze Exported Complaint</button>
@@ -1596,6 +1646,14 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>UI Readiness</label>
                                 <div class="status draft-preview-shell"><pre id="ui-readiness-preview">No UI-readiness payload loaded yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Client Release Gate</label>
+                                <div class="status draft-preview-shell"><pre id="client-release-gate-preview">No client release-gate payload loaded yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Formal Diagnostics</label>
+                                <div class="status draft-preview-shell"><pre id="formal-diagnostics-preview">No formal-diagnostics payload loaded yet.</pre></div>
                             </div>
                             <div>
                                 <label>Packet Export Summary</label>
@@ -1757,6 +1815,8 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceMediatorPrompt = null;
         let workspaceComplaintReadiness = null;
         let workspaceUiReadiness = null;
+        let workspaceClientReleaseGate = null;
+        let workspaceFormalDiagnostics = null;
         let latestPacketExport = null;
         let latestComplaintOutputAnalysis = null;
         let sdkPrimitiveSnapshot = null;
@@ -2090,10 +2150,28 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             return String(answers[questionId] || '').trim();
         }
 
+        function currentRequestedReliefItems() {
+            const field = document.getElementById('requested-relief');
+            if (field && typeof field.value === 'string' && field.value.trim()) {
+                return field.value.split('\n').map((item) => item.trim()).filter(Boolean);
+            }
+            const draft = ((((workspaceSession || {}).draft) || (((workspaceSession || {}).session) || {}).draft) || {});
+            return Array.isArray(draft.requested_relief) ? draft.requested_relief.filter(Boolean) : [];
+        }
+
         function buildCaptionPreview() {
             const plaintiff = currentIntakeValue('party_name') || 'Plaintiff';
             const defendant = currentIntakeValue('opposing_party') || 'Defendant';
             const courtHeader = currentIntakeValue('court_header') || 'FOR THE APPROPRIATE JUDICIAL DISTRICT';
+            const claimTypeNode = document.getElementById('draft-claim-type');
+            const claimType = claimTypeNode && claimTypeNode.value
+                ? claimTypeNode.value
+                : ((((workspaceSession || {}).session) || {}).claim_type || 'retaliation');
+            const complaintHeading = `COMPLAINT FOR ${String(claimType).replace(/_/g, ' ').toUpperCase()}`;
+            const requestedReliefItems = currentRequestedReliefItems();
+            const reliefLines = requestedReliefItems.length
+                ? requestedReliefItems.map((item, index) => `${index + 1}. ${item}`)
+                : ['1. Requested relief will appear here once it is entered in the draft panel'];
             return [
                 'IN THE UNITED STATES DISTRICT COURT',
                 courtHeader,
@@ -2103,6 +2181,14 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 `${defendant}, Defendant.`,
                 '',
                 'Civil Action No. ________________',
+                complaintHeading,
+                'JURY TRIAL DEMANDED',
+                '',
+                draftCountHeading(claimType),
+                '',
+                'PRAYER FOR RELIEF',
+                'Wherefore, Plaintiff respectfully seeks the following relief:',
+                ...reliefLines,
             ].join('\n');
         }
 
@@ -2569,6 +2655,8 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const capabilitiesNode = document.getElementById('workflow-capabilities-preview');
             const complaintReadinessNode = document.getElementById('complaint-readiness-preview');
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
+            const clientReleaseGateNode = document.getElementById('client-release-gate-preview');
+            const formalDiagnosticsNode = document.getElementById('formal-diagnostics-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
             const releaseGateNode = document.getElementById('formal-complaint-release-gate');
             const formalDefectsNode = document.getElementById('formal-complaint-defects');
@@ -2603,6 +2691,18 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 uiReadinessNode.textContent = JSON.stringify(workspaceUiReadiness, null, 2);
             } else {
                 uiReadinessNode.textContent = 'No UI-readiness payload loaded yet.';
+            }
+
+            if (workspaceClientReleaseGate) {
+                clientReleaseGateNode.textContent = JSON.stringify(workspaceClientReleaseGate, null, 2);
+            } else {
+                clientReleaseGateNode.textContent = 'No client release-gate payload loaded yet.';
+            }
+
+            if (workspaceFormalDiagnostics) {
+                formalDiagnosticsNode.textContent = JSON.stringify(workspaceFormalDiagnostics, null, 2);
+            } else {
+                formalDiagnosticsNode.textContent = 'No formal-diagnostics payload loaded yet.';
             }
 
             if (latestPacketExport && latestPacketExport.packet_summary) {
@@ -3070,6 +3170,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
             workspaceComplaintReadiness = await client.getComplaintReadiness(workspaceUserId);
             workspaceUiReadiness = await client.getUiReadiness(workspaceUserId);
+            workspaceClientReleaseGate = await client.getClientReleaseGate(workspaceUserId);
             renderWorkflowOperations();
         }
 
@@ -3685,6 +3786,49 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setStatus('Evidence saved and support review refreshed.');
         }
 
+        async function importGmailEvidence() {
+            const addresses = document.getElementById('gmail-import-addresses').value
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
+            const gmailUser = document.getElementById('gmail-import-user').value.trim();
+            const gmailAppPassword = document.getElementById('gmail-import-password').value;
+            if (!addresses.length) {
+                activateTab('evidence');
+                setStatus('Add at least one email address to match before importing Gmail evidence.');
+                return;
+            }
+            if (!gmailUser || !gmailAppPassword) {
+                activateTab('evidence');
+                setStatus('Enter your Gmail address and app password before importing Gmail evidence.');
+                return;
+            }
+            setBusyStatus('Importing Gmail evidence and attachments into the workspace…');
+            const response = await fetch('/api/complaint-workspace/import-gmail-evidence', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: workspaceUserId,
+                    addresses,
+                    claim_element_id: document.getElementById('gmail-import-claim-element').value,
+                    gmail_user: gmailUser,
+                    gmail_app_password: gmailAppPassword,
+                    date_after: document.getElementById('gmail-import-date-after').value || null,
+                    date_before: document.getElementById('gmail-import-date-before').value || null,
+                }),
+            });
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || 'Failed to import Gmail evidence.');
+            }
+            const payload = await response.json();
+            workspaceSession = await client.startSession(workspaceUserId);
+            await loadSharedCapabilities();
+            renderWorkspace(workspaceSession);
+            document.getElementById('gmail-import-password').value = '';
+            setStatus(`Imported ${payload.imported_count || 0} Gmail message(s) into the evidence workspace.`);
+        }
+
         async function generateDraft() {
             const requiredQuestions = ['party_name', 'opposing_party', 'protected_activity', 'adverse_action', 'timeline', 'harm'];
             const savedAnswers = ((workspaceSession || {}).session || {}).intake_answers || {};
@@ -3832,6 +3976,20 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             setStatus('UI readiness refreshed.');
         }
 
+        async function refreshClientReleaseGatePanel() {
+            setBusyStatus('Refreshing the combined client-safety release gate through the MCP tools…');
+            workspaceClientReleaseGate = await client.getClientReleaseGate(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Client release gate refreshed.');
+        }
+
+        async function refreshFormalDiagnosticsPanel() {
+            setBusyStatus('Refreshing formal complaint diagnostics through the MCP tools…');
+            workspaceFormalDiagnostics = await client.getFormalDiagnostics(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Formal complaint diagnostics refreshed.');
+        }
+
         async function previewMediatorBrief() {
             setBusyStatus('Refreshing the mediator testimony brief through the MCP tools…');
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
@@ -3949,6 +4107,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('save-intake-button').addEventListener('click', saveIntake);
         document.getElementById('refresh-session-button').addEventListener('click', refreshWorkspace);
         document.getElementById('save-evidence-button').addEventListener('click', addEvidence);
+        document.getElementById('import-gmail-evidence-button').addEventListener('click', importGmailEvidence);
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('export-packet-button').addEventListener('click', exportPacket);
@@ -3958,6 +4117,8 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
         document.getElementById('refresh-complaint-readiness-button').addEventListener('click', refreshComplaintReadinessPanel);
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
+        document.getElementById('refresh-client-release-gate-button').addEventListener('click', refreshClientReleaseGatePanel);
+        document.getElementById('refresh-formal-diagnostics-button').addEventListener('click', refreshFormalDiagnosticsPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('analyze-complaint-output-button').addEventListener('click', analyzeComplaintOutputPanel);
         document.getElementById('review-generated-exports-button').addEventListener('click', reviewGeneratedExportsPanel);
@@ -3968,9 +4129,15 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-sdk-primitives-button').addEventListener('click', refreshSdkPrimitivesPanel);
         document.getElementById('save-synopsis-button').addEventListener('click', saveSynopsis);
         document.getElementById('reset-session-button').addEventListener('click', resetSession);
-        document.getElementById('draft-claim-type').addEventListener('change', () => renderDraftReadiness(workspaceSession || {}));
+        document.getElementById('draft-claim-type').addEventListener('change', () => {
+            renderDraftReadiness(workspaceSession || {});
+            renderCaptionPreview();
+        });
         document.getElementById('draft-mode').addEventListener('change', () => renderDraftReadiness(workspaceSession || {}));
-        document.getElementById('requested-relief').addEventListener('input', () => renderDraftReadiness(workspaceSession || {}));
+        document.getElementById('requested-relief').addEventListener('input', () => {
+            renderDraftReadiness(workspaceSession || {});
+            renderCaptionPreview();
+        });
         document.getElementById('draft-body').addEventListener('input', () => renderDraftReadiness(workspaceSession || {}));
         document.addEventListener('input', (event) => {
             const target = event.target;
@@ -4059,13 +4226,21 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 questions: [],
                 claim_elements: [],
             };
-            await loadSharedCapabilities();
-            await loadSdkPrimitives();
             renderWorkspace(bootstrap.session);
             renderTools(workspaceSessionTools);
             renderSdkServerInfo(bootstrap.initialization, workspaceSessionTools);
             setStatus(`Workspace synchronized for ${workspaceUserId}.`);
             applyWorkspaceIntentFromUrl();
+            const bootstrapStatus = `Workspace synchronized for ${workspaceUserId}.`;
+            const followOnLoads = await Promise.allSettled([
+                loadSharedCapabilities(),
+                loadSdkPrimitives(),
+            ]);
+            const failedLoad = followOnLoads.find((result) => result.status === 'rejected');
+            if (failedLoad && failedLoad.reason) {
+                console.warn('Workspace follow-on load failed', failedLoad.reason);
+                setStatus(`${bootstrapStatus} Some capability details may still be loading.`);
+            }
         }).catch((error) => {
             setStatus(`Workspace failed to load: ${error.message}`);
         });

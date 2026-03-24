@@ -132,6 +132,15 @@ def get_ui_readiness(
     return _resolve_service(service, root_dir=root_dir).get_ui_readiness(user_id)
 
 
+def get_client_release_gate(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_client_release_gate(user_id)
+
+
 def get_workflow_capabilities(
     user_id: Optional[str],
     *,
@@ -226,6 +235,15 @@ def analyze_complaint_output(
     root_dir: Optional[str | Path] = None,
 ) -> dict[str, Any]:
     return _resolve_service(service, root_dir=root_dir).analyze_complaint_output(user_id)
+
+
+def get_formal_diagnostics(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_formal_diagnostics(user_id)
 
 
 def review_generated_exports(
@@ -385,6 +403,7 @@ __all__ = [
     "build_mediator_prompt",
     "get_complaint_readiness",
     "get_ui_readiness",
+    "get_client_release_gate",
     "create_identity",
     "create_complaint_workspace_router",
     "export_complaint_packet",
@@ -392,6 +411,7 @@ __all__ = [
     "export_complaint_pdf",
     "export_complaint_docx",
     "analyze_complaint_output",
+    "get_formal_diagnostics",
     "review_generated_exports",
     "update_claim_type",
     "generate_decentralized_id",

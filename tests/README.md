@@ -80,11 +80,11 @@ The equivalent repo-local helper auto-detects whether the browser smoke should b
 .venv/bin/python scripts/run_claim_support_review_regression.py
 ```
 
-In VS Code, the same runner is available from the workspace task list as `Claim Support Regression`, with explicit `No Browser` and `Require Browser` variants.
+In VS Code, the same runner is available from the workspace task list as `Claim Support Regression`, with explicit `No Browser`, `Require Browser`, and `Browser + Network` variants.
 
-The Run and Debug panel exposes the same three variants through matching launch configurations.
+The Run and Debug panel exposes the same four variants through matching launch configurations.
 
-GitHub Actions also runs this slice through `.github/workflows/claim-support-regression.yml`, splitting the enforcement into non-browser and browser-required lanes.
+GitHub Actions also runs this slice through `.github/workflows/claim-support-regression.yml`, splitting the enforcement into non-browser, browser-required, and browser-plus-network lanes.
 
 ### Run Tests with Coverage
 
