@@ -193,6 +193,12 @@ class ComplaintMcpClient {
         });
     }
 
+    getToolingContract(userId) {
+        return this.callTool('complaint.get_tooling_contract', {
+            user_id: userId,
+        });
+    }
+
     generateComplaint(userId, payload) {
         return this.callTool('complaint.generate_complaint', Object.assign({
             user_id: userId,

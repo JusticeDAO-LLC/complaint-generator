@@ -167,6 +167,11 @@ def capabilities(user_id: str = "demo-user") -> None:
     _print(service.get_workflow_capabilities(user_id))
 
 
+@app.command("tooling-contract")
+def tooling_contract(user_id: str = "demo-user") -> None:
+    _print(service.get_tooling_contract(user_id))
+
+
 @app.command("generate")
 def generate(
     user_id: str = "demo-user",

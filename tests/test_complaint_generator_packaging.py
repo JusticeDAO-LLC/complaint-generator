@@ -74,7 +74,7 @@ def test_package_exports_expose_workspace_review_and_entrypoint_helpers():
     commonjs_sdk = (REPO_ROOT / "static" / "complaint_mcp_sdk.js").read_text(encoding="utf-8")
     esm_sdk = (REPO_ROOT / "static" / "complaint_mcp_sdk.mjs").read_text(encoding="utf-8")
 
-    for method_name in ("getClientReleaseGate", "getFormalDiagnostics"):
+    for method_name in ("getClientReleaseGate", "getFormalDiagnostics", "getToolingContract"):
         assert method_name in commonjs_sdk
         assert method_name in esm_sdk
 

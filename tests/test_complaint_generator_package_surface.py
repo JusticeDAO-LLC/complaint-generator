@@ -29,6 +29,7 @@ from complaint_generator import (
     analyze_complaint_output,
     get_client_release_gate,
     get_formal_diagnostics,
+    get_tooling_contract,
     review_generated_exports,
     export_complaint_packet,
     export_complaint_markdown,
@@ -107,6 +108,7 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(create_ui_review_report)
     assert callable(analyze_complaint_output)
     assert callable(get_client_release_gate)
+    assert callable(get_tooling_contract)
     assert callable(get_formal_diagnostics)
     assert callable(review_generated_exports)
     assert callable(create_review_dashboard_app)
@@ -202,12 +204,14 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     mediator_payload = build_mediator_prompt("package-wrapper-user", service=service)
     capabilities_payload = get_workflow_capabilities("package-wrapper-user", service=service)
     release_gate_payload = get_client_release_gate("package-wrapper-user", service=service)
+    tooling_contract_payload = get_tooling_contract("package-wrapper-user", service=service)
     assert "case_synopsis" in review_payload["review"]
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
     assert capabilities_payload["claim_type"] == "retaliation"
     assert capabilities_payload["draft_strategy"] == "template"
     assert release_gate_payload["verdict"] in {"client_safe", "warning", "blocked"}
+    assert tooling_contract_payload["all_core_flow_steps_exposed"] is True
 
     claim_type_payload = update_claim_type(
         "package-wrapper-user",
@@ -523,6 +527,7 @@ def test_python_m_cli_module_invokes_main(monkeypatch):
         called["count"] += 1
 
     monkeypatch.setattr(applications_cli_module, "main", fake_main)
+    monkeypatch.delitem(sys.modules, "complaint_generator.cli", raising=False)
 
     runpy.run_module("complaint_generator.cli", run_name="__main__")
 
@@ -537,6 +542,7 @@ def test_python_m_mcp_server_module_invokes_main(monkeypatch):
 
     complaint_mcp_server_module = __import__("applications.complaint_mcp_server", fromlist=["main"])
     monkeypatch.setattr(complaint_mcp_server_module, "main", fake_main)
+    monkeypatch.delitem(sys.modules, "complaint_generator.mcp_server", raising=False)
 
     runpy.run_module("complaint_generator.mcp_server", run_name="__main__")
 

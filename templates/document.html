@@ -4849,8 +4849,11 @@
             restoreDraftState();
             restoreGeneratedPayload();
             validateOptimizationAdvancedConfig();
+            state.userId = getRequestedUserId() || state.userId;
+            updateBuilderSynopsisLink(state.userId);
+            updateBuilderNavigationLinks(state.userId);
+            syncBuilderSynopsis();
             try {
-                state.userId = getRequestedUserId() || state.userId;
                 const cookies = await fetchCookies();
                 state.userId = state.userId || cookies.hashed_username || null;
                 const summary = await fetchProfileSummary(cookies.hashed_username, cookies.hashed_password);

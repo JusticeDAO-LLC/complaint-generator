@@ -88,6 +88,141 @@ _CLAIM_TYPE_LABELS: Dict[str, str] = {
     "due_process_failure": "Due Process Violation",
     "consumer_protection": "Consumer Protection",
 }
+_PACKAGE_EXPORT_CONTRACT: List[str] = [
+    "create_identity",
+    "start_session",
+    "submit_intake_answers",
+    "save_evidence",
+    "review_case",
+    "build_mediator_prompt",
+    "get_complaint_readiness",
+    "get_ui_readiness",
+    "get_client_release_gate",
+    "get_workflow_capabilities",
+    "generate_complaint",
+    "export_complaint_packet",
+    "export_complaint_markdown",
+    "export_complaint_docx",
+    "export_complaint_pdf",
+    "analyze_complaint_output",
+    "review_generated_exports",
+    "review_ui",
+    "optimize_ui",
+    "run_browser_audit",
+]
+_CLI_COMMAND_CONTRACT: List[str] = [
+    "identity",
+    "session",
+    "answer",
+    "add-evidence",
+    "review",
+    "mediator-prompt",
+    "complaint-readiness",
+    "ui-readiness",
+    "client-release-gate",
+    "capabilities",
+    "generate",
+    "export-packet",
+    "export-markdown",
+    "export-docx",
+    "export-pdf",
+    "analyze-output",
+    "review-exports",
+    "review-ui",
+    "optimize-ui",
+    "browser-audit",
+]
+_BROWSER_SDK_METHOD_CONTRACT: List[str] = [
+    "createIdentity",
+    "bootstrapWorkspace",
+    "getSession",
+    "submitIntake",
+    "saveEvidence",
+    "reviewCase",
+    "buildMediatorPrompt",
+    "getComplaintReadiness",
+    "getUiReadiness",
+    "getClientReleaseGate",
+    "getWorkflowCapabilities",
+    "generateComplaint",
+    "exportComplaintPacket",
+    "exportComplaintMarkdown",
+    "exportComplaintDocx",
+    "exportComplaintPdf",
+    "analyzeComplaintOutput",
+    "reviewGeneratedExports",
+    "reviewUiArtifacts",
+    "optimizeUiArtifacts",
+    "runBrowserAudit",
+]
+_CORE_FLOW_CONTRACT: Dict[str, Dict[str, str]] = {
+    "intake": {
+        "package_export": "submit_intake_answers",
+        "cli_command": "answer",
+        "mcp_tool": "complaint.submit_intake",
+        "browser_sdk_method": "submitIntake",
+    },
+    "evidence_capture": {
+        "package_export": "save_evidence",
+        "cli_command": "add-evidence",
+        "mcp_tool": "complaint.save_evidence",
+        "browser_sdk_method": "saveEvidence",
+    },
+    "support_review": {
+        "package_export": "review_case",
+        "cli_command": "review",
+        "mcp_tool": "complaint.review_case",
+        "browser_sdk_method": "reviewCase",
+    },
+    "mediator_handoff": {
+        "package_export": "build_mediator_prompt",
+        "cli_command": "mediator-prompt",
+        "mcp_tool": "complaint.build_mediator_prompt",
+        "browser_sdk_method": "buildMediatorPrompt",
+    },
+    "draft_generation": {
+        "package_export": "generate_complaint",
+        "cli_command": "generate",
+        "mcp_tool": "complaint.generate_complaint",
+        "browser_sdk_method": "generateComplaint",
+    },
+    "complaint_export_markdown": {
+        "package_export": "export_complaint_markdown",
+        "cli_command": "export-markdown",
+        "mcp_tool": "complaint.export_complaint_markdown",
+        "browser_sdk_method": "exportComplaintMarkdown",
+    },
+    "complaint_export_pdf": {
+        "package_export": "export_complaint_pdf",
+        "cli_command": "export-pdf",
+        "mcp_tool": "complaint.export_complaint_pdf",
+        "browser_sdk_method": "exportComplaintPdf",
+    },
+    "complaint_output_analysis": {
+        "package_export": "analyze_complaint_output",
+        "cli_command": "analyze-output",
+        "mcp_tool": "complaint.analyze_complaint_output",
+        "browser_sdk_method": "analyzeComplaintOutput",
+    },
+    "export_critic": {
+        "package_export": "review_generated_exports",
+        "cli_command": "review-exports",
+        "mcp_tool": "complaint.review_generated_exports",
+        "browser_sdk_method": "reviewGeneratedExports",
+    },
+    "ui_actor_critic": {
+        "package_export": "review_ui",
+        "cli_command": "review-ui",
+        "mcp_tool": "complaint.review_ui",
+        "browser_sdk_method": "reviewUiArtifacts",
+    },
+    "ui_closed_loop_optimizer": {
+        "package_export": "optimize_ui",
+        "cli_command": "optimize-ui",
+        "mcp_tool": "complaint.optimize_ui",
+        "browser_sdk_method": "optimizeUiArtifacts",
+    },
+}
 
 
 def _utc_now() -> str:
@@ -444,10 +579,31 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
 
     notes: List[str] = []
 
-    first_court_marker = normalized.find("IN THE UNITED STATES DISTRICT COURT")
-    if first_court_marker > 0:
-        normalized = normalized[first_court_marker:].lstrip()
+    court_caption_match = re.search(
+        r"(?im)^\s{0,3}(?:#{1,6}\s+)?in the united states district court\s*$",
+        normalized,
+    )
+    if court_caption_match and court_caption_match.start() > 0:
+        normalized = normalized[court_caption_match.start() :].lstrip()
         notes.append("trimmed_leading_preamble")
+
+    normalized_court_caption = re.sub(
+        r"(?im)^\s{0,3}(?:#{1,6}\s+)?in the united states district court\s*$",
+        "IN THE UNITED STATES DISTRICT COURT",
+        normalized,
+    )
+    if normalized_court_caption != normalized:
+        normalized = normalized_court_caption
+        notes.append("normalized_court_caption")
+
+    normalized_civil_action = re.sub(
+        r"(?im)^civil action no\.\s*:\s*([_A-Z0-9.-]+)\s*$",
+        r"Civil Action No. \1",
+        normalized,
+    )
+    if normalized_civil_action != normalized:
+        normalized = normalized_civil_action
+        notes.append("normalized_civil_action_heading")
 
     heading_patterns = [
         r"IN THE UNITED STATES DISTRICT COURT",
@@ -523,6 +679,33 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
         normalized = normalized_paragraphs
         notes.append("normalized_numbered_paragraphs")
 
+    canonical_heading_map = {
+        "NATURE OF THE ACTION": "NATURE OF THE ACTION",
+        "JURISDICTION AND VENUE": "JURISDICTION AND VENUE",
+        "PARTIES": "PARTIES",
+        "FACTUAL ALLEGATIONS": "FACTUAL ALLEGATIONS",
+        "EVIDENTIARY SUPPORT AND NOTICE": "EVIDENTIARY SUPPORT AND NOTICE",
+        "CLAIM FOR RELIEF": "CLAIM FOR RELIEF",
+        "PRAYER FOR RELIEF": "PRAYER FOR RELIEF",
+        "JURY DEMAND": "JURY DEMAND",
+        "SIGNATURE BLOCK": "SIGNATURE BLOCK",
+    }
+    for variant, canonical in canonical_heading_map.items():
+        updated = re.sub(rf"(?im)^{re.escape(variant)}\s*:\s*$", canonical, normalized)
+        updated = re.sub(rf"(?im)^{re.escape(variant)}\s*$", canonical, updated)
+        if updated != normalized:
+            normalized = updated
+            notes.append("normalized_section_heading_punctuation")
+
+    updated_count_heading_variants = re.sub(
+        r"(?im)^count\s+(?:one|1|i)\s*[-:]\s*",
+        "COUNT I - ",
+        normalized,
+    )
+    if updated_count_heading_variants != normalized:
+        normalized = updated_count_heading_variants
+        notes.append("normalized_count_heading")
+
     normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
 
     # If the model omitted the exact claim heading but otherwise produced a
@@ -531,7 +714,7 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
         preferred_heading = f"COMPLAINT FOR {_claim_type_display_name(claim_type).upper()}"
         preferred_count_heading = _claim_type_count_heading(claim_type)
         updated_heading = re.sub(
-            r"(?m)^COMPLAINT FOR .+$",
+            r"(?im)^complaint for .+$",
             preferred_heading,
             normalized,
             count=1,
@@ -540,7 +723,7 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
             notes.append("normalized_complaint_heading")
             normalized = updated_heading
         updated_count = re.sub(
-            r"(?m)^COUNT I - .+$",
+            r"(?im)^count i - .+$",
             preferred_count_heading,
             normalized,
             count=1,
@@ -1955,6 +2138,41 @@ class ComplaintWorkspaceService:
             "complaint_output_release_gate": complaint_output_gate,
         }
 
+    def get_tooling_contract(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        mcp_tools = [tool.get("name") for tool in list(self.list_mcp_tools().get("tools") or []) if tool.get("name")]
+        package_exports = list(_PACKAGE_EXPORT_CONTRACT)
+        cli_commands = list(_CLI_COMMAND_CONTRACT)
+        browser_sdk_methods = list(_BROWSER_SDK_METHOD_CONTRACT)
+        core_flow_steps: List[Dict[str, Any]] = []
+        missing_exposures: List[str] = []
+        for step_id, mapping in _CORE_FLOW_CONTRACT.items():
+            exposed_everywhere = (
+                mapping["package_export"] in package_exports
+                and mapping["cli_command"] in cli_commands
+                and mapping["mcp_tool"] in mcp_tools
+                and mapping["browser_sdk_method"] in browser_sdk_methods
+            )
+            if not exposed_everywhere:
+                missing_exposures.append(step_id)
+            core_flow_steps.append({
+                "id": step_id,
+                "package_export": mapping["package_export"],
+                "cli_command": mapping["cli_command"],
+                "mcp_tool": mapping["mcp_tool"],
+                "browser_sdk_method": mapping["browser_sdk_method"],
+                "exposed_everywhere": exposed_everywhere,
+            })
+        return {
+            "user_id": str(user_id or DEFAULT_USER_ID),
+            "package_exports": package_exports,
+            "cli_commands": cli_commands,
+            "mcp_tools": mcp_tools,
+            "browser_sdk_methods": browser_sdk_methods,
+            "core_flow_steps": core_flow_steps,
+            "missing_exposures": missing_exposures,
+            "all_core_flow_steps_exposed": not missing_exposures,
+        }
+
     def get_workflow_capabilities(self, user_id: Optional[str]) -> Dict[str, Any]:
         session = self.get_session(user_id)
         review = session["review"]
@@ -2030,6 +2248,7 @@ class ComplaintWorkspaceService:
             "complaint_readiness": readiness,
             "ui_readiness": self.get_ui_readiness(user_id),
             "client_release_gate": self.get_client_release_gate(user_id),
+            "tooling_contract": self.get_tooling_contract(user_id),
             "capabilities": capabilities,
         }
 
@@ -2918,6 +3137,7 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.get_ui_readiness", "description": "Return the latest cached actor/critic UI readiness verdict for this complaint session."},
                 {"name": "complaint.get_client_release_gate", "description": "Combine complaint readiness, UI readiness, and complaint-output quality into one client-safety release gate."},
                 {"name": "complaint.get_workflow_capabilities", "description": "Summarize which complaint-workflow abilities are currently available for the session."},
+                {"name": "complaint.get_tooling_contract", "description": "Show how the core complaint workflow is exposed across package exports, CLI commands, MCP tools, and browser SDK methods."},
                 {"name": "complaint.generate_complaint", "description": "Generate a complaint draft from intake and evidence."},
                 {"name": "complaint.update_draft", "description": "Persist edits to the generated complaint draft."},
                 {"name": "complaint.export_complaint_packet", "description": "Export the current lawsuit complaint packet with intake, evidence, review, and draft content."},
@@ -2990,6 +3210,8 @@ class ComplaintWorkspaceService:
             return self.get_client_release_gate(args.get("user_id"))
         if tool_name == "complaint.get_workflow_capabilities":
             return self.get_workflow_capabilities(args.get("user_id"))
+        if tool_name == "complaint.get_tooling_contract":
+            return self.get_tooling_contract(args.get("user_id"))
         if tool_name == "complaint.generate_complaint":
             return self.generate_complaint(
                 args.get("user_id"),

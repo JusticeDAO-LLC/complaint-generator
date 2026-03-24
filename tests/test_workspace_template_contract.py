@@ -66,3 +66,7 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "window.sessionStorage.removeItem(gmailImportUserStorageKey())" in content
     assert "persistGmailImportUserPreference()" in content
     assert "hydrateGmailImportUser()" in content
+    assert "refresh-tooling-contract-button" in content
+    assert "tooling-contract-preview" in content
+    assert "refreshToolingContractPanel()" in content
+    assert "Tooling contract refreshed." in content

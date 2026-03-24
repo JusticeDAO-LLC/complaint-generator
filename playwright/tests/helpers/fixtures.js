@@ -508,18 +508,24 @@ const workspaceToolList = [
   { name: 'complaint.start_session', description: 'Load or initialize a complaint workspace session.' },
   { name: 'complaint.submit_intake', description: 'Save complaint intake answers.' },
   { name: 'complaint.save_evidence', description: 'Save testimony or document evidence to the workspace.' },
+  { name: 'complaint.import_gmail_evidence', description: 'Import matching Gmail messages and attachments into the complaint evidence workspace.' },
   { name: 'complaint.review_case', description: 'Return the current support matrix and evidence review.' },
   { name: 'complaint.build_mediator_prompt', description: 'Build a testimony-ready chat mediator prompt from the shared case synopsis and support gaps.' },
   { name: 'complaint.get_complaint_readiness', description: 'Estimate whether the current complaint record is ready for drafting, still building, or already in draft refinement.' },
-  { name: 'complaint.get_ui_readiness', description: 'Return the latest UI readiness and client-safety posture for the shared complaint workflow.' },
+  { name: 'complaint.get_ui_readiness', description: 'Return the latest cached actor/critic UI readiness verdict for this complaint session.' },
+  { name: 'complaint.get_client_release_gate', description: 'Combine complaint readiness, UI readiness, and complaint-output quality into one client-safety release gate.' },
   { name: 'complaint.get_workflow_capabilities', description: 'Summarize which complaint-workflow abilities are currently available for the session.' },
+  { name: 'complaint.get_tooling_contract', description: 'Show how the core complaint workflow is exposed across package exports, CLI commands, MCP tools, and browser SDK methods.' },
   { name: 'complaint.generate_complaint', description: 'Generate a complaint draft from intake and evidence.' },
   { name: 'complaint.update_draft', description: 'Persist edits to the generated complaint draft.' },
   { name: 'complaint.export_complaint_packet', description: 'Export the current lawsuit complaint packet with intake, evidence, review, and draft content.' },
   { name: 'complaint.export_complaint_markdown', description: 'Export the generated complaint as a downloadable Markdown artifact.' },
+  { name: 'complaint.export_complaint_docx', description: 'Export the generated complaint as a downloadable DOCX artifact.' },
   { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.' },
   { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.' },
+  { name: 'complaint.get_formal_diagnostics', description: 'Return the compact formal-complaint diagnostics summary for the current complaint draft and export state.' },
   { name: 'complaint.review_generated_exports', description: 'Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions.' },
+  { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.' },
   { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.' },
   { name: 'complaint.reset_session', description: 'Clear the complaint workspace session.' },
   { name: 'complaint.review_ui', description: 'Review Playwright screenshot artifacts, optionally run an iterative UI/UX workflow, and produce a router-backed MCP dashboard critique.' },
@@ -934,6 +940,220 @@ function buildWorkspaceCapabilities(state) {
         detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.',
       },
     ],
+    tooling_contract: buildWorkspaceToolingContract(state.user_id),
+  };
+}
+
+function workspaceClaimTypeLabel(claimType) {
+  return String(claimType || 'retaliation')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildWorkspaceToolingContract(userId) {
+  const packageExports = [
+    'ComplaintWorkspaceService',
+    'create_review_surface_app',
+    'export_complaint_markdown',
+    'export_complaint_docx',
+    'export_complaint_pdf',
+    'analyze_complaint_output',
+    'get_client_release_gate',
+    'get_formal_diagnostics',
+    'import_gmail_evidence',
+  ];
+  const cliCommands = [
+    'session',
+    'answer',
+    'save-evidence',
+    'import-gmail-evidence',
+    'generate',
+    'export-markdown',
+    'export-docx',
+    'export-pdf',
+    'client-release-gate',
+    'formal-diagnostics',
+    'browser-audit',
+  ];
+  const browserSdkMethods = [
+    'bootstrapWorkspace',
+    'submitIntake',
+    'saveEvidence',
+    'buildMediatorPrompt',
+    'getComplaintReadiness',
+    'getUiReadiness',
+    'getClientReleaseGate',
+    'getWorkflowCapabilities',
+    'getToolingContract',
+    'generateComplaint',
+    'updateDraft',
+    'exportComplaintPacket',
+    'exportComplaintMarkdown',
+    'exportComplaintDocx',
+    'exportComplaintPdf',
+    'analyzeComplaintOutput',
+    'getFormalDiagnostics',
+    'reviewGeneratedExports',
+    'updateClaimType',
+    'runBrowserAudit',
+  ];
+  const coreFlowSteps = [
+    {
+      id: 'draft_export_docx',
+      package_export: 'export_complaint_docx',
+      cli_command: 'export-docx',
+      mcp_tool: 'complaint.export_complaint_docx',
+      browser_sdk_method: 'exportComplaintDocx',
+      exposed_everywhere: true,
+    },
+    {
+      id: 'client_release_gate',
+      package_export: 'get_client_release_gate',
+      cli_command: 'client-release-gate',
+      mcp_tool: 'complaint.get_client_release_gate',
+      browser_sdk_method: 'getClientReleaseGate',
+      exposed_everywhere: true,
+    },
+    {
+      id: 'formal_diagnostics',
+      package_export: 'get_formal_diagnostics',
+      cli_command: 'formal-diagnostics',
+      mcp_tool: 'complaint.get_formal_diagnostics',
+      browser_sdk_method: 'getFormalDiagnostics',
+      exposed_everywhere: true,
+    },
+    {
+      id: 'gmail_import',
+      package_export: 'import_gmail_evidence',
+      cli_command: 'import-gmail-evidence',
+      mcp_tool: 'complaint.import_gmail_evidence',
+      browser_sdk_method: 'callTool',
+      exposed_everywhere: true,
+    },
+  ];
+  return {
+    user_id: userId,
+    package_exports: packageExports,
+    cli_commands: cliCommands,
+    mcp_tools: workspaceToolList.map((tool) => tool.name),
+    browser_sdk_methods: browserSdkMethods,
+    core_flow_steps: coreFlowSteps,
+    missing_exposures: [],
+    all_core_flow_steps_exposed: true,
+  };
+}
+
+function buildWorkspaceFormalAssessment(state, draft, overview = {}) {
+  const claimType = String(state.claim_type || 'retaliation');
+  const complaintHeading = claimType === 'retaliation'
+    ? 'COMPLAINT FOR RETALIATION'
+    : `COMPLAINT FOR ${claimType.replace(/_/g, ' ').toUpperCase()}`;
+  const countHeading = claimType === 'retaliation'
+    ? 'COUNT I - RETALIATION'
+    : `COUNT I - ${claimType.replace(/_/g, ' ').toUpperCase()}`;
+  const complaintBody = String((draft || {}).body || '');
+  const formalSectionsPresent = {
+    caption: complaintBody.includes('IN THE UNITED STATES DISTRICT COURT'),
+    civil_action_number: complaintBody.includes('Civil Action No. ________________'),
+    nature_of_action: complaintBody.includes('NATURE OF THE ACTION'),
+    jurisdiction_and_venue: complaintBody.includes('JURISDICTION AND VENUE'),
+    parties: complaintBody.includes('PARTIES'),
+    factual_allegations: complaintBody.includes('FACTUAL ALLEGATIONS'),
+    evidentiary_support: complaintBody.includes('EVIDENTIARY SUPPORT AND NOTICE'),
+    claim_count: complaintBody.includes('COUNT I -'),
+    prayer_for_relief: complaintBody.includes('PRAYER FOR RELIEF'),
+    jury_demand: complaintBody.includes('JURY DEMAND'),
+    signature_block: complaintBody.includes('SIGNATURE BLOCK'),
+    working_case_synopsis: !complaintBody.includes('WORKING CASE SYNOPSIS'),
+  };
+  const presentSectionCount = Object.values(formalSectionsPresent).filter(Boolean).length;
+  const filingShapeScore = Math.min(
+    100,
+    35
+      + (5 * presentSectionCount)
+      + (Number(overview.document_items || 0) + Number(overview.testimony_items || 0) > 0 ? 10 : 0)
+      + (Array.isArray((draft || {}).requested_relief) && (draft || {}).requested_relief.length > 0 ? 5 : 0)
+      + (complaintBody.split(/\s+/).filter(Boolean).length >= 180 ? 10 : 0),
+  );
+  const claimTypeAlignment = {
+    complaint_heading_matches: complaintBody.includes(complaintHeading),
+    count_heading_matches: complaintBody.includes(countHeading),
+  };
+  const claimTypeAlignmentScore = claimTypeAlignment.complaint_heading_matches && claimTypeAlignment.count_heading_matches
+    ? 100
+    : claimTypeAlignment.complaint_heading_matches || claimTypeAlignment.count_heading_matches
+      ? 85
+      : 60;
+  const missingFormalSections = Object.entries(formalSectionsPresent)
+    .filter(([, present]) => !present)
+    .map(([name]) => name);
+  const issues = [];
+  if (Number(overview.missing_elements || 0) > 0) {
+    issues.push({
+      severity: 'high',
+      source: 'complaint_output',
+      finding: `The exported complaint still reflects ${Number(overview.missing_elements || 0)} unsupported claim elements.`,
+      ui_implication: 'The review and draft stages need stronger warnings before the user treats the complaint as filing-ready.',
+    });
+  }
+  if (missingFormalSections.length) {
+    issues.push({
+      severity: filingShapeScore >= 85 ? 'medium' : 'high',
+      source: 'complaint_output.formal_sections',
+      finding: `The complaint is still missing formal pleading sections: ${missingFormalSections.join(', ')}.`,
+      ui_implication: 'The drafting and export surfaces should keep visible filing-shape guidance until these sections are present.',
+    });
+  }
+  const uiSuggestions = [
+    {
+      title: 'Tighten review-to-draft gatekeeping',
+      recommendation: 'Add stronger blocker language and a more prominent unsupported-elements summary before draft generation or export.',
+      target_surface: 'review,draft,integrations',
+    },
+  ];
+  if (missingFormalSections.length) {
+    uiSuggestions.push({
+      title: 'Keep formal pleading guidance visible',
+      recommendation: 'Show missing pleading sections and filing-shape defects beside the draft editor until the complaint looks like a formal filing.',
+      target_surface: 'draft,integrations',
+    });
+  }
+  const releaseGate = claimTypeAlignmentScore >= 90 && filingShapeScore >= 90
+    ? {
+        verdict: 'pass',
+        reason: 'The complaint draft preserves the expected claim headings and reads like a filing-shaped pleading artifact.',
+      }
+    : filingShapeScore >= 75
+      ? {
+          verdict: 'warning',
+          reason: 'The complaint is usable, but filing-shape or claim-alignment defects should stay visible before relying on the export.',
+        }
+      : {
+          verdict: 'blocked',
+          reason: 'The complaint still needs more filing-shape and claim-alignment repair before it should be treated as client-safe.',
+        };
+  const formalDiagnostics = {
+    formal_defect_count: missingFormalSections.length,
+    high_severity_issue_count: issues.filter((item) => item.severity === 'high').length,
+    release_gate_verdict: releaseGate.verdict,
+    missing_formal_sections: missingFormalSections,
+    top_ui_suggestions: uiSuggestions.map((item) => item.title),
+  };
+  return {
+    formalSectionsPresent,
+    filingShapeScore,
+    claimTypeAlignment,
+    claimTypeAlignmentScore,
+    missingFormalSections,
+    issues,
+    uiSuggestions,
+    releaseGate: Object.assign({
+      claim_type_label: workspaceClaimTypeLabel(claimType),
+      draft_strategy: String((draft || {}).draft_strategy || 'template'),
+      filing_shape_score: filingShapeScore,
+      claim_type_alignment_score: claimTypeAlignmentScore,
+    }, releaseGate),
+    formalDiagnostics,
   };
 }
 
@@ -948,6 +1168,7 @@ function slugifyWorkspaceFilename(value) {
 function buildWorkspacePacketExport(state) {
   const sessionPayload = buildWorkspaceSessionPayload(state);
   const draft = state.draft || buildWorkspaceDraft(state, null);
+  const formalAssessment = buildWorkspaceFormalAssessment(state, draft, sessionPayload.review.overview || {});
   const requestedRelief = Array.isArray(draft.requested_relief) ? draft.requested_relief : [];
   const questionLines = (sessionPayload.questions || []).map((item) => `- **${item.label || item.id || 'Question'}:** ${item.answer || 'Not answered'}`);
   const testimonyLines = ((state.evidence || {}).testimony || [])
@@ -1007,8 +1228,12 @@ function buildWorkspacePacketExport(state) {
       testimony_items: Number((sessionPayload.review.overview || {}).testimony_items || 0),
       document_items: Number((sessionPayload.review.overview || {}).document_items || 0),
       has_draft: Boolean(state.draft),
+      draft_strategy: String(draft.draft_strategy || 'template'),
       complaint_readiness: buildWorkspaceComplaintReadiness(state),
-      artifact_formats: ['json', 'markdown', 'pdf'],
+      formal_diagnostics: clone(formalAssessment.formalDiagnostics),
+      formal_defect_count: Number(formalAssessment.formalDiagnostics.formal_defect_count || 0),
+      high_severity_issue_count: Number(formalAssessment.formalDiagnostics.high_severity_issue_count || 0),
+      artifact_formats: ['json', 'markdown', 'docx', 'pdf'],
     },
     artifacts: {
       json: {
@@ -1021,6 +1246,11 @@ function buildWorkspacePacketExport(state) {
         content: complaintMarkdown,
         packet_content: packetMarkdown,
         excerpt: complaintMarkdown.slice(0, 2000),
+      },
+      docx: {
+        filename: `${filenameRoot}.docx`,
+        content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        header_b64: Buffer.from(`PK\u0003\u0004 mock complaint docx\n${complaintMarkdown}`).subarray(0, 32).toString('base64'),
       },
       pdf: {
         filename: `${filenameRoot}.pdf`,
@@ -1041,28 +1271,10 @@ function buildWorkspacePacketExport(state) {
 
 function buildWorkspaceComplaintOutputAnalysis(state) {
   const payload = buildWorkspacePacketExport(state);
-  const complaintBody = String((((payload.packet || {}).draft || {}).body || ''));
-  const formalSectionsPresent = {
-    caption: complaintBody.includes('IN THE UNITED STATES DISTRICT COURT'),
-    civil_action_number: complaintBody.includes('Civil Action No. ________________'),
-    nature_of_action: complaintBody.includes('NATURE OF THE ACTION'),
-    jurisdiction_and_venue: complaintBody.includes('JURISDICTION AND VENUE'),
-    parties: complaintBody.includes('PARTIES'),
-    factual_allegations: complaintBody.includes('FACTUAL ALLEGATIONS'),
-    evidentiary_support: complaintBody.includes('EVIDENTIARY SUPPORT AND NOTICE'),
-    claim_count: complaintBody.includes('COUNT I -'),
-    prayer_for_relief: complaintBody.includes('PRAYER FOR RELIEF'),
-    jury_demand: complaintBody.includes('JURY DEMAND'),
-    signature_block: complaintBody.includes('SIGNATURE BLOCK'),
-    working_case_synopsis: complaintBody.includes('WORKING CASE SYNOPSIS'),
-  };
-  const filingShapeScore = Math.min(
-    100,
-    35
-      + (5 * Object.values(formalSectionsPresent).filter(Boolean).length)
-      + (Number((payload.artifact_analysis || {}).evidence_item_count || 0) > 0 ? 10 : 0)
-      + (Number((payload.artifact_analysis || {}).requested_relief_count || 0) > 0 ? 5 : 0)
-      + (Number((payload.artifact_analysis || {}).draft_word_count || 0) >= 180 ? 10 : 0),
+  const assessment = buildWorkspaceFormalAssessment(
+    state,
+    ((payload.packet || {}).draft || {}),
+    ((payload.packet_summary || {})),
   );
   return {
     user_id: state.user_id,
@@ -1070,31 +1282,20 @@ function buildWorkspaceComplaintOutputAnalysis(state) {
     artifact_analysis: clone(payload.artifact_analysis),
     ui_feedback: {
       summary: 'The exported complaint artifact was analyzed to infer which UI steps may still be too weak, hidden, or permissive for a real complainant.',
-      filing_shape_score: filingShapeScore,
-      formal_sections_present: formalSectionsPresent,
-      issues: Number((payload.packet_summary || {}).missing_elements || 0) > 0
-        ? [
-            {
-              severity: 'high',
-              source: 'complaint_output',
-              finding: `The exported complaint still reflects ${Number((payload.packet_summary || {}).missing_elements || 0)} unsupported claim elements.`,
-              ui_implication: 'The review and draft stages need stronger warnings before the user treats the complaint as filing-ready.',
-            },
-          ]
-        : [],
-      ui_suggestions: [
-        {
-          title: 'Tighten review-to-draft gatekeeping',
-          recommendation: 'Add stronger blocker language and a more prominent unsupported-elements summary before draft generation or export.',
-          target_surface: 'review,draft,integrations',
-        },
-      ],
+      filing_shape_score: assessment.filingShapeScore,
+      claim_type_alignment: clone(assessment.claimTypeAlignment),
+      claim_type_alignment_score: assessment.claimTypeAlignmentScore,
+      release_gate: clone(assessment.releaseGate),
+      formal_diagnostics: clone(assessment.formalDiagnostics),
+      formal_sections_present: clone(assessment.formalSectionsPresent),
+      issues: clone(assessment.issues),
+      ui_suggestions: clone(assessment.uiSuggestions),
       draft_excerpt: String((((payload.packet || {}).draft || {}).body || '')).slice(0, 600),
       complaint_strengths: [
         `Supported elements: ${Number((payload.packet_summary || {}).supported_elements || 0)}`,
         `Evidence items: ${Number((payload.packet_summary || {}).testimony_items || 0) + Number((payload.packet_summary || {}).document_items || 0)}`,
         `Requested relief items: ${Number((payload.artifact_analysis || {}).requested_relief_count || 0)}`,
-        `Formal sections present: ${Object.values(formalSectionsPresent).filter(Boolean).length}/${Object.keys(formalSectionsPresent).length}`,
+        `Formal sections present: ${Object.values(assessment.formalSectionsPresent).filter(Boolean).length}/${Object.keys(assessment.formalSectionsPresent).length}`,
       ],
     },
   };
@@ -1202,13 +1403,88 @@ function buildWorkspaceUiReadiness(state) {
     : ['Generate a complaint draft before treating the workflow as filing-ready.'];
   return {
     user_id: state.user_id,
+    status: state.draft ? 'cached' : 'unavailable',
     verdict,
+    score: state.draft ? 84 : 35,
     summary: state.draft
       ? 'The browser complaint workflow can generate, edit, and export a draft through the shared MCP tool path.'
       : 'The browser workflow still needs a generated complaint draft before the full filing path feels complete.',
     release_blockers: releaseBlockers,
+    acceptance_checks: [],
+    tested_stages: ['intake', 'evidence', 'review', 'draft', 'integrations'],
+    sdk_invocations: ['complaint.start_session', 'complaint.generate_complaint', 'complaint.export_complaint_packet'],
+    actor_path_breaks: [],
+    broken_controls: [],
+    issue_counts: { high: releaseBlockers.length, medium: 0, low: 0 },
+    workflow_type: 'ui_ux_closed_loop',
+    updated_at: '2026-03-22T12:35:00Z',
     sdk_tooling_ready: true,
     complaint_readiness: complaintReadiness,
+  };
+}
+
+function buildWorkspaceClientReleaseGate(state) {
+  const complaintReadiness = buildWorkspaceComplaintReadiness(state);
+  const uiReadiness = buildWorkspaceUiReadiness(state);
+  const outputAnalysis = buildWorkspaceComplaintOutputAnalysis(state);
+  const complaintOutputReleaseGate = clone((outputAnalysis.ui_feedback || {}).release_gate || {});
+  const complaintScore = Number(complaintReadiness.score || 0);
+  const uiScore = Number(uiReadiness.score || 35);
+  const outputScore = complaintOutputReleaseGate.verdict === 'pass'
+    ? 100
+    : complaintOutputReleaseGate.verdict === 'warning'
+      ? 72
+      : 30;
+  const score = Math.round((complaintScore * 0.3) + (uiScore * 0.3) + (outputScore * 0.4));
+  const blockers = [];
+  if (complaintOutputReleaseGate.verdict === 'blocked') {
+    blockers.push(String(complaintOutputReleaseGate.reason || 'The exported complaint is not yet client-safe.'));
+  }
+  if (!state.draft) {
+    blockers.push('Generate a complaint draft before treating the workflow as client-ready.');
+  }
+  const verdict = complaintOutputReleaseGate.verdict === 'pass' && state.draft
+    ? 'client_safe'
+    : score >= 65
+      ? 'warning'
+      : 'blocked';
+  return {
+    user_id: state.user_id,
+    score,
+    verdict,
+    detail: verdict === 'client_safe'
+      ? 'The complaint workflow has a usable UI verdict, a filing-shaped complaint export, and enough record strength to continue refinement.'
+      : verdict === 'warning'
+        ? 'The complaint workflow is usable, but either the UI audit, record strength, or export quality still needs work before this should be treated as client-safe.'
+        : 'The current combination of UI readiness, complaint readiness, and exported complaint quality is not safe enough to treat this workflow as client-ready.',
+    recommended_route: verdict === 'client_safe' ? '/document' : '/workspace',
+    recommended_action: verdict === 'client_safe'
+      ? 'Continue refining the complaint and review the export artifacts before filing.'
+      : 'Review the blockers, tighten the record, and rerun the UX Audit or export critic before relying on this flow.',
+    blockers: blockers.slice(0, 6),
+    complaint_readiness: complaintReadiness,
+    ui_readiness: uiReadiness,
+    complaint_output_release_gate: complaintOutputReleaseGate,
+  };
+}
+
+function buildWorkspaceFormalDiagnosticsPayload(state) {
+  const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+  const uiFeedback = analysis.ui_feedback || {};
+  const diagnostics = uiFeedback.formal_diagnostics || {};
+  const packetSummary = analysis.packet_summary || {};
+  return {
+    user_id: state.user_id,
+    claim_type_alignment_score: Number(uiFeedback.claim_type_alignment_score || 0),
+    filing_shape_score: Number(uiFeedback.filing_shape_score || 0),
+    release_gate: clone(uiFeedback.release_gate || {}),
+    formal_diagnostics: clone(diagnostics),
+    packet_summary: {
+      has_draft: Boolean(packetSummary.has_draft),
+      draft_strategy: String(packetSummary.draft_strategy || 'template'),
+      formal_defect_count: Number(packetSummary.formal_defect_count || 0),
+      high_severity_issue_count: Number(packetSummary.high_severity_issue_count || 0),
+    },
   };
 }
 
@@ -1299,6 +1575,32 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
         case_synopsis: buildWorkspaceCaseSynopsis(state),
       };
     }
+    if (name === 'complaint.import_gmail_evidence') {
+      const addresses = Array.isArray(toolArgs.addresses) ? toolArgs.addresses.filter(Boolean) : [];
+      const importedRecords = addresses.map((address, index) => {
+        const collection = state.evidence.documents;
+        const record = {
+          id: `documents-${collection.length + 1}`,
+          kind: 'document',
+          claim_element_id: String(toolArgs.claim_element_id || 'causation'),
+          title: `Imported Gmail message ${index + 1}`,
+          content: `Imported evidence matched from ${String(address)}.`,
+          source: `gmail:${String(address)}`,
+          attachment_names: [`message-${index + 1}.eml`],
+          saved_at: '2026-03-22T12:12:00Z',
+        };
+        collection.push(record);
+        return record;
+      });
+      return {
+        user_id: state.user_id,
+        imported_count: importedRecords.length,
+        imported_records: clone(importedRecords),
+        review: buildWorkspaceReview(state),
+        session: clone(state),
+        case_synopsis: buildWorkspaceCaseSynopsis(state),
+      };
+    }
     if (name === 'complaint.build_mediator_prompt') {
       return buildWorkspaceMediatorPrompt(state);
     }
@@ -1308,8 +1610,14 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     if (name === 'complaint.get_ui_readiness') {
       return buildWorkspaceUiReadiness(state);
     }
+    if (name === 'complaint.get_client_release_gate') {
+      return buildWorkspaceClientReleaseGate(state);
+    }
     if (name === 'complaint.get_workflow_capabilities') {
       return buildWorkspaceCapabilities(state);
+    }
+    if (name === 'complaint.get_tooling_contract') {
+      return buildWorkspaceToolingContract(state.user_id);
     }
     if (name === 'complaint.generate_complaint') {
       const requestedRelief = Array.isArray(toolArgs.requested_relief)
@@ -1372,6 +1680,20 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
         artifact_analysis: clone(payload.artifact_analysis),
       };
     }
+    if (name === 'complaint.export_complaint_docx') {
+      const payload = buildWorkspacePacketExport(state);
+      return {
+        artifact: {
+          format: 'docx',
+          filename: payload.artifacts.docx.filename,
+          media_type: payload.artifacts.docx.content_type,
+          size_bytes: Buffer.from(`PK\u0003\u0004 mock complaint docx\n${payload.packet.draft.body}`).length,
+          header_b64: payload.artifacts.docx.header_b64,
+        },
+        packet_summary: clone(payload.packet_summary),
+        artifact_analysis: clone(payload.artifact_analysis),
+      };
+    }
     if (name === 'complaint.export_complaint_pdf') {
       const payload = buildWorkspacePacketExport(state);
       return {
@@ -1387,6 +1709,9 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     }
     if (name === 'complaint.analyze_complaint_output') {
       return buildWorkspaceComplaintOutputAnalysis(state);
+    }
+    if (name === 'complaint.get_formal_diagnostics') {
+      return buildWorkspaceFormalDiagnosticsPayload(state);
     }
     if (name === 'complaint.review_generated_exports') {
       const analysis = buildWorkspaceComplaintOutputAnalysis(state);
@@ -1467,6 +1792,18 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
         ],
       };
     }
+    if (name === 'complaint.update_claim_type') {
+      state.claim_type = String(toolArgs.claim_type || 'retaliation').trim() || 'retaliation';
+      return {
+        session: clone(state),
+        review: buildWorkspaceReview(state),
+        questions: buildWorkspaceQuestionStatus(state),
+        next_question: buildWorkspaceQuestionStatus(state).find((question) => !question.is_answered) || null,
+        case_synopsis: buildWorkspaceCaseSynopsis(state),
+        claim_type: state.claim_type,
+        claim_type_label: workspaceClaimTypeLabel(state.claim_type),
+      };
+    }
     if (name === 'complaint.update_case_synopsis') {
       state.case_synopsis = String(toolArgs.synopsis || '').trim();
       return buildWorkspaceSessionPayload(state);
@@ -1528,6 +1865,18 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     const outputFormat = String(url.searchParams.get('output_format') || 'json');
     const payload = buildWorkspacePacketExport(getWorkspaceState(userId));
 
+    if (outputFormat === 'docx') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        headers: {
+          'Content-Disposition': `attachment; filename="${payload.artifacts.docx.filename}"`,
+        },
+        body: Buffer.from(`PK\u0003\u0004 mock complaint docx\n${payload.packet.draft.body}`),
+      });
+      return;
+    }
+
     if (outputFormat === 'pdf') {
       await route.fulfill({
         status: 200,
@@ -1559,6 +1908,20 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
         'Content-Disposition': `attachment; filename="${payload.artifacts.json.filename}"`,
       },
       body: JSON.stringify(payload.packet, null, 2),
+    });
+  });
+
+  await page.route('**/api/complaint-workspace/import-gmail-evidence', async (route) => {
+    const request = route.request().postDataJSON() || {};
+    const state = getWorkspaceState(request.user_id);
+    const payload = handleWorkspaceToolCall('complaint.import_gmail_evidence', request);
+    recorder.gmailImportRequests = recorder.gmailImportRequests || [];
+    recorder.gmailImportRequests.push(request);
+    workspaceSessions.set(state.user_id, state);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
     });
   });
 

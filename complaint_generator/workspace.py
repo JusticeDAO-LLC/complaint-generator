@@ -150,6 +150,15 @@ def get_workflow_capabilities(
     return _resolve_service(service, root_dir=root_dir).get_workflow_capabilities(user_id)
 
 
+def get_tooling_contract(
+    user_id: Optional[str] = None,
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_tooling_contract(user_id)
+
+
 def generate_complaint(
     user_id: Optional[str],
     *,

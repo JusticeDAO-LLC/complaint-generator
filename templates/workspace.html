@@ -1667,6 +1667,7 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <p class="muted">Use the same JavaScript MCP SDK path to inspect capabilities, prepare the mediator brief, and export the current lawsuit packet without leaving the workspace.</p>
                             <div class="button-row">
                                 <button class="secondary" id="refresh-capabilities-button" type="button">Refresh Capabilities</button>
+                                <button class="secondary" id="refresh-tooling-contract-button" type="button">Refresh Tooling Contract</button>
                                 <button class="secondary" id="refresh-complaint-readiness-button" type="button">Refresh Complaint Readiness</button>
                                 <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
                                 <button class="secondary" id="refresh-client-release-gate-button" type="button">Refresh Client Release Gate</button>
@@ -1687,6 +1688,10 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <div>
                                     <label>Workflow Capabilities</label>
                                     <div class="list" id="workflow-capabilities-preview"></div>
+                                </div>
+                                <div>
+                                    <label>Tooling Contract</label>
+                                    <div class="status draft-preview-shell"><pre id="tooling-contract-preview">No tooling-contract payload loaded yet.</pre></div>
                                 </div>
                             </div>
                             <div>
@@ -1862,6 +1867,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceSession = null;
         let workspaceSessionTools = [];
         let workspaceCapabilities = null;
+        let workspaceToolingContract = null;
         let workspaceMediatorPrompt = null;
         let workspaceComplaintReadiness = null;
         let workspaceUiReadiness = null;
@@ -2926,6 +2932,7 @@ ${cliAddressLines}
         function renderWorkflowOperations() {
             const mediatorNode = document.getElementById('mediator-prompt-preview');
             const capabilitiesNode = document.getElementById('workflow-capabilities-preview');
+            const toolingContractNode = document.getElementById('tooling-contract-preview');
             const complaintReadinessNode = document.getElementById('complaint-readiness-preview');
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const clientReleaseGateNode = document.getElementById('client-release-gate-preview');
@@ -2945,14 +2952,38 @@ ${cliAddressLines}
             const capabilities = (workspaceCapabilities && Array.isArray(workspaceCapabilities.capabilities))
                 ? workspaceCapabilities.capabilities
                 : [];
+            const toolingContract = workspaceToolingContract || (workspaceCapabilities && workspaceCapabilities.tooling_contract)
+                ? (workspaceToolingContract || workspaceCapabilities.tooling_contract)
+                : null;
+            const toolingContractMarkup = toolingContract
+                ? `
+                    <div class="item">
+                        <strong>Shared Tooling Contract</strong>
+                        <div class="muted">
+                            ${escapeHtml(`Package exports: ${Array.isArray(toolingContract.package_exports) ? toolingContract.package_exports.length : 0}. CLI commands: ${Array.isArray(toolingContract.cli_commands) ? toolingContract.cli_commands.length : 0}. MCP tools: ${Array.isArray(toolingContract.mcp_tools) ? toolingContract.mcp_tools.length : 0}. Browser SDK methods: ${Array.isArray(toolingContract.browser_sdk_methods) ? toolingContract.browser_sdk_methods.length : 0}.`)}
+                        </div>
+                        <div class="muted">
+                            ${toolingContract.all_core_flow_steps_exposed
+                                ? 'All core complaint-flow steps are exposed across package, CLI, MCP, and browser SDK surfaces.'
+                                : escapeHtml(`Missing cross-surface exposures: ${(toolingContract.missing_exposures || []).join(', ') || 'unknown'}.`)}
+                        </div>
+                    </div>
+                `
+                : '';
             capabilitiesNode.innerHTML = capabilities.length
                 ? capabilities.map((item) => `
                     <div class="item">
                         <strong>${escapeHtml(item.label || item.id || 'Capability')}</strong>
                         <div class="muted">${escapeHtml(item.detail || item.description || 'Available through the shared complaint workflow.')}</div>
                     </div>
-                `).join('')
+                `).join('') + toolingContractMarkup
                 : '<div class="item"><strong>No capability payload loaded yet.</strong><div class="muted">Refresh capabilities after the workspace bootstraps to confirm the exposed complaint workflow.</div></div>';
+
+            if (toolingContract) {
+                toolingContractNode.textContent = JSON.stringify(toolingContract, null, 2);
+            } else {
+                toolingContractNode.textContent = 'No tooling-contract payload loaded yet.';
+            }
 
             if (workspaceComplaintReadiness) {
                 complaintReadinessNode.textContent = JSON.stringify(workspaceComplaintReadiness, null, 2);
@@ -2973,7 +3004,30 @@ ${cliAddressLines}
             }
 
             if (workspaceFormalDiagnostics) {
-                formalDiagnosticsNode.textContent = JSON.stringify(workspaceFormalDiagnostics, null, 2);
+                const diagnostics = workspaceFormalDiagnostics.formal_diagnostics || {};
+                const releaseGate = workspaceFormalDiagnostics.release_gate || {};
+                const summaryLines = [
+                    'Formal complaint posture summary',
+                    `Release gate verdict: ${String(releaseGate.verdict || 'unknown').toUpperCase()}`,
+                    `Filing shape score: ${Number(workspaceFormalDiagnostics.filing_shape_score || 0)}`,
+                    `Claim-type alignment score: ${Number(workspaceFormalDiagnostics.claim_type_alignment_score || 0)}`,
+                    `Draft strategy: ${String((workspaceFormalDiagnostics.packet_summary || {}).draft_strategy || 'template')}`,
+                    `Formal defect count: ${Number((workspaceFormalDiagnostics.packet_summary || {}).formal_defect_count || 0)}`,
+                    `High-severity complaint issues: ${Number((workspaceFormalDiagnostics.packet_summary || {}).high_severity_issue_count || 0)}`,
+                ];
+                if (Array.isArray(diagnostics.top_formal_findings) && diagnostics.top_formal_findings.length) {
+                    summaryLines.push('', 'Top formal findings:');
+                    diagnostics.top_formal_findings.slice(0, 3).forEach((item, index) => {
+                        summaryLines.push(`${index + 1}. ${String(item)}`);
+                    });
+                }
+                if (Array.isArray(diagnostics.top_ui_suggestions) && diagnostics.top_ui_suggestions.length) {
+                    summaryLines.push('', 'Top UI repair suggestions:');
+                    diagnostics.top_ui_suggestions.slice(0, 3).forEach((item, index) => {
+                        summaryLines.push(`${index + 1}. ${String(item)}`);
+                    });
+                }
+                formalDiagnosticsNode.textContent = `${summaryLines.join('\n')}\n\n${JSON.stringify(workspaceFormalDiagnostics, null, 2)}`;
             } else {
                 formalDiagnosticsNode.textContent = 'No formal-diagnostics payload loaded yet.';
             }
@@ -3441,6 +3495,9 @@ ${cliAddressLines}
 
         async function loadSharedCapabilities() {
             workspaceCapabilities = await client.getWorkflowCapabilities(workspaceUserId);
+            workspaceToolingContract = workspaceCapabilities && workspaceCapabilities.tooling_contract
+                ? workspaceCapabilities.tooling_contract
+                : workspaceToolingContract;
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
             workspaceComplaintReadiness = await client.getComplaintReadiness(workspaceUserId);
             workspaceUiReadiness = await client.getUiReadiness(workspaceUserId);
@@ -4237,6 +4294,13 @@ ${cliAddressLines}
             setStatus('Workflow capabilities refreshed.');
         }
 
+        async function refreshToolingContractPanel() {
+            setBusyStatus('Refreshing the cross-surface tooling contract through the MCP tools…');
+            workspaceToolingContract = await client.getToolingContract(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Tooling contract refreshed.');
+        }
+
         async function refreshComplaintReadinessPanel() {
             setBusyStatus('Refreshing complaint readiness through the MCP tools…');
             workspaceComplaintReadiness = await client.getComplaintReadiness(workspaceUserId);
@@ -4402,6 +4466,7 @@ ${cliAddressLines}
         document.getElementById('download-packet-docx-button').addEventListener('click', downloadPacket);
         document.getElementById('download-packet-pdf-button').addEventListener('click', downloadPacket);
         document.getElementById('refresh-capabilities-button').addEventListener('click', refreshCapabilitiesPanel);
+        document.getElementById('refresh-tooling-contract-button').addEventListener('click', refreshToolingContractPanel);
         document.getElementById('refresh-complaint-readiness-button').addEventListener('click', refreshComplaintReadinessPanel);
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('refresh-client-release-gate-button').addEventListener('click', refreshClientReleaseGatePanel);

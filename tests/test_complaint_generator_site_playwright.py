@@ -510,6 +510,9 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
             assert page.evaluate(
                 "() => typeof window.ComplaintMcpSdk.ComplaintMcpClient.prototype.analyzeComplaintOutput === 'function'"
             )
+            assert page.evaluate(
+                "() => typeof window.ComplaintMcpSdk.ComplaintMcpClient.prototype.getToolingContract === 'function'"
+            )
 
             page.locator('#intake-party_name').fill('Jane Doe')
             page.locator('#intake-opposing_party').fill('Acme Corporation')

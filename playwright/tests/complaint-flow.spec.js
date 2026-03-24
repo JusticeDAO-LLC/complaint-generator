@@ -345,9 +345,24 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#tool-list')).toContainText(/complaint\.update_claim_type/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.review_generated_exports/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.get_tooling_contract/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
     await expect(page.locator('#intake-caption-preview')).toContainText(/FOR THE APPROPRIATE JUDICIAL DISTRICT/i);
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await page.locator('#refresh-capabilities-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Workflow capabilities refreshed\./i);
+    await expect(page.locator('#workflow-capabilities-preview')).toContainText(/Shared Tooling Contract/i);
+    await expect(page.locator('#workflow-capabilities-preview')).toContainText(/All core complaint-flow steps are exposed across package, CLI, MCP, and browser SDK surfaces\./i);
+    await page.locator('#refresh-tooling-contract-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Tooling contract refreshed\./i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/"all_core_flow_steps_exposed":\s*true/i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/complaint\.generate_complaint/i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/getToolingContract/i);
+    await page.locator('#refresh-formal-diagnostics-button').click();
+    await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Formal complaint posture summary/i, { timeout: 15000 });
+    await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Release gate verdict:/i, { timeout: 15000 });
+    await page.getByRole('button', { name: 'Intake', exact: true }).click();
 
     await page.locator('#intake-party_name').fill('Jane Doe');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
@@ -596,6 +611,10 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#workspace-status')).toContainText(/Client release gate refreshed/i);
     await expect(page.locator('#client-release-gate-preview')).toContainText(/"verdict":\s*"(client_safe|warning|blocked)"/i);
     await expect(page.locator('#client-release-gate-preview')).toContainText(/"complaint_output_release_gate":/i);
+    await page.locator('#refresh-formal-diagnostics-button').click();
+    await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Formal complaint posture summary/i, { timeout: 15000 });
+    await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Filing shape score:/i, { timeout: 15000 });
+    await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Top UI repair suggestions:/i, { timeout: 15000 });
 
     await page.locator('#export-packet-tool-button').click();
     await expect(page.locator('#packet-export-summary')).toContainText(/"has_draft": true/i);
@@ -711,7 +730,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#homepage-next-step')).toContainText(/draft|builder|revis/i);
   });
 
-  test('workspace can switch complaint type and use the llm_router drafting path for a formal housing complaint', async ({ page }) => {
+  test('workspace can switch complaint type and use the llm_router drafting path for a formal housing complaint', async ({ page }, testInfo) => {
     const did = `did:key:workspace-housing-flow-${Date.now()}`;
     await page.addInitScript((did) => {
       window.localStorage.setItem('complaintGenerator.did', did);
@@ -776,5 +795,43 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#claim-alignment-preview')).toContainText(/"release_gate_verdict":\s*"(pass|warning)"/i);
     const housingAnalysisText = await page.locator('#complaint-output-analysis-preview').textContent();
     expect(housingAnalysisText).toMatch(/Housing Discrimination/i);
+
+    const [housingMarkdownDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#download-packet-tool-markdown-button').click(),
+    ]);
+    const housingMarkdownPath = testInfo.outputPath(housingMarkdownDownload.suggestedFilename());
+    await housingMarkdownDownload.saveAs(housingMarkdownPath);
+    const housingMarkdownBody = await fs.readFile(housingMarkdownPath, 'utf-8');
+    expect(housingMarkdownDownload.suggestedFilename()).toMatch(/morgan-lee-v\.?-acme-housing-authority-housing-discrimination-complaint\.md$/i);
+    expect(housingMarkdownBody.startsWith('IN THE UNITED STATES DISTRICT COURT')).toBeTruthy();
+    expect(housingMarkdownBody).toContain('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
+    expect(housingMarkdownBody).toContain('COMPLAINT FOR HOUSING DISCRIMINATION');
+    expect(housingMarkdownBody).toContain('COUNT I - HOUSING DISCRIMINATION');
+    expect(housingMarkdownBody).toContain('Morgan Lee brings this housing discrimination complaint against Acme Housing Authority.');
+    expect(housingMarkdownBody).toContain('JURY TRIAL DEMANDED');
+    expect(housingMarkdownBody).toContain('SIGNATURE BLOCK');
+    expect(housingMarkdownBody).not.toContain('APPENDIX A - CASE SYNOPSIS');
+
+    const [housingPdfDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#download-packet-tool-pdf-button').click(),
+    ]);
+    const housingPdfPath = testInfo.outputPath(housingPdfDownload.suggestedFilename());
+    await housingPdfDownload.saveAs(housingPdfPath);
+    const housingPdfBody = await fs.readFile(housingPdfPath);
+    expect(housingPdfDownload.suggestedFilename()).toMatch(/morgan-lee-v\.?-acme-housing-authority-housing-discrimination-complaint\.pdf$/i);
+    expect(housingPdfBody.subarray(0, 8).toString('utf-8')).toContain('%PDF-1.4');
+    expect(housingPdfBody.toString('utf-8')).toContain('COMPLAINT FOR HOUSING DISCRIMINATION');
+
+    const [housingDocxDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#download-packet-tool-docx-button').click(),
+    ]);
+    const housingDocxPath = testInfo.outputPath(housingDocxDownload.suggestedFilename());
+    await housingDocxDownload.saveAs(housingDocxPath);
+    const housingDocxBody = await fs.readFile(housingDocxPath);
+    expect(housingDocxDownload.suggestedFilename()).toMatch(/morgan-lee-v\.?-acme-housing-authority-housing-discrimination-complaint\.docx$/i);
+    expect(housingDocxBody.subarray(0, 2).toString('utf-8')).toBe('PK');
   });
 });

@@ -967,6 +967,16 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('workflow-capabilities-preview').innerText.includes('Complaint packet')"
             )
+            page.click("#refresh-tooling-contract-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Tooling contract refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('tooling-contract-preview').innerText.includes('all_core_flow_steps_exposed')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('tooling-contract-preview').innerText.includes('complaint.generate_complaint')"
+            )
             page.click("#refresh-complaint-readiness-button")
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').innerText.includes('Complaint readiness refreshed.')"
@@ -1559,6 +1569,10 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             page.click("#refresh-capabilities-button")
             page.wait_for_function(
                 "() => document.getElementById('workflow-capabilities-preview').innerText.includes('Complaint packet')"
+            )
+            page.click("#refresh-tooling-contract-button")
+            page.wait_for_function(
+                "() => document.getElementById('tooling-contract-preview').innerText.includes('all_core_flow_steps_exposed')"
             )
             page.click("#refresh-complaint-readiness-button")
             page.wait_for_function(
