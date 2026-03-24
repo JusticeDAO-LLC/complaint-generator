@@ -1439,6 +1439,13 @@ def test_deterministic_retaliation_draft_normalizes_activity_into_pleading_style
             "court_header": "FOR THE NORTHERN DISTRICT OF CALIFORNIA",
         },
     )
+    service.save_evidence(
+        "pleading-style-user",
+        kind="document",
+        claim_element_id="causation",
+        title="Termination timeline email",
+        content="Email records show the termination followed immediately after the HR report.",
+    )
 
     payload = service.generate_complaint("pleading-style-user")
     body = payload["draft"]["body"]
@@ -1446,11 +1453,13 @@ def test_deterministic_retaliation_draft_normalizes_activity_into_pleading_style
     assert "FOR THE NORTHERN DISTRICT OF CALIFORNIA" in body
     assert "engaged in protected activity by reporting wage-and-hour violations to HR." in body
     assert "Plaintiff engaged in protected activity by reporting wage-and-hour violations to HR," in body
-    assert "After that protected activity, Plaintiff was terminated three days later." in body
+    assert "Within days of that protected activity, Defendant took materially adverse action against Plaintiff by terminating Plaintiff three days later." in body
     assert "The relevant chronology is as follows: Plaintiff made the report on April 2, and the termination occurred on April 5." in body
-    assert "Plaintiff presently relies on the evidentiary materials identified below" in body
+    assert "Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading:" in body
+    assert "documentary exhibit presently identified as 'Termination timeline email' on the causal link element." in body
+    assert "Plaintiff expects to offer documentary exhibit 'Termination timeline email' in support of the causal link element." in body
     assert "the evidentiary basis for this pleading" in body
-    assert "By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, equitable relief, and such other relief as the Court deems just and proper." in body
+    assert "As a direct and proximate result of Defendant's retaliatory conduct, Plaintiff is entitled to recover damages, equitable relief, fees and costs where available, and such further relief as the Court deems just and proper." in body
     assert "Back pay and lost benefits." in body
 
 

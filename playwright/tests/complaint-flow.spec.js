@@ -648,7 +648,8 @@ test.describe('complaint generation workflow', () => {
     expect(markdownBody).toContain('Plaintiff Taylor Smith, proceeding pro se, alleges upon personal knowledge');
     expect(markdownBody).toContain('engaged in protected activity by reporting wage-and-hour violations to HR.');
     expect(markdownBody).toContain('The relevant chronology is as follows: Plaintiff made the report on April 2, and the termination occurred on April 5.');
-    expect(markdownBody).toContain('Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: Termination timeline email (Causal link).');
+    expect(markdownBody).toContain("Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: documentary exhibit presently identified as 'Termination timeline email' on the causal link element.");
+    expect(markdownBody).toContain("Plaintiff expects to offer documentary exhibit 'Termination timeline email' in support of the causal link element.");
     expect(markdownBody).toContain('That protected activity constituted protected opposition, reporting, or participation activity under the governing anti-retaliation framework.');
     expect(markdownBody).toContain('Within days of that protected activity, Defendant took materially adverse action against Plaintiff by terminating Plaintiff three days later.');
     expect(markdownBody).toContain('Defendant thereafter subjected Plaintiff to materially adverse action by terminating Plaintiff three days later, under circumstances supporting a causal inference of retaliation.');

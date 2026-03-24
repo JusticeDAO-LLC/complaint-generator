@@ -255,6 +255,15 @@ function claimElementLabel(value) {
   return labels[normalized] || normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) || 'An identified claim element';
 }
 
+function formalEvidenceSummaryItem(item, kind) {
+  const title = String((item || {}).title || `Untitled ${kind}`).trim();
+  const elementLabel = claimElementLabel((item || {}).claim_element_id).toLowerCase();
+  if (kind === 'testimony') {
+    return `testimony presently identified as '${title}' on the ${elementLabel} element`;
+  }
+  return `documentary exhibit presently identified as '${title}' on the ${elementLabel} element`;
+}
+
 const reviewPayload = {
   claim_coverage_summary: {
     retaliation: {
@@ -751,15 +760,15 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
     'The evidentiary record and resulting harm warrant judicial relief.',
   ];
   const testimonySummary = (evidence.testimony || []).slice(0, 3)
-    .map((item) => `${item.title || 'Untitled testimony'} (${claimElementLabel(item.claim_element_id)})`)
+    .map((item) => formalEvidenceSummaryItem(item, 'testimony'))
     .join('; ') || 'No witness or complainant testimony is presently identified';
   const documentSummary = (evidence.documents || []).slice(0, 3)
-    .map((item) => `${item.title || 'Untitled document'} (${claimElementLabel(item.claim_element_id)})`)
+    .map((item) => formalEvidenceSummaryItem(item, 'document'))
     .join('; ') || 'No documentary exhibits are presently identified';
   const testimonyReferenceLines = (evidence.testimony || []).slice(0, 3)
-    .map((item) => `Plaintiff expects to present testimony identified as '${item.title || 'Untitled testimony'},' which is presently offered in support of the ${claimElementLabel(item.claim_element_id).toLowerCase()} element.`);
+    .map((item) => `Plaintiff expects to offer testimony presently identified as '${item.title || 'Untitled testimony'}' in support of the ${claimElementLabel(item.claim_element_id).toLowerCase()} element.`);
   const documentReferenceLines = (evidence.documents || []).slice(0, 3)
-    .map((item) => `Plaintiff identifies documentary exhibit '${item.title || 'Untitled document'}' as presently supporting the ${claimElementLabel(item.claim_element_id).toLowerCase()} element.`);
+    .map((item) => `Plaintiff expects to offer documentary exhibit '${item.title || 'Untitled document'}' in support of the ${claimElementLabel(item.claim_element_id).toLowerCase()} element.`);
   const useLlm = Boolean(options.use_llm);
   const provider = String(options.provider || '').trim() || 'playwright-stub';
   const model = String(options.model || '').trim() || 'stub-formal-complaint';

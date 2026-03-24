@@ -298,6 +298,14 @@ def _claim_element_label(value: Optional[str]) -> str:
     return normalized.replace("_", " ").strip() or "an identified claim element"
 
 
+def _formal_evidence_summary_item(item: Dict[str, Any], *, kind: str) -> str:
+    title = str(item.get("title") or f"Untitled {kind}").strip()
+    element_label = _claim_element_label(item.get("claim_element_id")).lower()
+    if kind == "testimony":
+        return f"testimony presently identified as '{title}' on the {element_label} element"
+    return f"documentary exhibit presently identified as '{title}' on the {element_label} element"
+
+
 def _claim_type_filing_guidance(value: Optional[str]) -> str:
     normalized = _normalize_claim_type(value)
     return {
@@ -943,19 +951,19 @@ class ComplaintWorkspaceService:
         evidence_count = len(testimony_items) + len(document_items)
         court_header = _court_header_line(answers.get("court_header"))
         testimony_reference_lines = _unique_preserve_order([
-            f"Plaintiff expects to present testimony identified as '{item.get('title') or 'Untitled testimony'},' which is presently offered in support of the {_claim_element_label(item.get('claim_element_id')).lower()} element."
+            f"Plaintiff expects to offer testimony presently identified as '{item.get('title') or 'Untitled testimony'}' in support of the {_claim_element_label(item.get('claim_element_id')).lower()} element."
             for item in testimony_items[:3]
         ])
         document_reference_lines = _unique_preserve_order([
-            f"Plaintiff identifies documentary exhibit '{item.get('title') or 'Untitled document'}' as presently supporting the {_claim_element_label(item.get('claim_element_id')).lower()} element."
+            f"Plaintiff expects to offer documentary exhibit '{item.get('title') or 'Untitled document'}' in support of the {_claim_element_label(item.get('claim_element_id')).lower()} element."
             for item in document_items[:3]
         ])
         testimony_summary = "; ".join(_unique_preserve_order([
-            f"{item.get('title') or 'Untitled testimony'} ({_claim_element_label(item.get('claim_element_id'))})"
+            _formal_evidence_summary_item(item, kind="testimony")
             for item in testimony_items[:3]
         ])) or "No witness or complainant testimony is presently identified"
         document_summary = "; ".join(_unique_preserve_order([
-            f"{item.get('title') or 'Untitled document'} ({_claim_element_label(item.get('claim_element_id'))})"
+            _formal_evidence_summary_item(item, kind="document")
             for item in document_items[:3]
         ])) or "No documentary exhibits are presently identified"
         complaint_heading = f"COMPLAINT FOR {claim_label.upper()}"
