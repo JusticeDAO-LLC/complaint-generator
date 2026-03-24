@@ -2118,6 +2118,136 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
     authority_records: List[Dict[str, Any]] = []
     corroborating_records: List[Dict[str, Any]] = []
 
+    def _research_text(item: Dict[str, Any]) -> str:
+        return " ".join(
+            str(part or "").strip()
+            for part in (
+                item.get("citation"),
+                item.get("title"),
+                item.get("summary"),
+                item.get("description"),
+                item.get("url"),
+                item.get("authority_source"),
+            )
+            if str(part or "").strip()
+        )
+
+    def _is_opaque_identifier(value: str) -> bool:
+        candidate = str(value or "").strip()
+        return bool(candidate) and bool(re.fullmatch(r"\d{4}-\d{4,}", candidate))
+
+    def _has_housing_context(text: str) -> bool:
+        lowered = text.lower()
+        housing_markers = (
+            "housing",
+            "hud",
+            "tenant",
+            "voucher",
+            "public housing",
+            "lease",
+            "assistance",
+            "hacc",
+            "pha",
+            "continuum of care",
+            "home investment partnerships",
+            "fair housing",
+        )
+        return any(marker in lowered for marker in housing_markers)
+
+    def _has_procedural_context(text: str) -> bool:
+        lowered = text.lower()
+        procedural_markers = (
+            "grievance",
+            "hearing",
+            "informal review",
+            "appeal",
+            "notice",
+            "due process",
+            "termination",
+            "adverse action",
+            "retaliat",
+            "accommodation",
+            "discrimin",
+        )
+        return any(marker in lowered for marker in procedural_markers)
+
+    def _has_strong_authority_citation(text: str) -> bool:
+        lowered = text.lower()
+        return any(
+            marker in lowered
+            for marker in (
+                "c.f.r.",
+                " cfr",
+                "u.s.c.",
+                " usc",
+                "§",
+                "part 966",
+                "part 982",
+                "24 c.f.r.",
+                "24 cfr",
+                "42 u.s.c.",
+                "42 usc",
+            )
+        )
+
+    def _is_relevant_authority_item(item: Dict[str, Any]) -> bool:
+        text = _research_text(item)
+        relevance_text = " ".join(
+            str(part or "").strip()
+            for part in (
+                item.get("citation"),
+                item.get("title"),
+                item.get("url"),
+                item.get("authority_source"),
+                " ".join(str(value or "").strip() for value in list(item.get("research_priority_reasons") or []) if str(value or "").strip()),
+            )
+            if str(part or "").strip()
+        )
+        citation = str(item.get("citation") or "").strip()
+        authority_source = str(item.get("authority_source") or "").strip().lower()
+        url = str(item.get("url") or "").strip().lower()
+        has_housing = _has_housing_context(relevance_text)
+        has_procedural = _has_procedural_context(relevance_text)
+        if _has_strong_authority_citation(relevance_text):
+            return has_housing or has_procedural
+        if _is_opaque_identifier(citation):
+            if "federal_register" in authority_source or "/fr-" in url or "govinfo.gov" in url:
+                return has_housing and has_procedural
+            return has_housing or has_procedural
+        if "federal_register" in authority_source or "/fr-" in url:
+            return has_housing and has_procedural
+        return has_housing or has_procedural
+
+    def _is_relevant_corroborating_web_item(item: Dict[str, Any]) -> bool:
+        text = _research_text(item)
+        lowered = text.lower()
+        url = str(item.get("url") or "").strip().lower()
+        if _is_irrelevant_non_housing_fact(text):
+            return False
+        noise_markers = (
+            "sexual misconduct",
+            "sample grievance appeal",
+            "sample grievance",
+            "sample letter",
+            "apttones",
+            "human resources",
+            "workplace",
+            "employee grievance",
+            "university-policy-library",
+        )
+        if any(marker in lowered or marker in url for marker in noise_markers):
+            return False
+        if ".edu/" in url and not _has_housing_context(text):
+            return False
+        return _has_housing_context(text) and _has_procedural_context(text)
+
+    def _authority_label(item: Dict[str, Any]) -> str:
+        citation = str(item.get("citation") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if _is_opaque_identifier(citation) and title:
+            return title
+        return citation or title
+
     def _authority_type_label(item: Dict[str, Any]) -> str:
         citation = str(item.get("citation") or "").lower()
         title = str(item.get("title") or "").lower()
@@ -2145,6 +2275,24 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                 item.get("url"),
             )
         )
+        negated_procedure_markers = (
+            "without grievance",
+            "without hearing",
+            "without notice",
+            "without appeal",
+            "no grievance",
+            "no hearing",
+            "no appeal",
+        )
+        if any(marker in combined for marker in negated_procedure_markers):
+            combined = " ".join(
+                str(part or "").lower()
+                for part in (
+                    item.get("citation"),
+                    item.get("title"),
+                    item.get("url"),
+                )
+            )
         if any(term in combined for term in ("grievance", "informal hearing", "hearing")):
             return "why it matters: supports hearing and grievance-process allegations"
         if any(term in combined for term in ("written notice", "notice", "adverse action", "termination")):
@@ -2180,26 +2328,34 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         )
         return any(marker in title or marker in url for marker in authority_markers)
 
-    promoted_web_authorities = [item for item in web_results if _looks_like_formal_authority(item)]
-    remaining_web_results = [item for item in web_results if item not in promoted_web_authorities]
+    promoted_web_authorities = [
+        item for item in web_results if _looks_like_formal_authority(item) and _is_relevant_authority_item(item)
+    ]
+    remaining_web_results = [
+        item for item in web_results if item not in promoted_web_authorities and _is_relevant_corroborating_web_item(item)
+    ]
 
-    for item in legal_results[:limit]:
+    for item in legal_results:
+        if not _is_relevant_authority_item(item):
+            continue
         citation = str(item.get("citation") or "").strip()
         title = str(item.get("title") or "").strip()
         authority_source = str(item.get("authority_source") or "").strip()
         summary = str(item.get("summary") or item.get("description") or "").strip()
         reasons = [str(value).strip() for value in list(item.get("research_priority_reasons") or []) if str(value).strip()]
-        label = citation or title
+        label = _authority_label(item)
         if not label:
             continue
         authority_type = _authority_type_label(item)
         why_it_matters = _authority_why_it_matters(item)
         line = f"{authority_type}: {label}"
-        if title and citation and title != citation:
+        if title and citation and title != citation and not _is_opaque_identifier(citation):
             line += f" — {title}"
         details: List[str] = []
         if authority_source:
             details.append(f"source: {authority_source}")
+        if citation and label != citation and not _is_opaque_identifier(citation):
+            details.append(f"citation: {citation}")
         details.append(why_it_matters)
         if reasons:
             details.append(f"ranking: {', '.join(reasons[:3])}")
@@ -2222,6 +2378,8 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                 "line": line,
             }
         )
+        if len(authority_lines) >= limit:
+            break
 
     remaining = max(0, limit - len(authority_lines))
     if remaining:

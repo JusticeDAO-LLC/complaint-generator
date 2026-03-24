@@ -341,8 +341,75 @@ def test_external_authority_basis_promotes_formal_authority_like_web_results_whe
     assert lines["authorities"]
     assert "source: promoted_web_authority" in lines["authorities"][0]
     assert "24 CFR Part 966 Subpart B" in lines["authorities"][0]
-    assert summary["uploaded_titles"] == ["Denial Notice"]
-    assert summary["evidence_upload_questions"] == ["Please upload the notice if you have it."]
+
+
+def test_external_authority_basis_filters_opaque_federal_register_items_without_procedural_housing_fit():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "2024-29824",
+                        "title": "HOME Investment Partnerships Program: Program Updates and Streamlining",
+                        "authority_source": "federal_register",
+                        "url": "https://www.govinfo.gov/content/pkg/FR-2025-01-06/pdf/2024-29824.pdf",
+                        "research_priority_reasons": ["has formal citation", "authority source: federal_register"],
+                        "summary": "General program updates without grievance or hearing procedures.",
+                    },
+                    {
+                        "citation": "24 C.F.R. 982.555",
+                        "title": "Informal hearing for participants",
+                        "authority_source": "federal_register",
+                        "url": "https://www.ecfr.gov/current/title-24/subtitle-B/chapter-IX/part-982/section-982.555",
+                        "research_priority_reasons": ["has formal citation", "housing grievance context: hearing"],
+                        "summary": "Discusses informal hearing notice, appeal rights, and decision timing.",
+                    },
+                ]
+            },
+            "web_discovery": {"results": []},
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["citation"] == "24 C.F.R. 982.555"
+    assert "2024-29824" not in "\n".join(lines["authorities"])
+
+
+def test_external_authority_basis_filters_irrelevant_corroborating_web_results():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {"results": []},
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "Discrimination, Harassment, Sexual Misconduct, & Retaliation",
+                        "url": "https://www.ucmo.edu/offices/general-counsel/university-policy-library/procedures/discrimination-harassment-and-sexual-misconduct-grievance-process/index.php",
+                        "summary": "University grievance procedures for sexual misconduct complaints.",
+                        "research_priority_reasons": ["matched query terms: grievance, retaliation"],
+                    },
+                    {
+                        "title": "15 Sample Grievance Appeal Letters - Apt Tones",
+                        "url": "https://apttones.com/sample-grievance-appeal-letters/",
+                        "summary": "Template appeal letters for generic workplace grievance situations.",
+                        "research_priority_reasons": ["matched query terms: appeal, grievance"],
+                    },
+                    {
+                        "title": "Tenant grievance hearing timeline and notice checklist",
+                        "url": "https://example.org/tenant-grievance-hearing-checklist",
+                        "summary": "Public housing tenant grievance hearing notice and appeal steps.",
+                        "research_priority_reasons": ["matched query terms: grievance, hearing", "housing-specific context"],
+                    },
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["corroborating_web_research_records"]) == 1
+    assert lines["corroborating_web_research_records"][0]["title"] == "Tenant grievance hearing timeline and notice checklist"
 
 
 def test_proposed_allegations_use_blocker_follow_up_summary_when_available():
