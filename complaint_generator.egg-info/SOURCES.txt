@@ -58,6 +58,8 @@ complaint_generator/__init__.py
 complaint_generator/__main__.py
 complaint_generator/apps.py
 complaint_generator/cli.py
+complaint_generator/email_credentials.py
+complaint_generator/email_import.py
 complaint_generator/entrypoints.py
 complaint_generator/mcp.py
 complaint_generator/mcp_server.py
@@ -191,6 +193,7 @@ tests/test_batch_265_path_validation_security.py
 tests/test_cache_invalidation.py
 tests/test_canary_ops_validation.py
 tests/test_claim_support_hooks.py
+tests/test_claim_support_regression_workflow_contract.py
 tests/test_claim_support_review_dashboard_flow.py
 tests/test_claim_support_review_playwright_smoke.py
 tests/test_claim_support_review_template.py
@@ -217,6 +220,7 @@ tests/test_document_pipeline.py
 tests/test_document_pipeline_fallbacks.py
 tests/test_document_workflow_targeting_summary.py
 tests/test_domain_adaptation_learning.py
+tests/test_email_import.py
 tests/test_enhanced_denoising.py
 tests/test_entity_linking_disambiguation.py
 tests/test_error_boundary_comprehensive.py
@@ -227,6 +231,7 @@ tests/test_graph_phase2_integration.py
 tests/test_hacc_evidence_loader.py
 tests/test_hacc_grounded_history_docs.py
 tests/test_hacc_integration.py
+tests/test_import_gmail_evidence_cli.py
 tests/test_inquiries.py
 tests/test_inquiries_priority.py
 tests/test_intake_case_file.py
@@ -314,3 +319,4 @@ tests/test_vector_phase2_integration.py
 tests/test_web_evidence_hooks.py
 tests/test_website_cohesion_playwright.py
 tests/test_workflow_phase_guidance.py
+tests/test_workspace_template_contract.py

@@ -135,6 +135,25 @@ def _event_fragment(value: Optional[str], fallback: str) -> str:
     return text
 
 
+def _adverse_action_clause(value: Optional[str], fallback: str) -> str:
+    text = _event_fragment(value, fallback)
+    lowered = text.lower()
+    replacements = {
+        "terminated ": "terminating Plaintiff ",
+        "fired ": "firing Plaintiff ",
+        "suspended ": "suspending Plaintiff ",
+        "disciplined ": "disciplining Plaintiff ",
+        "demoted ": "demoting Plaintiff ",
+        "evicted ": "evicting Plaintiff ",
+        "denied ": "denying Plaintiff ",
+        "threatened ": "threatening Plaintiff ",
+    }
+    for old, new in replacements.items():
+        if lowered.startswith(old):
+            return new + text[len(old):]
+    return text
+
+
 def _pleading_activity_fragment(value: Optional[str], fallback: str) -> str:
     text = _sentence_fragment(value, fallback)
     replacements = {
@@ -417,6 +436,47 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
 
     notes: List[str] = []
 
+    first_court_marker = normalized.find("IN THE UNITED STATES DISTRICT COURT")
+    if first_court_marker > 0:
+        normalized = normalized[first_court_marker:].lstrip()
+        notes.append("trimmed_leading_preamble")
+
+    heading_patterns = [
+        r"IN THE UNITED STATES DISTRICT COURT",
+        r"Civil Action No\.\s*[_A-Z0-9.-]+",
+        r"COMPLAINT FOR .+",
+        r"JURY TRIAL DEMANDED",
+        r"NATURE OF THE ACTION",
+        r"JURISDICTION AND VENUE",
+        r"PARTIES",
+        r"FACTUAL ALLEGATIONS",
+        r"EVIDENTIARY SUPPORT AND NOTICE",
+        r"CLAIM FOR RELIEF",
+        r"COUNT I - .+",
+        r"PRAYER FOR RELIEF",
+        r"JURY DEMAND",
+        r"SIGNATURE BLOCK",
+    ]
+    heading_pattern = "|".join(f"(?:{pattern})" for pattern in heading_patterns)
+    without_markdown_headings = re.sub(
+        rf"(?m)^\s{{0,3}}#{1,6}\s+({heading_pattern})\s*$",
+        r"\1",
+        normalized,
+    )
+    without_generic_heading_hashes = re.sub(
+        r"(?m)^\s{0,3}#{1,6}\s+([A-Z][A-Z0-9 .:&'()/_-]+)\s*$",
+        r"\1",
+        without_markdown_headings,
+    )
+    without_heading_emphasis = re.sub(
+        rf"(?m)^\s*(?:\*\*|__)\s*({heading_pattern}|[A-Z][A-Z0-9 .:&'()/_-]+)\s*(?:\*\*|__)\s*$",
+        r"\1",
+        without_generic_heading_hashes,
+    )
+    if without_heading_emphasis != normalized:
+        normalized = without_heading_emphasis
+        notes.append("removed_markdown_heading_markup")
+
     # Trim obvious non-pleading appendices or workspace scaffolding that can
     # appear after an otherwise-usable complaint body.
     trailing_section_markers = [
@@ -449,6 +509,11 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
         if updated != normalized:
             notes.append(f"replaced:{old}")
             normalized = updated
+
+    normalized_paragraphs = re.sub(r"(?m)^(\s*)(\d+)\)\s+", r"\1\2. ", normalized)
+    if normalized_paragraphs != normalized:
+        normalized = normalized_paragraphs
+        notes.append("normalized_numbered_paragraphs")
 
     normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
 
@@ -487,6 +552,17 @@ def _parse_json_object(text: str) -> Dict[str, Any]:
             return parsed
     except Exception:
         pass
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", stripped):
+        start = match.start()
+        try:
+            parsed, end = decoder.raw_decode(stripped[start:])
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            trailing = stripped[start + end :].strip()
+            if not trailing or trailing.startswith("```") or trailing.startswith("Thanks") or trailing.startswith("Note"):
+                return parsed
     return {}
 
 
@@ -632,6 +708,22 @@ def _build_local_client_release_gate_for_state(state: Dict[str, Any], review: Di
 
 def _has_required_formal_complaint_markers(body: str) -> bool:
     return not _formal_complaint_validation_issues(body)
+
+
+def _looks_like_formal_complaint_candidate(body: str) -> bool:
+    text = str(body or "")
+    if "IN THE UNITED STATES DISTRICT COURT" not in text:
+        return False
+    heuristic_markers = [
+        "NATURE OF THE ACTION",
+        "JURISDICTION AND VENUE",
+        "FACTUAL ALLEGATIONS",
+        "CLAIM FOR RELIEF",
+        "PRAYER FOR RELIEF",
+        "SIGNATURE BLOCK",
+    ]
+    matched = sum(1 for marker in heuristic_markers if marker in text)
+    return matched >= 4
 
 
 def generate_decentralized_id() -> Dict[str, Any]:
@@ -895,8 +987,8 @@ class ComplaintWorkspaceService:
         )
         relief_paragraph = {
             "retaliation": (
-                f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, "
-                f"restore lost compensation, and address the harm caused when Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a materially adverse action')}."
+                "2. Plaintiff seeks back pay, front pay or reinstatement, compensatory damages, attorney's fees and costs, "
+                "equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts and the losses flowing from them."
             ),
             "employment_discrimination": (
                 f"2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, "
@@ -920,8 +1012,8 @@ class ComplaintWorkspaceService:
         )
         jurisdiction_paragraph = {
             "retaliation": (
-                "3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges retaliation for protected conduct "
-                "and seeks relief for materially adverse acts taken in response to that protected conduct."
+                "3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges retaliation for protected activity "
+                "and seeks relief for materially adverse acts taken in response to that activity."
             ),
             "employment_discrimination": (
                 "3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges discriminatory employment practices, "
@@ -959,7 +1051,7 @@ class ComplaintWorkspaceService:
         )
         party_paragraphs = {
             "retaliation": (
-                f"5. Plaintiff {plaintiff} is the person harmed by the retaliation described below.",
+                f"5. Plaintiff {plaintiff} is an individual who engaged in protected activity and was thereafter harmed by the retaliatory conduct described below.",
                 f"6. Defendant {defendant} is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.",
             ),
             "employment_discrimination": (
@@ -988,8 +1080,8 @@ class ComplaintWorkspaceService:
         factual_allegation_lines = {
             "retaliation": [
                 f"7. Plaintiff engaged in protected activity by {pleading_activity}.",
-                "8. That protected activity constituted opposition, reporting, or participation activity that should not have triggered reprisal.",
-                f"9. After that protected activity, Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a materially adverse action')}.",
+                "8. That protected activity constituted protected opposition, reporting, or participation activity under the governing anti-retaliation framework.",
+                f"9. Within days of that protected activity, Defendant took materially adverse action against Plaintiff by {_adverse_action_clause(answers.get('adverse_action'), 'taking materially adverse action against Plaintiff')}.",
                 f"10. The relevant chronology is as follows: {_pleading_timeline_sentence(answers.get('timeline'), 'The events occurred in close temporal proximity')}",
                 f"11. As a direct and proximate result of Defendant's conduct, Plaintiff {_sentence_fragment(answers.get('harm'), 'suffered compensable harm')}.",
             ],
@@ -1041,8 +1133,8 @@ class ComplaintWorkspaceService:
         claim_paragraphs = {
             "retaliation": [
                 f"Plaintiff engaged in protected activity by {pleading_activity}, and Defendant knew or should have known of that protected conduct.",
-                f"Soon thereafter, Defendant subjected Plaintiff to materially adverse action when Plaintiff {_sentence_fragment(answers.get('adverse_action'), 'suffered a materially adverse action')}, under circumstances supporting a causal inference of retaliation.",
-                "The close temporal sequence, evidentiary record, and resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.",
+                f"Defendant thereafter subjected Plaintiff to materially adverse action by {_adverse_action_clause(answers.get('adverse_action'), 'taking materially adverse action against Plaintiff')}, under circumstances supporting a causal inference of retaliation.",
+                "The close temporal proximity, Defendant's knowledge of the protected activity, the evidentiary record, and the resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.",
             ],
             "employment_discrimination": [
                 f"Plaintiff was subjected to adverse employment treatment described as {adverse_action}, in a manner that was discriminatory, disparate, or otherwise unlawful.",
@@ -1088,7 +1180,7 @@ class ComplaintWorkspaceService:
                 f"and that {missing_count} areas, if any, may be further corroborated through discovery, amendment, or additional evidentiary development."
             ),
             (
-                "15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials form part of the evidentiary basis for this pleading "
+                "15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials constitute part of the evidentiary basis for this pleading "
                 "and may be supplemented, authenticated, or amended as discovery proceeds."
             ),
         ]
@@ -1139,17 +1231,16 @@ class ComplaintWorkspaceService:
                 count_heading,
                 f"{claim_intro_paragraph}. {plaintiff} repeats and realleges the preceding paragraphs as if fully set forth herein.",
                 *[f"{claim_detail_start + index}. {line}" for index, line in enumerate(claim_paragraphs)],
-                f"{claim_detail_start + 3}. Plaintiff has sustained damages and other losses including {_sentence_fragment(answers.get('harm'), 'compensable harm')}.",
+                f"{claim_detail_start + 3}. Plaintiff has sustained damages and losses including {_sentence_fragment(answers.get('harm'), 'compensable harm')}.",
                 (
-                    f"{claim_detail_start + 4}. By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, "
-                    "equitable relief, and such other relief as the Court deems just and proper."
+                    f"{claim_detail_start + 4}. As a direct and proximate result of Defendant's retaliatory conduct, Plaintiff is entitled to recover damages, equitable relief, fees and costs where available, and such further relief as the Court deems just and proper."
                     if claim_type == "retaliation"
                     else f"{claim_detail_start + 4}. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory."
                 ),
                 "",
                 "PRAYER FOR RELIEF",
                 (
-                    "Wherefore, Plaintiff requests judgment against Defendant for the retaliation alleged herein and respectfully seeks the following relief:"
+                    "Wherefore, Plaintiff respectfully requests judgment against Defendant on the retaliation claim alleged herein and seeks the following relief:"
                     if claim_type == "retaliation"
                     else "Wherefore, Plaintiff requests judgment against Defendant and the following relief:"
                 ),
@@ -1330,7 +1421,7 @@ class ComplaintWorkspaceService:
         llm_body = str(parsed.get("body") or "").strip()
         if not llm_body:
             raw_text = _strip_code_fences(raw_response)
-            if _has_required_formal_complaint_markers(raw_text):
+            if _has_required_formal_complaint_markers(raw_text) or _looks_like_formal_complaint_candidate(raw_text):
                 llm_body = raw_text
         llm_body, normalization_notes = _normalize_llm_complaint_body(
             llm_body,

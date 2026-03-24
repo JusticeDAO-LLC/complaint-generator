@@ -71,6 +71,13 @@ def test_package_exports_expose_workspace_review_and_entrypoint_helpers():
     assert complaint_generator_main is complaint_entrypoints.main
     assert run_main is complaint_entrypoints.run_main
 
+    commonjs_sdk = (REPO_ROOT / "static" / "complaint_mcp_sdk.js").read_text(encoding="utf-8")
+    esm_sdk = (REPO_ROOT / "static" / "complaint_mcp_sdk.mjs").read_text(encoding="utf-8")
+
+    for method_name in ("getClientReleaseGate", "getFormalDiagnostics"):
+        assert method_name in commonjs_sdk
+        assert method_name in esm_sdk
+
 
 def test_workspace_cli_is_exposed_through_package_entrypoint(monkeypatch, tmp_path):
     runner = CliRunner()

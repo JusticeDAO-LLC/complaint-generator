@@ -649,9 +649,14 @@ test.describe('complaint generation workflow', () => {
     expect(markdownBody).toContain('engaged in protected activity by reporting wage-and-hour violations to HR.');
     expect(markdownBody).toContain('The relevant chronology is as follows: Plaintiff made the report on April 2, and the termination occurred on April 5.');
     expect(markdownBody).toContain('Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: Termination timeline email (Causal link).');
-    expect(markdownBody).toContain('Soon thereafter, Defendant subjected Plaintiff to materially adverse action when Plaintiff was terminated three days later, under circumstances supporting a causal inference of retaliation.');
-    expect(markdownBody).toContain('By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, equitable relief, and such other relief as the Court deems just and proper.');
-    expect(markdownBody).toContain('Wherefore, Plaintiff requests judgment against Defendant for the retaliation alleged herein and respectfully seeks the following relief:');
+    expect(markdownBody).toContain('That protected activity constituted protected opposition, reporting, or participation activity under the governing anti-retaliation framework.');
+    expect(markdownBody).toContain('Within days of that protected activity, Defendant took materially adverse action against Plaintiff by terminating Plaintiff three days later.');
+    expect(markdownBody).toContain('Defendant thereafter subjected Plaintiff to materially adverse action by terminating Plaintiff three days later, under circumstances supporting a causal inference of retaliation.');
+    expect(markdownBody).toContain('The close temporal proximity, Defendant\'s knowledge of the protected activity, the evidentiary record, and the resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.');
+    expect(markdownBody).toContain("As a direct and proximate result of Defendant's retaliatory conduct, Plaintiff is entitled to recover damages, equitable relief, fees and costs where available, and such further relief as the Court deems just and proper.");
+    expect(markdownBody).toContain('17. Plaintiff repeats and realleges the preceding paragraphs as if fully set forth herein.');
+    expect(markdownBody).toContain('21. Plaintiff has sustained damages and losses including lost wages, benefits, and housing stability.');
+    expect(markdownBody).toContain('Wherefore, Plaintiff respectfully requests judgment against Defendant on the retaliation claim alleged herein and seeks the following relief:');
     expect(markdownBody).toContain("3. Reasonable attorney's fees and costs.");
     expect(markdownBody).toContain('Civil Action No. ________________');
     expect(markdownBody).toContain('EVIDENTIARY SUPPORT AND NOTICE');

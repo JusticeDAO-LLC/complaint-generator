@@ -115,6 +115,27 @@ function eventFragment(value, fallback) {
   return text.startsWith('was ') ? text.slice(4) : text;
 }
 
+function adverseActionClause(value, fallback) {
+  const text = eventFragment(value, fallback);
+  const lowered = text.toLowerCase();
+  const replacements = [
+    ['terminated ', 'terminating Plaintiff '],
+    ['fired ', 'firing Plaintiff '],
+    ['suspended ', 'suspending Plaintiff '],
+    ['disciplined ', 'disciplining Plaintiff '],
+    ['demoted ', 'demoting Plaintiff '],
+    ['evicted ', 'evicting Plaintiff '],
+    ['denied ', 'denying Plaintiff '],
+    ['threatened ', 'threatening Plaintiff '],
+  ];
+  for (const [oldPrefix, newPrefix] of replacements) {
+    if (lowered.startsWith(oldPrefix)) {
+      return `${newPrefix}${text.slice(oldPrefix.length)}`;
+    }
+  }
+  return text;
+}
+
 function pleadingActivityFragment(value, fallback) {
   const text = sentenceFragment(value, fallback);
   const replacements = [
@@ -623,14 +644,14 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
     consumer_protection: `1. ${answers.party_name || 'Plaintiff'} brings this consumer protection complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unfair, deceptive, fraudulent, or otherwise unlawful business practices that caused injury.`,
   }[claimType] || `1. ${answers.party_name || 'Plaintiff'} brings this ${claimType.replace(/_/g, ' ')} complaint against ${answers.opposing_party || 'Defendant'}. This civil action arises from unlawful conduct that injured ${answers.party_name || 'Plaintiff'}.`;
   const reliefParagraph = {
-    retaliation: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, restore lost compensation, and address the harm caused when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered a materially adverse action')}.`,
+    retaliation: '2. Plaintiff seeks back pay, front pay or reinstatement, compensatory damages, attorney\'s fees and costs, equitable relief, and such further relief as may be just to remedy Defendant\'s retaliatory acts and the losses flowing from them.',
     employment_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory employment practices, restore lost opportunities, and address the harm caused when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered an adverse employment action')}.`,
     housing_discrimination: `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy discriminatory housing practices, preserve housing stability, and address the harm caused when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered a housing-related deprivation')}.`,
     due_process_failure: `2. Plaintiff seeks declaratory relief, equitable relief, damages, and such further relief as may be just to remedy the procedural deprivation and the harm caused when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered a deprivation without adequate process')}.`,
     consumer_protection: `2. Plaintiff seeks damages, restitution, equitable relief, and such further relief as may be just to remedy deceptive or unfair consumer practices and the harm caused when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered a consumer-facing injury')}.`,
   }[claimType] || `2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy unlawful conduct and the harm caused when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered an adverse action')}.`;
   const jurisdictionParagraph = {
-    retaliation: '3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges retaliation for protected conduct and seeks relief for materially adverse acts taken in response to that conduct.',
+    retaliation: '3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges retaliation for protected activity and seeks relief for materially adverse acts taken in response to that activity.',
     employment_discrimination: '3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges discriminatory employment practices, workplace bias, and related unlawful employment actions for which judicial relief is available.',
     housing_discrimination: '3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges discriminatory housing practices, interference with housing rights or benefits, and related misconduct for which judicial relief is available.',
     due_process_failure: '3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges deprivation without constitutionally or statutorily required notice, hearing, review, or other procedural protections.',
@@ -642,7 +663,7 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
     consumer_protection: '4. Venue is proper in this District because the transaction, deceptive practice, or resulting economic loss occurred in this forum or caused injury here.',
   }[claimType] || '4. Venue is proper in this District because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.';
   const plaintiffParagraph = {
-    retaliation: `5. Plaintiff ${answers.party_name || 'Plaintiff'} is the person harmed by the retaliation described below.`,
+    retaliation: `5. Plaintiff ${answers.party_name || 'Plaintiff'} is an individual who engaged in protected activity and was thereafter harmed by the retaliatory conduct described below.`,
     employment_discrimination: `5. Plaintiff ${answers.party_name || 'Plaintiff'} is the employee, applicant, or worker harmed by the discriminatory employment conduct described below.`,
     housing_discrimination: `5. Plaintiff ${answers.party_name || 'Plaintiff'} is the housing applicant, tenant, resident, or person seeking housing-related rights or benefits who was harmed by the discriminatory conduct described below.`,
     due_process_failure: `5. Plaintiff ${answers.party_name || 'Plaintiff'} is the person deprived of rights, benefits, or protected interests without adequate process.`,
@@ -658,8 +679,8 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
   const factualParagraphs = {
     retaliation: [
       `7. Plaintiff engaged in protected activity by ${pleadingActivity}.`,
-      '8. That protected activity constituted opposition, reporting, or participation activity that should not have triggered reprisal.',
-      `9. After that protected activity, Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered a materially adverse action')}.`,
+      '8. That protected activity constituted protected opposition, reporting, or participation activity under the governing anti-retaliation framework.',
+      `9. Within days of that protected activity, Defendant took materially adverse action against Plaintiff by ${adverseActionClause(answers.adverse_action, 'taking materially adverse action against Plaintiff')}.`,
       `10. The relevant chronology is as follows: ${pleadingTimelineSentence(answers.timeline, 'The events occurred in close temporal proximity')}`,
       `11. As a direct and proximate result of Defendant's conduct, Plaintiff ${sentenceFragment(answers.harm, 'suffered compensable harm')}.`,
     ],
@@ -701,8 +722,8 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
   const claimParagraphs = {
     retaliation: [
       `Plaintiff engaged in protected activity by ${pleadingActivity}, and Defendant knew or should have known of that protected conduct.`,
-      `Soon thereafter, Defendant subjected Plaintiff to materially adverse action when Plaintiff ${sentenceFragment(answers.adverse_action, 'suffered a materially adverse action')}, under circumstances supporting a causal inference of retaliation.`,
-      'The close temporal sequence, evidentiary record, and resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.',
+      `Defendant thereafter subjected Plaintiff to materially adverse action by ${adverseActionClause(answers.adverse_action, 'taking materially adverse action against Plaintiff')}, under circumstances supporting a causal inference of retaliation.`,
+      'The close temporal proximity, Defendant\'s knowledge of the protected activity, the evidentiary record, and the resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.',
     ],
     employment_discrimination: [
       `Plaintiff was subjected to adverse employment treatment described as ${adverseAction}, in a manner that was discriminatory, disparate, or otherwise unlawful.`,
@@ -784,23 +805,23 @@ function buildWorkspaceDraft(state, requestedRelief, options = {}) {
         ? `13. Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: ${documentSummary}.`
         : '13. Plaintiff has not yet attached documentary exhibits to this export, but preserves the right to supplement the pleading with records, correspondence, or other supporting materials.',
       `14. Based on the information presently available, Plaintiff contends that the evidentiary record presently supports ${Number(overview.supported_elements || 0)} core claim elements and that ${Number(overview.missing_elements || 0)} areas, if any, may be further corroborated through discovery, amendment, or additional evidentiary development.`,
-      '15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials form part of the evidentiary basis for this pleading and may be supplemented, authenticated, or amended as discovery proceeds.',
+      '15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials constitute part of the evidentiary basis for this pleading and may be supplemented, authenticated, or amended as discovery proceeds.',
       ...[...testimonyReferenceLines, ...documentReferenceLines].slice(0, 2).map((line, index) => `${16 + index}. ${line}`),
       '',
       'CLAIM FOR RELIEF',
       countHeading,
-      '18. Plaintiff repeats and realleges the preceding paragraphs as if fully set forth herein.',
-      `19. ${claimParagraphs[0]}`,
-      `20. ${claimParagraphs[1]}`,
-      `21. ${claimParagraphs[2]}`,
-      `22. Plaintiff has sustained damages and other losses including ${harm}.`,
+      '17. Plaintiff repeats and realleges the preceding paragraphs as if fully set forth herein.',
+      `18. ${claimParagraphs[0]}`,
+      `19. ${claimParagraphs[1]}`,
+      `20. ${claimParagraphs[2]}`,
+      `21. Plaintiff has sustained damages and losses including ${harm}.`,
       claimType === 'retaliation'
-        ? "23. By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, equitable relief, and such other relief as the Court deems just and proper."
-        : "23. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.",
+        ? "22. As a direct and proximate result of Defendant's retaliatory conduct, Plaintiff is entitled to recover damages, equitable relief, fees and costs where available, and such further relief as the Court deems just and proper."
+        : "22. Defendant's acts were intentional, knowing, reckless, retaliatory, discriminatory, deceptive, or otherwise unlawful under the governing claim theory.",
       '',
       'PRAYER FOR RELIEF',
       claimType === 'retaliation'
-        ? 'Wherefore, Plaintiff requests judgment against Defendant for the retaliation alleged herein and respectfully seeks the following relief:'
+        ? 'Wherefore, Plaintiff respectfully requests judgment against Defendant on the retaliation claim alleged herein and seeks the following relief:'
         : 'Wherefore, Plaintiff requests judgment against Defendant and the following relief:',
       ...relief.map((item, index) => `${index + 1}. ${formalizeReliefItem(item)}.`),
       '',

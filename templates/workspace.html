@@ -1431,6 +1431,49 @@
                                         <span>Remember Gmail address for this browser session</span>
                                     </label>
                                 </div>
+                                <div class="button-row" style="margin-top: 10px;">
+                                    <button class="secondary" id="suggest-gmail-import-addresses" type="button">Suggest Addresses From Case</button>
+                                </div>
+                                <div class="helper-text" id="gmail-import-suggestion-note">Pull likely correspondents from intake answers and saved evidence so the import list can start with the people already named in the case record.</div>
+                                <div class="helper-text" id="gmail-import-detected-label">Detected from case</div>
+                                <div class="chip-row" id="gmail-import-detected-addresses" style="margin-top: 10px;"></div>
+                                <div class="helper-text" id="gmail-import-selected-label" style="margin-top: 10px;">Selected for import</div>
+                                <div class="chip-row" id="gmail-import-suggested-addresses" style="margin-top: 10px;"></div>
+                                <div class="soft-note" id="gmail-import-security-note">
+                                    Browser workspace imports only remember the Gmail address for this tab session. The Gmail app password is never stored here and is cleared after each import. For repeated secure password reuse, prefer the CLI or MCP import path with keyring support.
+                                </div>
+                                <div class="tool-card" id="gmail-import-cli-help" style="margin-top: 16px;">
+                                    <strong>Prefer the secure repeat-import path?</strong>
+                                    <span class="muted">Use the complaint-manager CLI or MCP tool when you want keyring-backed Gmail app password reuse instead of re-entering credentials in the browser.</span>
+                                    <div class="chip-row" style="margin-top: 10px;">
+                                        <span class="chip">CLI</span>
+                                        <span class="chip">MCP</span>
+                                        <span class="chip">Keyring-ready</span>
+                                    </div>
+                                    <pre id="gmail-import-cli-command">python3 -m complaint_generator.cli import-gmail-evidence \
+  --user-id &lt;workspace-user-id&gt; \
+  --address hr@example.com \
+  --address manager@example.com \
+  --claim-element-id causation \
+  --gmail-user you@gmail.com \
+  --use-keyring</pre>
+                                    <div class="button-row" style="margin-top: 12px;">
+                                        <button class="secondary" id="copy-gmail-import-cli-command" type="button">Copy CLI Command</button>
+                                    </div>
+                                    <div class="helper-text" id="gmail-import-mcp-note">MCP tool: <code>complaint.import_gmail_evidence</code> with <code>addresses</code>, <code>claim_element_id</code>, <code>gmail_user</code>, and <code>gmail_app_password</code> or a keyring-backed credential path.</div>
+                                    <pre id="gmail-import-mcp-command" style="margin-top: 12px;">{
+  "tool": "complaint.import_gmail_evidence",
+  "arguments": {
+    "user_id": "&lt;workspace-user-id&gt;",
+    "addresses": ["hr@example.com", "manager@example.com"],
+    "claim_element_id": "causation",
+    "gmail_user": "you@gmail.com"
+  }
+}</pre>
+                                    <div class="button-row" style="margin-top: 12px;">
+                                        <button class="secondary" id="copy-gmail-import-mcp-command" type="button">Copy MCP Example</button>
+                                    </div>
+                                </div>
                                 <div class="field-row">
                                     <div>
                                         <label for="gmail-import-date-after">Date After</label>
@@ -1827,6 +1870,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let latestPacketExport = null;
         let latestComplaintOutputAnalysis = null;
         let sdkPrimitiveSnapshot = null;
+        let gmailImportDetectedAddresses = [];
         const readinessStorageKey = 'complaintGenerator.uiReadiness';
 
         function setStatus(message) {
@@ -1839,6 +1883,33 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const statusNode = document.getElementById('workspace-status');
             statusNode.textContent = message;
             statusNode.classList.add('is-busy');
+        }
+
+        async function copyTextToClipboard(text, successMessage) {
+            const normalized = String(text || '').trim();
+            if (!normalized) {
+                setStatus('Nothing was available to copy.');
+                return;
+            }
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(normalized);
+                } else {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = normalized;
+                    textArea.setAttribute('readonly', 'readonly');
+                    textArea.style.position = 'absolute';
+                    textArea.style.left = '-9999px';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                }
+                setStatus(successMessage || 'Copied to clipboard.');
+            } catch (error) {
+                console.warn('Clipboard copy failed', error);
+                setStatus('Copy failed. You can still select and copy the command manually.');
+            }
         }
 
         function escapeHtml(value) {
@@ -1896,6 +1967,164 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 return;
             }
             window.sessionStorage.removeItem(gmailImportUserStorageKey());
+        }
+
+        function currentGmailImportAddresses() {
+            return document.getElementById('gmail-import-addresses').value
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        function setGmailImportAddresses(addresses) {
+            const addressesNode = document.getElementById('gmail-import-addresses');
+            if (!addressesNode) {
+                return;
+            }
+            addressesNode.value = (addresses || []).join('\n');
+        }
+
+        function extractEmailAddresses(value) {
+            return Array.from(String(value || '').matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)).map((match) => match[0]);
+        }
+
+        function buildSuggestedGmailImportAddresses(sessionPayload) {
+            const session = (sessionPayload && sessionPayload.session) || {};
+            const answers = session.intake_answers || {};
+            const evidenceItems = Array.isArray(session.evidence_items) ? session.evidence_items : [];
+            const candidates = [];
+
+            Object.values(answers).forEach((value) => {
+                candidates.push(...extractEmailAddresses(value));
+            });
+
+            evidenceItems.forEach((item) => {
+                candidates.push(...extractEmailAddresses(item && item.title));
+                candidates.push(...extractEmailAddresses(item && item.source));
+                candidates.push(...extractEmailAddresses(item && item.content));
+            });
+
+            return Array.from(new Set(candidates.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean)));
+        }
+
+        function currentGmailImportUserId() {
+            return workspaceUserId
+                || ((((workspaceSession || {}).session) || {}).user_id)
+                || 'workspace-user-id';
+        }
+
+        function currentGmailImportClaimElement() {
+            const select = document.getElementById('gmail-import-claim-element');
+            return (select && select.value) ? select.value : 'causation';
+        }
+
+        function renderGmailImportDetectedAddressChips() {
+            const container = document.getElementById('gmail-import-detected-addresses');
+            if (!container) {
+                return;
+            }
+            if (!gmailImportDetectedAddresses.length) {
+                container.innerHTML = '<span class="chip">No detected case correspondents yet</span>';
+                return;
+            }
+            const selectedAddresses = new Set(currentGmailImportAddresses());
+            container.innerHTML = gmailImportDetectedAddresses.map((address) => `
+                <button
+                    class="chip ${selectedAddresses.has(address) ? 'good' : ''}"
+                    type="button"
+                    data-gmail-detected-address-chip="${escapeHtml(address)}"
+                    title="${selectedAddresses.has(address) ? `Remove ${escapeHtml(address)} from the Gmail import list` : `Add ${escapeHtml(address)} to the Gmail import list`}"
+                >${escapeHtml(address)} ${selectedAddresses.has(address) ? 'selected' : 'add'}</button>
+            `).join('');
+        }
+
+        function renderGmailImportSuggestedAddressChips() {
+            const container = document.getElementById('gmail-import-suggested-addresses');
+            if (!container) {
+                return;
+            }
+            const addresses = currentGmailImportAddresses();
+            if (!addresses.length) {
+                container.innerHTML = '<span class="chip">No suggested correspondents yet</span>';
+                return;
+            }
+            container.innerHTML = addresses.map((address) => `
+                <button
+                    class="chip"
+                    type="button"
+                    data-gmail-address-chip="${escapeHtml(address)}"
+                    title="Remove ${escapeHtml(address)} from the Gmail import list"
+                >${escapeHtml(address)} x</button>
+            `).join('');
+        }
+
+        function renderGmailImportCommandExamples() {
+            const cliNode = document.getElementById('gmail-import-cli-command');
+            const mcpNode = document.getElementById('gmail-import-mcp-command');
+            if (!cliNode || !mcpNode) {
+                return;
+            }
+
+            const userId = currentGmailImportUserId();
+            const claimElementId = currentGmailImportClaimElement();
+            const gmailUser = document.getElementById('gmail-import-user').value.trim() || 'you@gmail.com';
+            const addresses = currentGmailImportAddresses();
+            const commandAddresses = addresses.length ? addresses : ['hr@example.com', 'manager@example.com'];
+            const cliAddressLines = commandAddresses.map((address) => `  --address ${address} \\`).join('\n');
+            cliNode.textContent = `python3 -m complaint_generator.cli import-gmail-evidence \\
+  --user-id ${userId} \\
+${cliAddressLines}
+  --claim-element-id ${claimElementId} \\
+  --gmail-user ${gmailUser} \\
+  --use-keyring`;
+
+            const mcpPayload = {
+                tool: 'complaint.import_gmail_evidence',
+                arguments: {
+                    user_id: userId,
+                    addresses: commandAddresses,
+                    claim_element_id: claimElementId,
+                    gmail_user: gmailUser,
+                },
+            };
+            mcpNode.textContent = JSON.stringify(mcpPayload, null, 2);
+            renderGmailImportDetectedAddressChips();
+            renderGmailImportSuggestedAddressChips();
+        }
+
+        function removeGmailImportAddress(addressToRemove) {
+            const nextAddresses = currentGmailImportAddresses().filter((address) => address !== addressToRemove);
+            setGmailImportAddresses(nextAddresses);
+            renderGmailImportCommandExamples();
+            setStatus(`Removed ${addressToRemove} from the Gmail import list.`);
+        }
+
+        function toggleGmailImportDetectedAddress(address) {
+            const nextAddresses = currentGmailImportAddresses();
+            if (nextAddresses.includes(address)) {
+                removeGmailImportAddress(address);
+                return;
+            }
+            nextAddresses.push(address);
+            setGmailImportAddresses(Array.from(new Set(nextAddresses)));
+            renderGmailImportCommandExamples();
+            setStatus(`Added ${address} to the Gmail import list.`);
+        }
+
+        function suggestGmailImportAddresses() {
+            const suggested = buildSuggestedGmailImportAddresses(workspaceSession || {});
+            if (!suggested.length) {
+                gmailImportDetectedAddresses = [];
+                renderGmailImportCommandExamples();
+                activateTab('evidence');
+                setStatus('No case-linked email addresses were detected yet. Add them to intake answers or saved evidence first.');
+                return;
+            }
+            gmailImportDetectedAddresses = suggested;
+            setGmailImportAddresses(suggested);
+            renderGmailImportCommandExamples();
+            activateTab('evidence');
+            setStatus(`Suggested ${suggested.length} email address${suggested.length === 1 ? '' : 'es'} from the current case record.`);
         }
 
         function buildDefaultSynopsis(sessionPayload) {
@@ -3207,6 +3436,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             renderConnectedHandoffs(sessionPayload);
             renderWorkflowOperations();
             renderSdkDiagnostics();
+            renderGmailImportCommandExamples();
         }
 
         async function loadSharedCapabilities() {
@@ -4153,6 +4383,18 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('refresh-session-button').addEventListener('click', refreshWorkspace);
         document.getElementById('save-evidence-button').addEventListener('click', addEvidence);
         document.getElementById('import-gmail-evidence-button').addEventListener('click', importGmailEvidence);
+        document.getElementById('copy-gmail-import-cli-command').addEventListener('click', () => {
+            copyTextToClipboard(
+                document.getElementById('gmail-import-cli-command').innerText,
+                'CLI Gmail import command copied.',
+            );
+        });
+        document.getElementById('copy-gmail-import-mcp-command').addEventListener('click', () => {
+            copyTextToClipboard(
+                document.getElementById('gmail-import-mcp-command').innerText,
+                'MCP Gmail import example copied.',
+            );
+        });
         document.getElementById('generate-draft-button').addEventListener('click', generateDraft);
         document.getElementById('save-draft-button').addEventListener('click', saveDraft);
         document.getElementById('export-packet-button').addEventListener('click', exportPacket);
@@ -4206,6 +4448,16 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         document.getElementById('shortcut-tools-button').addEventListener('click', () => jumpToStage('integrations', '#tool-list', 'Opened CLI + MCP surfaces for the shared complaint tools.'));
         document.getElementById('shortcut-optimizer-button').addEventListener('click', () => jumpToStage('ux-review', '#ux-review-notes', 'Opened UX Audit so the actor/critic optimizer workflow can be used.'));
         document.addEventListener('click', (event) => {
+            const gmailDetectedAddressChip = event.target.closest('[data-gmail-detected-address-chip]');
+            if (gmailDetectedAddressChip) {
+                toggleGmailImportDetectedAddress(gmailDetectedAddressChip.dataset.gmailDetectedAddressChip || '');
+                return;
+            }
+            const gmailAddressChip = event.target.closest('[data-gmail-address-chip]');
+            if (gmailAddressChip) {
+                removeGmailImportAddress(gmailAddressChip.dataset.gmailAddressChip || '');
+                return;
+            }
             const handoffButton = event.target.closest('.surface-handoff-button');
             if (handoffButton) {
                 const targetUrl = handoffButton.dataset.handoffUrl || handoffButton.getAttribute('href') || '';
@@ -4254,7 +4506,11 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             syncSynopsisMirrors(value);
         });
         document.getElementById('gmail-import-user').addEventListener('input', persistGmailImportUserPreference);
+        document.getElementById('gmail-import-user').addEventListener('input', renderGmailImportCommandExamples);
         document.getElementById('gmail-import-remember-user').addEventListener('change', persistGmailImportUserPreference);
+        document.getElementById('suggest-gmail-import-addresses').addEventListener('click', suggestGmailImportAddresses);
+        document.getElementById('gmail-import-addresses').addEventListener('input', renderGmailImportCommandExamples);
+        document.getElementById('gmail-import-claim-element').addEventListener('change', renderGmailImportCommandExamples);
         document.getElementById('run-ux-review-button').addEventListener('click', () => runUiReview(true));
         document.getElementById('run-ux-snapshot-button').addEventListener('click', () => runUiReview(false));
         document.getElementById('run-ux-closed-loop-button').addEventListener('click', runClosedLoopUiOptimization);

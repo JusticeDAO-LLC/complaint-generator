@@ -724,16 +724,16 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     assert export_payload["packet_summary"]["has_draft"] is True
     assert "complaint_readiness" in export_payload["packet_summary"]
     assert export_payload["packet_summary"]["artifact_formats"] == ["docx", "json", "markdown", "pdf"]
+    assert export_payload["packet"]["claim_type"] == "housing_discrimination"
     assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
-    assert "Jordan Example" in export_payload["artifacts"]["markdown"]["content"]
-    assert "Claim type: housing_discrimination" in export_payload["artifacts"]["markdown"]["content"]
+    assert "Updated body from MCP." in export_payload["artifacts"]["markdown"]["content"]
     assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
     assert export_payload["ui_feedback"]["ui_suggestions"]
 
     markdown_export = _call_mcp_tool(service, 30, "complaint.export_complaint_markdown", {"user_id": "mcp-user"})
     assert markdown_export["artifact"]["format"] == "markdown"
     assert markdown_export["artifact"]["filename"].endswith(".md")
-    assert "Jordan Example" in markdown_export["artifact"]["excerpt"]
+    assert "Updated body from MCP." in markdown_export["artifact"]["excerpt"]
 
     pdf_export = _call_mcp_tool(service, 31, "complaint.export_complaint_pdf", {"user_id": "mcp-user"})
     assert pdf_export["artifact"]["format"] == "pdf"
@@ -1055,6 +1055,209 @@ def test_llm_draft_normalizes_claim_specific_headings_for_housing_output(monkeyp
     assert "workflow summary" not in payload["draft"]["body"].lower()
     assert "current complaint record" not in payload["draft"]["body"].lower()
     assert "present evidentiary record" in payload["draft"]["body"].lower()
+
+
+def test_llm_draft_can_salvage_plain_text_complaint_with_preamble_and_markdown_headings(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-plain-text-salvage-sessions")
+    service.submit_intake_answers(
+        "llm-plain-text-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Consumer Systems",
+            "protected_activity": "Reported deceptive billing practices and sought a refund",
+            "adverse_action": "Was denied a refund and charged additional hidden fees",
+            "timeline": "Reported the deceptive charges in June and was denied a refund in July.",
+            "harm": "Suffered economic loss and account disruption.",
+        },
+    )
+    service.update_claim_type("llm-plain-text-user", "consumer_protection")
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+
+        def __call__(self, prompt):
+            assert "Preferred complaint heading: COMPLAINT FOR CONSUMER PROTECTION" in prompt
+            return (
+                "Here is the revised complaint in plain text.\n\n"
+                "## IN THE UNITED STATES DISTRICT COURT\n\n"
+                "Civil Action No. ________________\n"
+                "**COMPLAINT FOR RETALIATION OVERVIEW**\n"
+                "JURY TRIAL DEMANDED\n\n"
+                "## NATURE OF THE ACTION\n"
+                "1. Plaintiff challenges deceptive billing and refund practices.\n\n"
+                "## JURISDICTION AND VENUE\n"
+                "2. Jurisdiction and venue are proper in this Court.\n\n"
+                "## PARTIES\n"
+                "3. Plaintiff Jordan Example purchased services from Defendant.\n\n"
+                "## FACTUAL ALLEGATIONS\n"
+                "4. Plaintiff reported deceptive billing practices and sought a refund.\n"
+                "5. Defendant denied a refund and imposed additional hidden fees.\n\n"
+                "## EVIDENTIARY SUPPORT AND NOTICE\n"
+                "6. The current complaint record includes billing notices and account correspondence.\n\n"
+                "## CLAIM FOR RELIEF\n"
+                "**COUNT I - WRONG HEADING**\n"
+                "7. Defendant used deceptive billing practices in connection with a consumer transaction.\n\n"
+                "## PRAYER FOR RELIEF\n"
+                "8. Plaintiff seeks restitution and damages.\n\n"
+                "## JURY DEMAND\n"
+                "9. Plaintiff demands a jury trial.\n\n"
+                "## SIGNATURE BLOCK\n"
+                "Jordan Example\n"
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = service.generate_complaint(
+        "llm-plain-text-user",
+        requested_relief=["Restitution", "Damages"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert "trimmed_leading_preamble" in payload["draft"]["draft_normalizations"]
+    assert "removed_markdown_heading_markup" in payload["draft"]["draft_normalizations"]
+    assert "normalized_complaint_heading" in payload["draft"]["draft_normalizations"]
+    assert "normalized_count_heading" in payload["draft"]["draft_normalizations"]
+    assert "replaced:current complaint record" in payload["draft"]["draft_normalizations"]
+    assert payload["draft"]["body"].startswith("IN THE UNITED STATES DISTRICT COURT")
+    assert "COMPLAINT FOR CONSUMER PROTECTION" in payload["draft"]["body"]
+    assert "COUNT I - CONSUMER PROTECTION" in payload["draft"]["body"]
+    assert "Here is the revised complaint" not in payload["draft"]["body"]
+    assert "## NATURE OF THE ACTION" not in payload["draft"]["body"]
+    assert "**COUNT I - WRONG HEADING**" not in payload["draft"]["body"]
+    assert "present evidentiary record" in payload["draft"]["body"].lower()
+
+
+def test_llm_draft_can_parse_json_wrapped_in_explanatory_text(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-json-wrapper-sessions")
+    service.submit_intake_answers(
+        "llm-json-wrapper-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Consumer Systems",
+            "protected_activity": "Reported deceptive billing practices and sought a refund",
+            "adverse_action": "Was denied a refund and charged additional hidden fees",
+            "timeline": "Reported the deceptive charges in June and was denied a refund in July.",
+            "harm": "Suffered economic loss and account disruption.",
+        },
+    )
+    service.update_claim_type("llm-json-wrapper-user", "consumer_protection")
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+
+        def __call__(self, prompt):
+            assert "Return strict JSON" in prompt
+            return (
+                "I revised the complaint below as requested.\n\n"
+                "{\n"
+                '  "title": "Jordan Example v. Acme Consumer Systems Complaint",\n'
+                '  "body": "IN THE UNITED STATES DISTRICT COURT\\n\\nCivil Action No. ________________\\nCOMPLAINT FOR RETALIATION OVERVIEW\\nJURY TRIAL DEMANDED\\n\\nNATURE OF THE ACTION\\n1. Plaintiff challenges deceptive billing and refund practices.\\n\\nJURISDICTION AND VENUE\\n2. Jurisdiction and venue are proper in this Court.\\n\\nPARTIES\\n3. Plaintiff Jordan Example purchased services from Defendant.\\n\\nFACTUAL ALLEGATIONS\\n4. Plaintiff reported deceptive billing practices and sought a refund.\\n5. Defendant denied a refund and imposed additional hidden fees.\\n\\nEVIDENTIARY SUPPORT AND NOTICE\\n6. The current complaint record includes billing notices and account correspondence.\\n\\nCLAIM FOR RELIEF\\nCOUNT I - WRONG HEADING\\n7. Defendant used deceptive billing practices in connection with a consumer transaction.\\n\\nPRAYER FOR RELIEF\\n8. Plaintiff seeks restitution and damages.\\n\\nJURY DEMAND\\n9. Plaintiff demands a jury trial.\\n\\nSIGNATURE BLOCK\\nJordan Example",\n'
+                '  "requested_relief": ["Restitution", "Damages"]\n'
+                "}\n\n"
+                "Thanks."
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = service.generate_complaint(
+        "llm-json-wrapper-user",
+        requested_relief=["Restitution", "Damages"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert "COMPLAINT FOR CONSUMER PROTECTION" in payload["draft"]["body"]
+    assert "COUNT I - CONSUMER PROTECTION" in payload["draft"]["body"]
+    assert "RETALIATION OVERVIEW" not in payload["draft"]["body"]
+    assert "current complaint record" not in payload["draft"]["body"].lower()
+    assert payload["draft"]["requested_relief"] == ["Restitution", "Damages"]
+
+
+def test_llm_draft_normalizes_parenthetical_numbered_paragraphs(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-numbered-paragraph-sessions")
+    service.submit_intake_answers(
+        "llm-numbered-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+
+        def __call__(self, prompt):
+            assert "Number the factual allegations as pleading paragraphs" in prompt
+            return json.dumps(
+                {
+                    "title": "Jordan Example v. Acme Corporation Complaint",
+                    "body": (
+                        "IN THE UNITED STATES DISTRICT COURT\n\n"
+                        "Civil Action No. ________________\n"
+                        "COMPLAINT FOR RETALIATION\n"
+                        "JURY TRIAL DEMANDED\n\n"
+                        "NATURE OF THE ACTION\n"
+                        "1) Plaintiff reported discrimination to HR.\n\n"
+                        "JURISDICTION AND VENUE\n"
+                        "2) Jurisdiction and venue are proper in this Court.\n\n"
+                        "PARTIES\n"
+                        "3) Plaintiff Jordan Example was employed by Defendant.\n\n"
+                        "FACTUAL ALLEGATIONS\n"
+                        "4) Plaintiff engaged in protected activity by reporting discrimination to HR.\n"
+                        "5) Defendant terminated Plaintiff two days later.\n\n"
+                        "EVIDENTIARY SUPPORT AND NOTICE\n"
+                        "6) The current complaint record includes testimony and documents supporting causation.\n\n"
+                        "CLAIM FOR RELIEF\n"
+                        "COUNT I - RETALIATION\n"
+                        "7) Defendant retaliated against Plaintiff for protected activity.\n\n"
+                        "PRAYER FOR RELIEF\n"
+                        "8) Plaintiff seeks back pay and damages.\n\n"
+                        "JURY DEMAND\n"
+                        "9) Plaintiff demands a jury trial.\n\n"
+                        "SIGNATURE BLOCK\n"
+                        "Jordan Example\n"
+                    ),
+                    "requested_relief": ["Back pay", "Damages"],
+                }
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = service.generate_complaint(
+        "llm-numbered-user",
+        requested_relief=["Back pay", "Damages"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert "normalized_numbered_paragraphs" in payload["draft"]["draft_normalizations"]
+    assert "1) Plaintiff reported discrimination to HR." not in payload["draft"]["body"]
+    assert "1. Plaintiff reported discrimination to HR." in payload["draft"]["body"]
+    assert "6. The present evidentiary record includes testimony and documents supporting causation." in payload["draft"]["body"]
 
 
 def test_template_draft_deduplicates_repeated_evidence_references(tmp_path):
