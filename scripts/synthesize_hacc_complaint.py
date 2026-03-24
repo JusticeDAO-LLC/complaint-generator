@@ -2344,11 +2344,32 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         )
         return any(marker in title or marker in url for marker in authority_markers)
 
+    def _research_item_keys(item: Dict[str, Any]) -> set[str]:
+        keys: set[str] = set()
+        for prefix, value in (
+            ("url", item.get("url")),
+            ("citation", item.get("citation")),
+            ("title", item.get("title")),
+        ):
+            cleaned = str(value or "").strip().lower()
+            if cleaned:
+                keys.add(f"{prefix}:{cleaned}")
+        return keys
+
     promoted_web_authorities = [
         item for item in web_results if _looks_like_formal_authority(item) and _is_relevant_authority_item(item)
     ]
+    promoted_web_keys = set().union(*(_research_item_keys(item) for item in promoted_web_authorities)) if promoted_web_authorities else set()
+    legal_authority_keys = set().union(
+        *(_research_item_keys(item) for item in legal_results if _is_relevant_authority_item(item))
+    ) if legal_results else set()
     remaining_web_results = [
-        item for item in web_results if item not in promoted_web_authorities and _is_relevant_corroborating_web_item(item)
+        item
+        for item in web_results
+        if item not in promoted_web_authorities
+        and not (_research_item_keys(item) & promoted_web_keys)
+        and not (_research_item_keys(item) & legal_authority_keys)
+        and _is_relevant_corroborating_web_item(item)
     ]
 
     for item in legal_results:

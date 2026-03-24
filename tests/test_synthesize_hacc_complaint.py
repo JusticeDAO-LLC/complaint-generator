@@ -412,6 +412,79 @@ def test_external_authority_basis_filters_irrelevant_corroborating_web_results()
     assert lines["corroborating_web_research_records"][0]["title"] == "Tenant grievance hearing timeline and notice checklist"
 
 
+def test_external_authority_basis_deduplicates_promoted_web_authorities_from_corroborating_web_results():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {"results": []},
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "PDFHCV Grievance Procedures - files.hudexchange.info",
+                        "url": "https://files.hudexchange.info/resources/documents/HCV-Grievance-Procedures.pdf",
+                        "summary": "Housing Choice Voucher grievance procedures and informal hearing rights.",
+                    },
+                    {
+                        "title": "HCV Grievance Procedures duplicate listing",
+                        "url": "https://files.hudexchange.info/resources/documents/HCV-Grievance-Procedures.pdf",
+                        "summary": "Duplicate link to the same housing grievance procedures and informal hearing rights.",
+                    },
+                    {
+                        "title": "Tenant grievance hearing timeline and notice checklist",
+                        "url": "https://housinghelp.example.org/grievance-hearing-checklist",
+                        "summary": "Public housing tenant checklist covering grievance hearing requests, notice deadlines, and appeal timing.",
+                    },
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["url"] == "https://files.hudexchange.info/resources/documents/HCV-Grievance-Procedures.pdf"
+    assert len(lines["corroborating_web_research_records"]) == 1
+    assert lines["corroborating_web_research_records"][0]["url"] == "https://housinghelp.example.org/grievance-hearing-checklist"
+
+
+def test_external_authority_basis_deduplicates_web_results_already_used_as_legal_authorities():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "HCV Grievance Procedures (HUD guidance)",
+                        "title": "PDFHCV Grievance Procedures - files.hudexchange.info",
+                        "authority_source": "web_fallback",
+                        "url": "https://files.hudexchange.info/resources/documents/HCV-Grievance-Procedures.pdf",
+                        "summary": "Housing Choice Voucher grievance procedures and informal hearing rights.",
+                    }
+                ]
+            },
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "PDFHCV Grievance Procedures - files.hudexchange.info",
+                        "url": "https://files.hudexchange.info/resources/documents/HCV-Grievance-Procedures.pdf",
+                        "summary": "Housing Choice Voucher grievance procedures and informal hearing rights.",
+                    },
+                    {
+                        "title": "Tenant grievance hearing timeline and notice checklist",
+                        "url": "https://housinghelp.example.org/grievance-hearing-checklist",
+                        "summary": "Public housing tenant checklist covering grievance hearing requests, notice deadlines, and appeal timing.",
+                    },
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["url"] == "https://files.hudexchange.info/resources/documents/HCV-Grievance-Procedures.pdf"
+    assert len(lines["corroborating_web_research_records"]) == 1
+    assert lines["corroborating_web_research_records"][0]["url"] == "https://housinghelp.example.org/grievance-hearing-checklist"
+
+
 def test_proposed_allegations_use_blocker_follow_up_summary_when_available():
     seed = {
         "description": "Retaliation complaint anchored to HACC core housing policies.",
