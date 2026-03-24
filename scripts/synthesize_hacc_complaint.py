@@ -2231,10 +2231,10 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         title_usc_match = re.search(r"\btitle\s+(\d+)\s*(?:§\s*)?([\d\w.()\-]+)", normalized)
         if title_usc_match:
             return f"usc:{title_usc_match.group(1)}:{title_usc_match.group(2).lower().rstrip('.')}"
-        usc_match = re.search(r"\b(\d+)\s+u\.?s\.?c\.?\s*(?:§\s*)?([\d\w.()\-]+)", normalized)
+        usc_match = re.search(r"\b(\d+)\s*u\.?s\.?c\.?\s*(?:§\s*)?([\d\w.()\-]+)", normalized)
         if usc_match:
             return f"usc:{usc_match.group(1)}:{usc_match.group(2).lower().rstrip('.')}"
-        cfr_match = re.search(r"\b(\d+)\s+c\.?f\.?r\.?\s*(?:part\s+)?(?:§\s*)?([\d\w.()\-]+)", normalized)
+        cfr_match = re.search(r"\b(\d+)\s*c\.?f\.?r\.?\s*(?:part\s+)?(?:§\s*)?([\d\w.()\-]+)", normalized)
         if cfr_match:
             return f"cfr:{cfr_match.group(1)}:{cfr_match.group(2).lower().rstrip('.')}"
         return ""
@@ -2244,8 +2244,8 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         if not cleaned:
             return ""
         patterns = (
-            r"\b\d+\s+C\.?F\.?R\.?\s*(?:part\s+)?(?:[\u00a7§]\s*)?[\d\w.()\-]+",
-            r"\b\d+\s+U\.?S\.?C\.?\s*(?:[\u00a7§]\s*)?[\d\w.()\-]+",
+            r"\b\d+\s*C\.?F\.?R\.?\s*(?:part\s+)?(?:[\u00a7§]\s*)?[\d\w.()\-]+",
+            r"\b\d+\s*U\.?S\.?C\.?\s*(?:[\u00a7§]\s*)?[\d\w.()\-]+",
             r"\b\d+\s+U\.?S\.?\s+Code\s*(?:[\u00a7§]\s*)?[\d\w.()\-]+",
         )
         for pattern in patterns:
@@ -2253,6 +2253,22 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
             if match:
                 return re.sub(r"\s+", " ", match.group(0)).strip()
         return ""
+
+    def _normalize_citation_label(value: str) -> str:
+        extracted = _extract_citation_text(value)
+        if not extracted:
+            return ""
+        cleaned = extracted.strip(" .,-")
+        cfr_match = re.fullmatch(r"(\d+)\s*C\.?F\.?R\.?\s*(?:part\s+)?(?:[\u00a7§]\s*)?([\d\w.()\-]+)", cleaned, re.IGNORECASE)
+        if cfr_match:
+            return f"{cfr_match.group(1)} C.F.R. {cfr_match.group(2).rstrip('.')}"
+        usc_match = re.fullmatch(r"(\d+)\s*U\.?S\.?C\.?\s*(?:[\u00a7§]\s*)?([\d\w.()\-]+)", cleaned, re.IGNORECASE)
+        if usc_match:
+            return f"{usc_match.group(1)} U.S.C. {usc_match.group(2).rstrip('.')}"
+        title_usc_match = re.fullmatch(r"Title\s+(\d+)\s*(?:[\u00a7§]\s*)?([\d\w.()\-]+)", cleaned, re.IGNORECASE)
+        if title_usc_match:
+            return f"Title {title_usc_match.group(1)} § {title_usc_match.group(2).rstrip('.')}"
+        return cleaned
 
     def _is_mismatched_uscode_releasepoint(item: Dict[str, Any]) -> bool:
         authority_source = str(item.get("authority_source") or item.get("source") or "").strip().lower()
@@ -2350,6 +2366,9 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
     def _authority_label(item: Dict[str, Any]) -> str:
         citation = str(item.get("citation") or "").strip()
         title = str(item.get("title") or "").strip()
+        normalized = _normalize_citation_label(" ".join(part for part in (citation, title, str(item.get("url") or "")) if part))
+        if normalized:
+            return normalized
         if _is_opaque_identifier(citation) and title:
             return title
         return citation or title
@@ -2360,7 +2379,8 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         url = str(item.get("url") or "").lower()
         authority_source = str(item.get("authority_source") or "").lower()
         combined = " ".join(part for part in (citation, title, url, authority_source) if part)
-        if any(marker in combined for marker in ("c.f.r.", "ecfr", "federal register", "part 966", "part 982")):
+        normalized = _normalize_citation_label(" ".join(part for part in (str(item.get("citation") or ""), str(item.get("title") or ""), str(item.get("url") or "")) if part)).lower()
+        if "c.f.r." in normalized or any(marker in combined for marker in ("ecfr", "law.cornell.edu/cfr", "/cfr/text/", "federal register", "part 966", "part 982", "24cfr")):
             return "Regulation"
         if any(marker in combined for marker in ("hud.gov", "hud", "pih notice", "handbook")):
             return "HUD guidance"

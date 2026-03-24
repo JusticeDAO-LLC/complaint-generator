@@ -103,7 +103,7 @@ def test_build_email_graphrag_artifacts_includes_attachment_extraction_text(tmp_
 
     monkeypatch.setattr(
         "complaint_generator.email_graphrag.extract_attachment_text",
-        lambda _path: {"text": "Release of claim for two-bedroom accommodation", "method": "pdf-ocr"},
+        lambda _path, **_kwargs: {"text": "Release of claim for two-bedroom accommodation", "method": "pdf-ocr"},
     )
 
     summary = build_email_graphrag_artifacts(manifest_path=manifest_path)

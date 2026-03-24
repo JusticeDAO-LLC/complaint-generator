@@ -418,6 +418,33 @@ def test_external_authority_basis_excludes_broad_uscode_releasepoints_without_gr
     assert "Title 42 § 1437f" not in "\n".join(lines["authorities"])
 
 
+def test_external_authority_basis_normalizes_cfr_web_authority_labels():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "24CFR§982.555- Informal hearing for participant. | Electronic Code...",
+                        "title": "24CFR§982.555- Informal hearing for participant. | Electronic Code...",
+                        "authority_source": "web_legal_search",
+                        "url": "https://www.law.cornell.edu/cfr/text/24/982.555",
+                        "summary": "Discusses informal hearing notice, appeal rights, and decision timing.",
+                        "research_priority_reasons": ["grievance-process authority"],
+                    }
+                ]
+            },
+            "web_discovery": {"results": []},
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["type"] == "Regulation"
+    assert lines["authority_records"][0]["label"] == "24 C.F.R. 982.555"
+    assert lines["authorities"][0].startswith("Regulation: 24 C.F.R. 982.555")
+
+
 def test_external_authority_basis_filters_irrelevant_corroborating_web_results():
     grounding_bundle = {
         "external_research_bundle": {

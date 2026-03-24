@@ -50,7 +50,9 @@ def _email_record_to_corpus_text(record: dict[str, Any]) -> str:
     for path_str in record.get("attachment_paths") or []:
         path = Path(path_str)
         lines.append(f"Attachment filename: {path.name}")
-        extraction = extract_attachment_text(path)
+        # Keep email GraphRAG lightweight by default: use native text extraction
+        # for PDFs/text attachments and skip heavy OCR unless we explicitly opt in.
+        extraction = extract_attachment_text(path, use_ocr=False)
         attachment_text = str(extraction.get("text") or "").strip()
         if attachment_text:
             lines.append(f"Attachment text from {path.name}: {attachment_text}")
