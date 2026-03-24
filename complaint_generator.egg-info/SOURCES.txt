@@ -154,6 +154,7 @@ tests/test_adversarial_session_intake_prompts.py
 tests/test_agentic_evidence_download.py
 tests/test_agentic_scraper_cli.py
 tests/test_application_launcher.py
+tests/test_attachment_text_extractor.py
 tests/test_backfill_claim_testimony_links_cli.py
 tests/test_batch_205_neurosymbolic_methods.py
 tests/test_batch_206_denoiser_methods.py

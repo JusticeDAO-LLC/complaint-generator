@@ -2304,6 +2304,7 @@ class ComplaintWorkspaceService:
                 ),
                 "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
                 "formal_diagnostics": deepcopy(ui_feedback.get("formal_diagnostics") or {}),
+                "complaint_output_router_backend": deepcopy(((ui_feedback.get("router_review") or {}).get("backend") or {})),
             },
         }
 
@@ -2739,6 +2740,9 @@ class ComplaintWorkspaceService:
             "issues": issues,
             "ui_suggestions": suggestions,
             "formal_diagnostics": formal_diagnostics,
+            "draft_strategy": str(draft.get("draft_strategy") or "template"),
+            "draft_fallback_reason": str(draft.get("draft_fallback_reason") or "").strip(),
+            "draft_normalizations": list(draft.get("draft_normalizations") or []),
             "draft_excerpt": body[:600],
             "complaint_strengths": [
                 f"Supported elements: {int(overview.get('supported_elements') or 0)}",
@@ -2747,6 +2751,11 @@ class ComplaintWorkspaceService:
                 f"Formal sections present: {sum(1 for value in formal_sections_present.values() if value)}/{len(formal_sections_present)}",
                 f"Claim type alignment: {expected_complaint_heading} / {expected_count_heading}",
             ],
+            "router_backends": [
+                deepcopy((router_review or {}).get("backend") or {})
+            ]
+            if isinstance((router_review or {}).get("backend"), dict) and ((router_review or {}).get("backend") or {})
+            else [],
             "router_review": router_review,
         }
 
@@ -2770,11 +2779,13 @@ class ComplaintWorkspaceService:
             "filing_shape_score": int(ui_feedback.get("filing_shape_score") or 0),
             "release_gate": deepcopy(ui_feedback.get("release_gate") or {}),
             "formal_diagnostics": diagnostics,
+            "router_backend": deepcopy(((ui_feedback.get("router_review") or {}).get("backend") or {})),
             "packet_summary": {
                 "has_draft": bool(packet_summary.get("has_draft")),
                 "draft_strategy": str(packet_summary.get("draft_strategy") or "template"),
                 "formal_defect_count": int(packet_summary.get("formal_defect_count") or 0),
                 "high_severity_issue_count": int(packet_summary.get("high_severity_issue_count") or 0),
+                "complaint_output_router_backend": deepcopy(packet_summary.get("complaint_output_router_backend") or {}),
             },
         }
 
@@ -2895,6 +2906,7 @@ class ComplaintWorkspaceService:
                 "release_gate": dict(ui_feedback.get("release_gate") or {}),
                 "formal_diagnostics": dict(ui_feedback.get("formal_diagnostics") or {}),
                 "router_export_critic": dict(((ui_feedback.get("router_review") or {}).get("review") or {})),
+                "router_backend": dict(((ui_feedback.get("router_review") or {}).get("backend") or {})),
                 "ui_suggestions_excerpt": "\n".join(line for line in suggestion_lines if line),
             }
         ]

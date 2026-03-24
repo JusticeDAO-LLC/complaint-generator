@@ -2997,6 +2997,17 @@ ${cliAddressLines}
                 uiReadinessNode.textContent = 'No UI-readiness payload loaded yet.';
             }
 
+            function formatRouterPath(backend) {
+                const segments = [];
+                ['strategy', 'provider', 'model'].forEach((key) => {
+                    const value = String((backend || {})[key] || '').trim();
+                    if (value && !segments.includes(value)) {
+                        segments.push(value);
+                    }
+                });
+                return segments.join(' / ');
+            }
+
             if (workspaceClientReleaseGate) {
                 clientReleaseGateNode.textContent = JSON.stringify(workspaceClientReleaseGate, null, 2);
             } else {
@@ -3006,6 +3017,7 @@ ${cliAddressLines}
             if (workspaceFormalDiagnostics) {
                 const diagnostics = workspaceFormalDiagnostics.formal_diagnostics || {};
                 const releaseGate = workspaceFormalDiagnostics.release_gate || {};
+                const routerBackend = workspaceFormalDiagnostics.router_backend || {};
                 const summaryLines = [
                     'Formal complaint posture summary',
                     `Release gate verdict: ${String(releaseGate.verdict || 'unknown').toUpperCase()}`,
@@ -3015,6 +3027,10 @@ ${cliAddressLines}
                     `Formal defect count: ${Number((workspaceFormalDiagnostics.packet_summary || {}).formal_defect_count || 0)}`,
                     `High-severity complaint issues: ${Number((workspaceFormalDiagnostics.packet_summary || {}).high_severity_issue_count || 0)}`,
                 ];
+                const routerPath = formatRouterPath(routerBackend);
+                if (routerPath) {
+                    summaryLines.push(`Formal critic route: ${routerPath}`);
+                }
                 if (Array.isArray(diagnostics.top_formal_findings) && diagnostics.top_formal_findings.length) {
                     summaryLines.push('', 'Top formal findings:');
                     diagnostics.top_formal_findings.slice(0, 3).forEach((item, index) => {
@@ -3043,6 +3059,8 @@ ${cliAddressLines}
                 const uiFeedback = outputAnalysis.ui_feedback || outputAnalysis;
                 const releaseGate = uiFeedback.release_gate || {};
                 const formalDiagnostics = uiFeedback.formal_diagnostics || {};
+                const routerReviewBackend = ((uiFeedback.router_review || {}).backend || {});
+                const routerReviewPath = formatRouterPath(routerReviewBackend);
                 const releaseGateSummary = releaseGate.verdict
                     ? [
                         `Release gate: ${String(releaseGate.verdict || '').toUpperCase()}`,
@@ -3051,6 +3069,7 @@ ${cliAddressLines}
                         releaseGate.draft_strategy ? `Draft strategy: ${releaseGate.draft_strategy}` : '',
                         Number.isFinite(Number(releaseGate.filing_shape_score)) ? `Filing shape score: ${releaseGate.filing_shape_score}` : '',
                         Number.isFinite(Number(releaseGate.claim_type_alignment_score)) ? `Claim-type alignment score: ${releaseGate.claim_type_alignment_score}` : '',
+                        routerReviewPath ? `Complaint-output critic route: ${routerReviewPath}` : '',
                         '',
                     ].filter(Boolean).join('\n')
                     : '';
@@ -3126,9 +3145,15 @@ ${cliAddressLines}
             }
             const formalGaps = Array.isArray(brief.top_formal_section_gaps) ? brief.top_formal_section_gaps : [];
             const issueFindings = Array.isArray(brief.top_issue_findings) ? brief.top_issue_findings : [];
-            const surfaceTargets = Array.isArray(brief.recommended_surface_targets) ? brief.recommended_surface_targets : [];
+            const surfaceTargets = Array.isArray(brief.recommended_surface_targets)
+                ? brief.recommended_surface_targets
+                    .flatMap((target) => String(target || '').split(','))
+                    .map((target) => String(target || '').trim().toLowerCase())
+                    .filter((target, index, values) => target && values.indexOf(target) === index)
+                : [];
             const actorRiskSummary = String(brief.actor_risk_summary || '').trim();
             const criticGateVerdict = String(brief.critic_gate_verdict || '').trim();
+            const routerPathSummary = String(brief.router_path_summary || '').trim();
             const repairActions = surfaceTargets.map((target) => {
                 const normalized = String(target || '').toLowerCase();
                 if (normalized.includes('draft')) {
@@ -3172,6 +3197,7 @@ ${cliAddressLines}
                         ${criticGateVerdict ? `<span class="chip ${criticGateVerdict === 'pass' ? 'good' : 'warn'}">critic gate: ${escapeHtml(criticGateVerdict)}</span>` : ''}
                         ${formalGaps.length ? `<span class="chip warn">formal gaps: ${escapeHtml(String(formalGaps.length))}</span>` : '<span class="chip good">no formal gaps reported</span>'}
                         ${surfaceTargets.length ? `<span class="chip">surface targets: ${escapeHtml(String(surfaceTargets.length))}</span>` : ''}
+                        ${routerPathSummary ? `<span class="chip">critic route: ${escapeHtml(routerPathSummary)}</span>` : ''}
                     </div>
                     <div class="muted">${escapeHtml(actorRiskSummary || 'The export critic did not return an actor-risk summary.')}</div>
                     ${formalGaps.length ? `<p><strong>Top formal section gaps:</strong> ${escapeHtml(formalGaps.join(', '))}</p>` : ''}
@@ -4376,9 +4402,14 @@ ${cliAddressLines}
             };
             activateTab('ux-review');
             setBusyStatus(iterative ? 'Running iterative UI/UX review workflow via MCP…' : 'Running snapshot UI review via MCP…');
-            const result = await client.runUiUxWorkflow(payload);
-            renderUiReviewResult(result);
-            setStatus(iterative ? 'Iterative UI/UX review completed.' : 'Snapshot UI review completed.');
+            try {
+                const result = await client.runUiUxWorkflow(payload);
+                renderUiReviewResult(result);
+                setStatus(iterative ? 'Iterative UI/UX review completed.' : 'Snapshot UI review completed.');
+            } catch (error) {
+                console.error(error);
+                setStatus(`UI review failed: ${String((error && error.message) || error || 'Unknown error')}`);
+            }
         }
 
         async function runClosedLoopUiOptimization() {
@@ -4409,17 +4440,22 @@ ${cliAddressLines}
             };
             activateTab('ux-review');
             setBusyStatus('Running closed-loop UI/UX optimization via MCP…');
-            const result = await client.runClosedLoopUiUxWorkflow(payload);
-            renderUiReviewResult(Object.assign({}, result, {
-                output_dir: payload.output_path,
-                latest_review: result.latest_validation_review,
-                review: {
-                    summary: result.latest_validation_review || 'Closed-loop optimization completed.',
-                    issues: [],
-                    playwright_followups: [],
-                },
-            }));
-            setStatus('Closed-loop UI/UX optimization completed.');
+            try {
+                const result = await client.runClosedLoopUiUxWorkflow(payload);
+                renderUiReviewResult(Object.assign({}, result, {
+                    output_dir: payload.output_path,
+                    latest_review: result.latest_validation_review,
+                    review: {
+                        summary: result.latest_validation_review || 'Closed-loop optimization completed.',
+                        issues: [],
+                        playwright_followups: [],
+                    },
+                }));
+                setStatus('Closed-loop UI/UX optimization completed.');
+            } catch (error) {
+                console.error(error);
+                setStatus(`Closed-loop optimization failed: ${String((error && error.message) || error || 'Unknown error')}`);
+            }
         }
 
         async function runBrowserAudit() {
@@ -4432,12 +4468,17 @@ ${cliAddressLines}
             }
             activateTab('ux-review');
             setBusyStatus('Running the end-to-end complaint browser audit via MCP…');
-            const result = await client.runBrowserAudit({
-                screenshot_dir: screenshotDir,
-                pytest_target: pytestTarget,
-            });
-            renderBrowserAuditResult(result);
-            setStatus('End-to-end complaint browser audit completed.');
+            try {
+                const result = await client.runBrowserAudit({
+                    screenshot_dir: screenshotDir,
+                    pytest_target: pytestTarget,
+                });
+                renderBrowserAuditResult(result);
+                setStatus('End-to-end complaint browser audit completed.');
+            } catch (error) {
+                console.error(error);
+                setStatus(`Complaint browser audit failed: ${String((error && error.message) || error || 'Unknown error')}`);
+            }
         }
 
         document.querySelectorAll('.tab-button').forEach((node) => {

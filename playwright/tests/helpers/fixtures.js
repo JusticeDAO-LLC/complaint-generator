@@ -1271,11 +1271,42 @@ function buildWorkspacePacketExport(state) {
 
 function buildWorkspaceComplaintOutputAnalysis(state) {
   const payload = buildWorkspacePacketExport(state);
+  const draft = ((payload.packet || {}).draft || {});
   const assessment = buildWorkspaceFormalAssessment(
     state,
-    ((payload.packet || {}).draft || {}),
+    draft,
     ((payload.packet_summary || {})),
   );
+  const routerReview = {
+    backend: {
+      id: 'playwright-complaint-output-review',
+      provider: 'llm_router',
+      model: 'formal_complaint_reviewer',
+      strategy: 'llm_router',
+    },
+    review: {
+      summary: 'Stub complaint-output review confirms the export still needs visible filing-shape and support cues in the dashboard.',
+      filing_shape_score: assessment.filingShapeScore,
+      claim_type_alignment_score: assessment.claimTypeAlignmentScore,
+      missing_formal_sections: clone(assessment.missingFormalSections),
+      issues: clone(assessment.issues),
+      ui_suggestions: clone(assessment.uiSuggestions),
+      ui_priority_repairs: [
+        {
+          priority: 'high',
+          target_surface: 'draft,integrations',
+          repair: 'Keep routing provenance and filing-shape diagnostics visible before export.',
+          filing_benefit: 'The complaint output stays tied to the critic path that judged it.',
+        },
+      ],
+      actor_risk_summary: 'A complainant could mistake the export for a finished filing without seeing the router-backed gate.',
+      critic_gate: {
+        verdict: assessment.releaseGate.verdict,
+        blocking_reason: assessment.releaseGate.reason,
+        required_repairs: ['Preserve visible routing and filing diagnostics before download.'],
+      },
+    },
+  };
   return {
     user_id: state.user_id,
     packet_summary: clone(payload.packet_summary),
@@ -1290,13 +1321,18 @@ function buildWorkspaceComplaintOutputAnalysis(state) {
       formal_sections_present: clone(assessment.formalSectionsPresent),
       issues: clone(assessment.issues),
       ui_suggestions: clone(assessment.uiSuggestions),
-      draft_excerpt: String((((payload.packet || {}).draft || {}).body || '')).slice(0, 600),
+      draft_strategy: String(draft.draft_strategy || 'template'),
+      draft_fallback_reason: String(draft.draft_fallback_reason || ''),
+      draft_normalizations: clone(draft.draft_normalizations || []),
+      draft_excerpt: String((draft.body || '')).slice(0, 600),
       complaint_strengths: [
         `Supported elements: ${Number((payload.packet_summary || {}).supported_elements || 0)}`,
         `Evidence items: ${Number((payload.packet_summary || {}).testimony_items || 0) + Number((payload.packet_summary || {}).document_items || 0)}`,
         `Requested relief items: ${Number((payload.artifact_analysis || {}).requested_relief_count || 0)}`,
         `Formal sections present: ${Object.values(assessment.formalSectionsPresent).filter(Boolean).length}/${Object.keys(assessment.formalSectionsPresent).length}`,
       ],
+      router_backends: [clone(routerReview.backend)],
+      router_review: routerReview,
     },
   };
 }

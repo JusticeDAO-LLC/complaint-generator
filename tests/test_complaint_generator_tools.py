@@ -535,6 +535,7 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert export_payload["packet"]["draft"]["title"] == "Edited CLI complaint"
     assert export_payload["packet_summary"]["has_draft"] is True
     assert export_payload["packet_summary"]["artifact_formats"] == ["docx", "json", "markdown", "pdf"]
+    assert export_payload["packet_summary"]["draft_strategy"] == "template"
 
     markdown_payload = _invoke_cli(runner, "export-markdown", "--user-id", "cli-user")
     assert markdown_payload["artifact"]["format"] == "markdown"
@@ -777,6 +778,74 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
         item["title"] == "Enforce formal pleading structure"
         for item in output_analysis_payload["ui_feedback"]["ui_suggestions"]
     )
+
+
+def test_export_and_diagnostics_preserve_router_backend(monkeypatch, tmp_path):
+    from applications import ui_review as ui_review_module
+
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "router-backend-sessions")
+
+    service.submit_intake_answers(
+        "router-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Report on April 2, termination on April 4",
+            "harm": "Lost wages and benefits",
+        },
+    )
+    service.save_evidence(
+        "router-user",
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="Termination followed immediately after the report.",
+    )
+
+    def fake_refine(self, draft, *args, **kwargs):
+        updated = dict(draft)
+        updated.setdefault("title", "Jordan Example v. Acme Corporation Retaliation Complaint")
+        updated.setdefault("requested_relief", ["Back pay"])
+        updated["body"] = str(updated.get("body") or "") + "\n\nSIGNATURE BLOCK"
+        updated["draft_strategy"] = "llm_router"
+        updated["draft_normalizations"] = list(updated.get("draft_normalizations") or [])
+        return updated
+
+    monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
+    service.generate_complaint("router-user", requested_relief=["Back pay"], use_llm=True, provider="llm_router", model="formal_complaint_reviewer")
+
+    def fake_review(*args, **kwargs):
+        return {
+            "backend": {
+                "strategy": "llm_router",
+                "provider": "llm_router",
+                "model": "formal_complaint_reviewer",
+            },
+            "review": {
+                "summary": "Looks filing-shaped.",
+                "filing_shape_score": 92,
+                "claim_type_alignment_score": 95,
+                "missing_formal_sections": [],
+                "issues": [],
+                "ui_suggestions": [{"title": "Keep filing diagnostics visible"}],
+                "ui_priority_repairs": [{"priority": "high", "target_surface": "draft"}],
+                "actor_risk_summary": "The actor still needs explicit filing readiness cues.",
+                "critic_gate": {"verdict": "warning", "blocking_reason": "Keep diagnostics visible."},
+            },
+        }
+
+    monkeypatch.setattr(ui_review_module, "review_complaint_output_with_llm_router", fake_review)
+
+    export_payload = service.export_complaint_packet("router-user")
+    assert export_payload["packet_summary"]["draft_strategy"] == "llm_router"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["strategy"] == "llm_router"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["model"] == "formal_complaint_reviewer"
+
+    diagnostics_payload = service.get_formal_diagnostics("router-user")
+    assert diagnostics_payload["router_backend"]["strategy"] == "llm_router"
+    assert diagnostics_payload["packet_summary"]["complaint_output_router_backend"]["provider"] == "llm_router"
 
     synopsis_payload = _call_mcp_tool(
         service,

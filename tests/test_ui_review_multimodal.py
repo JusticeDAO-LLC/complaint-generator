@@ -218,7 +218,7 @@ def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatc
         assert "COMPLAINT FOR RETALIATION" in markdown_text
         assert kwargs["claim_type"] == "retaliation"
         return {
-            "backend": {"strategy": "llm_router"},
+            "backend": {"strategy": "llm_router", "provider": "llm_router", "model": "formal_complaint_reviewer"},
             "review": {
                 "summary": "Looks closer to a filing.",
                 "filing_shape_score": 88,
@@ -226,7 +226,7 @@ def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatc
                 "missing_formal_sections": ["signature_block"],
                 "issues": [{"finding": "Exhibit grounding is thin"}],
                 "ui_suggestions": [{"title": "Expose exhibit references"}],
-                "ui_priority_repairs": [{"priority": "high", "target_surface": "draft"}],
+                "ui_priority_repairs": [{"priority": "high", "target_surface": "draft,integrations"}],
                 "actor_risk_summary": "The actor still cannot tell whether the draft is ready to sign.",
                 "critic_gate": {"verdict": "warning", "blocking_reason": "Signature posture unclear"},
             },
@@ -239,14 +239,16 @@ def test_review_complaint_export_artifacts_aggregates_router_feedback(monkeypatc
     assert report["artifact_count"] == 1
     assert report["aggregate"]["average_filing_shape_score"] == 88
     assert report["aggregate"]["average_claim_type_alignment_score"] == 93
+    assert report["aggregate"]["router_backends"][0]["strategy"] == "llm_router"
     assert report["aggregate"]["issue_findings"] == ["Exhibit grounding is thin"]
     assert report["aggregate"]["missing_formal_sections"] == ["signature_block"]
     assert report["aggregate"]["ui_suggestions"][0]["title"] == "Expose exhibit references"
-    assert report["aggregate"]["ui_priority_repairs"][0]["target_surface"] == "draft"
+    assert report["aggregate"]["ui_priority_repairs"][0]["target_surface"] == "draft,integrations"
     assert report["aggregate"]["actor_risk_summaries"][0].startswith("The actor still cannot tell")
     assert report["aggregate"]["critic_gates"][0]["verdict"] == "warning"
     assert report["aggregate"]["optimizer_repair_brief"]["top_formal_section_gaps"] == ["signature_block"]
-    assert report["aggregate"]["optimizer_repair_brief"]["recommended_surface_targets"] == ["draft"]
+    assert report["aggregate"]["optimizer_repair_brief"]["recommended_surface_targets"] == ["draft", "integrations"]
+    assert report["aggregate"]["optimizer_repair_brief"]["router_path_summary"] == "llm_router / formal_complaint_reviewer"
 
 
 def test_review_complaint_export_artifacts_falls_back_to_artifact_metadata_when_router_review_fails(monkeypatch):

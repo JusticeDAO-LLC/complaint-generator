@@ -905,11 +905,13 @@ function formalDiagnosticsPayload(userId = 'did:key:playwright-demo') {
     filing_shape_score: Number(uiFeedback.filing_shape_score || 0),
     release_gate: releaseGate,
     formal_diagnostics: formalDiagnostics,
+    router_backend: Object.assign({}, ((uiFeedback.router_review || {}).backend || {})),
     packet_summary: {
       has_draft: Boolean((analysis.packet_summary || {}).has_draft),
       draft_strategy: String((analysis.packet_summary || {}).draft_strategy || 'template'),
       formal_defect_count: Number((analysis.packet_summary || {}).formal_defect_count || formalDiagnostics.formal_defect_count || 0),
       high_severity_issue_count: Number((analysis.packet_summary || {}).high_severity_issue_count || formalDiagnostics.high_severity_issue_count || 0),
+      complaint_output_router_backend: Object.assign({}, (((analysis.packet_summary || {}).complaint_output_router_backend) || ((uiFeedback.router_review || {}).backend || {}))),
     },
   };
 }
@@ -990,6 +992,7 @@ function exportComplaintPacketPayload(userId = 'did:key:playwright-demo') {
       testimony_items: sessionPayload.review.overview.testimony_items || 0,
       document_items: sessionPayload.review.overview.document_items || 0,
       has_draft: Boolean(sessionPayload.draft),
+      draft_strategy: String((draft.draft_strategy || 'template')),
       complaint_readiness: complaintReadinessPayload(userId),
       artifact_formats: ['json', 'markdown', 'docx', 'pdf'],
     },
@@ -1198,6 +1201,50 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
       reason: 'The exported complaint is moving in the right direction, but it still needs tighter proof posture, claim alignment, or filing polish before it should be treated as client-safe.',
     };
   }
+  const routerReview = {
+    backend: {
+      id: 'playwright-complaint-output-review',
+      provider: 'llm_router',
+      model: 'formal_complaint_reviewer',
+      strategy: 'llm_router',
+    },
+    review: {
+      summary: 'Stub complaint-output review confirms the export still needs visible filing-shape and support cues in the dashboard.',
+      filing_shape_score: filingShapeScore,
+      claim_type_alignment_score: claimTypeAlignmentScore,
+      missing_formal_sections: Object.entries(formalSectionsPresent).filter(([, present]) => !present).map(([name]) => name),
+      issues: [
+        {
+          severity: releaseGate.verdict === 'pass' ? 'low' : 'medium',
+          finding: 'The operator still needs clearer filing-shape and export-gate cues before treating the complaint as client-safe.',
+          complaint_impact: 'The complaint may be exported before the user understands which structural gaps remain.',
+          ui_implication: 'Draft and export surfaces should keep the formal diagnostics and release gate visible.',
+        },
+      ],
+      ui_suggestions: [
+        {
+          title: 'Keep formal diagnostics visible near export',
+          target_surface: 'draft,integrations',
+          recommendation: 'Show llm_router-backed filing diagnostics next to packet export and download controls.',
+          why_it_matters: 'The operator can tell when the export is formal enough to trust.',
+        },
+      ],
+      ui_priority_repairs: [
+        {
+          priority: 'high',
+          target_surface: 'draft,integrations',
+          repair: 'Keep routing provenance and filing-shape diagnostics visible before export.',
+          filing_benefit: 'The complaint output stays tied to the critic path that judged it.',
+        },
+      ],
+      actor_risk_summary: 'A complainant could mistake the export for a finished filing without seeing the router-backed gate.',
+      critic_gate: {
+        verdict: releaseGate.verdict === 'pass' ? 'pass' : 'warning',
+        blocking_reason: releaseGate.reason,
+        required_repairs: ['Preserve visible routing and filing diagnostics before download.'],
+      },
+    },
+  };
   return {
     user_id: userId,
     packet_summary: packetSummary,
@@ -1234,6 +1281,7 @@ function buildComplaintOutputAnalysis(userId = 'did:key:playwright-demo') {
         `Requested relief items: ${Number(artifactAnalysis.requested_relief_count || 0)}`,
         `Formal sections present: ${Object.values(formalSectionsPresent).filter(Boolean).length}/${Object.keys(formalSectionsPresent).length}`,
       ],
+      router_review: routerReview,
     },
   };
 }
@@ -1976,6 +2024,7 @@ const server = http.createServer(async (request, response) => {
             release_gate_verdicts: [((analysis.ui_feedback.release_gate || {}).verdict || 'warning')],
             formal_section_gaps: formalSectionGaps,
             ui_suggestions: (analysis.ui_feedback.ui_suggestions || []).map((item) => item.title || item.recommendation).filter(Boolean),
+            router_backends: [Object.assign({}, (((analysis.ui_feedback || {}).router_review || {}).backend || {}))].filter((item) => Object.keys(item).length),
           },
           aggregate: {
             average_filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
@@ -1983,6 +2032,7 @@ const server = http.createServer(async (request, response) => {
             issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean),
             missing_formal_sections: formalSectionGaps,
             ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+            router_backends: [Object.assign({}, (((analysis.ui_feedback || {}).router_review || {}).backend || {}))].filter((item) => Object.keys(item).length),
             ui_priority_repairs: [
               {
                 priority: 'high',
@@ -2006,6 +2056,7 @@ const server = http.createServer(async (request, response) => {
               recommended_surface_targets: ['draft,review,integrations'],
               actor_risk_summary: 'The actor can export a complaint without clear UI guidance about whether the filing is truly ready.',
               critic_gate_verdict: ((analysis.ui_feedback.release_gate || {}).verdict || 'warning'),
+              router_path_summary: 'llm_router / formal_complaint_reviewer',
             },
           },
           reviews: [
@@ -2240,6 +2291,7 @@ const server = http.createServer(async (request, response) => {
           release_gate_verdicts: [((analysis.ui_feedback.release_gate || {}).verdict || 'warning')],
           formal_section_gaps: formalSectionGaps,
           ui_suggestions: (analysis.ui_feedback.ui_suggestions || []).map((item) => item.title || item.recommendation).filter(Boolean),
+          router_backends: [Object.assign({}, (((analysis.ui_feedback || {}).router_review || {}).backend || {}))].filter((item) => Object.keys(item).length),
         },
         aggregate: {
           average_filing_shape_score: analysis.ui_feedback.filing_shape_score || 0,
@@ -2247,6 +2299,7 @@ const server = http.createServer(async (request, response) => {
           issue_findings: (analysis.ui_feedback.issues || []).map((item) => item.finding).filter(Boolean),
           missing_formal_sections: formalSectionGaps,
           ui_suggestions: analysis.ui_feedback.ui_suggestions || [],
+          router_backends: [Object.assign({}, (((analysis.ui_feedback || {}).router_review || {}).backend || {}))].filter((item) => Object.keys(item).length),
           ui_priority_repairs: [
             {
               priority: 'high',
@@ -2270,6 +2323,7 @@ const server = http.createServer(async (request, response) => {
             recommended_surface_targets: ['draft,review,integrations'],
             actor_risk_summary: 'The actor can export a complaint without clear UI guidance about whether the filing is truly ready.',
             critic_gate_verdict: ((analysis.ui_feedback.release_gate || {}).verdict || 'warning'),
+            router_path_summary: 'llm_router / formal_complaint_reviewer',
           },
         },
         reviews: [

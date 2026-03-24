@@ -11,6 +11,28 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 DEFAULT_COMPLAINT_OUTPUT_REVIEW_TIMEOUT_S = 8
 
 
+def _format_router_backend_path(backend: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for key in ("strategy", "provider", "model"):
+        value = str((backend or {}).get(key) or "").strip()
+        if value and value not in parts:
+            parts.append(value)
+    return " / ".join(parts)
+
+
+def _expand_surface_targets(priority_repairs: Iterable[Dict[str, Any]]) -> List[str]:
+    targets: List[str] = []
+    for item in list(priority_repairs or []):
+        raw_target = str((item or {}).get("target_surface") or "").strip()
+        if not raw_target:
+            continue
+        for target in raw_target.split(","):
+            normalized = str(target or "").strip().lower()
+            if normalized and normalized not in targets:
+                targets.append(normalized)
+    return targets
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -115,6 +137,11 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
         for item in exports
         if str(item.get("ui_suggestions_excerpt") or "").strip()
     ]
+    router_backends = [
+        dict(item.get("router_backend") or {})
+        for item in exports
+        if isinstance(item.get("router_backend"), dict) and item.get("router_backend")
+    ]
     return {
         "export_artifact_count": len(exports),
         "claim_types": [
@@ -154,6 +181,7 @@ def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, A
             if str(item).strip()
         ],
         "ui_suggestions": suggestions,
+        "router_backends": router_backends,
     }
 
 
@@ -265,6 +293,7 @@ def review_complaint_export_artifacts(
     aggregate_priority_repairs: List[Dict[str, Any]] = []
     actor_risk_summaries: List[str] = []
     critic_gates: List[Dict[str, Any]] = []
+    router_backends: List[Dict[str, Any]] = []
 
     for export in exports:
         markdown_text = str(export.get("markdown_excerpt") or export.get("text_excerpt") or "").strip()
@@ -307,6 +336,9 @@ def review_complaint_export_artifacts(
             actor_risk_summaries.append(str(review.get("actor_risk_summary") or "").strip())
         if isinstance(review.get("critic_gate"), dict):
             critic_gates.append(dict(review.get("critic_gate") or {}))
+        backend_payload = dict(review_payload.get("backend") or {})
+        if backend_payload:
+            router_backends.append(backend_payload)
         reviews.append(
             {
                 "artifact": {
@@ -339,16 +371,22 @@ def review_complaint_export_artifacts(
             "ui_priority_repairs": aggregate_priority_repairs,
             "actor_risk_summaries": actor_risk_summaries,
             "critic_gates": critic_gates,
+            "router_backends": router_backends,
             "optimizer_repair_brief": {
                 "top_formal_section_gaps": sorted({item for item in aggregate_missing_formal_sections if item})[:6],
                 "top_issue_findings": aggregate_issue_findings[:6],
-                "recommended_surface_targets": [
-                    str(item.get("target_surface") or "").strip()
-                    for item in aggregate_priority_repairs[:6]
-                    if str(item.get("target_surface") or "").strip()
-                ],
+                "recommended_surface_targets": _expand_surface_targets(aggregate_priority_repairs[:6]),
                 "actor_risk_summary": actor_risk_summaries[0] if actor_risk_summaries else "",
                 "critic_gate_verdict": str((critic_gates[0] or {}).get("verdict") or "").strip() if critic_gates else "",
+                "router_path_summary": (
+                    " | ".join(
+                        path
+                        for path in (_format_router_backend_path(item) for item in router_backends[:3])
+                        if path
+                    )
+                    if router_backends
+                    else ""
+                ),
             },
         },
     }
