@@ -1,5 +1,6 @@
 import json
 import os
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -502,6 +503,33 @@ def test_complaint_generator_cli_wrapper_exposes_workspace_commands(tmp_path, mo
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["session"]["user_id"] == "package-cli-user"
+
+
+def test_python_m_cli_module_invokes_main(monkeypatch):
+    called = {"count": 0}
+
+    def fake_main() -> None:
+        called["count"] += 1
+
+    monkeypatch.setattr(applications_cli_module, "main", fake_main)
+
+    runpy.run_module("complaint_generator.cli", run_name="__main__")
+
+    assert called["count"] == 1
+
+
+def test_python_m_mcp_server_module_invokes_main(monkeypatch):
+    called = {"count": 0}
+
+    def fake_main() -> None:
+        called["count"] += 1
+
+    complaint_mcp_server_module = __import__("applications.complaint_mcp_server", fromlist=["main"])
+    monkeypatch.setattr(complaint_mcp_server_module, "main", fake_main)
+
+    runpy.run_module("complaint_generator.mcp_server", run_name="__main__")
+
+    assert called["count"] == 1
 
 
 def test_installed_console_scripts_expose_cli_and_mcp_entrypoints(tmp_path):
