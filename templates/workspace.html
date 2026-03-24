@@ -1418,11 +1418,18 @@
                                     <div>
                                         <label for="gmail-import-user">Gmail Address</label>
                                         <input id="gmail-import-user" type="email" placeholder="you@gmail.com" autocomplete="username">
+                                        <div class="helper-text">You can remember this address for the current browser session. The app password is never stored here.</div>
                                     </div>
                                     <div>
                                         <label for="gmail-import-password">Gmail App Password</label>
                                         <input id="gmail-import-password" type="password" placeholder="Google app password" autocomplete="current-password">
                                     </div>
+                                </div>
+                                <div>
+                                    <label style="display: flex; align-items: center; gap: 10px;">
+                                        <input id="gmail-import-remember-user" type="checkbox" checked>
+                                        <span>Remember Gmail address for this browser session</span>
+                                    </label>
                                 </div>
                                 <div class="field-row">
                                     <div>
@@ -1852,6 +1859,43 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
 
         function synopsisStorageKey() {
             return `complaint-workspace-synopsis:${workspaceUserId || 'anonymous'}`;
+        }
+
+        function gmailImportUserStorageKey() {
+            return `complaint-workspace-gmail-user:${workspaceUserId || 'anonymous'}`;
+        }
+
+        function hydrateGmailImportUser() {
+            if (typeof window.sessionStorage === 'undefined') {
+                return;
+            }
+            const userNode = document.getElementById('gmail-import-user');
+            const rememberNode = document.getElementById('gmail-import-remember-user');
+            if (!userNode || !rememberNode) {
+                return;
+            }
+            const stored = window.sessionStorage.getItem(gmailImportUserStorageKey());
+            if (stored && !userNode.value.trim()) {
+                userNode.value = stored;
+            }
+            rememberNode.checked = Boolean(stored) || rememberNode.checked;
+        }
+
+        function persistGmailImportUserPreference() {
+            if (typeof window.sessionStorage === 'undefined') {
+                return;
+            }
+            const userNode = document.getElementById('gmail-import-user');
+            const rememberNode = document.getElementById('gmail-import-remember-user');
+            if (!userNode || !rememberNode) {
+                return;
+            }
+            const nextValue = userNode.value.trim();
+            if (rememberNode.checked && nextValue) {
+                window.sessionStorage.setItem(gmailImportUserStorageKey(), nextValue);
+                return;
+            }
+            window.sessionStorage.removeItem(gmailImportUserStorageKey());
         }
 
         function buildDefaultSynopsis(sessionPayload) {
@@ -3825,6 +3869,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             workspaceSession = await client.startSession(workspaceUserId);
             await loadSharedCapabilities();
             renderWorkspace(workspaceSession);
+            persistGmailImportUserPreference();
             document.getElementById('gmail-import-password').value = '';
             setStatus(`Imported ${payload.imported_count || 0} Gmail message(s) into the evidence workspace.`);
         }
@@ -4208,6 +4253,8 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             window.localStorage.setItem(synopsisStorageKey(), value);
             syncSynopsisMirrors(value);
         });
+        document.getElementById('gmail-import-user').addEventListener('input', persistGmailImportUserPreference);
+        document.getElementById('gmail-import-remember-user').addEventListener('change', persistGmailImportUserPreference);
         document.getElementById('run-ux-review-button').addEventListener('click', () => runUiReview(true));
         document.getElementById('run-ux-snapshot-button').addEventListener('click', () => runUiReview(false));
         document.getElementById('run-ux-closed-loop-button').addEventListener('click', runClosedLoopUiOptimization);
@@ -4227,6 +4274,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 claim_elements: [],
             };
             renderWorkspace(bootstrap.session);
+            hydrateGmailImportUser();
             renderTools(workspaceSessionTools);
             renderSdkServerInfo(bootstrap.initialization, workspaceSessionTools);
             setStatus(`Workspace synchronized for ${workspaceUserId}.`);
