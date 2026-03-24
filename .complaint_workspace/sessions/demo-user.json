@@ -1,13 +1,393 @@
 {
+  "case_synopsis": "",
   "claim_type": "retaliation",
   "created_at": "2026-03-22T20:44:38.076637+00:00",
-  "draft": null,
+  "draft": {
+    "body": "IN THE UNITED STATES DISTRICT COURT\n\nFOR THE APPROPRIATE JUDICIAL DISTRICT\n\n\n\nPlaintiff, Plaintiff,\n\nv.\n\nDefendant, Defendant.\n\n\n\nCivil Action No. ________________\n\nCOMPLAINT FOR RETALIATION\n\nJURY TRIAL DEMANDED\n\n\n\nPlaintiff Plaintiff, proceeding pro se, alleges upon personal knowledge as to their own acts and upon information and belief as to all other matters as follows:\n\n\n\nNATURE OF THE ACTION\n\n1. Plaintiff brings this retaliation complaint against Defendant. This civil action arises from Defendant's retaliatory response after Plaintiff engaged in protected activity, including engaging in protected activity.\n\n2. Plaintiff seeks damages, equitable relief, and such further relief as may be just to remedy Defendant's retaliatory acts, restore lost compensation, and address the harm caused when Plaintiff suffered a materially adverse action.\n\n\n\nJURISDICTION AND VENUE\n\n3. This Court has subject-matter jurisdiction over this action because Plaintiff alleges retaliation for protected conduct and seeks relief for materially adverse acts taken in response to that protected conduct.\n\n4. Venue is proper in this District because a substantial part of the events or omissions giving rise to these claims occurred in this forum and the resulting harm was felt here.\n\n\n\nPARTIES\n\n5. Plaintiff Plaintiff is the person harmed by the retaliation described below.\n\n6. Defendant Defendant is the party from whom relief is sought and is responsible for the retaliatory actions alleged in this pleading.\n\n\n\nFACTUAL ALLEGATIONS\n\n7. Plaintiff engaged in protected activity by engaging in protected activity.\n\n8. That protected activity constituted opposition, reporting, or participation activity that should not have triggered reprisal.\n\n9. After that protected activity, Plaintiff suffered a materially adverse action.\n\n10. The relevant chronology is as follows: The events occurred in close temporal proximity.\n\n11. As a direct and proximate result of Defendant's conduct, Plaintiff suffered compensable harm.\n\n\n\nEVIDENTIARY SUPPORT AND NOTICE\n\n12. Plaintiff presently relies on the evidentiary materials identified below and anticipates that testimonial proof may be supplemented through discovery, amendment, or sworn declarations.\n\n13. Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: A Masterclass in Ribbed Essentials. (Causal link); Nvidia \u2013 The Inference Kingdom Expands (Causal link); Passenger rail wrong fit, wrong century, for Portland (Causal link).\n\n14. Based on the information presently available, Plaintiff contends that the evidentiary record presently supports 1 core claim elements and that 4 areas, if any, may be further corroborated through discovery, amendment, or additional evidentiary development.\n\n15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials form part of the evidentiary basis for this pleading and may be supplemented, authenticated, or amended as discovery proceeds.\n\n16. Plaintiff identifies documentary exhibit 'A Masterclass in Ribbed Essentials.' as presently supporting the causal link element.\n\n17. Plaintiff identifies documentary exhibit 'Nvidia \u2013 The Inference Kingdom Expands' as presently supporting the causal link element.\n\n\n\nCLAIM FOR RELIEF\n\nCOUNT I - RETALIATION\n\n18. Plaintiff repeats and realleges the preceding paragraphs as if fully set forth herein.\n\n19. Plaintiff engaged in protected activity by engaging in protected activity, and Defendant knew or should have known of that protected conduct.\n\n20. Soon thereafter, Defendant subjected Plaintiff to materially adverse action when Plaintiff suffered a materially adverse action, under circumstances supporting a causal inference of retaliation.\n\n21. The close temporal sequence, evidentiary record, and resulting harm plausibly support a retaliation claim and entitle Plaintiff to relief.\n\n22. Plaintiff has sustained damages and other losses including compensable harm.\n\n23. By reason of the retaliatory conduct alleged above, Defendant is liable to Plaintiff for damages, equitable relief, and such other relief as the Court deems just and proper.\n\n\n\nPRAYER FOR RELIEF\n\nWherefore, Plaintiff requests judgment against Defendant for the retaliation alleged herein and respectfully seeks the following relief:\n\n1. Compensatory damages according to proof.\n2. Back pay and lost benefits.\n3. Appropriate injunctive and equitable relief.\n\n\n\nJURY DEMAND\n\nPlaintiff demands a trial by jury on all issues so triable.\n\n\n\nSIGNATURE BLOCK\n\nDated: ____________________\n\n\n\nRespectfully submitted,\n\n\n\nPlaintiff\n\nPlaintiff, Pro Se\n\nAddress: ____________________\n\nTelephone: ____________________\n\nEmail: ____________________",
+    "case_synopsis": "The complainant is pursuing a retaliation complaint against the opposing party. The current theory is that The complainant an identified protected activity, then experienced an adverse action. The reported harm is described harm. Timeline posture: a still-developing timeline. Current support posture: 1 supported elements, 4 open gaps, 14 saved evidence items.",
+    "claim_type": "retaliation",
+    "draft_strategy": "template",
+    "generated_at": "2026-03-24T05:37:19.366122+00:00",
+    "requested_relief": [
+      "Compensatory damages",
+      "Back pay",
+      "Injunctive relief"
+    ],
+    "review_snapshot": {
+      "case_synopsis": "The complainant is pursuing a retaliation complaint against the opposing party. The current theory is that The complainant an identified protected activity, then experienced an adverse action. The reported harm is described harm. Timeline posture: a still-developing timeline. Current support posture: 1 supported elements, 4 open gaps, 14 saved evidence items.",
+      "claim_type": "retaliation",
+      "documents": [
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: A Masterclass in Ribbed Essentials.\nFrom: Universal Standard <hello@universalstandard.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:18:06\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0001-A-Masterclass-in-Ribbed-Essentials-69c1d8e7.5d0a0220.12f939.9e04SMTPIN_ADDED_BROKEN-mx.google.com/message.eml",
+          "id": "documents-1",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.351968+00:00",
+          "source": "gmail_import",
+          "title": "A Masterclass in Ribbed Essentials."
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Nvidia \u2013 The Inference Kingdom Expands\nFrom: SemiAnalysis <semianalysis@substack.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:27:46+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0002-Nvidia-The-Inference-Kingdom-Expands-20260324002746.3.34fac98855d5c87b-mg-d1.substack.com/message.eml",
+          "id": "documents-2",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.352215+00:00",
+          "source": "gmail_import",
+          "title": "Nvidia \u2013 The Inference Kingdom Expands"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Passenger rail wrong fit, wrong century, for Portland\nFrom: Naomi Inman at Cascade Policy Institute <naomi@cascadepolicy.org>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:31:59+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0003-Passenger-rail-wrong-fit-wrong-century-for-Portland-1916678697.624403.1774312319536-cell-3-757846948c-6t7rv/message.eml",
+          "id": "documents-3",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.362166+00:00",
+          "source": "gmail_import",
+          "title": "Passenger rail wrong fit, wrong century, for Portland"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Breaking news: Mullin confirmed as homeland security secretary\nFrom: The New York Times <breakingnews@nytimes.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:48:28+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0004-Breaking-news-Mullin-confirmed-as-homeland-security-secretary-77.3C.47832.C5FD1C96-i-0d75052724a39f4db.mta2vrest.sd.prd.sparkpost/message.eml",
+          "id": "documents-4",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.362316+00:00",
+          "source": "gmail_import",
+          "title": "Breaking news: Mullin confirmed as homeland security secretary"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Today\u2019s deals, curated for you\nFrom: \"Amazon.com\" <store-news@amazon.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T01:11:09+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0005-Today-s-deals-curated-for-you-0100019d1d6543f5-b15cc0a9-79b2-4bc3-b2f7-abd2f20694b4-000000-email.amazonses.com/message.eml",
+          "id": "documents-5",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.362849+00:00",
+          "source": "gmail_import",
+          "title": "Today\u2019s deals, curated for you"
+        },
+        {
+          "attachment_names": [
+            "image.png"
+          ],
+          "claim_element_id": "causation",
+          "content": "Subject: Please advise Babyxduck\nFrom: benjamin barber <starworks5@gmail.com>\nTo: Maltan Lava <Jillianmbirkbeck@gmail.com>\nDate: 2026-03-23T18:29:39-07:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0006-Please-advise-Babyxduck-CAMTdTS-Nz3N-zUa9inexB-EC-9cb-F_cVS_t5CQjRNeKqPeszw-mail.gmail.com/message.eml",
+          "id": "documents-6",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.363037+00:00",
+          "source": "gmail_import",
+          "title": "Please advise Babyxduck"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: SystemD Forked to Remove Age Verification\nFrom: The Lunduke Journal of Technology <lunduke@substack.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T01:30:43+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0007-SystemD-Forked-to-Remove-Age-Verification-20260324013043.3.68c0988afddf576f-mg-d1.substack.com/message.eml",
+          "id": "documents-7",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.363520+00:00",
+          "source": "gmail_import",
+          "title": "SystemD Forked to Remove Age Verification"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: 3 months of Spotify Premium for $0? Yes, please.\nFrom: Spotify <no-reply@spotify.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T01:43:54+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0008-3-months-of-Spotify-Premium-for-0-Yes-please-9xgk12r9TvimAzS3V9RT6w-geopod-ismtpd-1/message.eml",
+          "id": "documents-8",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.363716+00:00",
+          "source": "gmail_import",
+          "title": "3 months of Spotify Premium for $0? Yes, please."
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: New text message from (855) 952-2377\nFrom: \"(855) 952-2377\" <19712700855.18559522377.qmbx6-tNqt@txt.voice.google.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T03:49:40+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0009-New-text-message-from-855-952-2377-19712700855.369638067c3c310ac3d078b042fec5d865a2a258-txt.voice.google.com/message.eml",
+          "id": "documents-9",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.363919+00:00",
+          "source": "gmail_import",
+          "title": "New text message from (855) 952-2377"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Vintage Audio Repair and Restoration and 7 others are new Group suggestions for you\nFrom: Facebook <groupupdates@facebookmail.com>\nTo: Benjamin Barker <starworks5@gmail.com>\nDate: 2026-03-23T20:55:33-07:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0010-Vintage-Audio-Repair-and-Restoration-and-7-others-are-new-Group-suggestions-for-you-e808f96f-4109-4bb5-9da5-023272a6b5c6-facebookmail.com/message.eml",
+          "id": "documents-10",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.364376+00:00",
+          "source": "gmail_import",
+          "title": "Vintage Audio Repair and Restoration and 7 others are new Group suggestions for you"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Joseph Sadoski commented on Anurag Saxena\u2019s post: I\u2019m going to take another\u2026\nFrom: LinkedIn <notifications-noreply@linkedin.com>\nTo: Benjamin Barber <starworks5@gmail.com>\nDate: 2026-03-24T03:55:38+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0011-Joseph-Sadoski-commented-on-Anurag-Saxena-s-post-I-m-going-to-take-another-1006696591.19029842.1774324538719-lva1-app118020.prod.linkedin.com/message.eml",
+          "id": "documents-11",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.364615+00:00",
+          "source": "gmail_import",
+          "title": "Joseph Sadoski commented on Anurag Saxena\u2019s post: I\u2019m going to take another\u2026"
+        },
+        {
+          "attachment_names": [
+            "LLM-x-Law-Hackathon-6.pkpass",
+            "invite.ics"
+          ],
+          "claim_element_id": "causation",
+          "content": "Subject: Registration confirmed for LLM x Law Hackathon #6\nFrom: LLM x Law Hackathon #6 <cal-Ca227Y3pBfohFmB@calendar.luma-mail.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T04:55:09+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0012-Registration-confirmed-for-LLM-x-Law-Hackathon-6-0101019d1e325aeb-ae7e5e9b-e7c2-4b95-8542-34532820c3a5-000000-us-west-2.amazonses.com/message.eml",
+          "id": "documents-12",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.364849+00:00",
+          "source": "gmail_import",
+          "title": "Registration confirmed for LLM x Law Hackathon #6"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: New text message from (844) 946-0698\nFrom: \"(844) 946-0698\" <19712700855.18449460698.9R9sTfzL1F@txt.voice.google.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T04:56:14+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0013-New-text-message-from-844-946-0698-19712700855.ea3f2b25ce7e168b94660c6b59989b9facf8b84c-txt.voice.google.com/message.eml",
+          "id": "documents-13",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.365058+00:00",
+          "source": "gmail_import",
+          "title": "New text message from (844) 946-0698"
+        },
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Subject: Security alert\nFrom: Google <no-reply@accounts.google.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T05:30:04+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0014-Security-alert-NxqZFItx_qS8N97xGidk6g-notifications.google.com/message.eml",
+          "id": "documents-14",
+          "kind": "document",
+          "saved_at": "2026-03-24T05:37:19.365265+00:00",
+          "source": "gmail_import",
+          "title": "Security alert"
+        }
+      ],
+      "overview": {
+        "document_items": 14,
+        "missing_elements": 4,
+        "supported_elements": 1,
+        "testimony_items": 0
+      },
+      "recommended_actions": [
+        {
+          "detail": "Add testimony or documents to any unsupported claim element.",
+          "title": "Collect more corroboration"
+        },
+        {
+          "detail": "Close timing between protected activity and adverse action strengthens causation.",
+          "title": "Check the timeline"
+        }
+      ],
+      "support_matrix": [
+        {
+          "document_count": 0,
+          "id": "protected_activity",
+          "intake_supported": false,
+          "label": "Protected activity",
+          "status": "needs_support",
+          "support_count": 0,
+          "supported": false,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "employer_knowledge",
+          "intake_supported": false,
+          "label": "Employer knowledge",
+          "status": "needs_support",
+          "support_count": 0,
+          "supported": false,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "adverse_action",
+          "intake_supported": false,
+          "label": "Adverse action",
+          "status": "needs_support",
+          "support_count": 0,
+          "supported": false,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 14,
+          "id": "causation",
+          "intake_supported": false,
+          "label": "Causal link",
+          "status": "supported",
+          "support_count": 14,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "harm",
+          "intake_supported": false,
+          "label": "Damages",
+          "status": "needs_support",
+          "support_count": 0,
+          "supported": false,
+          "testimony_count": 0
+        }
+      ],
+      "testimony": []
+    },
+    "title": "Plaintiff v. Defendant Retaliation Complaint"
+  },
   "evidence": {
-    "documents": [],
+    "documents": [
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: A Masterclass in Ribbed Essentials.\nFrom: Universal Standard <hello@universalstandard.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:18:06\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0001-A-Masterclass-in-Ribbed-Essentials-69c1d8e7.5d0a0220.12f939.9e04SMTPIN_ADDED_BROKEN-mx.google.com/message.eml",
+        "id": "documents-1",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.351968+00:00",
+        "source": "gmail_import",
+        "title": "A Masterclass in Ribbed Essentials."
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Nvidia \u2013 The Inference Kingdom Expands\nFrom: SemiAnalysis <semianalysis@substack.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:27:46+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0002-Nvidia-The-Inference-Kingdom-Expands-20260324002746.3.34fac98855d5c87b-mg-d1.substack.com/message.eml",
+        "id": "documents-2",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.352215+00:00",
+        "source": "gmail_import",
+        "title": "Nvidia \u2013 The Inference Kingdom Expands"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Passenger rail wrong fit, wrong century, for Portland\nFrom: Naomi Inman at Cascade Policy Institute <naomi@cascadepolicy.org>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:31:59+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0003-Passenger-rail-wrong-fit-wrong-century-for-Portland-1916678697.624403.1774312319536-cell-3-757846948c-6t7rv/message.eml",
+        "id": "documents-3",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.362166+00:00",
+        "source": "gmail_import",
+        "title": "Passenger rail wrong fit, wrong century, for Portland"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Breaking news: Mullin confirmed as homeland security secretary\nFrom: The New York Times <breakingnews@nytimes.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T00:48:28+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0004-Breaking-news-Mullin-confirmed-as-homeland-security-secretary-77.3C.47832.C5FD1C96-i-0d75052724a39f4db.mta2vrest.sd.prd.sparkpost/message.eml",
+        "id": "documents-4",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.362316+00:00",
+        "source": "gmail_import",
+        "title": "Breaking news: Mullin confirmed as homeland security secretary"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Today\u2019s deals, curated for you\nFrom: \"Amazon.com\" <store-news@amazon.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T01:11:09+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0005-Today-s-deals-curated-for-you-0100019d1d6543f5-b15cc0a9-79b2-4bc3-b2f7-abd2f20694b4-000000-email.amazonses.com/message.eml",
+        "id": "documents-5",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.362849+00:00",
+        "source": "gmail_import",
+        "title": "Today\u2019s deals, curated for you"
+      },
+      {
+        "attachment_names": [
+          "image.png"
+        ],
+        "claim_element_id": "causation",
+        "content": "Subject: Please advise Babyxduck\nFrom: benjamin barber <starworks5@gmail.com>\nTo: Maltan Lava <Jillianmbirkbeck@gmail.com>\nDate: 2026-03-23T18:29:39-07:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0006-Please-advise-Babyxduck-CAMTdTS-Nz3N-zUa9inexB-EC-9cb-F_cVS_t5CQjRNeKqPeszw-mail.gmail.com/message.eml",
+        "id": "documents-6",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.363037+00:00",
+        "source": "gmail_import",
+        "title": "Please advise Babyxduck"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: SystemD Forked to Remove Age Verification\nFrom: The Lunduke Journal of Technology <lunduke@substack.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T01:30:43+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0007-SystemD-Forked-to-Remove-Age-Verification-20260324013043.3.68c0988afddf576f-mg-d1.substack.com/message.eml",
+        "id": "documents-7",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.363520+00:00",
+        "source": "gmail_import",
+        "title": "SystemD Forked to Remove Age Verification"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: 3 months of Spotify Premium for $0? Yes, please.\nFrom: Spotify <no-reply@spotify.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T01:43:54+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0008-3-months-of-Spotify-Premium-for-0-Yes-please-9xgk12r9TvimAzS3V9RT6w-geopod-ismtpd-1/message.eml",
+        "id": "documents-8",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.363716+00:00",
+        "source": "gmail_import",
+        "title": "3 months of Spotify Premium for $0? Yes, please."
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: New text message from (855) 952-2377\nFrom: \"(855) 952-2377\" <19712700855.18559522377.qmbx6-tNqt@txt.voice.google.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T03:49:40+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0009-New-text-message-from-855-952-2377-19712700855.369638067c3c310ac3d078b042fec5d865a2a258-txt.voice.google.com/message.eml",
+        "id": "documents-9",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.363919+00:00",
+        "source": "gmail_import",
+        "title": "New text message from (855) 952-2377"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Vintage Audio Repair and Restoration and 7 others are new Group suggestions for you\nFrom: Facebook <groupupdates@facebookmail.com>\nTo: Benjamin Barker <starworks5@gmail.com>\nDate: 2026-03-23T20:55:33-07:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0010-Vintage-Audio-Repair-and-Restoration-and-7-others-are-new-Group-suggestions-for-you-e808f96f-4109-4bb5-9da5-023272a6b5c6-facebookmail.com/message.eml",
+        "id": "documents-10",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.364376+00:00",
+        "source": "gmail_import",
+        "title": "Vintage Audio Repair and Restoration and 7 others are new Group suggestions for you"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Joseph Sadoski commented on Anurag Saxena\u2019s post: I\u2019m going to take another\u2026\nFrom: LinkedIn <notifications-noreply@linkedin.com>\nTo: Benjamin Barber <starworks5@gmail.com>\nDate: 2026-03-24T03:55:38+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0011-Joseph-Sadoski-commented-on-Anurag-Saxena-s-post-I-m-going-to-take-another-1006696591.19029842.1774324538719-lva1-app118020.prod.linkedin.com/message.eml",
+        "id": "documents-11",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.364615+00:00",
+        "source": "gmail_import",
+        "title": "Joseph Sadoski commented on Anurag Saxena\u2019s post: I\u2019m going to take another\u2026"
+      },
+      {
+        "attachment_names": [
+          "LLM-x-Law-Hackathon-6.pkpass",
+          "invite.ics"
+        ],
+        "claim_element_id": "causation",
+        "content": "Subject: Registration confirmed for LLM x Law Hackathon #6\nFrom: LLM x Law Hackathon #6 <cal-Ca227Y3pBfohFmB@calendar.luma-mail.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T04:55:09+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0012-Registration-confirmed-for-LLM-x-Law-Hackathon-6-0101019d1e325aeb-ae7e5e9b-e7c2-4b95-8542-34532820c3a5-000000-us-west-2.amazonses.com/message.eml",
+        "id": "documents-12",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.364849+00:00",
+        "source": "gmail_import",
+        "title": "Registration confirmed for LLM x Law Hackathon #6"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: New text message from (844) 946-0698\nFrom: \"(844) 946-0698\" <19712700855.18449460698.9R9sTfzL1F@txt.voice.google.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T04:56:14+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0013-New-text-message-from-844-946-0698-19712700855.ea3f2b25ce7e168b94660c6b59989b9facf8b84c-txt.voice.google.com/message.eml",
+        "id": "documents-13",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.365058+00:00",
+        "source": "gmail_import",
+        "title": "New text message from (844) 946-0698"
+      },
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Subject: Security alert\nFrom: Google <no-reply@accounts.google.com>\nTo: starworks5@gmail.com\nDate: 2026-03-24T05:30:04+00:00\nSaved email: /home/barberb/HACC/evidence/email_imports/starworks5-gmail-smoke/0014-Security-alert-NxqZFItx_qS8N97xGidk6g-notifications.google.com/message.eml",
+        "id": "documents-14",
+        "kind": "document",
+        "saved_at": "2026-03-24T05:37:19.365265+00:00",
+        "source": "gmail_import",
+        "title": "Security alert"
+      }
+    ],
     "testimony": []
   },
   "intake_answers": {},
   "intake_history": [],
-  "updated_at": "2026-03-22T23:49:17.208823+00:00",
+  "ui_readiness": null,
+  "updated_at": "2026-03-24T05:37:37.856213+00:00",
   "user_id": "demo-user"
 }

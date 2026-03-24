@@ -3,6 +3,7 @@ from __future__ import annotations
 import anyio
 import email
 import email.policy
+import imaplib
 import json
 import re
 from datetime import datetime
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence
 
 from ipfs_datasets_py.processors.multimedia.email_processor import create_email_processor
+from .evidence_relevance import build_complaint_terms, score_email_relevance
 
 if TYPE_CHECKING:
     from applications.complaint_workspace import ComplaintWorkspaceService
@@ -137,6 +139,18 @@ async def _search_message_ids(
     return await anyio.to_thread.run_sync(_run)
 
 
+async def _fetch_recent_message_ids(connection: Any, *, folder: str, limit: int) -> list[bytes]:
+    def _run() -> list[bytes]:
+        status, count_data = connection.select(folder, readonly=True)
+        if status != "OK":
+            raise RuntimeError(f"failed to open IMAP folder {folder!r}: {status}")
+        total_messages = int((count_data or [b"0"])[0] or b"0")
+        start = max(1, total_messages - max(0, int(limit)) + 1)
+        return [str(index).encode("ascii") for index in range(start, total_messages + 1)]
+
+    return await anyio.to_thread.run_sync(_run)
+
+
 async def _fetch_raw_message(connection: Any, message_id: bytes) -> bytes:
     def _run() -> bytes:
         status, data = connection.fetch(message_id, "(RFC822)")
@@ -163,11 +177,20 @@ async def import_gmail_evidence(
     date_before: Optional[str] = None,
     gmail_user: Optional[str] = None,
     gmail_app_password: Optional[str] = None,
+    complaint_query: Optional[str] = None,
+    complaint_keywords: Sequence[str] = (),
+    complaint_keyword_files: Sequence[str] = (),
+    min_relevance_score: float = 0.0,
     service: "ComplaintWorkspaceService" | None = None,
 ) -> dict[str, Any]:
     normalized_addresses = _normalize_addresses(addresses)
     if not normalized_addresses:
         raise ValueError("At least one target email address is required")
+    complaint_terms = build_complaint_terms(
+        complaint_query=complaint_query,
+        complaint_keywords=complaint_keywords,
+        complaint_keyword_files=complaint_keyword_files,
+    )
 
     workspace_root_path = Path(workspace_root)
     evidence_root_path = Path(evidence_root) if evidence_root is not None else _default_evidence_root(workspace_root_path)
@@ -189,17 +212,23 @@ async def import_gmail_evidence(
 
     await processor.connect()
     try:
-        message_ids = await _search_message_ids(
-            processor.connection,
-            folder=folder,
-            date_after=date_after,
-            date_before=date_before,
-        )
-        if limit is not None and limit > 0:
-            message_ids = message_ids[-int(limit) :]
+        try:
+            message_ids = await _search_message_ids(
+                processor.connection,
+                folder=folder,
+                date_after=date_after,
+                date_before=date_before,
+            )
+            if limit is not None and limit > 0:
+                message_ids = message_ids[-int(limit) :]
+        except imaplib.IMAP4.error as exc:
+            if not (limit is not None and limit > 0 and "got more than 1000000 bytes" in str(exc)):
+                raise
+            message_ids = await _fetch_recent_message_ids(processor.connection, folder=folder, limit=int(limit))
 
         imported: list[dict[str, Any]] = []
         skipped_count = 0
+        relevance_filtered_count = 0
         for index, message_id in enumerate(reversed(message_ids), start=1):
             raw_message = await _fetch_raw_message(processor.connection, message_id)
             parsed_message = email.message_from_bytes(raw_message, policy=email.policy.default)
@@ -213,6 +242,19 @@ async def import_gmail_evidence(
             email_date = str(parsed_message.get("Date") or "").strip()
             body_text = _extract_body_text(parsed_message)
             attachments = _extract_attachment_payloads(parsed_message)
+            relevance = score_email_relevance(
+                complaint_terms=complaint_terms,
+                subject=subject,
+                sender=sender,
+                recipient=recipient,
+                cc=str(parsed_message.get("Cc") or "").strip(),
+                reply_to=str(parsed_message.get("Reply-To") or "").strip(),
+                body_text=body_text,
+                attachment_names=[str(item.get("filename") or "") for item in attachments],
+            )
+            if complaint_terms and float(relevance["score"]) < float(min_relevance_score):
+                relevance_filtered_count += 1
+                continue
 
             date_fragment = "undated"
             try:
@@ -251,6 +293,9 @@ async def import_gmail_evidence(
                 "date": email_date,
                 "message_id_header": str(parsed_message.get("Message-ID") or "").strip(),
                 "matched_addresses": normalized_addresses,
+                "relevance_score": float(relevance["score"]),
+                "matched_terms": list(relevance["matched_terms"]),
+                "matched_fields": list(relevance["matched_fields"]),
                 "attachment_count": len(saved_attachments),
                 "attachments": saved_attachments,
                 "artifact_dir": str(message_dir),
@@ -288,6 +333,9 @@ async def import_gmail_evidence(
                     "from": sender,
                     "to": recipient,
                     "date": email_date,
+                    "relevance_score": float(relevance["score"]),
+                    "matched_terms": list(relevance["matched_terms"]),
+                    "matched_fields": list(relevance["matched_fields"]),
                     "artifact_dir": str(message_dir),
                     "eml_path": str(eml_path),
                     "attachment_paths": [item["path"] for item in saved_attachments],
@@ -304,9 +352,12 @@ async def import_gmail_evidence(
             "workspace_root": str(workspace_root_path),
             "evidence_root": str(evidence_root_path),
             "matched_addresses": normalized_addresses,
+            "complaint_terms": complaint_terms,
+            "min_relevance_score": float(min_relevance_score),
             "searched_message_count": len(message_ids),
             "imported_count": len(imported),
             "skipped_count": skipped_count,
+            "relevance_filtered_count": relevance_filtered_count,
             "imported": imported,
         }
     finally:

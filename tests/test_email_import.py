@@ -121,3 +121,51 @@ def test_import_gmail_evidence_saves_matching_emails_and_attachments(tmp_path, m
     assert "message.eml" in documents[0]["attachment_names"]
     assert "termination.pdf" in documents[0]["attachment_names"]
     assert "message.json" in documents[0]["attachment_names"]
+
+
+def test_import_gmail_evidence_filters_by_complaint_relevance(tmp_path, monkeypatch):
+    relevant_message = _build_email_bytes(
+        subject="Termination hearing request",
+        sender="manager@example.com",
+        recipient="tenant@example.com",
+        body="Retaliation and grievance hearing details are below.",
+    )
+    irrelevant_message = _build_email_bytes(
+        subject="Weekly deals",
+        sender="store@example.com",
+        recipient="tenant@example.com",
+        body="This message should be filtered.",
+    )
+
+    monkeypatch.setattr(
+        "complaint_generator.email_import.create_email_processor",
+        lambda **kwargs: _FakeProcessor([relevant_message, irrelevant_message]),
+    )
+
+    workspace_root = tmp_path / "sessions"
+    evidence_root = tmp_path / "evidence"
+    service = ComplaintWorkspaceService(root_dir=workspace_root)
+
+    async def _run_import():
+        return await import_gmail_evidence(
+            addresses=["tenant@example.com"],
+            user_id="case-user",
+            claim_element_id="causation",
+            workspace_root=workspace_root,
+            evidence_root=evidence_root,
+            folder="INBOX",
+            limit=20,
+            gmail_user="user@gmail.com",
+            gmail_app_password="app-password",
+            complaint_query="termination hearing retaliation grievance",
+            min_relevance_score=2.0,
+            service=service,
+        )
+
+    payload = anyio.run(_run_import)
+
+    assert payload["searched_message_count"] == 2
+    assert payload["imported_count"] == 1
+    assert payload["relevance_filtered_count"] == 1
+    assert payload["imported"][0]["subject"] == "Termination hearing request"
+    assert payload["imported"][0]["relevance_score"] >= 2.0

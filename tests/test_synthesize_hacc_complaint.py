@@ -412,6 +412,35 @@ def test_external_authority_basis_filters_irrelevant_corroborating_web_results()
     assert lines["corroborating_web_research_records"][0]["title"] == "Tenant grievance hearing timeline and notice checklist"
 
 
+def test_external_authority_basis_excludes_legal_like_web_pages_from_corroborating_web_results():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {"results": []},
+            "web_discovery": {
+                "results": [
+                    {
+                        "title": "34 U.S. Code § 12494 - Prohibition on retaliation | U.S. Code | US Law ...",
+                        "url": "https://www.law.cornell.edu/uscode/text/34/12494",
+                        "summary": "Retaliation authority cross-referencing the Fair Housing Act.",
+                        "research_priority_reasons": ["preferred housing domain: www.law.cornell.edu", "housing-specific context"],
+                    },
+                    {
+                        "title": "Tenant grievance hearing timeline and notice checklist",
+                        "url": "https://example.org/tenant-grievance-hearing-checklist",
+                        "summary": "Public housing tenant grievance hearing notice and appeal steps.",
+                        "research_priority_reasons": ["matched query terms: grievance, hearing", "housing-specific context"],
+                    },
+                ]
+            },
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["corroborating_web_research_records"]) == 1
+    assert lines["corroborating_web_research_records"][0]["url"] == "https://example.org/tenant-grievance-hearing-checklist"
+
+
 def test_external_authority_basis_deduplicates_promoted_web_authorities_from_corroborating_web_results():
     grounding_bundle = {
         "external_research_bundle": {

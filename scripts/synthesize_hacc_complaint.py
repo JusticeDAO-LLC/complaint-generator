@@ -2240,6 +2240,21 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         url = str(item.get("url") or "").strip().lower()
         if _is_irrelevant_non_housing_fact(text):
             return False
+        legal_like_markers = (
+            "law.cornell.edu/uscode",
+            "law.cornell.edu/cfr",
+            "uscode.house.gov",
+            "ecfr.gov",
+            "govinfo.gov",
+            "federalregister.gov",
+            " u.s.c.",
+            " u.s. code",
+            " c.f.r.",
+            " cfr ",
+            "§",
+        )
+        if any(marker in lowered or marker in url for marker in legal_like_markers):
+            return False
         noise_markers = (
             "sexual misconduct",
             "sample grievance appeal",

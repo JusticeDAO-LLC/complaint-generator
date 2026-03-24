@@ -28,6 +28,8 @@ def test_resolve_credentials_can_prompt_securely(monkeypatch):
         prompt_for_credentials=True,
         use_keyring=False,
         save_to_keyring=False,
+        use_ipfs_secrets_vault=False,
+        save_to_ipfs_secrets_vault=False,
     )
 
     monkeypatch.setattr(module.sys.stdin, "isatty", lambda: True)
@@ -52,6 +54,8 @@ def test_resolve_credentials_requires_non_interactive_credentials():
         prompt_for_credentials=False,
         use_keyring=False,
         save_to_keyring=False,
+        use_ipfs_secrets_vault=False,
+        save_to_ipfs_secrets_vault=False,
     )
 
     with pytest.raises(SystemExit):
@@ -68,6 +72,8 @@ def test_resolve_credentials_can_load_password_from_keyring(monkeypatch):
         prompt_for_credentials=False,
         use_keyring=True,
         save_to_keyring=False,
+        use_ipfs_secrets_vault=False,
+        save_to_ipfs_secrets_vault=False,
     )
 
     monkeypatch.setattr(credentials_module, "read_password_from_keyring", lambda user: "stored-app-password")
@@ -88,10 +94,66 @@ def test_resolve_credentials_can_save_password_to_keyring(monkeypatch):
         prompt_for_credentials=False,
         use_keyring=False,
         save_to_keyring=True,
+        use_ipfs_secrets_vault=False,
+        save_to_ipfs_secrets_vault=False,
     )
     captured = {}
 
     monkeypatch.setattr(credentials_module, "save_password_to_keyring", lambda user, password, parser_obj: captured.update({"user": user, "password": password}))
+
+    gmail_user, gmail_password = module._resolve_credentials(args, parser)
+
+    assert gmail_user == "user@gmail.com"
+    assert gmail_password == "provided-app-password"
+    assert captured == {"user": "user@gmail.com", "password": "provided-app-password"}
+
+
+def test_resolve_credentials_can_load_password_from_ipfs_secrets_vault(monkeypatch):
+    module = _load_script_module()
+    credentials_module = importlib.import_module("complaint_generator.email_credentials")
+    parser = argparse.ArgumentParser()
+    args = argparse.Namespace(
+        gmail_user="user@gmail.com",
+        gmail_app_password="",
+        prompt_for_credentials=False,
+        use_keyring=False,
+        save_to_keyring=False,
+        use_ipfs_secrets_vault=True,
+        save_to_ipfs_secrets_vault=False,
+    )
+
+    monkeypatch.setattr(
+        credentials_module,
+        "read_password_from_ipfs_secrets_vault",
+        lambda user: "stored-vault-password",
+    )
+
+    gmail_user, gmail_password = module._resolve_credentials(args, parser)
+
+    assert gmail_user == "user@gmail.com"
+    assert gmail_password == "stored-vault-password"
+
+
+def test_resolve_credentials_can_save_password_to_ipfs_secrets_vault(monkeypatch):
+    module = _load_script_module()
+    credentials_module = importlib.import_module("complaint_generator.email_credentials")
+    parser = argparse.ArgumentParser()
+    args = argparse.Namespace(
+        gmail_user="user@gmail.com",
+        gmail_app_password="provided-app-password",
+        prompt_for_credentials=False,
+        use_keyring=False,
+        save_to_keyring=False,
+        use_ipfs_secrets_vault=False,
+        save_to_ipfs_secrets_vault=True,
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        credentials_module,
+        "save_password_to_ipfs_secrets_vault",
+        lambda user, password, parser_obj: captured.update({"user": user, "password": password}),
+    )
 
     gmail_user, gmail_password = module._resolve_credentials(args, parser)
 
