@@ -2186,6 +2186,24 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         )
         return any(marker in lowered for marker in strong_procedural_markers)
 
+    def _has_grievance_process_fit(text: str) -> bool:
+        lowered = text.lower()
+        grievance_process_markers = (
+            "grievance",
+            "informal hearing",
+            "hearing",
+            "informal review",
+            "appeal",
+            "notice",
+            "due process",
+            "termination",
+            "adverse action",
+            "982.555",
+            "part 966",
+            "1437d(k)",
+        )
+        return any(marker in lowered for marker in grievance_process_markers)
+
     def _has_strong_authority_citation(text: str) -> bool:
         lowered = text.lower()
         return any(
@@ -2204,6 +2222,56 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
                 "42 usc",
             )
         )
+
+    def _canonical_legal_citation_key(value: str) -> str:
+        cleaned = str(value or "").strip().lower().strip(" .,")
+        if not cleaned:
+            return ""
+        normalized = re.sub(r"\s+", " ", cleaned.replace("u.s. code", "u.s.c.").replace("§", " § "))
+        title_usc_match = re.search(r"\btitle\s+(\d+)\s*(?:§\s*)?([\d\w.()\-]+)", normalized)
+        if title_usc_match:
+            return f"usc:{title_usc_match.group(1)}:{title_usc_match.group(2).lower().rstrip('.')}"
+        usc_match = re.search(r"\b(\d+)\s+u\.?s\.?c\.?\s*(?:§\s*)?([\d\w.()\-]+)", normalized)
+        if usc_match:
+            return f"usc:{usc_match.group(1)}:{usc_match.group(2).lower().rstrip('.')}"
+        cfr_match = re.search(r"\b(\d+)\s+c\.?f\.?r\.?\s*(?:part\s+)?(?:§\s*)?([\d\w.()\-]+)", normalized)
+        if cfr_match:
+            return f"cfr:{cfr_match.group(1)}:{cfr_match.group(2).lower().rstrip('.')}"
+        return ""
+
+    def _extract_citation_text(value: str) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            return ""
+        patterns = (
+            r"\b\d+\s+C\.?F\.?R\.?\s*(?:part\s+)?(?:[\u00a7§]\s*)?[\d\w.()\-]+",
+            r"\b\d+\s+U\.?S\.?C\.?\s*(?:[\u00a7§]\s*)?[\d\w.()\-]+",
+            r"\b\d+\s+U\.?S\.?\s+Code\s*(?:[\u00a7§]\s*)?[\d\w.()\-]+",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, cleaned, re.IGNORECASE)
+            if match:
+                return re.sub(r"\s+", " ", match.group(0)).strip()
+        return ""
+
+    def _is_mismatched_uscode_releasepoint(item: Dict[str, Any]) -> bool:
+        authority_source = str(item.get("authority_source") or item.get("source") or "").strip().lower()
+        url = str(item.get("url") or "").strip().lower()
+        if authority_source != "us_code":
+            return False
+        if "uscode.house.gov" not in url or "prelimusc" not in url:
+            return False
+        primary_text = " ".join(
+            str(part or "").strip()
+            for part in (item.get("citation"), item.get("title"), item.get("url"))
+            if str(part or "").strip()
+        )
+        primary_key = _canonical_legal_citation_key(_extract_citation_text(primary_text) or primary_text)
+        metadata = dict(item.get("metadata") or {})
+        details = dict(metadata.get("details") or {})
+        query_text = str(details.get("query") or metadata.get("query") or "").strip()
+        query_key = _canonical_legal_citation_key(_extract_citation_text(query_text) or query_text)
+        return bool(primary_key and query_key and primary_key != query_key)
 
     def _is_relevant_authority_item(item: Dict[str, Any]) -> bool:
         text = _research_text(item)
@@ -2224,8 +2292,15 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         has_housing = _has_housing_context(relevance_text)
         has_procedural = _has_procedural_context(relevance_text)
         has_strong_procedural_fit = _has_strong_procedural_fit(relevance_text)
+        has_grievance_process_fit = _has_grievance_process_fit(relevance_text)
+        if _is_mismatched_uscode_releasepoint(item):
+            return False
+        if "broad us code releasepoint without grievance-process fit" in relevance_text:
+            return False
+        if "uscode.house.gov" in url and "prelimusc" in url and not has_grievance_process_fit:
+            return False
         if _has_strong_authority_citation(relevance_text):
-            return has_housing or has_procedural
+            return has_grievance_process_fit or has_strong_procedural_fit
         if _is_opaque_identifier(citation):
             if "federal_register" in authority_source or "/fr-" in url or "govinfo.gov" in url:
                 return has_housing and has_strong_procedural_fit

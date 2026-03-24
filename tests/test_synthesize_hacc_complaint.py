@@ -377,6 +377,47 @@ def test_external_authority_basis_filters_opaque_federal_register_items_without_
     assert "2024-29824" not in "\n".join(lines["authorities"])
 
 
+def test_external_authority_basis_excludes_broad_uscode_releasepoints_without_grievance_fit():
+    grounding_bundle = {
+        "external_research_bundle": {
+            "legal_authorities": {
+                "results": [
+                    {
+                        "citation": "Title 42 § 1437f.",
+                        "title": "Title 42 § 1437f.",
+                        "authority_source": "us_code",
+                        "url": "https://uscode.house.gov/download/releasepoints/us/pl/118/158/PRELIMusc42.htm",
+                        "research_priority_reasons": [
+                            "primary legal source",
+                            "grievance-process authority",
+                        ],
+                        "summary": "Administrative grievance procedure conducted under 42 U.S.C. 1437d(k).",
+                        "metadata": {"query": "42 U.S.C. 1437d(k) grievance procedure"},
+                    },
+                    {
+                        "citation": "24 C.F.R. 982.555",
+                        "title": "Informal hearing for participants",
+                        "authority_source": "web_fallback",
+                        "url": "https://www.law.cornell.edu/cfr/text/24/982.555",
+                        "research_priority_reasons": [
+                            "promoted grievance-process authority",
+                            "grievance-process authority",
+                        ],
+                        "summary": "Discusses informal hearing notice, appeal rights, and decision timing.",
+                    },
+                ]
+            },
+            "web_discovery": {"results": []},
+        }
+    }
+
+    lines = MODULE._external_authority_basis(grounding_bundle)
+
+    assert len(lines["authority_records"]) == 1
+    assert lines["authority_records"][0]["citation"] == "24 C.F.R. 982.555"
+    assert "Title 42 § 1437f" not in "\n".join(lines["authorities"])
+
+
 def test_external_authority_basis_filters_irrelevant_corroborating_web_results():
     grounding_bundle = {
         "external_research_bundle": {

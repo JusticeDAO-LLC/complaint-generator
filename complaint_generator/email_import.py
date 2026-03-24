@@ -7,6 +7,8 @@ import imaplib
 import json
 import re
 from datetime import datetime
+from email import policy
+from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence
@@ -49,6 +51,23 @@ def _extract_header_addresses(message: email.message.EmailMessage) -> set[str]:
             normalized = str(addr or "").strip().lower()
             if normalized:
                 addresses.add(normalized)
+    return addresses
+
+
+def _extract_header_addresses_from_raw(raw_message: bytes) -> set[str]:
+    try:
+        parsed = BytesParser(policy=policy.default).parsebytes(raw_message)
+    except Exception:
+        return set()
+    addresses: set[str] = set()
+    for header_name in ("from", "to", "cc", "bcc", "reply-to", "sender"):
+        header = parsed.get(header_name)
+        header_addresses = getattr(header, "addresses", ()) or ()
+        for entry in header_addresses:
+            username = str(getattr(entry, "username", "") or "").strip()
+            domain = str(getattr(entry, "domain", "") or "").strip()
+            if username and domain:
+                addresses.add(f"{username}@{domain}".lower())
     return addresses
 
 
@@ -232,7 +251,8 @@ async def import_gmail_evidence(
         for index, message_id in enumerate(reversed(message_ids), start=1):
             raw_message = await _fetch_raw_message(processor.connection, message_id)
             parsed_message = email.message_from_bytes(raw_message, policy=email.policy.default)
-            if not _message_matches_addresses(parsed_message, normalized_addresses):
+            header_addresses = _extract_header_addresses(parsed_message) | _extract_header_addresses_from_raw(raw_message)
+            if normalized_addresses and not any(address in header_addresses for address in normalized_addresses):
                 skipped_count += 1
                 continue
 

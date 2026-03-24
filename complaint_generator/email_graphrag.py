@@ -1,34 +1,39 @@
 from __future__ import annotations
 
 import json
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
 
 from complaint_phases.knowledge_graph import KnowledgeGraphBuilder
+from ipfs_datasets_py.processors.multimedia.attachment_text_extractor import extract_attachment_text
 
 
-TEXT_ATTACHMENT_SUFFIXES = {
-    ".txt",
-    ".md",
-    ".json",
-    ".csv",
-    ".tsv",
-    ".html",
-    ".htm",
-    ".xml",
-    ".log",
-}
-
-
-def _read_text_attachment(path: Path, *, max_bytes: int = 200_000) -> str:
-    if path.suffix.lower() not in TEXT_ATTACHMENT_SUFFIXES:
-        return ""
+def _participants_from_eml(bundle_dir: Path) -> list[str]:
+    eml_path = bundle_dir / "message.eml"
+    if not eml_path.exists():
+        return []
     try:
-        raw = path.read_bytes()[:max_bytes]
-        return raw.decode("utf-8", errors="ignore").strip()
+        message = BytesParser(policy=policy.default).parsebytes(eml_path.read_bytes())
     except Exception:
-        return ""
-
+        return []
+    participants: list[str] = []
+    seen: set[str] = set()
+    for header_name in ("from", "to", "cc", "bcc", "reply-to", "sender"):
+        header = message.get(header_name)
+        header_addresses = getattr(header, "addresses", ()) or ()
+        for entry in header_addresses:
+            username = str(getattr(entry, "username", "") or "").strip()
+            domain = str(getattr(entry, "domain", "") or "").strip()
+            if not username or not domain:
+                continue
+            address = f"{username}@{domain}".lower()
+            if address in seen:
+                continue
+            seen.add(address)
+            participants.append(address)
+    return participants
 
 def _email_record_to_corpus_text(record: dict[str, Any]) -> str:
     lines: list[str] = []
@@ -45,7 +50,8 @@ def _email_record_to_corpus_text(record: dict[str, Any]) -> str:
     for path_str in record.get("attachment_paths") or []:
         path = Path(path_str)
         lines.append(f"Attachment filename: {path.name}")
-        attachment_text = _read_text_attachment(path)
+        extraction = extract_attachment_text(path)
+        attachment_text = str(extraction.get("text") or "").strip()
         if attachment_text:
             lines.append(f"Attachment text from {path.name}: {attachment_text}")
     return "\n".join(line for line in lines if line.strip()).strip()
@@ -66,7 +72,19 @@ def build_email_graphrag_artifacts(
     email_corpus_records: list[dict[str, Any]] = []
     combined_sections: list[str] = []
     for index, record in enumerate(records, start=1):
-        corpus_text = _email_record_to_corpus_text(record)
+        bundle_dir = Path(record.get("bundle_dir") or "")
+        parsed_participants = _participants_from_eml(bundle_dir) if bundle_dir else []
+        merged_participants: list[str] = []
+        seen_participants: set[str] = set()
+        for participant in list(record.get("participants") or []) + parsed_participants:
+            cleaned = str(participant or "").strip().lower()
+            if not cleaned or cleaned in seen_participants:
+                continue
+            seen_participants.add(cleaned)
+            merged_participants.append(cleaned)
+        record_for_corpus = dict(record)
+        record_for_corpus["participants"] = merged_participants
+        corpus_text = _email_record_to_corpus_text(record_for_corpus)
         entry = {
             "index": index,
             "subject": record.get("subject", ""),
@@ -75,6 +93,7 @@ def build_email_graphrag_artifacts(
             "date": record.get("date"),
             "bundle_dir": record.get("bundle_dir"),
             "attachment_paths": list(record.get("attachment_paths") or []),
+            "participants": merged_participants,
             "corpus_text": corpus_text,
         }
         email_corpus_records.append(entry)
