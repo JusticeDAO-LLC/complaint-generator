@@ -2145,7 +2145,9 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
             "voucher",
             "public housing",
             "lease",
-            "assistance",
+            "rental assistance",
+            "housing assistance",
+            "project-based rental assistance",
             "hacc",
             "pha",
             "continuum of care",
@@ -2170,6 +2172,19 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
             "discrimin",
         )
         return any(marker in lowered for marker in procedural_markers)
+
+    def _has_strong_procedural_fit(text: str) -> bool:
+        lowered = text.lower()
+        strong_procedural_markers = (
+            "grievance",
+            "hearing",
+            "informal review",
+            "appeal",
+            "due process",
+            "reasonable accommodation",
+            "retaliat",
+        )
+        return any(marker in lowered for marker in strong_procedural_markers)
 
     def _has_strong_authority_citation(text: str) -> bool:
         lowered = text.lower()
@@ -2208,14 +2223,15 @@ def _external_authority_basis(grounding_bundle: Dict[str, Any], limit: int = 5) 
         url = str(item.get("url") or "").strip().lower()
         has_housing = _has_housing_context(relevance_text)
         has_procedural = _has_procedural_context(relevance_text)
+        has_strong_procedural_fit = _has_strong_procedural_fit(relevance_text)
         if _has_strong_authority_citation(relevance_text):
             return has_housing or has_procedural
         if _is_opaque_identifier(citation):
             if "federal_register" in authority_source or "/fr-" in url or "govinfo.gov" in url:
-                return has_housing and has_procedural
+                return has_housing and has_strong_procedural_fit
             return has_housing or has_procedural
         if "federal_register" in authority_source or "/fr-" in url:
-            return has_housing and has_procedural
+            return has_housing and has_strong_procedural_fit
         return has_housing or has_procedural
 
     def _is_relevant_corroborating_web_item(item: Dict[str, Any]) -> bool:
