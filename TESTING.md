@@ -96,7 +96,7 @@ For the full focused claim-support regression slice, use the repo-local runner:
 .venv/bin/python scripts/run_claim_support_review_regression.py
 ```
 
-That command auto-includes the browser-backed Playwright coverage when both the Playwright package and Chromium runtime are installed. In browser mode it runs both the dashboard smoke and the cohesive site-flow suite. Use `--browser off` to force the non-browser slice or `--browser on` to require the browser lane explicitly.
+That command auto-includes the browser-backed Playwright coverage when both the Playwright package and Chromium runtime are installed. In browser mode it runs the focused pytest slice, including both the dashboard smoke and the cohesive site-flow suite, and then runs the JavaScript Playwright compatibility specs in `playwright/tests/navigation.spec.js` and `playwright/tests/complaint-flow.spec.js`. Use `--browser off` to force the non-browser slice or `--browser on` to require the full browser lane explicitly.
 
 Use `--network on` when you want the same runner to opt into the network-gated package-surface tests as part of the same invocation. Keep the default `--network auto` behavior when you want the focused slice without forcing those package-surface checks.
 
@@ -134,7 +134,7 @@ Maintenance rule:
 - Use `scripts/run_claim_support_review_regression.py --browser on --network on` when you want the browser-backed slice plus the network-gated package-surface checks as an explicit higher-confidence gate.
 - Use `pytest -m "not integration"` for faster local feedback when you do not need external integrations.
 - Treat the browser-backed suites as optional for local setup and required in the browser CI lane.
-- Treat `npm test:e2e` as supplemental compatibility coverage, not as a replacement for the Python browser gate.
+- Treat `npm test:e2e` as supplemental compatibility coverage when run on its own, but note that the browser-enabled claim-support runner now includes the required navigation and complaint-flow specs as part of the enforced browser lane.
 
 ### Canary Ops Smoke Checks
 

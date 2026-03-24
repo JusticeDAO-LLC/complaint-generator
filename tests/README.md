@@ -80,6 +80,8 @@ The equivalent repo-local helper auto-detects whether the browser smoke should b
 .venv/bin/python scripts/run_claim_support_review_regression.py
 ```
 
+When browser coverage is enabled, that helper runs the focused pytest slice first and then executes the JavaScript Playwright compatibility specs in `playwright/tests/navigation.spec.js` and `playwright/tests/complaint-flow.spec.js` through `npm run test:e2e -- --workers=1 ...`.
+
 In VS Code, the same runner is available from the workspace task list as `Claim Support Regression`, with explicit `No Browser`, `Require Browser`, and `Browser + Network` variants.
 
 The Run and Debug panel exposes the same four variants through matching launch configurations.
@@ -123,6 +125,8 @@ That smoke test starts a local FastAPI review surface, seeds one saved testimony
 If Playwright is not installed, the test skips cleanly at runtime.
 
 Use `.venv/bin/python scripts/run_claim_support_review_regression.py --browser off` when you want the same focused slice without the browser-backed smoke, or `--browser on` when you want the command to require it.
+
+With `--browser on`, the runner also requires the JavaScript Playwright compatibility lane to pass after the Python browser suites complete successfully.
 
 ### Verbose Output
 

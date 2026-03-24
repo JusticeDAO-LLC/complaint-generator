@@ -60,6 +60,7 @@ complaint_generator/agentic_evidence_download.py
 complaint_generator/apps.py
 complaint_generator/cli.py
 complaint_generator/email_credentials.py
+complaint_generator/email_graphrag.py
 complaint_generator/email_import.py
 complaint_generator/email_seed_planner.py
 complaint_generator/entrypoints.py
@@ -224,6 +225,7 @@ tests/test_document_pipeline.py
 tests/test_document_pipeline_fallbacks.py
 tests/test_document_workflow_targeting_summary.py
 tests/test_domain_adaptation_learning.py
+tests/test_email_graphrag.py
 tests/test_email_import.py
 tests/test_email_seed_planner.py
 tests/test_enhanced_denoising.py

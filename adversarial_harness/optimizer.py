@@ -3629,6 +3629,32 @@ class Optimizer:
             for item in list(complaint_output_feedback.get("draft_normalizations") or [])
             if str(item).strip()
         ]
+        draft_strategy = str(complaint_output_feedback.get("draft_strategy") or "").strip().lower()
+        draft_fallback_reason = str(complaint_output_feedback.get("draft_fallback_reason") or "").strip()
+        if draft_strategy and draft_strategy != "llm_router":
+            recommended_changes.append(
+                {
+                    "title": "Template fallback warning",
+                    "implementation_notes": (
+                        "The exported complaint is still relying on the template drafting path instead of a successful llm_router draft. "
+                        "Treat this as a product-quality signal: make fallback status, release-gate posture, and drafting-path guidance more explicit in the UI and optimizer review."
+                    ),
+                    "shared_code_path": "templates/workspace.html",
+                    "sdk_considerations": "Preserve MCP SDK draft generation while surfacing when the system fell back from the intended llm_router path.",
+                }
+            )
+        if draft_fallback_reason:
+            recommended_changes.append(
+                {
+                    "title": "Draft fallback reason warning",
+                    "implementation_notes": (
+                        "The complaint generator recorded a concrete fallback reason before export. "
+                        f"Fallback reason: {draft_fallback_reason}"
+                    ),
+                    "shared_code_path": "applications/complaint_workspace.py",
+                    "sdk_considerations": "Keep the MCP SDK draft flow intact while surfacing actionable fallback guidance in the dashboard and review outputs.",
+                }
+            )
         if draft_normalizations:
             recommended_changes.append(
                 {
@@ -3744,6 +3770,8 @@ class Optimizer:
                     "complaint_output_suggestions": list((bundle.complaint_output_feedback or {}).get("ui_suggestions") or []),
                     "formal_diagnostics": dict((bundle.complaint_output_feedback or {}).get("formal_diagnostics") or {}),
                     "claim_type_alignment_score": int((bundle.complaint_output_feedback or {}).get("claim_type_alignment_score") or 0),
+                    "draft_strategy": str((bundle.complaint_output_feedback or {}).get("draft_strategy") or ""),
+                    "draft_fallback_reason": str((bundle.complaint_output_feedback or {}).get("draft_fallback_reason") or ""),
                     "draft_normalizations": list((bundle.complaint_output_feedback or {}).get("draft_normalizations") or []),
                     "recommended_target_files": list(bundle.target_files or []),
                 },

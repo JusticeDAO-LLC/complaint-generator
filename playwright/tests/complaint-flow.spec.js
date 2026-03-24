@@ -359,6 +359,8 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#tooling-contract-preview')).toContainText(/"all_core_flow_steps_exposed":\s*true/i);
     await expect(page.locator('#tooling-contract-preview')).toContainText(/complaint\.generate_complaint/i);
     await expect(page.locator('#tooling-contract-preview')).toContainText(/getToolingContract/i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/complaint\.get_formal_diagnostics/i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/getFormalDiagnostics/i);
     await page.locator('#refresh-formal-diagnostics-button').click();
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Formal complaint posture summary/i, { timeout: 15000 });
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Release gate verdict:/i, { timeout: 15000 });
@@ -566,6 +568,14 @@ test.describe('complaint generation workflow', () => {
     await page.goto('/workspace');
     await waitForWorkspaceReady(page);
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();
+    await page.locator('#evidence-kind').selectOption('testimony');
+    await page.locator('#evidence-claim-element').selectOption('causation');
+    await page.locator('#evidence-title').fill('Mediator follow-up statement');
+    await page.locator('#evidence-source').fill('Chat mediator summary');
+    await page.locator('#evidence-content').fill('I reported wage-and-hour violations to HR, and the termination followed three days later without any other explanation.');
+    await page.locator('#save-evidence-button').click();
+    await expect(page.locator('#evidence-list')).toContainText(/Mediator follow-up statement/i);
+
     await page.locator('#evidence-kind').selectOption('document');
     await page.locator('#evidence-claim-element').selectOption('causation');
     await page.locator('#evidence-title').fill('Termination timeline email');
@@ -600,7 +610,7 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#draft-title')).toHaveValue(/Taylor Smith v\. Acme Logistics Retaliation Complaint/i);
     await expect(page.locator('#draft-contract-preview')).toContainText(/Claim type: Retaliation/i);
     await expect(page.locator('#draft-contract-preview')).toContainText(/Drafting mode: llm_router formal complaint path/i);
-    await expect(page.locator('#draft-readiness-preview')).toContainText(/Evidence items: 1/i);
+    await expect(page.locator('#draft-readiness-preview')).toContainText(/Evidence items: 2/i);
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#refresh-complaint-readiness-button').click();
@@ -667,7 +677,9 @@ test.describe('complaint generation workflow', () => {
     expect(markdownBody).toContain('Plaintiff Taylor Smith, proceeding pro se, alleges upon personal knowledge');
     expect(markdownBody).toContain('engaged in protected activity by reporting wage-and-hour violations to HR.');
     expect(markdownBody).toContain('The relevant chronology is as follows: Plaintiff made the report on April 2, and the termination occurred on April 5.');
+    expect(markdownBody).toContain("The witness proof currently identified includes: testimony presently identified as 'Mediator follow-up statement' on the causal link element.");
     expect(markdownBody).toContain("Plaintiff presently identifies the following documents, exhibits, or records in support of this pleading: documentary exhibit presently identified as 'Termination timeline email' on the causal link element.");
+    expect(markdownBody).toContain("Plaintiff expects to offer testimony presently identified as 'Mediator follow-up statement' in support of the causal link element.");
     expect(markdownBody).toContain("Plaintiff expects to offer documentary exhibit 'Termination timeline email' in support of the causal link element.");
     expect(markdownBody).toContain('That protected activity constituted protected opposition, reporting, or participation activity under the governing anti-retaliation framework.');
     expect(markdownBody).toContain('Within days of that protected activity, Defendant took materially adverse action against Plaintiff by terminating Plaintiff three days later.');

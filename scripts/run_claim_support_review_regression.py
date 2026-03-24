@@ -27,6 +27,11 @@ BROWSER_TESTS = [
     "tests/test_complaint_generator_site_playwright.py",
 ]
 
+PLAYWRIGHT_E2E_SPECS = [
+    "playwright/tests/navigation.spec.js",
+    "playwright/tests/complaint-flow.spec.js",
+]
+
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -110,6 +115,24 @@ def build_pytest_command(
     return command
 
 
+def build_playwright_command(
+    *,
+    browser_mode: str = "auto",
+    browser_available: Optional[bool] = None,
+    npm_executable: Optional[str] = None,
+) -> list[str]:
+    targets = resolve_test_targets(
+        browser_mode,
+        browser_available=browser_available,
+    )
+    include_browser = len(targets) > len(BASE_TESTS)
+    if not include_browser:
+        return []
+    command = [npm_executable or "npm", "run", "test:e2e", "--", "--workers=1"]
+    command.extend(PLAYWRIGHT_E2E_SPECS)
+    return command
+
+
 def build_run_environment(
     *,
     network_mode: str = "auto",
@@ -135,15 +158,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         browser_mode=args.browser,
         pytest_args=passthrough,
     )
+    playwright_command = build_playwright_command(browser_mode=args.browser)
     if args.list:
         print(" ".join(command))
+        if playwright_command:
+            print(" ".join(playwright_command))
         return 0
+
+    environment = build_run_environment(network_mode=args.network)
 
     completed = subprocess.run(
         command,
         cwd=PROJECT_ROOT,
-        env=build_run_environment(network_mode=args.network),
+        env=environment,
     )
+    if completed.returncode != 0:
+        return int(completed.returncode)
+
+    if playwright_command:
+        completed = subprocess.run(
+            playwright_command,
+            cwd=PROJECT_ROOT,
+            env=environment,
+        )
     return int(completed.returncode)
 
 

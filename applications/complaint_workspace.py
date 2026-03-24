@@ -3,7 +3,6 @@ from __future__ import annotations
 import anyio
 import json
 import re
-import signal
 import threading
 import uuid
 import zipfile
@@ -105,6 +104,7 @@ _PACKAGE_EXPORT_CONTRACT: List[str] = [
     "export_complaint_docx",
     "export_complaint_pdf",
     "analyze_complaint_output",
+    "get_formal_diagnostics",
     "review_generated_exports",
     "review_ui",
     "optimize_ui",
@@ -127,6 +127,7 @@ _CLI_COMMAND_CONTRACT: List[str] = [
     "export-docx",
     "export-pdf",
     "analyze-output",
+    "formal-diagnostics",
     "review-exports",
     "review-ui",
     "optimize-ui",
@@ -150,6 +151,7 @@ _BROWSER_SDK_METHOD_CONTRACT: List[str] = [
     "exportComplaintDocx",
     "exportComplaintPdf",
     "analyzeComplaintOutput",
+    "getFormalDiagnostics",
     "reviewGeneratedExports",
     "reviewUiArtifacts",
     "optimizeUiArtifacts",
@@ -198,11 +200,23 @@ _CORE_FLOW_CONTRACT: Dict[str, Dict[str, str]] = {
         "mcp_tool": "complaint.export_complaint_pdf",
         "browser_sdk_method": "exportComplaintPdf",
     },
+    "complaint_export_docx": {
+        "package_export": "export_complaint_docx",
+        "cli_command": "export-docx",
+        "mcp_tool": "complaint.export_complaint_docx",
+        "browser_sdk_method": "exportComplaintDocx",
+    },
     "complaint_output_analysis": {
         "package_export": "analyze_complaint_output",
         "cli_command": "analyze-output",
         "mcp_tool": "complaint.analyze_complaint_output",
         "browser_sdk_method": "analyzeComplaintOutput",
+    },
+    "formal_diagnostics": {
+        "package_export": "get_formal_diagnostics",
+        "cli_command": "formal-diagnostics",
+        "mcp_tool": "complaint.get_formal_diagnostics",
+        "browser_sdk_method": "getFormalDiagnostics",
     },
     "export_critic": {
         "package_export": "review_generated_exports",
@@ -1647,20 +1661,23 @@ class ComplaintWorkspaceService:
 
     def _invoke_llm_draft_backend_with_timeout(self, backend: Any, prompt: str) -> str:
         timeout_seconds = int(DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS)
-        if threading.current_thread() is threading.main_thread():
-            previous_handler = signal.getsignal(signal.SIGALRM)
+        result_holder: Dict[str, Any] = {}
+        error_holder: Dict[str, BaseException] = {}
 
-            def _raise_timeout(_signum, _frame):
-                raise TimeoutError(f"llm_router draft refinement timed out after {timeout_seconds}s")
-
+        def _run_backend() -> None:
             try:
-                signal.signal(signal.SIGALRM, _raise_timeout)
-                signal.alarm(timeout_seconds)
-                return backend(prompt)
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, previous_handler)
-        return backend(prompt)
+                result_holder["value"] = backend(prompt)
+            except BaseException as exc:  # Preserve backend failures for the caller.
+                error_holder["error"] = exc
+
+        worker = threading.Thread(target=_run_backend, name="complaint-llm-draft", daemon=True)
+        worker.start()
+        worker.join(timeout_seconds)
+        if worker.is_alive():
+            raise TimeoutError(f"llm_router draft refinement timed out after {timeout_seconds}s")
+        if "error" in error_holder:
+            raise error_holder["error"]
+        return str(result_holder.get("value") or "")
 
     def _build_packet_markdown(self, packet: Dict[str, Any]) -> str:
         draft = dict(packet.get("draft") or {})

@@ -134,6 +134,8 @@ def _fake_ui_review_report(tmp_path: Path) -> dict:
             "markdown_filenames": ["jordan-example-complaint.md"],
             "pdf_filenames": ["jordan-example-complaint.pdf"],
             "claim_type_alignment_score": 35,
+            "draft_strategy": "template",
+            "draft_fallback_reason": "llm_router draft refinement timed out after 20s",
             "draft_normalizations": ["trimmed_workspace_appendices", "normalized_count_heading"],
             "formal_diagnostics": {
                 "formal_defect_count": 2,
@@ -3296,6 +3298,14 @@ SUGGESTIONS:
             for item in bundle.recommended_changes
         )
         assert any(
+            item.get("title") == "Template fallback warning"
+            for item in bundle.recommended_changes
+        )
+        assert any(
+            item.get("title") == "Draft fallback reason warning"
+            for item in bundle.recommended_changes
+        )
+        assert any(
             item.get("title") == "Formal complaint diagnostics warning"
             for item in bundle.recommended_changes
         )
@@ -3312,9 +3322,15 @@ SUGGESTIONS:
         assert "Add stronger export warnings when support gaps remain." in summary.get("complaint_output_suggestions", [])
         assert summary.get("formal_diagnostics", {}).get("release_gate_verdict") == "warning"
         assert summary.get("claim_type_alignment_score") == 35
+        assert summary.get("draft_strategy") == "template"
+        assert summary.get("draft_fallback_reason") == "llm_router draft refinement timed out after 20s"
         assert "trimmed_workspace_appendices" in summary.get("draft_normalizations", [])
         assert any(
             recommendation == "Complaint output feedback"
+            for recommendation in summary.get("recommendations", [])
+        )
+        assert any(
+            recommendation == "Template fallback warning"
             for recommendation in summary.get("recommendations", [])
         )
 

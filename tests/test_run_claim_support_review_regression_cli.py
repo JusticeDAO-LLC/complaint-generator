@@ -76,6 +76,37 @@ def test_resolve_test_targets_on_includes_all_browser_suites():
     assert 'tests/test_complaint_generator_site_playwright.py' in targets
 
 
+def test_build_playwright_command_omits_js_specs_when_browser_disabled():
+    cli = _load_cli_module()
+
+    command = cli.build_playwright_command(
+        browser_mode='off',
+        browser_available=False,
+        npm_executable='npm',
+    )
+
+    assert command == []
+
+
+def test_build_playwright_command_includes_navigation_and_complaint_flow_specs():
+    cli = _load_cli_module()
+
+    command = cli.build_playwright_command(
+        browser_mode='on',
+        browser_available=False,
+        npm_executable='npm',
+    )
+
+    assert command[:5] == [
+        'npm',
+        'run',
+        'test:e2e',
+        '--',
+        '--workers=1',
+    ]
+    assert command[5:] == cli.PLAYWRIGHT_E2E_SPECS
+
+
 def test_build_run_environment_enables_network_gate_when_requested(monkeypatch):
     cli = _load_cli_module()
 
