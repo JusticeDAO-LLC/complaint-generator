@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import zipfile
 from io import BytesIO
 
@@ -10,7 +12,7 @@ from typer.testing import CliRunner
 from applications import complaint_cli as complaint_cli_impl
 from applications.complaint_workspace_api import attach_complaint_workspace_routes
 from applications.complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, get_client_release_gate, get_formal_diagnostics, get_tooling_contract, optimize_ui, review_generated_exports, review_ui, run_browser_audit
+from complaint_generator import ComplaintWorkspaceService, analyze_complaint_output, get_client_release_gate, get_formal_diagnostics, get_provider_diagnostics, get_tooling_contract, optimize_ui, review_generated_exports, review_ui, run_browser_audit
 
 
 pytestmark = [pytest.mark.no_auto_network]
@@ -74,6 +76,8 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.export_complaint_pdf",
         "complaint.analyze_complaint_output",
         "complaint.get_formal_diagnostics",
+        "complaint.get_filing_provenance",
+        "complaint.get_provider_diagnostics",
         "complaint.review_generated_exports",
         "complaint.update_claim_type",
         "complaint.update_case_synopsis",
@@ -570,6 +574,9 @@ def test_all_cli_commands_are_exercised_end_to_end(monkeypatch, tmp_path):
     assert formal_diagnostics_payload["packet_summary"]["has_draft"] is True
     assert formal_diagnostics_payload["formal_diagnostics"]["release_gate_verdict"] in {"pass", "warning", "blocked"}
     assert isinstance(formal_diagnostics_payload["release_gate"], dict)
+    provider_diagnostics_payload = _invoke_cli(runner, "provider-diagnostics", "--user-id", "cli-user")
+    assert provider_diagnostics_payload["default_order"][:4] == ["codex_cli", "openai", "copilot_cli", "hf_inference_api"]
+    assert isinstance(provider_diagnostics_payload["providers"], list)
 
     claim_type_payload = _invoke_cli(
         runner,
@@ -772,12 +779,28 @@ def test_all_mcp_server_tools_are_exercised_via_jsonrpc(tmp_path):
     formal_diagnostics_payload = _call_mcp_tool(service, 33, "complaint.get_formal_diagnostics", {"user_id": "mcp-user"})
     assert formal_diagnostics_payload["packet_summary"]["has_draft"] is True
     assert formal_diagnostics_payload["formal_diagnostics"]["release_gate_verdict"] in {"pass", "warning", "blocked"}
-    assert output_analysis_payload["ui_feedback"]["filing_shape_score"] < 70
-    assert output_analysis_payload["ui_feedback"]["formal_sections_present"]["signature_block"] is False
-    assert any(
-        item["title"] == "Enforce formal pleading structure"
-        for item in output_analysis_payload["ui_feedback"]["ui_suggestions"]
-    )
+    provider_diagnostics_payload = _call_mcp_tool(service, 34, "complaint.get_provider_diagnostics", {"user_id": "mcp-user"})
+    assert provider_diagnostics_payload["default_order"][:4] == ["codex_cli", "openai", "copilot_cli", "hf_inference_api"]
+    assert isinstance(provider_diagnostics_payload["providers"], list)
+
+
+def test_provider_diagnostics_are_exposed_across_package_cli_and_mcp(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "provider-diagnostics-sessions")
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+
+    package_payload = get_provider_diagnostics("diag-user", service=service)
+    cli_payload = _invoke_cli(runner, "provider-diagnostics", "--user-id", "diag-user")
+    mcp_payload = _call_mcp_tool(service, 91, "complaint.get_provider_diagnostics", {"user_id": "diag-user"})
+
+    for payload in (package_payload, cli_payload, mcp_payload):
+        assert payload["default_order"][:4] == ["codex_cli", "openai", "copilot_cli", "hf_inference_api"]
+        assert isinstance(payload["providers"], list)
+        assert "effective_default_provider" in payload
+        codex_entry = next(item for item in payload["providers"] if item["name"] == "codex_cli")
+        copilot_entry = next(item for item in payload["providers"] if item["name"] == "copilot_cli")
+        assert codex_entry["draft_timeout_seconds"] == 60
+        assert copilot_entry["draft_timeout_seconds"] == 45
 
 
 def test_export_and_diagnostics_preserve_router_backend(monkeypatch, tmp_path):
@@ -847,22 +870,237 @@ def test_export_and_diagnostics_preserve_router_backend(monkeypatch, tmp_path):
     assert diagnostics_payload["router_backend"]["strategy"] == "llm_router"
     assert diagnostics_payload["packet_summary"]["complaint_output_router_backend"]["provider"] == "llm_router"
 
-    synopsis_payload = _call_mcp_tool(
-        service,
-        33,
-        "complaint.update_case_synopsis",
+
+def test_filing_provenance_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp_path):
+    runner = CliRunner()
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "filing-provenance-sessions")
+    monkeypatch.setattr(complaint_cli_impl, "service", service)
+
+    service.submit_intake_answers(
+        "provenance-user",
         {
-            "user_id": "mcp-user",
-            "synopsis": "Jordan Example alleges retaliation after reporting discrimination and wants the shared case framing preserved.",
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Report on April 2, termination on April 4",
+            "harm": "Lost wages and benefits",
         },
     )
-    assert synopsis_payload["case_synopsis"].startswith("Jordan Example alleges retaliation")
-    assert synopsis_payload["session"]["case_synopsis"].startswith("Jordan Example alleges retaliation")
+    service.save_evidence(
+        "provenance-user",
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="Termination followed immediately after the report.",
+    )
+    service.generate_complaint("provenance-user", requested_relief=["Back pay"])
+    service._persist_ui_readiness(
+        "provenance-user",
+        {
+            "backend": {
+                "strategy": "multimodal_router",
+                "provider": "llm_router",
+                "model": "multimodal_router",
+            },
+            "workflow_type": "ui_ux_closed_loop",
+            "review": {
+                "summary": "Cached UI audit.",
+                "critic_review": {"verdict": "warning"},
+                "complaint_journey": {"tested_stages": ["intake", "evidence", "review", "draft"]},
+            },
+        },
+    )
+    state = service._load_state("provenance-user")
+    state["latest_export_critic"] = {
+        "aggregate": {
+            "router_backends": [
+                {
+                    "strategy": "llm_router",
+                    "provider": "llm_router",
+                    "model": "formal_complaint_reviewer",
+                }
+            ]
+        }
+    }
+    service._save_state(state)
 
-    reset_payload = _call_mcp_tool(service, 34, "complaint.reset_session", {"user_id": "mcp-user"})
-    assert reset_payload["session"]["user_id"] == "mcp-user"
-    assert reset_payload["session"]["draft"] is None
-    assert reset_payload["session"]["intake_answers"] == {}
+    cli_payload = _invoke_cli(runner, "filing-provenance", "--user-id", "provenance-user")
+    assert cli_payload["has_draft"] is True
+    assert cli_payload["ui_review_backend"]["strategy"] == "multimodal_router"
+
+    mcp_payload = _call_mcp_tool(service, 93, "complaint.get_filing_provenance", {"user_id": "provenance-user"})
+    assert mcp_payload["draft_strategy"] in {"template", "llm_router"}
+    assert mcp_payload["export_critic_router_backends"][0]["model"] == "formal_complaint_reviewer"
+
+    from complaint_generator import get_filing_provenance
+
+    package_payload = get_filing_provenance("provenance-user", service=service)
+    assert package_payload["ui_workflow_type"] == "ui_ux_closed_loop"
+
+
+def test_successful_llm_draft_persists_effective_router_backend_metadata(monkeypatch, tmp_path):
+    from applications import ui_review as ui_review_module
+
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-router-effective-backend")
+
+    service.submit_intake_answers(
+        "effective-backend-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Report on April 2, termination on April 4",
+            "harm": "Lost wages and benefits",
+        },
+    )
+
+    def fake_invoke(self, backend, prompt):
+        backend.last_result_metadata = {
+            "status": "available",
+            "provider_name": "",
+            "model_name": "",
+            "effective_provider_name": "copilot_cli",
+            "effective_model_name": "gpt-5-mini",
+        }
+        return json.dumps(
+            {
+                "title": "Jordan Example v. Acme Corporation Retaliation Complaint",
+                "body": (
+                    "IN THE UNITED STATES DISTRICT COURT\n"
+                    "FOR THE NORTHERN DISTRICT OF CALIFORNIA\n\n"
+                    "Jordan Example, Plaintiff,\n\n"
+                    "v.\n\n"
+                    "Acme Corporation, Defendant.\n\n"
+                    "Civil Action No. ________________\n\n"
+                    "COMPLAINT FOR RETALIATION\n\n"
+                    "JURY TRIAL DEMANDED\n\n"
+                    "NATURE OF THE ACTION\n"
+                    "1. Plaintiff brings this retaliation complaint.\n\n"
+                    "JURISDICTION AND VENUE\n"
+                    "2. Jurisdiction and venue are proper.\n\n"
+                    "PARTIES\n"
+                    "3. The parties are identified above.\n\n"
+                    "FACTUAL ALLEGATIONS\n"
+                    "4. Plaintiff reported discrimination to HR and was terminated two days later.\n\n"
+                    "EVIDENTIARY SUPPORT AND NOTICE\n"
+                    "5. Plaintiff may rely on documentary exhibit testimony and personnel records.\n\n"
+                    "CLAIM FOR RELIEF\n"
+                    "COUNT I - RETALIATION\n"
+                    "6. Defendant retaliated against Plaintiff for protected activity.\n\n"
+                    "PRAYER FOR RELIEF\n"
+                    "WHEREFORE, Plaintiff requests judgment.\n\n"
+                    "JURY DEMAND\n"
+                    "Plaintiff demands a jury trial.\n\n"
+                    "SIGNATURE BLOCK\n"
+                    "Jordan Example\n"
+                ),
+                "requested_relief": ["Back pay"],
+            }
+        )
+
+    monkeypatch.setattr(ComplaintWorkspaceService, "_invoke_llm_draft_backend_with_timeout", fake_invoke)
+
+    def fake_review(*args, **kwargs):
+        return {
+            "backend": {
+                "strategy": "llm_router",
+                "provider": "copilot_cli",
+                "model": "gpt-5-mini",
+            },
+            "review": {
+                "summary": "Looks filing-shaped.",
+                "filing_shape_score": 94,
+                "claim_type_alignment_score": 95,
+                "missing_formal_sections": [],
+                "issues": [],
+                "ui_suggestions": [],
+                "ui_priority_repairs": [],
+                "actor_risk_summary": "Keep the draft flow visible.",
+                "critic_gate": {"verdict": "pass", "blocking_reason": ""},
+            },
+        }
+
+    monkeypatch.setattr(ui_review_module, "review_complaint_output_with_llm_router", fake_review)
+
+    payload = service.generate_complaint(
+        "effective-backend-user",
+        requested_relief=["Back pay"],
+        use_llm=True,
+    )
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "copilot_cli"
+    assert payload["draft"]["draft_backend"]["model"] == "gpt-5-mini"
+    assert payload["draft"]["draft_backend"]["id"] == "complaint-draft"
+
+    export_payload = service.export_complaint_packet("effective-backend-user")
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["strategy"] == "llm_router"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["provider"] == "copilot_cli"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["model"] == "gpt-5-mini"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["id"] == "complaint-draft"
+
+    diagnostics_payload = service.get_formal_diagnostics("effective-backend-user")
+    assert diagnostics_payload["router_backend"]["provider"] == "copilot_cli"
+    assert diagnostics_payload["router_backend"]["model"] == "gpt-5-mini"
+    assert diagnostics_payload["router_backend"]["id"] == "complaint-draft"
+
+
+def test_live_codex_cli_can_generate_and_export_formal_complaint_when_available(tmp_path):
+    if str(os.getenv("RUN_LLM_TESTS", "") or "").strip() not in {"1", "true", "True"}:
+        pytest.skip("RUN_LLM_TESTS is not enabled for live router-backed drafting.")
+    if shutil.which("codex") is None:
+        pytest.skip("codex CLI is not available on PATH in this environment.")
+
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "live-codex-router-sessions")
+    user_id = "live-codex-user"
+    service.submit_intake_answers(
+        user_id,
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Report on April 2, termination on April 4",
+            "harm": "Lost wages and benefits",
+            "court_header": "FOR THE NORTHERN DISTRICT OF CALIFORNIA",
+        },
+    )
+    service.save_evidence(
+        user_id,
+        kind="document",
+        claim_element_id="causation",
+        title="Termination email",
+        content="Termination followed immediately after the report.",
+    )
+
+    payload = service.generate_complaint(
+        user_id,
+        requested_relief=["Back pay"],
+        use_llm=True,
+        provider="codex_cli",
+    )
+
+    if payload["draft"]["draft_strategy"] != "llm_router":
+        pytest.fail(
+            "Expected live codex_cli drafting to stay on llm_router, "
+            f"but got {payload['draft']['draft_strategy']!r} with fallback "
+            f"{payload['draft'].get('draft_fallback_reason')!r}."
+        )
+
+    assert payload["draft"]["draft_backend"]["id"] == "complaint-draft"
+    assert payload["draft"]["draft_backend"]["provider"] == "codex_cli"
+    assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
+    assert "JURISDICTION AND VENUE" in payload["draft"]["body"]
+    assert "COUNT I - RETALIATION" in payload["draft"]["body"]
+
+    export_payload = service.export_complaint_packet(user_id)
+    assert export_payload["packet_summary"]["draft_strategy"] == "llm_router"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["id"] == "complaint-draft"
+    assert export_payload["packet_summary"]["complaint_output_router_backend"]["provider"] == "codex_cli"
+    assert export_payload["packet_summary"]["release_gate"]["verdict"] == "pass"
+    assert export_payload["artifacts"]["markdown"]["filename"].endswith(".md")
+    assert export_payload["artifacts"]["pdf"]["filename"].endswith(".pdf")
 
 
 def test_cli_and_mcp_can_request_llm_backed_complaint_generation(monkeypatch, tmp_path):
@@ -952,7 +1190,7 @@ def test_llm_draft_timeout_falls_back_to_template_with_reason(monkeypatch, tmp_p
     )
 
     def fake_refine(self, state, base_draft, **kwargs):
-        self._last_draft_refinement_error = "llm_router draft refinement timed out after 20s"
+        self._last_draft_refinement_error = "llm_router draft refinement timed out after 60s (codex_cli)"
         return None
 
     monkeypatch.setattr(ComplaintWorkspaceService, "_refine_draft_with_llm_router", fake_refine)
@@ -961,15 +1199,16 @@ def test_llm_draft_timeout_falls_back_to_template_with_reason(monkeypatch, tmp_p
         "timeout-user",
         requested_relief=["Back pay"],
         use_llm=True,
+        provider="codex_cli",
     )
 
     assert payload["draft"]["draft_strategy"] == "template"
-    assert payload["draft"]["draft_fallback_reason"] == "llm_router draft refinement timed out after 20s"
+    assert payload["draft"]["draft_fallback_reason"] == "llm_router draft refinement timed out after 60s (codex_cli)"
     assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
 
     export_payload = service.export_complaint_packet("timeout-user")
     assert export_payload["packet_summary"]["draft_strategy"] == "template"
-    assert export_payload["packet_summary"]["draft_fallback_reason"] == "llm_router draft refinement timed out after 20s"
+    assert export_payload["packet_summary"]["draft_fallback_reason"] == "llm_router draft refinement timed out after 60s (codex_cli)"
     assert export_payload["packet_summary"]["formal_defect_count"] >= 0
     assert export_payload["packet_summary"]["high_severity_issue_count"] >= 0
     assert isinstance(export_payload["packet_summary"]["release_gate"], dict)
@@ -1347,6 +1586,84 @@ def test_llm_draft_normalizes_parenthetical_numbered_paragraphs(monkeypatch, tmp
     assert "1) Plaintiff reported discrimination to HR." not in payload["draft"]["body"]
     assert "1. Plaintiff reported discrimination to HR." in payload["draft"]["body"]
     assert "6. The present evidentiary record includes testimony and documents supporting causation." in payload["draft"]["body"]
+
+
+def test_llm_draft_injects_missing_preferred_complaint_heading_when_body_is_otherwise_formal(monkeypatch, tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "llm-heading-injection-sessions")
+    service.submit_intake_answers(
+        "llm-heading-injection-user",
+        {
+            "party_name": "Jordan Example",
+            "opposing_party": "Acme Corporation",
+            "protected_activity": "Reported discrimination to HR",
+            "adverse_action": "Terminated two days later",
+            "timeline": "Reported discrimination on March 8 and was terminated on March 10.",
+            "harm": "Lost wages and emotional distress.",
+        },
+    )
+
+    class FakeBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "complaint-draft")
+            self.provider = kwargs.get("provider", "stub-provider")
+            self.model = kwargs.get("model", "stub-model")
+            self.last_result_metadata = {
+                "effective_provider_name": self.provider,
+                "effective_model_name": self.model,
+            }
+
+        def __call__(self, prompt):
+            assert "Preferred complaint heading: COMPLAINT FOR RETALIATION" in prompt
+            return json.dumps(
+                {
+                    "title": "Jordan Example v. Acme Corporation Complaint",
+                    "body": (
+                        "IN THE UNITED STATES DISTRICT COURT\n"
+                        "FOR THE NORTHERN DISTRICT OF CALIFORNIA\n\n"
+                        "Jordan Example, Plaintiff,\n\n"
+                        "v.\n\n"
+                        "Acme Corporation, Defendant.\n\n"
+                        "Civil Action No. ________________\n\n"
+                        "JURY TRIAL DEMANDED\n\n"
+                        "NATURE OF THE ACTION\n"
+                        "1. Plaintiff brings this retaliation complaint against Defendant.\n\n"
+                        "JURISDICTION AND VENUE\n"
+                        "2. Jurisdiction and venue are proper.\n\n"
+                        "PARTIES\n"
+                        "3. The parties are identified above.\n\n"
+                        "FACTUAL ALLEGATIONS\n"
+                        "4. Plaintiff reported discrimination to HR and was terminated two days later.\n\n"
+                        "EVIDENTIARY SUPPORT AND NOTICE\n"
+                        "5. Plaintiff may rely on documentary exhibit testimony and personnel records.\n\n"
+                        "CLAIM FOR RELIEF\n"
+                        "COUNT I - RETALIATION\n"
+                        "6. Defendant retaliated against Plaintiff for protected activity.\n\n"
+                        "PRAYER FOR RELIEF\n"
+                        "WHEREFORE, Plaintiff requests judgment.\n\n"
+                        "JURY DEMAND\n"
+                        "Plaintiff demands a jury trial.\n\n"
+                        "SIGNATURE BLOCK\n"
+                        "Jordan Example\n"
+                    ),
+                    "requested_relief": ["Back pay"],
+                }
+            )
+
+    monkeypatch.setattr(backends, "LLMRouterBackend", FakeBackend)
+    monkeypatch.setattr("applications.ui_review._load_backend_kwargs", lambda *args, **kwargs: {})
+
+    payload = service.generate_complaint(
+        "llm-heading-injection-user",
+        requested_relief=["Back pay"],
+        use_llm=True,
+        provider="stub-provider",
+        model="stub-model",
+    )
+
+    assert payload["draft"]["draft_strategy"] == "llm_router"
+    assert payload["draft"]["draft_backend"]["provider"] == "stub-provider"
+    assert "COMPLAINT FOR RETALIATION" in payload["draft"]["body"]
+    assert "injected_missing_complaint_heading" in payload["draft"]["draft_normalizations"]
 
 
 def test_llm_draft_normalizes_section_heading_colons_and_count_one(monkeypatch, tmp_path):

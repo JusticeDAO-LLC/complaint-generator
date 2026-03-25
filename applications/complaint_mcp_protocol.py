@@ -144,6 +144,10 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "object",
         "properties": {"user_id": {"type": "string"}},
     },
+    "complaint.get_provider_diagnostics": {
+        "type": "object",
+        "properties": {"user_id": {"type": "string"}},
+    },
     "complaint.review_generated_exports": {
         "type": "object",
         "properties": {

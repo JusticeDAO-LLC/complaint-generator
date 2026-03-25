@@ -1072,6 +1072,26 @@ def test_workspace_page_uses_mcp_sdk_tools_for_connected_complaint_flow():
             page.wait_for_function(
                 "() => document.getElementById('formal-diagnostics-preview').innerText.includes('release_gate_verdict')"
             )
+            page.click("#refresh-filing-provenance-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Filing provenance refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('filing-provenance-preview').innerText.includes('Filing provenance summary')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('filing-provenance-preview').innerText.includes('Draft generation route: template')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('filing-provenance-preview').innerText.includes('UI review route:')"
+            )
+            page.click("#refresh-provider-diagnostics-button")
+            page.wait_for_function(
+                "() => document.getElementById('workspace-status').innerText.includes('Provider diagnostics refreshed.')"
+            )
+            page.wait_for_function(
+                "() => document.getElementById('provider-diagnostics-preview').innerText.includes('Preference order: codex_cli -> openai -> copilot_cli -> hf_inference_api')"
+            )
             page.click("#analyze-complaint-output-button")
             page.wait_for_function(
                 "() => document.getElementById('complaint-output-analysis-preview').innerText.includes('claim_type_alignment_score')"

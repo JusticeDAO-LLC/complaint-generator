@@ -6,7 +6,11 @@ import random
 import time
 import threading
 
-from integrations.ipfs_datasets.llm import LLM_ROUTER_AVAILABLE, generate_text_via_router as generate_text
+from integrations.ipfs_datasets.llm import (
+    LLM_ROUTER_AVAILABLE,
+    generate_text_via_router as generate_text,
+    generate_text_with_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,7 @@ class LLMRouterBackend:
             'backoff_seconds_total': 0.0,
             'failures_total': 0,
         }
+        self.last_result_metadata = None
         
         # Check if llm_router is available
         if not LLM_ROUTER_AVAILABLE:
@@ -132,12 +137,16 @@ class LLMRouterBackend:
             with self._stats_lock:
                 self._retry_stats['attempts_total'] += 1
             try:
-                response = generate_text(
+                metadata_payload = generate_text_with_metadata(
                     prompt=text,
                     provider=self.provider,
                     model_name=self.model,
                     **self.config
                 )
+                if str(metadata_payload.get("status") or "").strip().lower() != "available":
+                    raise Exception(str(metadata_payload.get("error") or "llm_router request failed"))
+                self.last_result_metadata = dict(metadata_payload)
+                response = str(metadata_payload.get("text") or "")
                 return response
             except Exception as e:
                 last_error = e

@@ -35,6 +35,7 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "currentGmailImportAddresses()" in content
     assert "setGmailImportAddresses(addresses)" in content
     assert "extractEmailAddresses(value)" in content
+    assert "recordSuggestedGmailImportAddress(metadataByAddress, address, sourceLabel)" in content
     assert "buildSuggestedGmailImportAddresses(sessionPayload)" in content
     assert "currentGmailImportUserId()" in content
     assert "currentGmailImportClaimElement()" in content
@@ -49,6 +50,12 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "No detected case correspondents yet" in content
     assert "No suggested correspondents yet" in content
     assert 'data-gmail-detected-address-chip="${escapeHtml(address)}"' in content
+    assert "evidence title" in content
+    assert "evidence source" in content
+    assert "evidence content" in content
+    assert "intake" in content
+    assert "item.address" in content
+    assert "(item.sources || []).join(', ') || 'case'" in content
     assert 'data-gmail-address-chip="${escapeHtml(address)}"' in content
     assert "Added ${address} to the Gmail import list." in content
     assert "Removed ${addressToRemove} from the Gmail import list." in content
@@ -70,3 +77,13 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "tooling-contract-preview" in content
     assert "refreshToolingContractPanel()" in content
     assert "Tooling contract refreshed." in content
+    assert "refresh-provider-diagnostics-button" in content
+    assert "provider-diagnostics-preview" in content
+    assert "workspaceProviderDiagnostics = null;" in content
+    assert "client.getProviderDiagnostics(workspaceUserId)" in content
+    assert "refreshProviderDiagnosticsPanel()" in content
+    assert "Provider diagnostics refreshed." in content
+    assert "Router provider diagnostics" in content
+    assert "Effective default:" in content
+    assert "Preference order:" in content
+    assert "document.getElementById('refresh-provider-diagnostics-button').addEventListener('click', refreshProviderDiagnosticsPanel);" in content

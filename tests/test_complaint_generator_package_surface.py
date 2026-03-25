@@ -28,7 +28,9 @@ from complaint_generator import (
     create_review_surface_app,
     analyze_complaint_output,
     get_client_release_gate,
+    get_filing_provenance,
     get_formal_diagnostics,
+    get_provider_diagnostics,
     get_tooling_contract,
     review_generated_exports,
     export_complaint_packet,
@@ -109,7 +111,9 @@ def test_complaint_generator_package_exports_workspace_review_and_mcp_surfaces(t
     assert callable(analyze_complaint_output)
     assert callable(get_client_release_gate)
     assert callable(get_tooling_contract)
+    assert callable(get_filing_provenance)
     assert callable(get_formal_diagnostics)
+    assert callable(get_provider_diagnostics)
     assert callable(review_generated_exports)
     assert callable(create_review_dashboard_app)
     assert callable(review_ui)
@@ -205,6 +209,8 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     capabilities_payload = get_workflow_capabilities("package-wrapper-user", service=service)
     release_gate_payload = get_client_release_gate("package-wrapper-user", service=service)
     tooling_contract_payload = get_tooling_contract("package-wrapper-user", service=service)
+    filing_provenance_payload = get_filing_provenance("package-wrapper-user", service=service)
+    provider_diagnostics_payload = get_provider_diagnostics("package-wrapper-user", service=service)
     assert "case_synopsis" in review_payload["review"]
     assert "Mediator, help turn this into testimony-ready narrative" in mediator_payload["prefill_message"]
     assert any(item["id"] == "complaint_packet" for item in capabilities_payload["capabilities"])
@@ -212,6 +218,10 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert capabilities_payload["draft_strategy"] == "template"
     assert release_gate_payload["verdict"] in {"client_safe", "warning", "blocked"}
     assert tooling_contract_payload["all_core_flow_steps_exposed"] is True
+    assert filing_provenance_payload["draft_strategy"] == "template"
+    assert "draft_backend" in filing_provenance_payload
+    assert provider_diagnostics_payload["default_order"][:4] == ["codex_cli", "openai", "copilot_cli", "hf_inference_api"]
+    assert any(item["name"] == "copilot_cli" for item in provider_diagnostics_payload["providers"])
 
     claim_type_payload = update_claim_type(
         "package-wrapper-user",
@@ -269,7 +279,9 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert export_review_payload["artifact_count"] >= 1
     assert any(tool["name"] == "complaint.run_browser_audit" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.analyze_complaint_output" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.get_filing_provenance" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.get_formal_diagnostics" for tool in tools_payload["tools"])
+    assert any(tool["name"] == "complaint.get_provider_diagnostics" for tool in tools_payload["tools"])
     assert any(tool["name"] == "complaint.review_generated_exports" for tool in tools_payload["tools"])
 
     reset_payload = reset_session("package-wrapper-user", service=service)

@@ -1,0 +1,7 @@
+{
+  "provider": "copilot_cli",
+  "draft_strategy": "template",
+  "draft_backend": null,
+  "draft_fallback_reason": "llm_router draft refinement timed out after 20s",
+  "body_excerpt": "IN THE UNITED STATES DISTRICT COURT\n\nFOR THE NORTHERN DISTRICT OF CALIFORNIA\n\n\n\nJordan Example, Plaintiff,\n\nv.\n\nAcme Corporation, Defendant.\n\n\n\nCivil Action No. ________________\n\nCOMPLAINT FOR RETALIATION\n\nJURY TRIAL DEMANDED\n\n\n\nPlaintiff Jordan Example, proceeding pro se, alleges upon personal knowledge as to their own acts and upon information and belief as to all other matters as follows:\n\n\n\nNA"
+}

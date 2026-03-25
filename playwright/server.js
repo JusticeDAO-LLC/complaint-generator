@@ -763,6 +763,8 @@ function toolingContractPayload(userId = 'did:key:playwright-demo') {
     'export_complaint_pdf',
     'analyze_complaint_output',
     'get_formal_diagnostics',
+    'get_filing_provenance',
+    'get_provider_diagnostics',
     'review_generated_exports',
     'review_ui',
     'optimize_ui',
@@ -786,6 +788,8 @@ function toolingContractPayload(userId = 'did:key:playwright-demo') {
     'export-pdf',
     'analyze-output',
     'formal-diagnostics',
+    'filing-provenance',
+    'provider-diagnostics',
     'review-exports',
     'review-ui',
     'optimize-ui',
@@ -813,6 +817,8 @@ function toolingContractPayload(userId = 'did:key:playwright-demo') {
     'complaint.export_complaint_pdf',
     'complaint.analyze_complaint_output',
     'complaint.get_formal_diagnostics',
+    'complaint.get_filing_provenance',
+    'complaint.get_provider_diagnostics',
     'complaint.review_generated_exports',
     'complaint.update_claim_type',
     'complaint.update_case_synopsis',
@@ -841,6 +847,8 @@ function toolingContractPayload(userId = 'did:key:playwright-demo') {
     'exportComplaintPdf',
     'analyzeComplaintOutput',
     'getFormalDiagnostics',
+    'getFilingProvenance',
+    'getProviderDiagnostics',
     'reviewGeneratedExports',
     'reviewUiArtifacts',
     'optimizeUiArtifacts',
@@ -857,6 +865,8 @@ function toolingContractPayload(userId = 'did:key:playwright-demo') {
     ['complaint_export_docx', 'export_complaint_docx', 'export-docx', 'complaint.export_complaint_docx', 'exportComplaintDocx'],
     ['complaint_output_analysis', 'analyze_complaint_output', 'analyze-output', 'complaint.analyze_complaint_output', 'analyzeComplaintOutput'],
     ['formal_diagnostics', 'get_formal_diagnostics', 'formal-diagnostics', 'complaint.get_formal_diagnostics', 'getFormalDiagnostics'],
+    ['filing_provenance', 'get_filing_provenance', 'filing-provenance', 'complaint.get_filing_provenance', 'getFilingProvenance'],
+    ['provider_diagnostics', 'get_provider_diagnostics', 'provider-diagnostics', 'complaint.get_provider_diagnostics', 'getProviderDiagnostics'],
     ['export_critic', 'review_generated_exports', 'review-exports', 'complaint.review_generated_exports', 'reviewGeneratedExports'],
     ['ui_actor_critic', 'review_ui', 'review-ui', 'complaint.review_ui', 'reviewUiArtifacts'],
     ['ui_closed_loop_optimizer', 'optimize_ui', 'optimize-ui', 'complaint.optimize_ui', 'optimizeUiArtifacts'],
@@ -912,6 +922,80 @@ function formalDiagnosticsPayload(userId = 'did:key:playwright-demo') {
       formal_defect_count: Number((analysis.packet_summary || {}).formal_defect_count || formalDiagnostics.formal_defect_count || 0),
       high_severity_issue_count: Number((analysis.packet_summary || {}).high_severity_issue_count || formalDiagnostics.high_severity_issue_count || 0),
       complaint_output_router_backend: Object.assign({}, (((analysis.packet_summary || {}).complaint_output_router_backend) || ((uiFeedback.router_review || {}).backend || {}))),
+    },
+  };
+}
+
+function filingProvenancePayload(userId = 'did:key:playwright-demo') {
+  const analysis = buildComplaintOutputAnalysis(userId);
+  const packetPayload = exportComplaintPacketPayload(userId);
+  const draft = (((packetPayload.packet || {}).draft) || {});
+  const complaintBackend = Object.assign({}, (((analysis.ui_feedback || {}).router_review || {}).backend || {}));
+  const exportCriticBackend = Object.assign({}, complaintBackend);
+  return {
+    user_id: userId,
+    claim_type: String(((packetPayload.packet || {}).claim_type) || 'retaliation'),
+    draft_strategy: String((draft.draft_strategy) || 'template'),
+    draft_backend: Object.assign({}, (draft.draft_backend || {})),
+    complaint_output_router_backend: complaintBackend,
+    complaint_output_router_backends: Object.keys(complaintBackend).length ? [complaintBackend] : [],
+    export_critic_router_backends: Object.keys(exportCriticBackend).length ? [exportCriticBackend] : [],
+    ui_review_backend: {
+      strategy: 'multimodal_router',
+      provider: 'llm_router',
+      model: 'multimodal_router',
+    },
+    ui_workflow_type: 'ui_ux_closed_loop',
+    artifact_formats: Array.isArray((packetPayload.packet_summary || {}).artifact_formats) ? packetPayload.packet_summary.artifact_formats : [],
+    has_draft: Boolean((packetPayload.packet_summary || {}).has_draft),
+  };
+}
+
+function providerDiagnosticsPayload(userId = 'did:key:playwright-demo') {
+  return {
+    user_id: userId,
+    forced_provider: null,
+    default_order: ['codex_cli', 'openai', 'copilot_cli', 'hf_inference_api'],
+    effective_default_provider: 'codex_cli',
+    providers: [
+      {
+        name: 'codex_cli',
+        available: true,
+        reason: 'Codex CLI is installed and available on PATH.',
+        binary_path: '/usr/bin/codex',
+        credential_source: 'local_codex_auth',
+        draft_timeout_seconds: 60,
+      },
+      {
+        name: 'openai',
+        available: false,
+        reason: 'No OpenAI API key resolved from env, vault, keyring, or local CLI config.',
+        credential_source: 'unavailable',
+        base_url: 'https://api.openai.com/v1',
+        draft_timeout_seconds: 30,
+      },
+      {
+        name: 'copilot_cli',
+        available: true,
+        reason: 'Copilot fallback is available through the configured command template.',
+        binary_path: '/usr/bin/copilot',
+        credential_source: 'github_copilot_command_template',
+        draft_timeout_seconds: 45,
+      },
+      {
+        name: 'hf_inference_api',
+        available: false,
+        reason: 'No Hugging Face token resolved from env, vault, keyring, or huggingface_hub CLI login.',
+        credential_source: 'unavailable',
+        base_url: 'https://router.huggingface.co/hf-inference/models',
+        draft_timeout_seconds: 30,
+      },
+    ],
+    summary: {
+      codex_available: true,
+      openai_available: false,
+      copilot_available: true,
+      huggingface_available: false,
     },
   };
 }
@@ -1844,6 +1928,8 @@ const server = http.createServer(async (request, response) => {
         { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
         { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
         { name: 'complaint.get_formal_diagnostics', description: 'Return the compact formal-complaint diagnostics summary for the current complaint draft and export state.', inputSchema: { type: 'object' } },
+        { name: 'complaint.get_filing_provenance', description: 'Return the shared routing provenance for complaint generation, filing critique, export critique, and cached UI review workflows.', inputSchema: { type: 'object' } },
+        { name: 'complaint.get_provider_diagnostics', description: 'Report which llm_router providers are actually usable on this machine, in the same order the router will prefer them.', inputSchema: { type: 'object' } },
         { name: 'complaint.review_generated_exports', description: 'Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.', inputSchema: { type: 'object' } },
         { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
@@ -1889,6 +1975,8 @@ const server = http.createServer(async (request, response) => {
             { name: 'complaint.export_complaint_pdf', description: 'Export the generated complaint as a downloadable PDF artifact.', inputSchema: { type: 'object' } },
             { name: 'complaint.analyze_complaint_output', description: 'Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions.', inputSchema: { type: 'object' } },
             { name: 'complaint.get_formal_diagnostics', description: 'Return the compact formal-complaint diagnostics summary for the current complaint draft and export state.', inputSchema: { type: 'object' } },
+            { name: 'complaint.get_filing_provenance', description: 'Return the shared routing provenance for complaint generation, filing critique, export critique, and cached UI review workflows.', inputSchema: { type: 'object' } },
+            { name: 'complaint.get_provider_diagnostics', description: 'Report which llm_router providers are actually usable on this machine, in the same order the router will prefer them.', inputSchema: { type: 'object' } },
             { name: 'complaint.review_generated_exports', description: 'Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_claim_type', description: 'Set the current complaint type so drafting and review stay aligned to the right legal claim shape.', inputSchema: { type: 'object' } },
             { name: 'complaint.update_case_synopsis', description: 'Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows.', inputSchema: { type: 'object' } },
@@ -2009,6 +2097,10 @@ const server = http.createServer(async (request, response) => {
         structuredContent = buildComplaintOutputAnalysis(userId);
       } else if (toolName === 'complaint.get_formal_diagnostics') {
         structuredContent = formalDiagnosticsPayload(userId);
+      } else if (toolName === 'complaint.get_filing_provenance') {
+        structuredContent = filingProvenancePayload(userId);
+      } else if (toolName === 'complaint.get_provider_diagnostics') {
+        structuredContent = providerDiagnosticsPayload(userId);
       } else if (toolName === 'complaint.review_generated_exports') {
         const analysis = buildComplaintOutputAnalysis(userId);
         const formalSectionGaps = Object.entries(analysis.ui_feedback.formal_sections_present || {})
@@ -2219,6 +2311,12 @@ const server = http.createServer(async (request, response) => {
     }
     if (toolName === 'complaint.get_formal_diagnostics') {
       return sendJson(response, formalDiagnosticsPayload(userId));
+    }
+    if (toolName === 'complaint.get_filing_provenance') {
+      return sendJson(response, filingProvenancePayload(userId));
+    }
+    if (toolName === 'complaint.get_provider_diagnostics') {
+      return sendJson(response, providerDiagnosticsPayload(userId));
     }
     if (toolName === 'complaint.generate_complaint') {
       generateWorkspaceDraft(workspaceState, args.requested_relief || [], {

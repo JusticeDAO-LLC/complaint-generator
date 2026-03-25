@@ -1,0 +1,42 @@
+{
+  "packet_summary_router_backend": {
+    "strategy": "llm_router",
+    "provider": "codex_cli",
+    "model": "gpt-5.3-codex",
+    "requested_provider": "codex_cli",
+    "requested_model": null,
+    "id": "ui-review"
+  },
+  "packet_summary_draft_strategy": "llm_router",
+  "packet_summary_release_gate": {
+    "verdict": "pass",
+    "reason": "The exported complaint currently reads like a filing-ready retaliation complaint and the record is materially supported.",
+    "claim_type": "retaliation",
+    "claim_type_label": "Retaliation",
+    "draft_strategy": "llm_router",
+    "filing_shape_score": 100,
+    "claim_type_alignment_score": 100,
+    "missing_elements": 0,
+    "evidence_item_count": 1
+  },
+  "formal_router_backend": {
+    "strategy": "llm_router",
+    "provider": "codex_cli",
+    "model": "gpt-5.3-codex",
+    "requested_provider": "codex_cli",
+    "requested_model": null,
+    "id": "ui-review"
+  },
+  "formal_diagnostics": {
+    "formal_defect_count": 0,
+    "high_severity_issue_count": 0,
+    "top_formal_findings": [],
+    "top_ui_implications": [],
+    "top_ui_suggestions": [
+      "Preserve the current filing flow"
+    ],
+    "release_gate_verdict": "pass"
+  },
+  "markdown_artifact": "complaint-for-retaliation.md",
+  "pdf_artifact": "complaint-for-retaliation.pdf"
+}

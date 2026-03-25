@@ -14,6 +14,7 @@ from .types import with_adapter_metadata
 
 
 generate_text, _error = import_attr_optional("ipfs_datasets_py.llm_router", "generate_text")
+get_last_generation_trace, _trace_error = import_attr_optional("ipfs_datasets_py.llm_router", "get_last_generation_trace")
 LLM_ROUTER_AVAILABLE = generate_text is not None
 LLM_ROUTER_ERROR = _error
 
@@ -670,6 +671,12 @@ def generate_text_with_metadata(
 			"provider_name": provider or "",
 			"model_name": model_name or "",
 			**metadata,
+			**(
+				get_last_generation_trace()
+				if callable(get_last_generation_trace)
+				and not str(metadata.get("effective_provider_name") or "").strip()
+				else {}
+			),
 		},
 		operation="generate_text",
 		backend_available=True,

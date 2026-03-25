@@ -106,6 +106,8 @@ def import_gmail_evidence_command(
     prompt_for_credentials: bool = typer.Option(False, "--prompt-for-credentials"),
     use_keyring: bool = typer.Option(False, "--use-keyring"),
     save_to_keyring: bool = typer.Option(False, "--save-to-keyring"),
+    use_ipfs_secrets_vault: bool = typer.Option(False, "--use-ipfs-secrets-vault"),
+    save_to_ipfs_secrets_vault: bool = typer.Option(False, "--save-to-ipfs-secrets-vault"),
 ) -> None:
     parser = argparse.ArgumentParser(prog="complaint-workspace import-gmail-evidence")
     resolved_gmail_user, resolved_gmail_app_password = resolve_gmail_credentials(
@@ -114,6 +116,8 @@ def import_gmail_evidence_command(
         prompt_for_credentials=prompt_for_credentials,
         use_keyring=use_keyring,
         save_to_keyring_flag=save_to_keyring,
+        use_ipfs_secrets_vault=use_ipfs_secrets_vault,
+        save_to_ipfs_secrets_vault_flag=save_to_ipfs_secrets_vault,
         parser=parser,
     )
 
@@ -237,6 +241,16 @@ def analyze_output(user_id: str = "demo-user") -> None:
 @app.command("formal-diagnostics")
 def formal_diagnostics(user_id: str = "demo-user") -> None:
     _print(service.get_formal_diagnostics(user_id))
+
+
+@app.command("filing-provenance")
+def filing_provenance(user_id: str = "demo-user") -> None:
+    _print(service.get_filing_provenance(user_id))
+
+
+@app.command("provider-diagnostics")
+def provider_diagnostics(user_id: str = "demo-user") -> None:
+    _print(service.get_provider_diagnostics(user_id))
 
 
 @app.command("review-exports")

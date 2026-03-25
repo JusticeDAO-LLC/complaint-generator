@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import anyio
 import json
+import os
 import re
+import shutil
 import threading
 import uuid
 import zipfile
@@ -19,6 +21,17 @@ DEFAULT_USER_ID = "did:key:anonymous"
 DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS = 20
+DEFAULT_LLM_DRAFT_TIMEOUTS_BY_PROVIDER: Dict[str, int] = {
+    "codex": 60,
+    "codex_cli": 60,
+    "copilot_cli": 45,
+    "copilot_sdk": 45,
+    "openai": 30,
+    "openai_api": 30,
+    "hf_inference_api": 30,
+    "hf_inference": 30,
+    "hf_api": 30,
+}
 DEFAULT_UI_UX_SCREENSHOT_TARGET = (
     "tests/test_website_cohesion_playwright.py::"
     "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
@@ -105,6 +118,8 @@ _PACKAGE_EXPORT_CONTRACT: List[str] = [
     "export_complaint_pdf",
     "analyze_complaint_output",
     "get_formal_diagnostics",
+    "get_filing_provenance",
+    "get_provider_diagnostics",
     "review_generated_exports",
     "review_ui",
     "optimize_ui",
@@ -128,6 +143,8 @@ _CLI_COMMAND_CONTRACT: List[str] = [
     "export-pdf",
     "analyze-output",
     "formal-diagnostics",
+    "filing-provenance",
+    "provider-diagnostics",
     "review-exports",
     "review-ui",
     "optimize-ui",
@@ -152,6 +169,8 @@ _BROWSER_SDK_METHOD_CONTRACT: List[str] = [
     "exportComplaintPdf",
     "analyzeComplaintOutput",
     "getFormalDiagnostics",
+    "getFilingProvenance",
+    "getProviderDiagnostics",
     "reviewGeneratedExports",
     "reviewUiArtifacts",
     "optimizeUiArtifacts",
@@ -217,6 +236,18 @@ _CORE_FLOW_CONTRACT: Dict[str, Dict[str, str]] = {
         "cli_command": "formal-diagnostics",
         "mcp_tool": "complaint.get_formal_diagnostics",
         "browser_sdk_method": "getFormalDiagnostics",
+    },
+    "filing_provenance": {
+        "package_export": "get_filing_provenance",
+        "cli_command": "filing-provenance",
+        "mcp_tool": "complaint.get_filing_provenance",
+        "browser_sdk_method": "getFilingProvenance",
+    },
+    "provider_diagnostics": {
+        "package_export": "get_provider_diagnostics",
+        "cli_command": "provider-diagnostics",
+        "mcp_tool": "complaint.get_provider_diagnostics",
+        "browser_sdk_method": "getProviderDiagnostics",
     },
     "export_critic": {
         "package_export": "review_generated_exports",
@@ -370,6 +401,27 @@ def _timeline_clause_fragment(value: str) -> str:
         if lowered.startswith(old):
             return new + text[len(old):]
     return text
+
+
+def _llm_draft_timeout_for_provider(provider: Optional[str]) -> int:
+    explicit = str(os.getenv("COMPLAINT_GENERATOR_LLM_DRAFT_TIMEOUT_SECONDS", "") or "").strip()
+    if explicit:
+        try:
+            return max(5, int(float(explicit)))
+        except Exception:
+            pass
+
+    provider_key = str(provider or "").strip().lower()
+    if provider_key:
+        provider_override = str(
+            os.getenv(f"COMPLAINT_GENERATOR_LLM_DRAFT_TIMEOUT_SECONDS_{provider_key.upper()}", "") or ""
+        ).strip()
+        if provider_override:
+            try:
+                return max(5, int(float(provider_override)))
+            except Exception:
+                pass
+    return int(DEFAULT_LLM_DRAFT_TIMEOUTS_BY_PROVIDER.get(provider_key, DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS))
 
 
 def _pleading_timeline_sentence(value: Optional[str], fallback: str) -> str:
@@ -727,6 +779,19 @@ def _normalize_llm_complaint_body(body: str, claim_type: Optional[str] = None) -
     if claim_type:
         preferred_heading = f"COMPLAINT FOR {_claim_type_display_name(claim_type).upper()}"
         preferred_count_heading = _claim_type_count_heading(claim_type)
+        if preferred_heading not in normalized:
+            if _looks_like_formal_complaint_candidate(normalized):
+                with_injected_heading = re.sub(
+                    r"(?im)^(civil action no\.\s*[_\sA-Z0-9.-]+)\s*$",
+                    rf"\1\n\n{preferred_heading}",
+                    normalized,
+                    count=1,
+                )
+                if with_injected_heading == normalized:
+                    with_injected_heading = f"{preferred_heading}\n\n{normalized}"
+                if with_injected_heading != normalized:
+                    normalized = with_injected_heading
+                    notes.append("injected_missing_complaint_heading")
         updated_heading = re.sub(
             r"(?im)^complaint for .+$",
             preferred_heading,
@@ -1610,7 +1675,7 @@ class ComplaintWorkspaceService:
             from .ui_review import _load_backend_kwargs
 
             backend_kwargs = _load_backend_kwargs(config_path, backend_id)
-            backend_kwargs.setdefault("id", backend_id or "complaint-draft")
+            backend_kwargs["id"] = backend_id or "complaint-draft"
             if provider:
                 backend_kwargs["provider"] = provider
             if model:
@@ -1645,6 +1710,19 @@ class ComplaintWorkspaceService:
             for item in list(parsed.get("requested_relief") or base_draft.get("requested_relief") or [])
             if str(item).strip()
         ]
+        backend_metadata = dict(getattr(backend, "last_result_metadata", {}) or {})
+        effective_provider = str(
+            backend_metadata.get("effective_provider_name")
+            or backend_metadata.get("provider_name")
+            or getattr(backend, "provider", provider)
+            or ""
+        ).strip() or None
+        effective_model = str(
+            backend_metadata.get("effective_model_name")
+            or backend_metadata.get("model_name")
+            or getattr(backend, "model", model)
+            or ""
+        ).strip() or None
         return {
             **deepcopy(base_draft),
             "title": str(parsed.get("title") or base_draft.get("title") or "Complaint").strip(),
@@ -1653,14 +1731,17 @@ class ComplaintWorkspaceService:
             "draft_strategy": "llm_router",
             "draft_backend": {
                 "id": getattr(backend, "id", backend_id or "complaint-draft"),
-                "provider": getattr(backend, "provider", provider),
-                "model": getattr(backend, "model", model),
+                "provider": effective_provider,
+                "model": effective_model,
+                "requested_provider": str(provider or "").strip() or None,
+                "requested_model": str(model or "").strip() or None,
             },
             "draft_normalizations": normalization_notes,
         }
 
     def _invoke_llm_draft_backend_with_timeout(self, backend: Any, prompt: str) -> str:
-        timeout_seconds = int(DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS)
+        provider_name = str(getattr(backend, "provider", "") or "").strip().lower() or None
+        timeout_seconds = _llm_draft_timeout_for_provider(provider_name)
         result_holder: Dict[str, Any] = {}
         error_holder: Dict[str, BaseException] = {}
 
@@ -1674,7 +1755,8 @@ class ComplaintWorkspaceService:
         worker.start()
         worker.join(timeout_seconds)
         if worker.is_alive():
-            raise TimeoutError(f"llm_router draft refinement timed out after {timeout_seconds}s")
+            label = provider_name or "default"
+            raise TimeoutError(f"llm_router draft refinement timed out after {timeout_seconds}s ({label})")
         if "error" in error_holder:
             raise error_holder["error"]
         return str(result_holder.get("value") or "")
@@ -2038,6 +2120,7 @@ class ComplaintWorkspaceService:
             "issue_counts": severity_counts,
             "summary": summary_text,
             "workflow_type": str((result or {}).get("workflow_type") or (result or {}).get("backend", {}).get("strategy") or "review"),
+            "review_backend": deepcopy((result or {}).get("backend") or {}),
             "updated_at": _utc_now(),
         }
 
@@ -2069,7 +2152,42 @@ class ComplaintWorkspaceService:
             "broken_controls": [],
             "issue_counts": {"high": 0, "medium": 0, "low": 0},
             "workflow_type": None,
+            "review_backend": {},
             "updated_at": None,
+        }
+
+    def get_filing_provenance(self, user_id: Optional[str]) -> Dict[str, Any]:
+        payload = self.export_complaint_packet(user_id)
+        packet = dict(payload.get("packet") or {})
+        draft = dict(packet.get("draft") or {})
+        packet_summary = dict(payload.get("packet_summary") or {})
+        ui_feedback = dict(payload.get("ui_feedback") or {})
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        cached_ui_readiness = dict(state.get("ui_readiness") or {})
+        cached_export_critic = dict(state.get("latest_export_critic") or {})
+        export_critic_feedback = dict(cached_export_critic.get("complaint_output_feedback") or {})
+        export_critic_aggregate = dict(cached_export_critic.get("aggregate") or {})
+        export_router_backends = [
+            deepcopy(item)
+            for item in list(export_critic_aggregate.get("router_backends") or export_critic_feedback.get("router_backends") or [])
+            if isinstance(item, dict) and item
+        ]
+        return {
+            "user_id": str(packet.get("user_id") or user_id or DEFAULT_USER_ID),
+            "claim_type": str(packet.get("claim_type") or ""),
+            "draft_strategy": str(draft.get("draft_strategy") or "template"),
+            "draft_backend": deepcopy(draft.get("draft_backend") or {}),
+            "complaint_output_router_backend": deepcopy(packet_summary.get("complaint_output_router_backend") or {}),
+            "complaint_output_router_backends": [
+                deepcopy(item)
+                for item in list(ui_feedback.get("router_backends") or [])
+                if isinstance(item, dict) and item
+            ],
+            "export_critic_router_backends": export_router_backends,
+            "ui_review_backend": deepcopy(cached_ui_readiness.get("review_backend") or {}),
+            "ui_workflow_type": str(cached_ui_readiness.get("workflow_type") or "").strip() or "unavailable",
+            "artifact_formats": list(packet_summary.get("artifact_formats") or []),
+            "has_draft": bool(packet_summary.get("has_draft")),
         }
 
     def get_client_release_gate(self, user_id: Optional[str]) -> Dict[str, Any]:
@@ -2363,6 +2481,7 @@ class ComplaintWorkspaceService:
         overview = dict(review.get("overview") or {})
         body = str(draft.get("body") or "").strip()
         case_synopsis = str(packet.get("case_synopsis") or "").strip()
+        draft_backend = dict(draft.get("draft_backend") or {})
         issues: List[Dict[str, Any]] = []
         suggestions: List[Dict[str, Any]] = []
         formal_sections_present = {
@@ -2727,6 +2846,21 @@ class ComplaintWorkspaceService:
             "release_gate_verdict": str((release_gate or {}).get("verdict") or "").strip() or "unknown",
         }
 
+        resolved_router_backend = deepcopy((router_review or {}).get("backend") or {})
+        if resolved_router_backend and draft_backend:
+            for key in ("id", "requested_provider", "requested_model", "provider", "model"):
+                if resolved_router_backend.get(key) in (None, "") and draft_backend.get(key) not in (None, ""):
+                    resolved_router_backend[key] = draft_backend.get(key)
+        if not resolved_router_backend and draft_backend:
+            resolved_router_backend = {
+                "strategy": str(draft.get("draft_strategy") or "template"),
+                "provider": draft_backend.get("provider"),
+                "model": draft_backend.get("model"),
+                "requested_provider": draft_backend.get("requested_provider"),
+                "requested_model": draft_backend.get("requested_model"),
+                "id": draft_backend.get("id"),
+            }
+
         return {
             "summary": (
                 "The exported complaint artifact was analyzed to infer which UI steps may still be too weak, "
@@ -2752,11 +2886,16 @@ class ComplaintWorkspaceService:
                 f"Claim type alignment: {expected_complaint_heading} / {expected_count_heading}",
             ],
             "router_backends": [
-                deepcopy((router_review or {}).get("backend") or {})
+                deepcopy(resolved_router_backend)
             ]
-            if isinstance((router_review or {}).get("backend"), dict) and ((router_review or {}).get("backend") or {})
+            if isinstance(resolved_router_backend, dict) and resolved_router_backend
             else [],
-            "router_review": router_review,
+            "router_review": {
+                **(router_review or {}),
+                "backend": resolved_router_backend,
+            }
+            if isinstance(router_review, dict)
+            else {"backend": resolved_router_backend},
         }
 
     def analyze_complaint_output(self, user_id: Optional[str]) -> Dict[str, Any]:
@@ -2786,6 +2925,162 @@ class ComplaintWorkspaceService:
                 "formal_defect_count": int(packet_summary.get("formal_defect_count") or 0),
                 "high_severity_issue_count": int(packet_summary.get("high_severity_issue_count") or 0),
                 "complaint_output_router_backend": deepcopy(packet_summary.get("complaint_output_router_backend") or {}),
+            },
+        }
+
+    def get_provider_diagnostics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        from ipfs_datasets_py import llm_router
+
+        def _vault_value(*names: str) -> str:
+            try:
+                from ipfs_datasets_py.mcp_server.secrets_vault import get_secrets_vault
+
+                vault = get_secrets_vault()
+                for name in names:
+                    resolved = str(vault.get(name) or "").strip()
+                    if resolved:
+                        return resolved
+            except Exception:
+                pass
+            return ""
+
+        def _keyring_value(*names: str) -> str:
+            try:
+                import keyring  # type: ignore
+
+                for name in names:
+                    resolved = str(keyring.get_password("ipfs_datasets_py", name) or "").strip()
+                    if resolved:
+                        return resolved
+            except Exception:
+                pass
+            return ""
+
+        def _first_env(*names: str) -> str:
+            for name in names:
+                resolved = str(os.getenv(name, "") or "").strip()
+                if resolved:
+                    return resolved
+            return ""
+
+        def _source_for_openai() -> str:
+            if _first_env("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN"):
+                return "env"
+            if _vault_value("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN"):
+                return "vault"
+            if _keyring_value("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN"):
+                return "keyring"
+            try:
+                from ipfs_datasets_py.utils.engine_env import _openai_key_from_common_files
+
+                if str(_openai_key_from_common_files() or "").strip():
+                    return "local_cli_config"
+            except Exception:
+                pass
+            return "unavailable"
+
+        def _source_for_hf() -> str:
+            if _first_env(
+                "IPFS_DATASETS_PY_HF_API_TOKEN",
+                "HUGGINGFACEHUB_API_TOKEN",
+                "HF_TOKEN",
+                "HUGGINGFACE_HUB_TOKEN",
+                "HUGGINGFACE_API_KEY",
+                "HUGGINGFACE_API_TOKEN",
+                "HF_API_TOKEN",
+            ):
+                return "env"
+            if _vault_value(
+                "IPFS_DATASETS_PY_HF_API_TOKEN",
+                "HUGGINGFACEHUB_API_TOKEN",
+                "HF_TOKEN",
+                "HUGGINGFACE_HUB_TOKEN",
+                "HUGGINGFACE_API_KEY",
+                "HUGGINGFACE_API_TOKEN",
+                "HF_API_TOKEN",
+            ):
+                return "vault"
+            if _keyring_value(
+                "IPFS_DATASETS_PY_HF_API_TOKEN",
+                "HUGGINGFACEHUB_API_TOKEN",
+                "HF_TOKEN",
+                "HUGGINGFACE_HUB_TOKEN",
+                "HUGGINGFACE_API_KEY",
+                "HUGGINGFACE_API_TOKEN",
+                "HF_API_TOKEN",
+            ):
+                return "keyring"
+            if str(llm_router._resolve_hf_api_token() or "").strip():
+                return "huggingface_cli"
+            return "unavailable"
+
+        default_order = list(getattr(llm_router, "_UNPINNED_OPTIONAL_PROVIDER_ORDER", []))
+        forced_provider = str(os.getenv("IPFS_DATASETS_PY_LLM_PROVIDER", "") or "").strip()
+        codex_path = shutil.which("codex") or ""
+        copilot_path = shutil.which("copilot") or ""
+        openai_key = str(llm_router._resolve_openai_api_key() or "").strip()
+        hf_token = str(llm_router._resolve_hf_api_token() or "").strip()
+        copilot_provider = llm_router._builtin_provider_by_name("copilot_cli")
+
+        providers = [
+            {
+                "name": "codex_cli",
+                "available": bool(codex_path),
+                "reason": "Codex CLI is installed and available on PATH." if codex_path else "Codex CLI binary not found on PATH.",
+                "binary_path": codex_path or None,
+                "credential_source": "local_codex_auth" if codex_path else "unavailable",
+                "draft_timeout_seconds": _llm_draft_timeout_for_provider("codex_cli"),
+            },
+            {
+                "name": "openai",
+                "available": bool(openai_key),
+                "reason": "OpenAI API key resolved for direct chat-completions use." if openai_key else "No OpenAI API key resolved from env, vault, keyring, or local CLI config.",
+                "credential_source": _source_for_openai(),
+                "base_url": str(os.getenv("IPFS_DATASETS_PY_OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/"),
+                "draft_timeout_seconds": _llm_draft_timeout_for_provider("openai"),
+            },
+            {
+                "name": "copilot_cli",
+                "available": copilot_provider is not None,
+                "reason": (
+                    "Copilot CLI command template resolved and is available."
+                    if copilot_provider is not None and copilot_path
+                    else "Copilot fallback is available through the configured command template."
+                    if copilot_provider is not None
+                    else "Copilot CLI command is not currently available on this machine."
+                ),
+                "binary_path": copilot_path or None,
+                "credential_source": (
+                    "github_copilot_cli"
+                    if copilot_provider is not None and copilot_path
+                    else "github_copilot_command_template"
+                    if copilot_provider is not None
+                    else "unavailable"
+                ),
+                "draft_timeout_seconds": _llm_draft_timeout_for_provider("copilot_cli"),
+            },
+            {
+                "name": "hf_inference_api",
+                "available": bool(hf_token),
+                "reason": "Hugging Face token resolved for hosted inference/router use." if hf_token else "No Hugging Face token resolved from env, vault, keyring, or huggingface_hub CLI login.",
+                "credential_source": _source_for_hf(),
+                "base_url": str(os.getenv("IPFS_DATASETS_PY_HF_INFERENCE_BASE_URL", "https://router.huggingface.co/hf-inference/models")).rstrip("/"),
+                "draft_timeout_seconds": _llm_draft_timeout_for_provider("hf_inference_api"),
+            },
+        ]
+
+        effective_default = next((item["name"] for item in providers if item["available"]), None)
+        return {
+            "user_id": str(user_id or DEFAULT_USER_ID),
+            "forced_provider": forced_provider or None,
+            "default_order": default_order,
+            "effective_default_provider": forced_provider or effective_default,
+            "providers": providers,
+            "summary": {
+                "codex_available": bool(codex_path),
+                "openai_available": bool(openai_key),
+                "copilot_available": copilot_provider is not None,
+                "huggingface_available": bool(hf_token),
             },
         }
 
@@ -2834,6 +3129,9 @@ class ComplaintWorkspaceService:
             backend_id=backend_id,
             notes=notes,
         )
+        state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        state["latest_export_critic"] = deepcopy(report)
+        self._save_state(state)
         return {
             "user_id": str(user_id or DEFAULT_USER_ID),
             **report,
@@ -3175,6 +3473,8 @@ class ComplaintWorkspaceService:
                 {"name": "complaint.export_complaint_pdf", "description": "Export the generated complaint as a downloadable PDF artifact."},
                 {"name": "complaint.analyze_complaint_output", "description": "Analyze the generated complaint output and turn filing-shape gaps into concrete UI/UX suggestions."},
                 {"name": "complaint.get_formal_diagnostics", "description": "Return the compact formal-complaint diagnostics summary for the current complaint draft and export state."},
+                {"name": "complaint.get_filing_provenance", "description": "Return the shared routing provenance for complaint generation, filing critique, export critique, and cached UI review workflows."},
+                {"name": "complaint.get_provider_diagnostics", "description": "Report which llm_router providers are actually usable on this machine, in the same order the router will prefer them."},
                 {"name": "complaint.review_generated_exports", "description": "Review generated complaint export artifacts through llm_router and turn filing-output weaknesses into UI/UX repair suggestions."},
                 {"name": "complaint.update_claim_type", "description": "Set the current complaint type so drafting and review stay aligned to the right legal claim shape."},
                 {"name": "complaint.update_case_synopsis", "description": "Persist a shared case synopsis that stays visible across workspace, CLI, and MCP flows."},
@@ -3276,6 +3576,10 @@ class ComplaintWorkspaceService:
             return self.analyze_complaint_output(args.get("user_id"))
         if tool_name == "complaint.get_formal_diagnostics":
             return self.get_formal_diagnostics(args.get("user_id"))
+        if tool_name == "complaint.get_filing_provenance":
+            return self.get_filing_provenance(args.get("user_id"))
+        if tool_name == "complaint.get_provider_diagnostics":
+            return self.get_provider_diagnostics(args.get("user_id"))
         if tool_name == "complaint.review_generated_exports":
             return self.review_generated_exports(
                 args.get("user_id"),

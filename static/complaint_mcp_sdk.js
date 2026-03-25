@@ -257,6 +257,18 @@
             });
         }
 
+        getFilingProvenance(userId) {
+            return this.callTool('complaint.get_filing_provenance', {
+                user_id: userId,
+            });
+        }
+
+        getProviderDiagnostics(userId) {
+            return this.callTool('complaint.get_provider_diagnostics', {
+                user_id: userId,
+            });
+        }
+
         reviewGeneratedExports(payload) {
             return this.callTool('complaint.review_generated_exports', payload || {});
         }

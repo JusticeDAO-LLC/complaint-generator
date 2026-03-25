@@ -1,0 +1,176 @@
+{
+  "case_synopsis": "",
+  "claim_type": "retaliation",
+  "created_at": "2026-03-25T02:55:47.262635+00:00",
+  "draft": {
+    "body": "IN THE UNITED STATES DISTRICT COURT\nFOR THE NORTHERN DISTRICT OF CALIFORNIA\n\nJordan Example, Plaintiff,\n\nv.\n\nAcme Corporation, Defendant.\n\nCivil Action No. ________________\n\nCOMPLAINT FOR RETALIATION\n\nJURY TRIAL DEMANDED\n\nNATURE OF THE ACTION\n1. Jordan Example brings this retaliation complaint against Acme Corporation arising from Plaintiff's protected activity in reporting discrimination to human resources and requesting corrective action, followed by Defendant's materially adverse response three days later.\n\n2. Plaintiff seeks relief for lost wages, lost benefits, emotional distress, and other harms flowing from Defendant's retaliatory conduct, including compensatory and equitable relief, and such further relief as may be just.\n\nJURISDICTION AND VENUE\n3. This Court has subject-matter jurisdiction because the Complaint alleges retaliation for protected activity and seeks damages and equitable relief for materially adverse acts that occurred within the Court's jurisdictional scope.\n\n4. Venue lies in this District because Acme Corporation's retaliatory conduct occurred here and the resulting harm was suffered here.\n\nPARTIES\n5. Plaintiff Jordan Example is an individual whose internal report of discrimination and request for corrective action constitute the protected activity on which this Complaint is premised.\n\n6. Defendant Acme Corporation is the employer that knew of Plaintiff's protected activity and is responsible for the ensuing retaliatory termination.\n\nFACTUAL ALLEGATIONS\n7. Plaintiff engaged in protected activity on March 8 by reporting discrimination to human resources and requesting corrective action in accordance with Acme Corporation policy.\n\n8. Defendant knew of Plaintiff's protected activity because the report was made through human resources channels and is the same activity that triggered the subsequent adverse action.\n\n9. Within days of that protected activity, on March 11, Defendant terminated Plaintiff, which is a materially adverse action taken under circumstances supporting a causal inference of retaliation.\n\n10. The close temporal proximity between the March 8 complaint and the March 11 termination, coupled with Defendant's awareness of the complaint, supports a strong inference of retaliatory motive.\n\n11. As a direct and proximate result of the retaliatory termination, Plaintiff suffered lost wages, lost benefits, and emotional distress.\n\nEVIDENTIARY SUPPORT AND NOTICE\n12. Plaintiff presently relies on the evidentiary materials identified below and anticipates that testimonial proof may be supplemented through discovery, amendment, or sworn declarations.\n\n13. Plaintiff presently identifies the documentary exhibit titled \"Termination email,\" which confirms the discharge that followed the protected complaint, as supporting the causal link element.\n\n14. Based on the information presently available, Plaintiff contends that the evidentiary record supports all five core claim elements and that no additional elements are left unsupported at this time, subject to further corroboration through discovery.\n\n15. Plaintiff gives notice that the identified testimony, documentary exhibits, and chronology materials constitute part of the evidentiary basis for this pleading and may be supplemented, authenticated, or amended as discovery proceeds.\n\n16. Plaintiff expects to introduce the documentary exhibit \"Termination email\" to establish the causal link between the protected activity and the termination.\n\nCLAIM FOR RELIEF\nCOUNT I - RETALIATION\n\n17. Jordan Example repeats and realleges the preceding paragraphs as if fully set forth herein.\n\n18. Plaintiff engaged in protected activity by reporting discrimination to human resources on March 8 and requesting corrective action, and Defendant knew or should have known of that protected conduct.\n\n19. Defendant thereafter subjected Plaintiff to materially adverse action by terminating employment three days later, under circumstances that give rise to a causal inference of retaliation.\n\n20. The close temporal proximity between the protected activity and the adverse action, Defendant's knowledge of the protected activity, and the evidentiary record support the inference that the retaliation was a proximate cause of the termination.\n\n21. Plaintiff sustained damages and losses including lost wages, lost benefits, and emotional distress as a direct result of the retaliatory conduct.\n\n22. As a direct and proximate result of Defendant's retaliatory conduct, Plaintiff is entitled to damages, equitable relief, and costs, including fees where afforded by law, and such further relief as the Court deems just and proper.\n\nPRAYER FOR RELIEF\nWherefore, Plaintiff respectfully requests judgment against Defendant on the retaliation claim alleged herein and seeks the following relief:\n\n1. Compensatory damages according to proof.\n2. Back pay and lost benefits.\n3. Appropriate injunctive and equitable relief.\n\nJURY DEMAND\nPlaintiff demands a trial by jury on all issues so triable.\n\nSIGNATURE BLOCK\nDated: ____________________\n\nRespectfully submitted,\n\nJordan Example\n\nPlaintiff, Pro Se\n\nAddress: ____________________\n\nTelephone: ____________________\n\nEmail: ____________________",
+    "case_synopsis": "Jordan Example is pursuing a retaliation complaint against Acme Corporation. The current theory is that Jordan Example Reported discrimination to HR and requested corrective action, then experienced Termination three days later. The reported harm is Lost wages, benefits, and emotional distress. Timeline posture: Complaint on March 8, termination on March 11. Current support posture: 5 supported elements, 0 open gaps, 1 saved evidence items.",
+    "claim_type": "retaliation",
+    "draft_backend": {
+      "id": "ui-review",
+      "model": null,
+      "provider": null
+    },
+    "draft_normalizations": [
+      "normalized_court_caption",
+      "normalized_section_heading_punctuation"
+    ],
+    "draft_strategy": "llm_router",
+    "generated_at": "2026-03-25T02:56:08.022537+00:00",
+    "requested_relief": [
+      "Compensatory damages",
+      "Back pay",
+      "Injunctive relief"
+    ],
+    "review_snapshot": {
+      "case_synopsis": "Jordan Example is pursuing a retaliation complaint against Acme Corporation. The current theory is that Jordan Example Reported discrimination to HR and requested corrective action, then experienced Termination three days later. The reported harm is Lost wages, benefits, and emotional distress. Timeline posture: Complaint on March 8, termination on March 11. Current support posture: 5 supported elements, 0 open gaps, 1 saved evidence items.",
+      "claim_type": "retaliation",
+      "documents": [
+        {
+          "attachment_names": [],
+          "claim_element_id": "causation",
+          "content": "Email confirming discharge after HR complaint",
+          "id": "documents-1",
+          "kind": "document",
+          "saved_at": "2026-03-25T02:55:47.263048+00:00",
+          "source": "email",
+          "title": "Termination email"
+        }
+      ],
+      "overview": {
+        "document_items": 1,
+        "missing_elements": 0,
+        "supported_elements": 5,
+        "testimony_items": 0
+      },
+      "recommended_actions": [
+        {
+          "detail": "All core elements have at least one support source.",
+          "title": "Collect more corroboration"
+        },
+        {
+          "detail": "Close timing between protected activity and adverse action strengthens causation.",
+          "title": "Check the timeline"
+        }
+      ],
+      "support_matrix": [
+        {
+          "document_count": 0,
+          "id": "protected_activity",
+          "intake_supported": true,
+          "label": "Protected activity",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "employer_knowledge",
+          "intake_supported": true,
+          "label": "Employer knowledge",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "adverse_action",
+          "intake_supported": true,
+          "label": "Adverse action",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 1,
+          "id": "causation",
+          "intake_supported": true,
+          "label": "Causal link",
+          "status": "supported",
+          "support_count": 2,
+          "supported": true,
+          "testimony_count": 0
+        },
+        {
+          "document_count": 0,
+          "id": "harm",
+          "intake_supported": true,
+          "label": "Damages",
+          "status": "supported",
+          "support_count": 1,
+          "supported": true,
+          "testimony_count": 0
+        }
+      ],
+      "testimony": []
+    },
+    "title": "Retaliation Complaint"
+  },
+  "evidence": {
+    "documents": [
+      {
+        "attachment_names": [],
+        "claim_element_id": "causation",
+        "content": "Email confirming discharge after HR complaint",
+        "id": "documents-1",
+        "kind": "document",
+        "saved_at": "2026-03-25T02:55:47.263048+00:00",
+        "source": "email",
+        "title": "Termination email"
+      }
+    ],
+    "testimony": []
+  },
+  "intake_answers": {
+    "adverse_action": "Termination three days later",
+    "court_header": "FOR THE NORTHERN DISTRICT OF CALIFORNIA",
+    "harm": "Lost wages, benefits, and emotional distress",
+    "opposing_party": "Acme Corporation",
+    "party_name": "Jordan Example",
+    "protected_activity": "Reported discrimination to HR and requested corrective action",
+    "timeline": "Complaint on March 8, termination on March 11"
+  },
+  "intake_history": [
+    {
+      "answer": "Jordan Example",
+      "captured_at": "2026-03-25T02:55:47.262665+00:00",
+      "question_id": "party_name"
+    },
+    {
+      "answer": "Acme Corporation",
+      "captured_at": "2026-03-25T02:55:47.262667+00:00",
+      "question_id": "opposing_party"
+    },
+    {
+      "answer": "Reported discrimination to HR and requested corrective action",
+      "captured_at": "2026-03-25T02:55:47.262668+00:00",
+      "question_id": "protected_activity"
+    },
+    {
+      "answer": "Termination three days later",
+      "captured_at": "2026-03-25T02:55:47.262669+00:00",
+      "question_id": "adverse_action"
+    },
+    {
+      "answer": "Complaint on March 8, termination on March 11",
+      "captured_at": "2026-03-25T02:55:47.262670+00:00",
+      "question_id": "timeline"
+    },
+    {
+      "answer": "Lost wages, benefits, and emotional distress",
+      "captured_at": "2026-03-25T02:55:47.262671+00:00",
+      "question_id": "harm"
+    },
+    {
+      "answer": "FOR THE NORTHERN DISTRICT OF CALIFORNIA",
+      "captured_at": "2026-03-25T02:55:47.262672+00:00",
+      "question_id": "court_header"
+    }
+  ],
+  "ui_readiness": null,
+  "updated_at": "2026-03-25T02:56:35.349546+00:00",
+  "user_id": "did:key:live-llm-check"
+}

@@ -255,6 +255,24 @@ def get_formal_diagnostics(
     return _resolve_service(service, root_dir=root_dir).get_formal_diagnostics(user_id)
 
 
+def get_filing_provenance(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_filing_provenance(user_id)
+
+
+def get_provider_diagnostics(
+    user_id: Optional[str] = None,
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_provider_diagnostics(user_id)
+
+
 def review_generated_exports(
     user_id: Optional[str] = None,
     *,
@@ -421,6 +439,8 @@ __all__ = [
     "export_complaint_docx",
     "analyze_complaint_output",
     "get_formal_diagnostics",
+    "get_filing_provenance",
+    "get_provider_diagnostics",
     "review_generated_exports",
     "update_claim_type",
     "generate_decentralized_id",

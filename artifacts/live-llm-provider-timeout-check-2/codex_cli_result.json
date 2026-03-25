@@ -1,0 +1,13 @@
+{
+  "draft_strategy": "llm_router",
+  "draft_backend": {
+    "id": "ui-review",
+    "provider": "codex_cli",
+    "model": "gpt-5.3-codex",
+    "requested_provider": "codex_cli",
+    "requested_model": null
+  },
+  "draft_fallback_reason": null,
+  "draft_normalizations": [],
+  "body_excerpt": "IN THE UNITED STATES DISTRICT COURT\nFOR THE NORTHERN DISTRICT OF CALIFORNIA\n\nJordan Example, Plaintiff,\n\nv.\n\nAcme Corporation, Defendant.\n\nCivil Action No. ________________\nCOMPLAINT FOR RETALIATION\nJURY TRIAL DEMANDED\n\nNATURE OF THE ACTION\n1. Plaintiff Jordan Example brings this civil action for retaliation against Defendant Acme Corporation.\n2. This action arises from Defendant's retaliatory conduct after Plaintiff reported discrimination to human resources.\n\nJURISDICTION AND VENUE\n3. This Court has subject-matter jurisdiction because Plaintiff alleges retaliation for protected activity and seeks relief for resulting adverse action and damages.\n4. Venue is proper in this District because a substantial part of the events giving rise to this claim occurred here.\n\nPARTIES\n5. Plaintiff Jordan Example is an individual who engaged in protected activity and suffered harm.\n6. Defendant Acme Corporation is the employer that took the challenged adverse action.\n\nFACTUAL ALLEGATIONS\n7. Plaintiff engaged in protected activity by reporting discrimination to HR.\n8. Defendant knew of Plaintiff's protected activity before imposing the adverse action.\n9. On April 2, Plaintiff made the report to HR"
+}

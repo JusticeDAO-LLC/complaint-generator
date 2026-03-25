@@ -1672,6 +1672,8 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                                 <button class="secondary" id="refresh-ui-readiness-button" type="button">Refresh UI Readiness</button>
                                 <button class="secondary" id="refresh-client-release-gate-button" type="button">Refresh Client Release Gate</button>
                                 <button class="secondary" id="refresh-formal-diagnostics-button" type="button">Refresh Formal Diagnostics</button>
+                                <button class="secondary" id="refresh-filing-provenance-button" type="button">Refresh Filing Provenance</button>
+                                <button class="secondary" id="refresh-provider-diagnostics-button" type="button">Refresh Provider Diagnostics</button>
                                 <button class="secondary" id="build-mediator-prompt-button" type="button">Preview Mediator Brief</button>
                                 <button class="secondary" id="export-packet-tool-button" type="button">Export Packet via Tools</button>
                                 <button class="secondary" id="analyze-complaint-output-button" type="button">Analyze Exported Complaint</button>
@@ -1709,6 +1711,14 @@ await client.runBrowserAudit({ screenshot_dir: 'artifacts/ui-audit/browser-audit
                             <div>
                                 <label>Formal Diagnostics</label>
                                 <div class="status draft-preview-shell"><pre id="formal-diagnostics-preview">No formal-diagnostics payload loaded yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Filing Provenance</label>
+                                <div class="status draft-preview-shell"><pre id="filing-provenance-preview">No filing-provenance payload loaded yet.</pre></div>
+                            </div>
+                            <div>
+                                <label>Provider Diagnostics</label>
+                                <div class="status draft-preview-shell"><pre id="provider-diagnostics-preview">No provider-diagnostics payload loaded yet.</pre></div>
                             </div>
                             <div>
                                 <label>Packet Export Summary</label>
@@ -1873,6 +1883,8 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         let workspaceUiReadiness = null;
         let workspaceClientReleaseGate = null;
         let workspaceFormalDiagnostics = null;
+        let workspaceFilingProvenance = null;
+        let workspaceProviderDiagnostics = null;
         let latestPacketExport = null;
         let latestComplaintOutputAnalysis = null;
         let sdkPrimitiveSnapshot = null;
@@ -1994,23 +2006,48 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             return Array.from(String(value || '').matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)).map((match) => match[0]);
         }
 
+        function recordSuggestedGmailImportAddress(metadataByAddress, address, sourceLabel) {
+            const normalizedAddress = String(address || '').trim().toLowerCase();
+            const normalizedSource = String(sourceLabel || '').trim().toLowerCase();
+            if (!normalizedAddress) {
+                return;
+            }
+            if (!metadataByAddress[normalizedAddress]) {
+                metadataByAddress[normalizedAddress] = {
+                    address: normalizedAddress,
+                    sources: [],
+                };
+            }
+            if (normalizedSource && !metadataByAddress[normalizedAddress].sources.includes(normalizedSource)) {
+                metadataByAddress[normalizedAddress].sources.push(normalizedSource);
+            }
+        }
+
         function buildSuggestedGmailImportAddresses(sessionPayload) {
             const session = (sessionPayload && sessionPayload.session) || {};
             const answers = session.intake_answers || {};
             const evidenceItems = Array.isArray(session.evidence_items) ? session.evidence_items : [];
-            const candidates = [];
+            const metadataByAddress = {};
 
             Object.values(answers).forEach((value) => {
-                candidates.push(...extractEmailAddresses(value));
+                extractEmailAddresses(value).forEach((address) => {
+                    recordSuggestedGmailImportAddress(metadataByAddress, address, 'intake');
+                });
             });
 
             evidenceItems.forEach((item) => {
-                candidates.push(...extractEmailAddresses(item && item.title));
-                candidates.push(...extractEmailAddresses(item && item.source));
-                candidates.push(...extractEmailAddresses(item && item.content));
+                extractEmailAddresses(item && item.title).forEach((address) => {
+                    recordSuggestedGmailImportAddress(metadataByAddress, address, 'evidence title');
+                });
+                extractEmailAddresses(item && item.source).forEach((address) => {
+                    recordSuggestedGmailImportAddress(metadataByAddress, address, 'evidence source');
+                });
+                extractEmailAddresses(item && item.content).forEach((address) => {
+                    recordSuggestedGmailImportAddress(metadataByAddress, address, 'evidence content');
+                });
             });
 
-            return Array.from(new Set(candidates.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean)));
+            return Object.values(metadataByAddress).sort((left, right) => left.address.localeCompare(right.address));
         }
 
         function currentGmailImportUserId() {
@@ -2034,13 +2071,13 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 return;
             }
             const selectedAddresses = new Set(currentGmailImportAddresses());
-            container.innerHTML = gmailImportDetectedAddresses.map((address) => `
+            container.innerHTML = gmailImportDetectedAddresses.map((item) => `
                 <button
-                    class="chip ${selectedAddresses.has(address) ? 'good' : ''}"
+                    class="chip ${selectedAddresses.has(item.address) ? 'good' : ''}"
                     type="button"
-                    data-gmail-detected-address-chip="${escapeHtml(address)}"
-                    title="${selectedAddresses.has(address) ? `Remove ${escapeHtml(address)} from the Gmail import list` : `Add ${escapeHtml(address)} to the Gmail import list`}"
-                >${escapeHtml(address)} ${selectedAddresses.has(address) ? 'selected' : 'add'}</button>
+                    data-gmail-detected-address-chip="${escapeHtml(item.address)}"
+                    title="${selectedAddresses.has(item.address) ? `Remove ${escapeHtml(item.address)} from the Gmail import list` : `Add ${escapeHtml(item.address)} to the Gmail import list`}"
+                >${escapeHtml(item.address)} [${escapeHtml((item.sources || []).join(', ') || 'case')}] ${selectedAddresses.has(item.address) ? 'selected' : 'add'}</button>
             `).join('');
         }
 
@@ -2127,7 +2164,7 @@ ${cliAddressLines}
                 return;
             }
             gmailImportDetectedAddresses = suggested;
-            setGmailImportAddresses(suggested);
+            setGmailImportAddresses(suggested.map((item) => item.address));
             renderGmailImportCommandExamples();
             activateTab('evidence');
             setStatus(`Suggested ${suggested.length} email address${suggested.length === 1 ? '' : 'es'} from the current case record.`);
@@ -2937,6 +2974,8 @@ ${cliAddressLines}
             const uiReadinessNode = document.getElementById('ui-readiness-preview');
             const clientReleaseGateNode = document.getElementById('client-release-gate-preview');
             const formalDiagnosticsNode = document.getElementById('formal-diagnostics-preview');
+            const filingProvenanceNode = document.getElementById('filing-provenance-preview');
+            const providerDiagnosticsNode = document.getElementById('provider-diagnostics-preview');
             const packetSummaryNode = document.getElementById('packet-export-summary');
             const releaseGateNode = document.getElementById('formal-complaint-release-gate');
             const formalDefectsNode = document.getElementById('formal-complaint-defects');
@@ -3046,6 +3085,49 @@ ${cliAddressLines}
                 formalDiagnosticsNode.textContent = `${summaryLines.join('\n')}\n\n${JSON.stringify(workspaceFormalDiagnostics, null, 2)}`;
             } else {
                 formalDiagnosticsNode.textContent = 'No formal-diagnostics payload loaded yet.';
+            }
+
+            if (workspaceFilingProvenance) {
+                const provenance = workspaceFilingProvenance || {};
+                const generationBackend = provenance.draft_backend || {};
+                const complaintBackend = provenance.complaint_output_router_backend || {};
+                const exportCriticBackends = Array.isArray(provenance.export_critic_router_backends) ? provenance.export_critic_router_backends : [];
+                const uiReviewBackend = provenance.ui_review_backend || {};
+                const summaryLines = [
+                    'Filing provenance summary',
+                    `Claim type: ${String(provenance.claim_type || 'unknown')}`,
+                    `Draft strategy: ${String(provenance.draft_strategy || 'template')}`,
+                    `Draft generation route: ${[generationBackend.strategy || provenance.draft_strategy, generationBackend.provider, generationBackend.model].map((item) => String(item || '').trim()).filter(Boolean).join(' / ') || 'unavailable'}`,
+                    `Complaint-output critic route: ${[complaintBackend.strategy, complaintBackend.provider, complaintBackend.model].map((item) => String(item || '').trim()).filter(Boolean).join(' / ') || 'unavailable'}`,
+                    `Export critic routes: ${exportCriticBackends.length ? exportCriticBackends.map((item) => [item.strategy, item.provider, item.model].map((part) => String(part || '').trim()).filter(Boolean).join(' / ')).join(' | ') : 'none cached yet'}`,
+                    `UI review route: ${[uiReviewBackend.strategy, uiReviewBackend.provider, uiReviewBackend.model].map((item) => String(item || '').trim()).filter(Boolean).join(' / ') || 'none cached yet'}`,
+                    `UI workflow type: ${String(provenance.ui_workflow_type || 'unavailable')}`,
+                ];
+                filingProvenanceNode.textContent = `${summaryLines.join('\n')}\n\n${JSON.stringify(workspaceFilingProvenance, null, 2)}`;
+            } else {
+                filingProvenanceNode.textContent = 'No filing-provenance payload loaded yet.';
+            }
+
+            if (workspaceProviderDiagnostics) {
+                const providerLines = [
+                    'Router provider diagnostics',
+                    `Forced provider: ${String(workspaceProviderDiagnostics.forced_provider || 'auto')}`,
+                    `Effective default: ${String(workspaceProviderDiagnostics.effective_default_provider || 'none')}`,
+                    `Preference order: ${Array.isArray(workspaceProviderDiagnostics.default_order) ? workspaceProviderDiagnostics.default_order.join(' -> ') : 'unknown'}`,
+                    '',
+                ];
+                (workspaceProviderDiagnostics.providers || []).forEach((item) => {
+                    providerLines.push(
+                        `${String(item.name || 'provider')}: ${item.available ? 'available' : 'unavailable'}`
+                        + (item.credential_source ? ` via ${String(item.credential_source)}` : '')
+                    );
+                    if (item.reason) {
+                        providerLines.push(`  ${String(item.reason)}`);
+                    }
+                });
+                providerDiagnosticsNode.textContent = `${providerLines.join('\n')}\n\n${JSON.stringify(workspaceProviderDiagnostics, null, 2)}`;
+            } else {
+                providerDiagnosticsNode.textContent = 'No provider-diagnostics payload loaded yet.';
             }
 
             if (latestPacketExport && latestPacketExport.packet_summary) {
@@ -3528,6 +3610,7 @@ ${cliAddressLines}
             workspaceComplaintReadiness = await client.getComplaintReadiness(workspaceUserId);
             workspaceUiReadiness = await client.getUiReadiness(workspaceUserId);
             workspaceClientReleaseGate = await client.getClientReleaseGate(workspaceUserId);
+            workspaceProviderDiagnostics = await client.getProviderDiagnostics(workspaceUserId);
             renderWorkflowOperations();
         }
 
@@ -4355,6 +4438,20 @@ ${cliAddressLines}
             setStatus('Formal complaint diagnostics refreshed.');
         }
 
+        async function refreshFilingProvenancePanel() {
+            setBusyStatus('Refreshing filing provenance through the MCP tools…');
+            workspaceFilingProvenance = await client.getFilingProvenance(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Filing provenance refreshed.');
+        }
+
+        async function refreshProviderDiagnosticsPanel() {
+            setBusyStatus('Refreshing llm_router provider diagnostics through the MCP tools…');
+            workspaceProviderDiagnostics = await client.getProviderDiagnostics(workspaceUserId);
+            renderWorkflowOperations();
+            setStatus('Provider diagnostics refreshed.');
+        }
+
         async function previewMediatorBrief() {
             setBusyStatus('Refreshing the mediator testimony brief through the MCP tools…');
             workspaceMediatorPrompt = await client.buildMediatorPrompt(workspaceUserId);
@@ -4512,6 +4609,8 @@ ${cliAddressLines}
         document.getElementById('refresh-ui-readiness-button').addEventListener('click', refreshUiReadinessPanel);
         document.getElementById('refresh-client-release-gate-button').addEventListener('click', refreshClientReleaseGatePanel);
         document.getElementById('refresh-formal-diagnostics-button').addEventListener('click', refreshFormalDiagnosticsPanel);
+        document.getElementById('refresh-filing-provenance-button').addEventListener('click', refreshFilingProvenancePanel);
+        document.getElementById('refresh-provider-diagnostics-button').addEventListener('click', refreshProviderDiagnosticsPanel);
         document.getElementById('build-mediator-prompt-button').addEventListener('click', previewMediatorBrief);
         document.getElementById('analyze-complaint-output-button').addEventListener('click', analyzeComplaintOutputPanel);
         document.getElementById('review-generated-exports-button').addEventListener('click', reviewGeneratedExportsPanel);

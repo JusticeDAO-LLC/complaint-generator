@@ -346,12 +346,13 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#tool-list')).toContainText(/complaint\.review_generated_exports/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.get_tooling_contract/i);
+    await expect(page.locator('#tool-list')).toContainText(/complaint\.get_filing_provenance/i);
     await expect(page.locator('#did-chip')).toContainText(/did:key:/i);
     await expect.poll(async () => page.evaluate(() => localStorage.getItem('complaintGenerator.did'))).toMatch(/^did:key:/);
     await expect(page.locator('#intake-caption-preview')).toContainText(/FOR THE APPROPRIATE JUDICIAL DISTRICT/i);
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await page.locator('#refresh-capabilities-button').click();
-    await expect(page.locator('#workspace-status')).toContainText(/Workflow capabilities refreshed\./i);
+    await expect(page.locator('#workspace-status')).toContainText(/Workflow capabilities refreshed\./i, { timeout: 15000 });
     await expect(page.locator('#workflow-capabilities-preview')).toContainText(/Shared Tooling Contract/i);
     await expect(page.locator('#workflow-capabilities-preview')).toContainText(/All core complaint-flow steps are exposed across package, CLI, MCP, and browser SDK surfaces\./i);
     await page.locator('#refresh-tooling-contract-button').click();
@@ -361,6 +362,8 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#tooling-contract-preview')).toContainText(/getToolingContract/i);
     await expect(page.locator('#tooling-contract-preview')).toContainText(/complaint\.get_formal_diagnostics/i);
     await expect(page.locator('#tooling-contract-preview')).toContainText(/getFormalDiagnostics/i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/complaint\.get_filing_provenance/i);
+    await expect(page.locator('#tooling-contract-preview')).toContainText(/getFilingProvenance/i);
     await page.locator('#refresh-formal-diagnostics-button').click();
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Formal complaint posture summary/i, { timeout: 15000 });
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Release gate verdict:/i, { timeout: 15000 });
@@ -553,7 +556,8 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#intake-caption-preview')).toContainText(/COUNT I - RETALIATION/i);
     await expect(page.locator('#intake-caption-preview')).toContainText(/Requested relief will appear here once it is entered in the draft panel/i);
     await page.locator('#save-intake-button').click();
-    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+    await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved\./i, { timeout: 15000 });
+    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i, { timeout: 15000 });
 
     await page.locator('#case-synopsis').fill('Taylor Smith alleges retaliation after reporting wage-and-hour violations, and the central question is whether the timing and employer motive can be corroborated well enough for filing.');
     await page.locator('#save-synopsis-button').click();
@@ -628,6 +632,11 @@ test.describe('complaint generation workflow', () => {
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/formal_complaint_reviewer/i, { timeout: 15000 });
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/"complaint_output_router_backend":/i, { timeout: 15000 });
     await expect(page.locator('#formal-diagnostics-preview')).toContainText(/Top UI repair suggestions:/i, { timeout: 15000 });
+    await page.locator('#refresh-provider-diagnostics-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Provider diagnostics refreshed\./i);
+    await expect(page.locator('#provider-diagnostics-preview')).toContainText(/Router provider diagnostics/i);
+    await expect(page.locator('#provider-diagnostics-preview')).toContainText(/Preference order: codex_cli -> openai -> copilot_cli -> hf_inference_api/i);
+    await expect(page.locator('#provider-diagnostics-preview')).toContainText(/copilot_cli:/i);
 
     await page.locator('#export-packet-tool-button').click();
     await expect(page.locator('#packet-export-summary')).toContainText(/"has_draft": true/i);
@@ -677,6 +686,12 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#ux-review-repair-brief').getByRole('button', { name: 'Open CLI + MCP' }).click();
     await expect(page.locator('[data-tab-panel="integrations"]')).toHaveClass(/is-active/);
     await expect(page.locator('#workspace-status')).toContainText(/Opened CLI \+ MCP from the optimizer repair brief/i);
+    await page.locator('#refresh-filing-provenance-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Filing provenance refreshed\./i);
+    await expect(page.locator('#filing-provenance-preview')).toContainText(/Filing provenance summary/i);
+    await expect(page.locator('#filing-provenance-preview')).toContainText(/Draft generation route: llm_router/i);
+    await expect(page.locator('#filing-provenance-preview')).toContainText(/Complaint-output critic route:.*formal_complaint_reviewer/i);
+    await expect(page.locator('#filing-provenance-preview')).toContainText(/UI review route:.*multimodal_router/i);
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
 
     const [markdownDownload] = await Promise.all([
@@ -774,7 +789,8 @@ test.describe('complaint generation workflow', () => {
     await page.locator('#intake-harm').fill('Risked losing housing stability and incurred out-of-pocket relocation costs');
     await page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA');
     await page.locator('#save-intake-button').click();
-    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i);
+    await expect(page.locator('#workspace-status')).toContainText(/Intake answers saved\./i, { timeout: 15000 });
+    await expect(page.locator('#next-question-label')).toContainText(/Intake complete/i, { timeout: 15000 });
 
     await page.getByRole('button', { name: 'Evidence', exact: true }).click();
     await page.locator('#evidence-kind').selectOption('document');
