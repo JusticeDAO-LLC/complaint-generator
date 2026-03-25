@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -9,6 +10,7 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 
 
 DEFAULT_COMPLAINT_OUTPUT_REVIEW_TIMEOUT_S = 8
+DEFAULT_UI_REVIEW_TIMEOUT_S = 10
 
 
 def _format_router_backend_path(backend: Dict[str, Any]) -> str:
@@ -658,6 +660,20 @@ def _load_backend_kwargs(config_path: Optional[str], backend_id: Optional[str]) 
     return config
 
 
+def _call_with_timeout(fn, *, timeout_s: float):
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(fn)
+    try:
+        return future.result(timeout=max(0.001, float(timeout_s)))
+    except FuturesTimeoutError as exc:
+        future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise TimeoutError(f"UI review timed out after {float(timeout_s):g}s") from exc
+    finally:
+        if not future.cancelled() and future.done():
+            executor.shutdown(wait=False, cancel_futures=True)
+
+
 def _review_with_multimodal_router(
     *,
     screenshots: List[Path],
@@ -665,13 +681,17 @@ def _review_with_multimodal_router(
     backend_kwargs: Dict[str, Any],
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     backend = MultimodalRouterBackend(**backend_kwargs)
-    raw_response = backend(
-        prompt,
-        image_paths=screenshots,
-        system_prompt=(
-            "Review complaint UI screenshots and produce strict JSON. "
-            "Prioritize actionable fixes that preserve the shared MCP JavaScript SDK workflow."
+    timeout_s = float(backend_kwargs.get("timeout") or DEFAULT_UI_REVIEW_TIMEOUT_S)
+    raw_response = _call_with_timeout(
+        lambda: backend(
+            prompt,
+            image_paths=screenshots,
+            system_prompt=(
+                "Review complaint UI screenshots and produce strict JSON. "
+                "Prioritize actionable fixes that preserve the shared MCP JavaScript SDK workflow."
+            ),
         ),
+        timeout_s=timeout_s,
     )
     return (
         _parse_json_response(raw_response),
@@ -690,7 +710,8 @@ def _review_with_text_router(
     backend_kwargs: Dict[str, Any],
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     backend = LLMRouterBackend(**backend_kwargs)
-    raw_response = backend(prompt)
+    timeout_s = float(backend_kwargs.get("timeout") or DEFAULT_UI_REVIEW_TIMEOUT_S)
+    raw_response = _call_with_timeout(lambda: backend(prompt), timeout_s=timeout_s)
     return (
         _parse_json_response(raw_response),
         {
@@ -733,6 +754,9 @@ def create_ui_review_report(
         backend_kwargs["provider"] = provider
     if model:
         backend_kwargs["model"] = model
+    backend_kwargs.setdefault("timeout", DEFAULT_UI_REVIEW_TIMEOUT_S)
+    backend_kwargs.setdefault("retry_max_attempts", 1)
+    backend_kwargs.setdefault("allow_local_fallback", False)
 
     try:
         review_payload, backend_metadata = _review_with_multimodal_router(

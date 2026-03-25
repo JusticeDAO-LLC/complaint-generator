@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 import pytest
 
@@ -30,6 +31,9 @@ def test_create_ui_review_report_prefers_multimodal_router(monkeypatch, tmp_path
             self.id = kwargs.get("id", "ui-review")
             self.provider = kwargs.get("provider")
             self.model = kwargs.get("model")
+            assert kwargs["timeout"] == ui_review_module.DEFAULT_UI_REVIEW_TIMEOUT_S
+            assert kwargs["retry_max_attempts"] == 1
+            assert kwargs["allow_local_fallback"] is False
 
         def __call__(self, prompt, *, image_paths=None, system_prompt=None):
             assert "ComplaintMcpClient" in prompt
@@ -69,6 +73,9 @@ def test_create_ui_review_report_falls_back_to_text_router(monkeypatch, tmp_path
             self.id = kwargs.get("id", "ui-review")
             self.provider = kwargs.get("provider")
             self.model = kwargs.get("model")
+            assert kwargs["timeout"] == ui_review_module.DEFAULT_UI_REVIEW_TIMEOUT_S
+            assert kwargs["retry_max_attempts"] == 1
+            assert kwargs["allow_local_fallback"] is False
 
         def __call__(self, prompt, *, image_paths=None, system_prompt=None):
             raise RuntimeError("vision offline")
@@ -78,6 +85,9 @@ def test_create_ui_review_report_falls_back_to_text_router(monkeypatch, tmp_path
             self.id = kwargs.get("id", "ui-review")
             self.provider = kwargs.get("provider")
             self.model = kwargs.get("model")
+            assert kwargs["timeout"] == ui_review_module.DEFAULT_UI_REVIEW_TIMEOUT_S
+            assert kwargs["retry_max_attempts"] == 1
+            assert kwargs["allow_local_fallback"] is False
 
         def __call__(self, prompt):
             assert "Screenshot artifacts" in prompt
@@ -115,6 +125,9 @@ def test_run_ui_review_workflow_loads_complaint_export_artifacts_from_screenshot
             self.id = kwargs.get("id", "ui-review")
             self.provider = kwargs.get("provider")
             self.model = kwargs.get("model")
+            assert kwargs["timeout"] == ui_review_module.DEFAULT_UI_REVIEW_TIMEOUT_S
+            assert kwargs["retry_max_attempts"] == 1
+            assert kwargs["allow_local_fallback"] is False
 
         def __call__(self, prompt, *, image_paths=None, system_prompt=None):
             assert "Complaint export artifacts" in prompt
@@ -134,6 +147,41 @@ def test_run_ui_review_workflow_loads_complaint_export_artifacts_from_screenshot
     assert report["complaint_output_feedback"]["ui_suggestions"] == [
         "Add clearer draft-readiness warnings before download."
     ]
+
+
+def test_create_ui_review_report_times_out_multimodal_and_falls_back_to_text(monkeypatch, tmp_path: Path):
+    screenshot = tmp_path / "workspace.png"
+    screenshot.write_bytes(b"fake-png")
+    monkeypatch.setattr(ui_review_module, "DEFAULT_UI_REVIEW_TIMEOUT_S", 0.01)
+
+    class HangingMultimodalBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "ui-review")
+            self.provider = kwargs.get("provider")
+            self.model = kwargs.get("model")
+
+        def __call__(self, prompt, *, image_paths=None, system_prompt=None):
+            time.sleep(0.05)
+            return '{"summary":"too late","issues":[],"recommended_changes":[],"workflow_gaps":[],"playwright_followups":[]}'
+
+    class FakeTextBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "ui-review")
+            self.provider = kwargs.get("provider")
+            self.model = kwargs.get("model")
+
+        def __call__(self, prompt):
+            return '{"summary":"Timed out multimodal, text fallback succeeded.","issues":[],"recommended_changes":[],"workflow_gaps":[],"playwright_followups":[]}'
+
+    monkeypatch.setattr(ui_review_module, "MultimodalRouterBackend", HangingMultimodalBackend)
+    monkeypatch.setattr(ui_review_module, "LLMRouterBackend", FakeTextBackend)
+
+    report = ui_review_module.create_ui_review_report([str(screenshot)])
+
+    assert report["backend"]["strategy"] == "llm_router"
+    assert report["backend"]["fallback_from"] == "multimodal_router"
+    assert "timed out" in report["backend"]["fallback_error"].lower()
+    assert report["review"]["summary"] == "Timed out multimodal, text fallback succeeded."
 
 
 def test_build_complaint_output_review_prompt_includes_claim_type_context():
