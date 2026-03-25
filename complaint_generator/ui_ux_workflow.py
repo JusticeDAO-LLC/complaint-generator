@@ -11,10 +11,7 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SCREENSHOT_TEST = (
-    "tests/test_website_cohesion_playwright.py::"
-    "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-)
+DEFAULT_SCREENSHOT_TEST = "playwright/tests/complaint-flow.spec.js"
 DEFAULT_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_OPTIMIZER_PRIORITY = 90
 DEFAULT_UI_UX_REVIEW_GOALS = [
@@ -98,22 +95,36 @@ def run_playwright_screenshot_audit(
     for stale in list(target_dir.glob("*.png")) + list(target_dir.glob("*.json")):
         stale.unlink()
 
-    pytest_cmd = str(pytest_executable or (REPO_ROOT / ".venv" / "bin" / "pytest"))
     env = dict(os.environ)
     env["COMPLAINT_UI_SCREENSHOT_DIR"] = str(target_dir)
+    target_text = str(pytest_target or "").strip()
+    if target_text.endswith(".js") or "playwright/tests/" in target_text:
+        completed = subprocess.run(
+            ["npm", "run", "test:e2e", "--", target_text],
+            cwd=str(workdir or REPO_ROOT),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        command = ["npm", "run", "test:e2e", "--", target_text]
+    else:
+        pytest_cmd = str(pytest_executable or (REPO_ROOT / ".venv" / "bin" / "pytest"))
+        completed = subprocess.run(
+            [pytest_cmd, "-q", target_text],
+            cwd=str(workdir or REPO_ROOT),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        command = [pytest_cmd, "-q", target_text]
 
-    completed = subprocess.run(
-        [pytest_cmd, "-q", pytest_target],
-        cwd=str(workdir or REPO_ROOT),
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
     artifacts = collect_screenshot_artifacts(target_dir)
     return {
-        "command": [pytest_cmd, "-q", pytest_target],
+        "command": command,
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,

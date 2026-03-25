@@ -21,6 +21,8 @@ DEFAULT_USER_ID = "did:key:anonymous"
 DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 DEFAULT_LLM_DRAFT_TIMEOUT_SECONDS = 20
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 DEFAULT_LLM_DRAFT_TIMEOUTS_BY_PROVIDER: Dict[str, int] = {
     "codex": 60,
     "codex_cli": 60,
@@ -36,6 +38,12 @@ DEFAULT_UI_UX_SCREENSHOT_TARGET = (
     "tests/test_website_cohesion_playwright.py::"
     "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
 )
+=======
+DEFAULT_UI_UX_SCREENSHOT_TARGET = "playwright/tests/complaint-flow.spec.js"
+>>>>>>> Stashed changes
+=======
+DEFAULT_UI_UX_SCREENSHOT_TARGET = "playwright/tests/complaint-flow.spec.js"
+>>>>>>> Stashed changes
 _DATA_DIR = Path(__file__).resolve().parent.parent / ".complaint_workspace"
 _SESSION_DIR = _DATA_DIR / "sessions"
 

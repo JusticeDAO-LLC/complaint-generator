@@ -1407,7 +1407,7 @@ def test_workspace_feature_flow_captures_screenshots_for_full_complaint_generato
 
             page.get_by_role("button", name="UX Audit", exact=True).click()
             page.wait_for_function(
-                "() => document.getElementById('ux-review-pytest-target').value.includes('test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs')"
+                "() => document.getElementById('ux-review-pytest-target').value.includes('playwright/tests/complaint-flow.spec.js')"
             )
             feature_screenshots.append(_capture_screenshot(page, screenshot_dir, "workspace-ux-review"))
 
@@ -1578,7 +1578,7 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
 
             page.get_by_role("button", name="UX Audit", exact=True).click()
             page.wait_for_function(
-                "() => document.getElementById('ux-review-pytest-target').value.includes('test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs')"
+                "() => document.getElementById('ux-review-pytest-target').value.includes('playwright/tests/complaint-flow.spec.js')"
             )
             page.wait_for_function(
                 "() => document.getElementById('ux-review-method').value === 'actor_critic'"

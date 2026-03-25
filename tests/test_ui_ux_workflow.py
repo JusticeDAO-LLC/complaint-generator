@@ -35,9 +35,7 @@ def _write_artifact(directory: Path, name: str, url: str = "http://example.test/
 
 
 def test_ui_ux_workflow_defaults_target_full_feature_audit_and_actor_critic_optimizer():
-    assert workflow_module.DEFAULT_SCREENSHOT_TEST.endswith(
-        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-    )
+    assert workflow_module.DEFAULT_SCREENSHOT_TEST == "playwright/tests/complaint-flow.spec.js"
     assert workflow_module.DEFAULT_OPTIMIZER_METHOD == "actor_critic"
     assert workflow_module.DEFAULT_OPTIMIZER_PRIORITY == 90
     assert any("first-time complainants" in goal for goal in workflow_module.DEFAULT_UI_UX_REVIEW_GOALS)
@@ -170,9 +168,7 @@ def test_run_end_to_end_complaint_browser_audit_delegates_to_playwright_audit(mo
     assert result["returncode"] == 0
     assert result["artifact_count"] == 4
     assert str(captured["screenshot_dir"]).endswith("screens")
-    assert str(captured["pytest_target"]).endswith(
-        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-    )
+    assert str(captured["pytest_target"]) == "playwright/tests/complaint-flow.spec.js"
 
 
 def test_review_and_iterative_workflow_return_llm_router_output(monkeypatch, tmp_path):

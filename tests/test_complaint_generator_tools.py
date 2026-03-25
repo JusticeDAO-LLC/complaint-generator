@@ -2397,9 +2397,7 @@ def test_optimize_ui_defaults_to_feature_complete_audit_and_actor_critic_method(
     assert cli_payload["workflow_type"] == "ui_ux_closed_loop"
     assert captured["method"] == "actor_critic"
     assert captured["priority"] == 90
-    assert captured["pytest_target"].endswith(
-        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-    )
+    assert captured["pytest_target"] == "playwright/tests/complaint-flow.spec.js"
 
 
 def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
@@ -2433,9 +2431,7 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
     )
     assert cli_payload["returncode"] == 0
     assert cli_payload["artifact_count"] == 3
-    assert captured["pytest_target"].endswith(
-        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-    )
+    assert captured["pytest_target"] == "playwright/tests/complaint-flow.spec.js"
 
     tool_names = [tool["name"] for tool in tool_list_payload(service)["tools"]]
     assert "complaint.run_browser_audit" in tool_names
@@ -2451,9 +2447,7 @@ def test_browser_audit_is_exposed_through_cli_and_mcp(monkeypatch, tmp_path):
     )
     assert mcp_payload["returncode"] == 0
     assert mcp_payload["artifact_count"] == 3
-    assert captured["pytest_target"].endswith(
-        "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-    )
+    assert captured["pytest_target"] == "playwright/tests/complaint-flow.spec.js"
 
 
 def test_package_wrappers_delegate_to_matching_ui_review_and_browser_tools(monkeypatch, tmp_path):

@@ -1824,6 +1824,40 @@ function renderDashboardShell(entry) {
 </html>`;
 }
 
+function renderSdkPlaygroundShell() {
+  const rawHtml = fs.readFileSync(sdkPreviewPath, 'utf-8');
+  const nav = `
+    <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation" style="display:flex;flex-wrap:wrap;gap:12px;margin:16px auto 0;max-width:1200px;padding:0 20px;">
+      <a class="surface-link" href="/">Landing</a>
+      <a class="surface-link" href="/home">Account</a>
+      <a class="surface-link" href="/chat">Chat</a>
+      <a class="surface-link" href="/profile">Profile</a>
+      <a class="surface-link" href="/results">Results</a>
+      <a class="surface-link" href="/workspace">Workspace</a>
+      <a class="surface-link" href="/claim-support-review">Review</a>
+      <a class="surface-link" href="/document">Builder</a>
+      <a class="surface-link" href="/mlwysiwyg">Editor</a>
+      <a class="surface-link" href="/document/optimization-trace">Trace</a>
+      <a class="surface-link" href="/ipfs-datasets/sdk-playground" aria-current="page">SDK</a>
+      <a class="surface-link" href="/dashboards">Dashboards</a>
+    </nav>
+  `;
+  const headInjected = rawHtml.includes('</head>')
+    ? rawHtml.replace(
+        '</head>',
+        '\n<link rel="stylesheet" href="/static/complaint_app_shell.css">\n</head>',
+      )
+    : rawHtml;
+  const bodyWithNav = headInjected.replace(/<body([^>]*)>/i, `<body$1>\n${nav}\n`);
+  const scripts = `
+    <script src="/static/complaint_mcp_sdk.js"></script>
+    <script src="/static/complaint_app_shell.js"></script>
+  `;
+  return bodyWithNav.includes('</body>')
+    ? bodyWithNav.replace('</body>', `${scripts}\n</body>`)
+    : `${bodyWithNav}\n${scripts}`;
+}
+
 const routes = new Map([
   ['/', template('index.html')],
   ['/home', template('home.html')],
@@ -2484,7 +2518,7 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/ipfs-datasets/sdk-playground') {
-    return sendFile(response, sdkPreviewPath);
+    return sendText(response, renderSdkPlaygroundShell(), 'text/html; charset=utf-8');
   }
 
   if (request.method === 'GET' && url.pathname === '/mcp') {

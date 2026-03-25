@@ -15,10 +15,7 @@ from .complaint_workspace import ComplaintWorkspaceService
 from .ui_review import run_ui_review_workflow
 
 
-DEFAULT_UI_UX_SCREENSHOT_TARGET = (
-    "tests/test_website_cohesion_playwright.py::"
-    "test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handoffs"
-)
+DEFAULT_UI_UX_SCREENSHOT_TARGET = "playwright/tests/complaint-flow.spec.js"
 DEFAULT_UI_UX_OPTIMIZER_METHOD = "actor_critic"
 DEFAULT_UI_UX_OPTIMIZER_PRIORITY = 90
 
