@@ -18,8 +18,8 @@ _TEXT_ONLY_UI_REVIEW_PROVIDERS = {
     "copilot_sdk",
 }
 _TEXT_UI_REVIEW_TIMEOUTS = {
-    "codex": 30,
-    "codex_cli": 30,
+    "codex": 60,
+    "codex_cli": 60,
     "copilot_cli": 25,
     "copilot_sdk": 25,
 }
