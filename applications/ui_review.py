@@ -140,6 +140,193 @@ def _list_artifact_metadata(screenshot_dir: str) -> List[Dict[str, Any]]:
     return payloads
 
 
+def _normalize_artifact_path(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return str(Path(text).expanduser().resolve())
+    except Exception:
+        return text
+
+
+def _artifact_matches_screenshot(artifact: Dict[str, Any], screenshot: Path) -> bool:
+    screenshot_path = str(screenshot.resolve())
+    screenshot_name = screenshot.name
+    screenshot_stem = screenshot.stem
+    artifact_path = _normalize_artifact_path(artifact.get("screenshot_path"))
+    if artifact_path and artifact_path == screenshot_path:
+        return True
+    for candidate in (
+        artifact.get("name"),
+        artifact.get("surface"),
+        artifact.get("page"),
+        artifact.get("artifact_name"),
+        artifact.get("title"),
+    ):
+        text = str(candidate or "").strip()
+        if not text:
+            continue
+        if text == screenshot_name or text == screenshot_stem:
+            return True
+    return False
+
+
+def _filter_artifacts_for_page(
+    screenshot: Path,
+    artifact_metadata: Iterable[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    page_artifacts: List[Dict[str, Any]] = []
+    global_artifacts: List[Dict[str, Any]] = []
+    for item in list(artifact_metadata or []):
+        if not isinstance(item, dict):
+            continue
+        copied = dict(item)
+        if _artifact_matches_screenshot(copied, screenshot):
+            page_artifacts.append(copied)
+            continue
+        if str(copied.get("artifact_type") or "").strip() == "complaint_export":
+            global_artifacts.append(copied)
+    return page_artifacts + global_artifacts
+
+
+def _page_review_unit_label(screenshot: Path, artifact_metadata: Iterable[Dict[str, Any]]) -> str:
+    for item in list(artifact_metadata or []):
+        if not isinstance(item, dict):
+            continue
+        for key in ("name", "surface", "page", "artifact_name", "title"):
+            value = str(item.get(key) or "").strip()
+            if value:
+                return value
+    return screenshot.stem
+
+
+def _merge_string_list(items: Iterable[Any]) -> List[str]:
+    merged: List[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if text and text not in merged:
+            merged.append(text)
+    return merged
+
+
+def _aggregate_page_review_reports(page_reports: List[Dict[str, Any]]) -> Dict[str, Any]:
+    summaries = [
+        str(((report.get("review") or {}) if isinstance(report.get("review"), dict) else {}).get("summary") or "").strip()
+        for report in page_reports
+    ]
+    summaries = [item for item in summaries if item]
+    issues: List[Dict[str, Any]] = []
+    recommended_changes: List[Dict[str, Any]] = []
+    broken_controls: List[Dict[str, Any]] = []
+    workflow_gaps: List[str] = []
+    playwright_followups: List[str] = []
+    actor_path_breaks: List[str] = []
+    critic_test_obligations: List[str] = []
+    page_backend_paths: List[str] = []
+    stage_findings: Dict[str, List[str]] = {}
+
+    for report in page_reports:
+        review = dict(report.get("review") or {})
+        page_label = str(report.get("page_label") or "").strip() or "unknown-page"
+        backend = dict(report.get("backend") or {})
+        backend_path = _format_router_backend_path(backend)
+        if backend_path:
+            page_backend_paths.append(f"{page_label}: {backend_path}")
+
+        for collection_name, sink in (
+            ("issues", issues),
+            ("recommended_changes", recommended_changes),
+            ("broken_controls", broken_controls),
+        ):
+            for item in list(review.get(collection_name) or []):
+                if not isinstance(item, dict):
+                    continue
+                enriched = dict(item)
+                enriched.setdefault("page", page_label)
+                sink.append(enriched)
+
+        workflow_gaps.extend(_merge_string_list(review.get("workflow_gaps") or []))
+        playwright_followups.extend(_merge_string_list(review.get("playwright_followups") or []))
+        actor_path_breaks.extend(_merge_string_list(review.get("actor_path_breaks") or []))
+        critic_test_obligations.extend(_merge_string_list(review.get("critic_test_obligations") or []))
+        for stage_name, stage_text in dict(review.get("stage_findings") or {}).items():
+            cleaned = str(stage_text or "").strip()
+            if cleaned:
+                stage_findings.setdefault(str(stage_name), []).append(f"{page_label}: {cleaned}")
+
+    stage_findings_payload = {
+        stage: " | ".join(entries)
+        for stage, entries in stage_findings.items()
+        if entries
+    }
+    aggregate_summary = (
+        f"Aggregated {len(page_reports)} page-level screenshot reviews. "
+        + (" ".join(summaries[:3]) if summaries else "No page-level summaries were returned.")
+    ).strip()
+    return {
+        "summary": aggregate_summary,
+        "issues": issues,
+        "recommended_changes": recommended_changes,
+        "broken_controls": broken_controls,
+        "button_audit": [],
+        "route_handoffs": [],
+        "complaint_journey": {
+            "page_reviews": [
+                {
+                    "page": str(report.get("page_label") or "").strip() or "unknown-page",
+                    "summary": str((dict(report.get("review") or {})).get("summary") or "").strip(),
+                    "backend": dict(report.get("backend") or {}),
+                }
+                for report in page_reports
+            ],
+            "router_paths": page_backend_paths,
+        },
+        "actor_plan": {
+            "page_repair_sequence": [
+                {
+                    "page": str(report.get("page_label") or "").strip() or "unknown-page",
+                    "top_recommendations": [
+                        str((item or {}).get("title") or (item or {}).get("recommended_fix") or "").strip()
+                        for item in list((dict(report.get("review") or {})).get("recommended_changes") or [])[:3]
+                        if isinstance(item, dict)
+                    ],
+                }
+                for report in page_reports
+            ]
+        },
+        "critic_review": {
+            "verdict": "warning" if issues or broken_controls else "pass",
+            "blocking_findings": _merge_string_list(
+                item.get("problem") or item.get("failure_mode") or ""
+                for item in issues + broken_controls
+                if isinstance(item, dict)
+            )[:8],
+            "acceptance_checks": _merge_string_list(critic_test_obligations or playwright_followups)[:8],
+        },
+        "actor_summary": aggregate_summary,
+        "critic_summary": (
+            f"Parallel page review completed across {len(page_reports)} page calls. "
+            f"Collected {len(issues)} issues and {len(recommended_changes)} recommended changes."
+        ),
+        "actor_path_breaks": _merge_string_list(actor_path_breaks),
+        "critic_test_obligations": _merge_string_list(critic_test_obligations),
+        "stage_findings": stage_findings_payload,
+        "workflow_gaps": _merge_string_list(workflow_gaps),
+        "playwright_followups": _merge_string_list(playwright_followups),
+        "page_reviews": [
+            {
+                "page": str(report.get("page_label") or "").strip() or "unknown-page",
+                "backend": dict(report.get("backend") or {}),
+                "summary": str((dict(report.get("review") or {})).get("summary") or "").strip(),
+                "issues_count": len(list((dict(report.get("review") or {})).get("issues") or [])),
+                "recommended_changes_count": len(list((dict(report.get("review") or {})).get("recommended_changes") or [])),
+            }
+            for report in page_reports
+        ],
+    }
+
+
 def _summarize_complaint_output_feedback(artifact_metadata: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     exports = [
         dict(item)
@@ -533,6 +720,7 @@ def build_ui_review_prompt(
     notes: Optional[str] = None,
     goals: Optional[List[str]] = None,
     artifact_metadata: Optional[List[Dict[str, Any]]] = None,
+    include_full_contract_context: bool = True,
 ) -> str:
     screenshot_list = _screenshot_payload(screenshots)
     goal_lines = goals or [
@@ -542,7 +730,71 @@ def build_ui_review_prompt(
         "Make the intake, evidence, support review, and draft editing journey feel linear and trustworthy.",
     ]
     complaint_feedback = _summarize_complaint_output_feedback(artifact_metadata or [])
-    return (
+    if not include_full_contract_context:
+        return (
+            "Review this single complaint-generator page screenshot as an adversarial UI critic.\n"
+            "Focus only on visible problems in this page.\n"
+            "Keep the response compact and concrete.\n"
+            "Preserve the shared ComplaintMcpClient / MCP workflow when suggesting repairs.\n\n"
+            f"Goals:\n- " + "\n- ".join(goal_lines[:3]) + "\n\n"
+            f"Additional notes:\n{notes or 'No additional notes were provided.'}\n\n"
+            "Screenshot artifacts:\n"
+            f"{json.dumps(screenshot_list, indent=2, sort_keys=True)}\n\n"
+            "Complaint export artifacts relevant to this page:\n"
+            f"{json.dumps(complaint_feedback, indent=2, sort_keys=True)}\n\n"
+            "Return strict JSON with this shape:\n"
+            "{\n"
+            '  "summary": "short paragraph",\n'
+            '  "issues": [\n'
+            "    {\n"
+            '      "severity": "high|medium|low",\n'
+            '      "surface": "page guess",\n'
+            '      "problem": "visible issue",\n'
+            '      "user_impact": "why it hurts the actor",\n'
+            '      "recommended_fix": "specific repair"\n'
+            "    }\n"
+            "  ],\n"
+            '  "recommended_changes": [\n'
+            "    {\n"
+            '      "title": "repair title",\n'
+            '      "implementation_notes": "specific implementation guidance",\n'
+            '      "shared_code_path": "likely code path",\n'
+            '      "sdk_considerations": "how to preserve ComplaintMcpClient / MCP flow"\n'
+            "    }\n"
+            "  ],\n"
+            '  "broken_controls": [\n'
+            "    {\n"
+            '      "surface": "page guess",\n'
+            '      "control": "button or link label",\n'
+            '      "failure_mode": "what looks broken or misleading",\n'
+            '      "repair": "how to fix it"\n'
+            "    }\n"
+            "  ],\n"
+            '  "workflow_gaps": ["missing affordance"],\n'
+            '  "playwright_followups": ["assertion or screenshot to add"],\n'
+            '  "stage_findings": {\n'
+            '    "Intake": "finding",\n'
+            '    "Evidence": "finding",\n'
+            '    "Review": "finding",\n'
+            '    "Draft": "finding",\n'
+            '    "Integration Discovery": "finding"\n'
+            "  }\n"
+            "}\n"
+        )
+    contract_surfaces = (
+        "Contract surfaces that must remain coherent:\n"
+        "- Package exports in complaint_generator, including start_session, submit_intake_answers, save_evidence, review_case, build_mediator_prompt, generate_complaint, update_draft, export_complaint_packet, export_complaint_markdown, export_complaint_pdf, and update_case_synopsis\n"
+        "- CLI tools like complaint-generator and complaint-workspace, including review-ui, optimize-ui, and browser-audit\n"
+        "- MCP server tools such as complaint.start_session, complaint.build_mediator_prompt, complaint.export_complaint_packet, complaint.export_complaint_markdown, complaint.export_complaint_pdf, complaint.review_ui, complaint.optimize_ui, and complaint.run_browser_audit\n"
+        "- Browser SDK usage through window.ComplaintMcpSdk.ComplaintMcpClient, including optimizeUiArtifacts() and runBrowserAudit()\n\n"
+    )
+    compact_contract_surfaces = (
+        "Keep the MCP/browser contract visible while reviewing this page:\n"
+        "- preserve ComplaintMcpClient usage\n"
+        "- preserve complaint.review_ui / complaint.optimize_ui / complaint.run_browser_audit paths\n"
+        "- record any button or handoff that looks actionable but breaks the complaint journey\n\n"
+    )
+    prompt_prefix = (
         "You are reviewing the UI/UX of a complaint-generator web application for real complainants.\n"
         "The screenshots below were created by Playwright during regression testing.\n"
         "Use the screenshots as the primary source artifacts for review.\n"
@@ -552,11 +804,11 @@ def build_ui_review_prompt(
         "Critic: a hostile QA reviewer looking for broken buttons, dead navigation, hidden MCP SDK flows, and missing Playwright assertions.\n\n"
         f"Goals:\n- " + "\n- ".join(goal_lines) + "\n\n"
         f"Additional notes:\n{notes or 'No additional notes were provided.'}\n\n"
-        "Contract surfaces that must remain coherent:\n"
-        "- Package exports in complaint_generator, including start_session, submit_intake_answers, save_evidence, review_case, build_mediator_prompt, generate_complaint, update_draft, export_complaint_packet, export_complaint_markdown, export_complaint_pdf, and update_case_synopsis\n"
-        "- CLI tools like complaint-generator and complaint-workspace, including review-ui, optimize-ui, and browser-audit\n"
-        "- MCP server tools such as complaint.start_session, complaint.build_mediator_prompt, complaint.export_complaint_packet, complaint.export_complaint_markdown, complaint.export_complaint_pdf, complaint.review_ui, complaint.optimize_ui, and complaint.run_browser_audit\n"
-        "- Browser SDK usage through window.ComplaintMcpSdk.ComplaintMcpClient, including optimizeUiArtifacts() and runBrowserAudit()\n\n"
+    )
+    prompt_prefix += contract_surfaces if include_full_contract_context else compact_contract_surfaces
+    return (
+        prompt_prefix
+        +
         "Treat every visible button, tab, CTA, and handoff link as part of the release contract. If a control looks actionable but does not move the user to the next valid complaint step, record it as broken.\n\n"
         "Screenshot artifacts:\n"
         f"{json.dumps(screenshot_list, indent=2, sort_keys=True)}\n\n"
@@ -762,6 +1014,7 @@ def create_ui_review_report(
     backend_id: Optional[str] = None,
     output_path: Optional[str] = None,
     artifact_metadata: Optional[List[Dict[str, Any]]] = None,
+    compact_page_prompt: bool = False,
 ) -> Dict[str, Any]:
     screenshots = _normalize_paths(screenshot_paths)
     if not screenshots:
@@ -773,10 +1026,8 @@ def create_ui_review_report(
         notes=notes,
         goals=goals,
         artifact_metadata=artifact_metadata,
+        include_full_contract_context=not compact_page_prompt,
     )
-    review_payload: Dict[str, Any]
-    backend_metadata: Dict[str, Any]
-
     backend_kwargs = _load_backend_kwargs(config_path, backend_id)
     if provider:
         backend_kwargs["provider"] = provider
@@ -788,6 +1039,55 @@ def create_ui_review_report(
     )
     backend_kwargs.setdefault("retry_max_attempts", 1)
     backend_kwargs.setdefault("allow_local_fallback", False)
+
+    if len(screenshots) > 1:
+        page_reports: List[Dict[str, Any]] = []
+        for screenshot in screenshots:
+            page_artifacts = _filter_artifacts_for_page(screenshot, artifact_metadata or [])
+            page_report = create_ui_review_report(
+                [str(screenshot)],
+                notes=notes,
+                goals=goals,
+                provider=provider,
+                model=model,
+                config_path=config_path,
+                backend_id=backend_id,
+                output_path=None,
+                artifact_metadata=page_artifacts,
+                compact_page_prompt=True,
+            )
+            page_report = dict(page_report or {})
+            page_report["page_label"] = _page_review_unit_label(screenshot, page_artifacts)
+            page_reports.append(page_report)
+
+        page_reports.sort(key=lambda item: str(item.get("page_label") or "").strip())
+        review_payload = _aggregate_page_review_reports(page_reports)
+        backend_metadata = {
+            "id": backend_kwargs.get("id", "ui-review"),
+            "provider": backend_kwargs.get("provider"),
+            "model": backend_kwargs.get("model"),
+            "strategy": "page_reviews",
+            "page_review_count": len(page_reports),
+            "page_review_backends": [dict(item.get("backend") or {}) for item in page_reports],
+        }
+        report = {
+            "generated_at": _utc_now(),
+            "backend": backend_metadata,
+            "screenshots": _screenshot_payload(screenshots),
+            "artifact_metadata": list(artifact_metadata or []),
+            "complaint_output_feedback": complaint_output_feedback,
+            "notes": notes or "",
+            "review": review_payload,
+            "page_reviews": page_reports,
+        }
+        if output_path:
+            destination = Path(output_path).expanduser().resolve()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(report, indent=2, sort_keys=True))
+        return report
+
+    review_payload: Dict[str, Any]
+    backend_metadata: Dict[str, Any]
 
     provider_name = str(backend_kwargs.get("provider") or "").strip()
     skip_multimodal = _provider_prefers_text_ui_review(provider_name)
@@ -908,6 +1208,7 @@ def create_ui_review_report(
         "complaint_output_feedback": complaint_output_feedback,
         "notes": notes or "",
         "review": review_payload,
+        "page_reviews": [],
     }
     if output_path:
         destination = Path(output_path).expanduser().resolve()

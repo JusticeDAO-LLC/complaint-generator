@@ -215,6 +215,75 @@ def test_create_ui_review_report_uses_native_multimodal_for_codex_cli(monkeypatc
     assert report["review"]["summary"] == "Codex multimodal review succeeded."
 
 
+def test_aggregate_page_review_reports_merges_page_level_feedback():
+    page_reports = [
+        {
+            "page_label": "workspace-intake",
+            "backend": {"id": "ui-review", "provider": "codex_cli", "strategy": "multimodal_router"},
+            "review": {
+                "summary": "workspace-intake review complete.",
+                "issues": [
+                    {
+                        "severity": "medium",
+                        "surface": "workspace-intake",
+                        "problem": "workspace-intake has a confusing CTA.",
+                        "user_impact": "Users may hesitate.",
+                        "recommended_fix": "Clarify the primary action on workspace-intake.",
+                    }
+                ],
+                "recommended_changes": [
+                    {
+                        "title": "Repair workspace-intake",
+                        "implementation_notes": "Tighten the primary flow for workspace-intake.",
+                        "shared_code_path": "templates/workspace.html",
+                        "sdk_considerations": "Keep ComplaintMcpClient visible.",
+                    }
+                ],
+                "workflow_gaps": ["workspace-intake gap"],
+                "playwright_followups": ["Capture workspace-intake again after fixes"],
+                "stage_findings": {"Evidence": "workspace-intake evidence finding"},
+            },
+        },
+        {
+            "page_label": "workspace-evidence",
+            "backend": {"id": "ui-review", "provider": "codex_cli", "strategy": "multimodal_router"},
+            "review": {
+                "summary": "workspace-evidence review complete.",
+                "issues": [
+                    {
+                        "severity": "medium",
+                        "surface": "workspace-evidence",
+                        "problem": "workspace-evidence has a confusing CTA.",
+                        "user_impact": "Users may hesitate.",
+                        "recommended_fix": "Clarify the primary action on workspace-evidence.",
+                    }
+                ],
+                "recommended_changes": [
+                    {
+                        "title": "Repair workspace-evidence",
+                        "implementation_notes": "Tighten the primary flow for workspace-evidence.",
+                        "shared_code_path": "templates/workspace.html",
+                        "sdk_considerations": "Keep ComplaintMcpClient visible.",
+                    }
+                ],
+                "workflow_gaps": ["workspace-evidence gap"],
+                "playwright_followups": ["Capture workspace-evidence again after fixes"],
+                "stage_findings": {"Evidence": "workspace-evidence evidence finding"},
+            },
+        },
+    ]
+
+    aggregated = ui_review_module._aggregate_page_review_reports(page_reports)
+
+    assert "Aggregated 2 page-level screenshot reviews." in aggregated["summary"]
+    assert len(aggregated["issues"]) == 2
+    assert len(aggregated["recommended_changes"]) == 2
+    assert len(aggregated["page_reviews"]) == 2
+    assert aggregated["critic_review"]["verdict"] == "warning"
+    assert "workspace-intake: workspace-intake evidence finding" in aggregated["stage_findings"]["Evidence"]
+    assert "workspace-evidence: workspace-evidence evidence finding" in aggregated["stage_findings"]["Evidence"]
+
+
 def test_build_complaint_output_review_prompt_includes_claim_type_context():
     prompt = ui_review_module.build_complaint_output_review_prompt(
         "# Complaint\n\nCOMPLAINT FOR HOUSING DISCRIMINATION",
