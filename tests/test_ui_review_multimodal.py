@@ -184,6 +184,37 @@ def test_create_ui_review_report_times_out_multimodal_and_falls_back_to_text(mon
     assert report["review"]["summary"] == "Timed out multimodal, text fallback succeeded."
 
 
+def test_create_ui_review_report_uses_native_multimodal_for_codex_cli(monkeypatch, tmp_path: Path):
+    screenshot = tmp_path / "workspace.png"
+    screenshot.write_bytes(b"fake-png")
+
+    class FakeMultimodalBackend:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", "ui-review")
+            self.provider = kwargs.get("provider")
+            self.model = kwargs.get("model")
+            assert kwargs["provider"] == "codex_cli"
+
+        def __call__(self, prompt, *, image_paths=None, system_prompt=None):
+            assert "Screenshot artifacts" in prompt
+            assert image_paths == [screenshot]
+            assert system_prompt
+            return '{"summary":"Codex multimodal review succeeded.","issues":[],"recommended_changes":[],"workflow_gaps":[],"playwright_followups":[]}'
+
+    class UnexpectedTextBackend:
+        def __init__(self, **kwargs):
+            raise AssertionError("codex_cli should now use the native multimodal backend for screenshot review")
+
+    monkeypatch.setattr(ui_review_module, "MultimodalRouterBackend", FakeMultimodalBackend)
+    monkeypatch.setattr(ui_review_module, "LLMRouterBackend", UnexpectedTextBackend)
+
+    report = ui_review_module.create_ui_review_report([str(screenshot)], provider="codex_cli")
+
+    assert report["backend"]["strategy"] == "multimodal_router"
+    assert report["backend"]["provider"] == "codex_cli"
+    assert report["review"]["summary"] == "Codex multimodal review succeeded."
+
+
 def test_build_complaint_output_review_prompt_includes_claim_type_context():
     prompt = ui_review_module.build_complaint_output_review_prompt(
         "# Complaint\n\nCOMPLAINT FOR HOUSING DISCRIMINATION",

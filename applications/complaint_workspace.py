@@ -3045,6 +3045,7 @@ class ComplaintWorkspaceService:
                 "reason": "Codex CLI is installed and available on PATH." if codex_path else "Codex CLI binary not found on PATH.",
                 "binary_path": codex_path or None,
                 "credential_source": "local_codex_auth" if codex_path else "unavailable",
+                "supports_multimodal": bool(codex_path),
                 "draft_timeout_seconds": _llm_draft_timeout_for_provider("codex_cli"),
             },
             {
@@ -3066,6 +3067,7 @@ class ComplaintWorkspaceService:
                     else "Copilot CLI command is not currently available on this machine."
                 ),
                 "binary_path": copilot_path or None,
+                "supports_multimodal": bool(copilot_path),
                 "credential_source": (
                     "github_copilot_cli"
                     if copilot_provider is not None and copilot_path

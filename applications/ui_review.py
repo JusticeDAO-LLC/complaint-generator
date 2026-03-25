@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
+from queue import Queue
+import threading
 from typing import Any, Dict, Iterable, List, Optional
 
 from backends import LLMRouterBackend, MultimodalRouterBackend
@@ -11,6 +12,17 @@ from backends import LLMRouterBackend, MultimodalRouterBackend
 
 DEFAULT_COMPLAINT_OUTPUT_REVIEW_TIMEOUT_S = 8
 DEFAULT_UI_REVIEW_TIMEOUT_S = 10
+_TEXT_ONLY_UI_REVIEW_PROVIDERS = {
+    "codex",
+    "copilot_cli",
+    "copilot_sdk",
+}
+_TEXT_UI_REVIEW_TIMEOUTS = {
+    "codex": 30,
+    "codex_cli": 30,
+    "copilot_cli": 25,
+    "copilot_sdk": 25,
+}
 
 
 def _format_router_backend_path(backend: Dict[str, Any]) -> str:
@@ -661,17 +673,33 @@ def _load_backend_kwargs(config_path: Optional[str], backend_id: Optional[str]) 
 
 
 def _call_with_timeout(fn, *, timeout_s: float):
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(fn)
-    try:
-        return future.result(timeout=max(0.001, float(timeout_s)))
-    except FuturesTimeoutError as exc:
-        future.cancel()
-        executor.shutdown(wait=False, cancel_futures=True)
-        raise TimeoutError(f"UI review timed out after {float(timeout_s):g}s") from exc
-    finally:
-        if not future.cancelled() and future.done():
-            executor.shutdown(wait=False, cancel_futures=True)
+    result_queue: Queue[tuple[str, Any]] = Queue(maxsize=1)
+
+    def _runner():
+        try:
+            result_queue.put(("ok", fn()))
+        except Exception as exc:
+            result_queue.put(("err", exc))
+
+    worker = threading.Thread(target=_runner, name="ui-review-timeout-worker", daemon=True)
+    worker.start()
+    worker.join(timeout=max(0.001, float(timeout_s)))
+    if worker.is_alive():
+        raise TimeoutError(f"UI review timed out after {float(timeout_s):g}s")
+    status, payload = result_queue.get_nowait()
+    if status == "err":
+        raise payload
+    return payload
+
+
+def _provider_prefers_text_ui_review(provider: Optional[str]) -> bool:
+    normalized = str(provider or "").strip().lower()
+    return normalized in _TEXT_ONLY_UI_REVIEW_PROVIDERS
+
+
+def _ui_review_timeout_for_provider(provider: Optional[str]) -> float:
+    normalized = str(provider or "").strip().lower()
+    return float(_TEXT_UI_REVIEW_TIMEOUTS.get(normalized, DEFAULT_UI_REVIEW_TIMEOUT_S))
 
 
 def _review_with_multimodal_router(
@@ -754,11 +782,21 @@ def create_ui_review_report(
         backend_kwargs["provider"] = provider
     if model:
         backend_kwargs["model"] = model
-    backend_kwargs.setdefault("timeout", DEFAULT_UI_REVIEW_TIMEOUT_S)
+    backend_kwargs.setdefault(
+        "timeout",
+        _ui_review_timeout_for_provider(backend_kwargs.get("provider")),
+    )
     backend_kwargs.setdefault("retry_max_attempts", 1)
     backend_kwargs.setdefault("allow_local_fallback", False)
 
+    provider_name = str(backend_kwargs.get("provider") or "").strip()
+    skip_multimodal = _provider_prefers_text_ui_review(provider_name)
+
     try:
+        if skip_multimodal:
+            raise RuntimeError(
+                f"Skipping multimodal screenshot review for text-only provider: {provider_name or 'unspecified'}"
+            )
         review_payload, backend_metadata = _review_with_multimodal_router(
             screenshots=screenshots,
             prompt=prompt,
@@ -772,6 +810,8 @@ def create_ui_review_report(
             )
             backend_metadata["fallback_from"] = "multimodal_router"
             backend_metadata["fallback_error"] = str(multimodal_exc)
+            if skip_multimodal:
+                backend_metadata["multimodal_skipped"] = True
         except Exception as exc:
             review_payload = {
                 "summary": "Router-driven UI review was unavailable, so a fallback implementation report was created.",

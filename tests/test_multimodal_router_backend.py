@@ -135,3 +135,60 @@ class TestMultimodalRouterBackend:
         assert "system: Describe what is visible." in provider.prompt
         assert "user: Review this repository image." in provider.prompt
         assert "[image attachment included]" in provider.prompt
+
+    def test_multimodal_router_prefers_native_codex_multimodal_provider_for_repository_image(self):
+        from ipfs_datasets_py import multimodal_router
+
+        repo_image = Path("templates/chaticon.png").resolve()
+        assert repo_image.exists()
+
+        class FakeCodexMultimodalProvider:
+            def __init__(self):
+                self.calls = []
+
+            def generate_multimodal(
+                self,
+                prompt,
+                *,
+                model_name=None,
+                image_paths=None,
+                image_urls=None,
+                system_prompt=None,
+                additional_text_blocks=None,
+                messages=None,
+                **kwargs,
+            ):
+                self.calls.append(
+                    {
+                        "prompt": prompt,
+                        "model_name": model_name,
+                        "image_paths": list(image_paths or []),
+                        "image_urls": list(image_urls or []),
+                        "system_prompt": system_prompt,
+                        "additional_text_blocks": list(additional_text_blocks or []),
+                        "messages": messages,
+                    }
+                )
+                return "codex multimodal ok"
+
+        provider = FakeCodexMultimodalProvider()
+        result = multimodal_router.generate_multimodal_text(
+            "Review this repository image.",
+            provider="codex_cli",
+            model_name="gpt-5.3-codex",
+            provider_instance=provider,
+            image_paths=[repo_image],
+            system_prompt="Describe what is visible.",
+            additional_text_blocks=["Focus on the icon and primary colors."],
+        )
+
+        assert result == "codex multimodal ok"
+        assert len(provider.calls) == 1
+        call = provider.calls[0]
+        assert call["prompt"] == "Review this repository image."
+        assert call["model_name"] == "gpt-5.3-codex"
+        assert call["image_paths"] == [str(repo_image)]
+        assert call["image_urls"] == []
+        assert call["system_prompt"] == "Describe what is visible."
+        assert call["additional_text_blocks"] == ["Focus on the icon and primary colors."]
+        assert isinstance(call["messages"], list)
