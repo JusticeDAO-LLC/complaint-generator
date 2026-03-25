@@ -7,15 +7,6 @@ from applications.complaint_workspace import (
     DEFAULT_INTAKE_QUESTIONS,
     generate_decentralized_id,
 )
-from applications.complaint_workspace_api import (
-    attach_complaint_workspace_routes,
-    create_complaint_workspace_router,
-)
-from complaint_generator.ui_ux_workflow import (
-    run_closed_loop_ui_ux_improvement,
-    run_end_to_end_complaint_browser_audit,
-    run_iterative_ui_ux_workflow,
-)
 
 
 def _resolve_service(
@@ -36,6 +27,18 @@ def create_identity(
     root_dir: Optional[str | Path] = None,
 ) -> dict[str, Any]:
     return _resolve_service(service, root_dir=root_dir).call_mcp_tool("complaint.create_identity", {})
+
+
+def attach_complaint_workspace_routes(*args, **kwargs):
+    from applications.complaint_workspace_api import attach_complaint_workspace_routes as _attach_routes
+
+    return _attach_routes(*args, **kwargs)
+
+
+def create_complaint_workspace_router(*args, **kwargs):
+    from applications.complaint_workspace_api import create_complaint_workspace_router as _create_router
+
+    return _create_router(*args, **kwargs)
 
 
 def list_intake_questions(
@@ -421,6 +424,26 @@ def run_browser_audit(
             "pytest_target": pytest_target,
         },
     )
+
+
+def run_closed_loop_ui_ux_improvement(*args, **kwargs):
+    from complaint_generator.ui_ux_workflow import run_closed_loop_ui_ux_improvement as _run_closed_loop
+
+    return _run_closed_loop(*args, **kwargs)
+
+
+def run_end_to_end_complaint_browser_audit(*args, **kwargs):
+    from complaint_generator.ui_ux_workflow import (
+        run_end_to_end_complaint_browser_audit as _run_end_to_end_browser_audit,
+    )
+
+    return _run_end_to_end_browser_audit(*args, **kwargs)
+
+
+def run_iterative_ui_ux_workflow(*args, **kwargs):
+    from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow as _run_iterative_workflow
+
+    return _run_iterative_workflow(*args, **kwargs)
 
 __all__ = [
     "ComplaintWorkspaceService",

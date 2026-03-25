@@ -9,10 +9,7 @@ from typing import Optional
 
 import typer
 
-from complaint_generator.email_credentials import resolve_gmail_credentials
-from complaint_generator.email_import import import_gmail_evidence
 from .complaint_workspace import ComplaintWorkspaceService
-from .ui_review import run_ui_review_workflow
 
 
 DEFAULT_UI_UX_SCREENSHOT_TARGET = "playwright/tests/complaint-flow.spec.js"
@@ -106,6 +103,9 @@ def import_gmail_evidence_command(
     use_ipfs_secrets_vault: bool = typer.Option(False, "--use-ipfs-secrets-vault"),
     save_to_ipfs_secrets_vault: bool = typer.Option(False, "--save-to-ipfs-secrets-vault"),
 ) -> None:
+    from complaint_generator.email_credentials import resolve_gmail_credentials
+    from complaint_generator.email_import import import_gmail_evidence
+
     parser = argparse.ArgumentParser(prog="complaint-workspace import-gmail-evidence")
     resolved_gmail_user, resolved_gmail_app_password = resolve_gmail_credentials(
         gmail_user=str(gmail_user or ""),
@@ -304,6 +304,8 @@ def review_ui(
     backend_id: Optional[str] = None,
     pytest_target: str = DEFAULT_UI_UX_SCREENSHOT_TARGET,
 ) -> None:
+    from .ui_review import run_ui_review_workflow
+
     goal_items = _split_multiline_values(goals)
     if iterations > 0:
         from complaint_generator.ui_ux_workflow import run_iterative_ui_ux_workflow

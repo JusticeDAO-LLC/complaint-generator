@@ -36,7 +36,7 @@ test-results/
 /.playwright/
 # Local stray artifact seen during config debugging
 test_extended_config.log
-
+artifacts/ui-audit-current
 # Local stray artifacts
 enhanced_daemon_manager.log
 .complaint_workspace/sessions

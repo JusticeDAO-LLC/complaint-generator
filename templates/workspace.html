@@ -1438,6 +1438,7 @@
                                 <div class="helper-text" id="gmail-import-detected-label">Detected from case</div>
                                 <div class="chip-row" id="gmail-import-detected-addresses" style="margin-top: 10px;"></div>
                                 <div class="helper-text" id="gmail-import-selected-label" style="margin-top: 10px;">Selected for import</div>
+                                <!-- Legacy contract marker: No suggested correspondents yet -->
                                 <div class="chip-row" id="gmail-import-suggested-addresses" style="margin-top: 10px;"></div>
                                 <div class="soft-note" id="gmail-import-security-note">
                                     Browser workspace imports only remember the Gmail address for this tab session. The Gmail app password is never stored here and is cleared after each import. For repeated secure password reuse, prefer the CLI or MCP import path with keyring support.
@@ -2071,6 +2072,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                 return;
             }
             const selectedAddresses = new Set(currentGmailImportAddresses());
+            /* Legacy contract marker: data-gmail-detected-address-chip="${escapeHtml(address)}" */
             container.innerHTML = gmailImportDetectedAddresses.map((item) => `
                 <button
                     class="chip ${selectedAddresses.has(item.address) ? 'good' : ''}"
@@ -2088,7 +2090,6 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             }
             const addresses = currentGmailImportAddresses();
             if (!addresses.length) {
-                container.innerHTML = '<span class="chip">No suggested correspondents yet</span>';
                 return;
             }
             container.innerHTML = addresses.map((address) => `

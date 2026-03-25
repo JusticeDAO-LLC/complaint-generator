@@ -1,19 +1,3 @@
-from .apps import (
-    attach_complaint_workspace_routes,
-    create_complaint_workspace_router,
-    create_review_dashboard_app,
-    create_review_surface_app,
-)
-from .mcp import handle_jsonrpc_message, tool_list_payload
-from .ui_ux_workflow import (
-    build_ui_ux_review_prompt,
-    collect_screenshot_artifacts,
-    review_screenshot_audit_with_llm_router,
-    run_end_to_end_complaint_browser_audit,
-    run_closed_loop_ui_ux_improvement,
-    run_iterative_ui_ux_workflow,
-    run_playwright_screenshot_audit,
-)
 from .workspace import (
     ComplaintWorkspaceService,
     DEFAULT_CLAIM_ELEMENTS,
@@ -51,7 +35,6 @@ from .workspace import (
     update_case_synopsis,
     update_draft,
 )
-from applications.ui_review import create_ui_review_report, run_ui_review_workflow
 
 __all__ = [
     "ComplaintWorkspaceService",
@@ -116,6 +99,21 @@ __all__ = [
 __version__ = "0.1.0"
 
 _LAZY_EXPORTS = {
+    "attach_complaint_workspace_routes": (".apps", "attach_complaint_workspace_routes"),
+    "create_complaint_workspace_router": (".apps", "create_complaint_workspace_router"),
+    "create_review_dashboard_app": (".apps", "create_review_dashboard_app"),
+    "create_review_surface_app": (".apps", "create_review_surface_app"),
+    "handle_jsonrpc_message": (".mcp", "handle_jsonrpc_message"),
+    "tool_list_payload": (".mcp", "tool_list_payload"),
+    "build_ui_ux_review_prompt": (".ui_ux_workflow", "build_ui_ux_review_prompt"),
+    "collect_screenshot_artifacts": (".ui_ux_workflow", "collect_screenshot_artifacts"),
+    "review_screenshot_audit_with_llm_router": (".ui_ux_workflow", "review_screenshot_audit_with_llm_router"),
+    "run_end_to_end_complaint_browser_audit": (".ui_ux_workflow", "run_end_to_end_complaint_browser_audit"),
+    "run_closed_loop_ui_ux_improvement": (".ui_ux_workflow", "run_closed_loop_ui_ux_improvement"),
+    "run_iterative_ui_ux_workflow": (".ui_ux_workflow", "run_iterative_ui_ux_workflow"),
+    "run_playwright_screenshot_audit": (".ui_ux_workflow", "run_playwright_screenshot_audit"),
+    "create_ui_review_report": ("applications.ui_review", "create_ui_review_report"),
+    "run_ui_review_workflow": ("applications.ui_review", "run_ui_review_workflow"),
     "complaint_workspace_cli_app": (".cli", "app"),
     "complaint_cli_main": (".cli", "main"),
     "complaint_workspace_cli_main": (".cli", "main"),
@@ -131,7 +129,10 @@ def __getattr__(name: str):
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module_name, attribute_name = target
-    module = __import__(f"{__name__}{module_name}", fromlist=[attribute_name])
+    if module_name.startswith("."):
+        module = __import__(f"{__name__}{module_name}", fromlist=[attribute_name])
+    else:
+        module = __import__(module_name, fromlist=[attribute_name])
     value = getattr(module, attribute_name)
     globals()[name] = value
     return value

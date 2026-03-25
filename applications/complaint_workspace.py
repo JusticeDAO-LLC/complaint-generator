@@ -2159,12 +2159,9 @@ class ComplaintWorkspaceService:
         }
 
     def get_filing_provenance(self, user_id: Optional[str]) -> Dict[str, Any]:
-        payload = self.export_complaint_packet(user_id)
-        packet = dict(payload.get("packet") or {})
-        draft = dict(packet.get("draft") or {})
-        packet_summary = dict(payload.get("packet_summary") or {})
-        ui_feedback = dict(payload.get("ui_feedback") or {})
         state = self._load_state(str(user_id or DEFAULT_USER_ID))
+        draft = dict(state.get("draft") or {})
+        claim_type = str(state.get("claim_type") or "retaliation")
         cached_ui_readiness = dict(state.get("ui_readiness") or {})
         cached_export_critic = dict(state.get("latest_export_critic") or {})
         export_critic_feedback = dict(cached_export_critic.get("complaint_output_feedback") or {})
@@ -2174,22 +2171,39 @@ class ComplaintWorkspaceService:
             for item in list(export_critic_aggregate.get("router_backends") or export_critic_feedback.get("router_backends") or [])
             if isinstance(item, dict) and item
         ]
+        draft_backend = deepcopy(draft.get("draft_backend") or {})
+        complaint_output_router_backend = deepcopy(export_critic_feedback.get("router_backend") or {})
+        if not complaint_output_router_backend and export_router_backends:
+            complaint_output_router_backend = deepcopy(export_router_backends[0])
+        if not complaint_output_router_backend and draft_backend:
+            complaint_output_router_backend = {
+                key: value
+                for key, value in {
+                    "strategy": draft.get("draft_strategy") or draft_backend.get("strategy") or "template",
+                    "provider": draft_backend.get("provider"),
+                    "model": draft_backend.get("model"),
+                    "requested_provider": draft_backend.get("requested_provider"),
+                    "requested_model": draft_backend.get("requested_model"),
+                    "id": draft_backend.get("id"),
+                }.items()
+                if value not in (None, "")
+            }
+        complaint_output_router_backends = export_router_backends or (
+            [deepcopy(complaint_output_router_backend)] if complaint_output_router_backend else []
+        )
+        artifact_formats = ["json", "markdown", "pdf", "docx"] if draft else ["json"]
         return {
-            "user_id": str(packet.get("user_id") or user_id or DEFAULT_USER_ID),
-            "claim_type": str(packet.get("claim_type") or ""),
+            "user_id": str(state.get("user_id") or user_id or DEFAULT_USER_ID),
+            "claim_type": claim_type,
             "draft_strategy": str(draft.get("draft_strategy") or "template"),
-            "draft_backend": deepcopy(draft.get("draft_backend") or {}),
-            "complaint_output_router_backend": deepcopy(packet_summary.get("complaint_output_router_backend") or {}),
-            "complaint_output_router_backends": [
-                deepcopy(item)
-                for item in list(ui_feedback.get("router_backends") or [])
-                if isinstance(item, dict) and item
-            ],
+            "draft_backend": draft_backend,
+            "complaint_output_router_backend": complaint_output_router_backend,
+            "complaint_output_router_backends": complaint_output_router_backends,
             "export_critic_router_backends": export_router_backends,
             "ui_review_backend": deepcopy(cached_ui_readiness.get("review_backend") or {}),
             "ui_workflow_type": str(cached_ui_readiness.get("workflow_type") or "").strip() or "unavailable",
-            "artifact_formats": list(packet_summary.get("artifact_formats") or []),
-            "has_draft": bool(packet_summary.get("has_draft")),
+            "artifact_formats": artifact_formats,
+            "has_draft": bool(draft),
         }
 
     def get_client_release_gate(self, user_id: Optional[str]) -> Dict[str, Any]:

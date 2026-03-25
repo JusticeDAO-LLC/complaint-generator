@@ -134,6 +134,9 @@ def test_run_playwright_screenshot_audit_uses_configured_artifact_directory(monk
 
     def fake_run(cmd, cwd, env, stdout, stderr, text, check):
         assert env["COMPLAINT_UI_SCREENSHOT_DIR"] == str(screenshot_dir)
+        assert env["RUN_LLM_TESTS"] == "1"
+        assert env["RUN_NETWORK_TESTS"] == "1"
+        assert env["RUN_HEAVY_TESTS"] == "1"
         _write_artifact(screenshot_dir, "workspace")
 
         class Result:
@@ -150,6 +153,32 @@ def test_run_playwright_screenshot_audit_uses_configured_artifact_directory(monk
     assert result["returncode"] == 0
     assert result["artifact_count"] == 1
     assert result["artifacts"][0]["name"] == "workspace"
+
+
+def test_iterative_workflow_raises_when_audit_returns_no_screenshots(monkeypatch, tmp_path):
+    screenshot_dir = tmp_path / "screens"
+    output_dir = tmp_path / "reviews"
+
+    monkeypatch.setattr(
+        workflow_module,
+        "run_playwright_screenshot_audit",
+        lambda **kwargs: {
+            "command": ["pytest"],
+            "returncode": 0,
+            "stdout": "1 skipped",
+            "stderr": "",
+            "artifact_count": 0,
+            "artifacts": [],
+            "screenshot_dir": str(screenshot_dir),
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="without screenshot artifacts"):
+        run_iterative_ui_ux_workflow(
+            screenshot_dir=screenshot_dir,
+            output_dir=output_dir,
+            iterations=1,
+        )
 
 
 def test_run_end_to_end_complaint_browser_audit_delegates_to_playwright_audit(monkeypatch, tmp_path):
@@ -175,6 +204,7 @@ def test_review_and_iterative_workflow_return_llm_router_output(monkeypatch, tmp
     screenshot_dir = tmp_path / "screens"
     output_dir = tmp_path / "reviews"
     _write_artifact(screenshot_dir, "workspace")
+    expected_image_path = str((screenshot_dir / "workspace.png").resolve())
 
     class FakeMultimodalBackend:
         def __init__(self, id, provider=None, model=None):
@@ -184,7 +214,7 @@ def test_review_and_iterative_workflow_return_llm_router_output(monkeypatch, tmp
 
         def __call__(self, prompt, *, image_paths=None, system_prompt=None):
             assert "Unified Complaint Workspace" in prompt
-            assert image_paths
+            assert image_paths == [expected_image_path]
             assert system_prompt
             return "# Top Risks\n- Intake flow needs calmer language."
 
@@ -221,6 +251,7 @@ def test_review_and_iterative_workflow_return_llm_router_output(monkeypatch, tmp
 def test_review_workflow_routes_complaint_output_analysis_into_multimodal_prompt(monkeypatch, tmp_path):
     screenshot_dir = tmp_path / "screens"
     _write_artifact(screenshot_dir, "workspace")
+    expected_image_path = str((screenshot_dir / "workspace.png").resolve())
     (screenshot_dir / "workspace-export-artifacts.json").write_text(
         json.dumps(
             {
@@ -243,7 +274,7 @@ def test_review_workflow_routes_complaint_output_analysis_into_multimodal_prompt
             assert "Promote the unsupported-elements warning before export." in prompt
             assert "Jordan Example brings this retaliation complaint against Acme Corporation." in prompt
             assert "Use the screenshot evidence together with any complaint-output analysis excerpts" in prompt
-            assert image_paths
+            assert image_paths == [expected_image_path]
             assert system_prompt
             return "# Top Risks\n- Export warnings are still too easy to miss."
 
@@ -258,6 +289,7 @@ def test_iterative_workflow_routes_supplemental_complaint_output_artifacts_into_
     screenshot_dir = tmp_path / "screens"
     output_dir = tmp_path / "reviews"
     _write_artifact(screenshot_dir, "workspace")
+    expected_image_path = str((screenshot_dir / "workspace.png").resolve())
 
     def fake_audit(**kwargs):
         _write_artifact(screenshot_dir, "workspace")
@@ -278,7 +310,7 @@ def test_iterative_workflow_routes_supplemental_complaint_output_artifacts_into_
         def __call__(self, prompt, *, image_paths=None, system_prompt=None):
             assert "Tighten review-to-draft gatekeeping" in prompt
             assert "Add stronger blocker language" in prompt
-            assert image_paths
+            assert image_paths == [expected_image_path]
             assert system_prompt
             return "# Top Risks\n- Review picked up complaint-output suggestions."
 

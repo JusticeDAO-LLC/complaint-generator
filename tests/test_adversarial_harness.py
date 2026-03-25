@@ -3277,6 +3277,7 @@ SUGGESTIONS:
 
         assert isinstance(bundle, UIOptimizationBundle)
         assert bundle.artifact_count == 1
+        assert bundle.screenshot_paths == [str(tmp_path / "workspace.png")]
         assert bundle.summary.startswith("Workspace needs clearer next actions")
         assert "templates/workspace.html" in bundle.target_files
         assert any(path.endswith(".js") for path in bundle.target_files)
@@ -3320,6 +3321,7 @@ SUGGESTIONS:
         task = tasks[0]
         summary = dict(task.metadata.get("report_summary") or {})
         assert "Add stronger export warnings when support gaps remain." in summary.get("complaint_output_suggestions", [])
+        assert summary.get("screenshot_paths") == [str(tmp_path / "workspace.png")]
         assert summary.get("formal_diagnostics", {}).get("release_gate_verdict") == "warning"
         assert summary.get("claim_type_alignment_score") == 35
         assert summary.get("draft_strategy") == "template"

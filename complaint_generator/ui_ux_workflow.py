@@ -121,6 +121,9 @@ def run_playwright_screenshot_audit(
             check=False,
         )
         command = [pytest_cmd, "-q", target_text]
+    env.setdefault("RUN_LLM_TESTS", "1")
+    env.setdefault("RUN_NETWORK_TESTS", "1")
+    env.setdefault("RUN_HEAVY_TESTS", "1")
 
     artifacts = collect_screenshot_artifacts(target_dir)
     return {
@@ -376,6 +379,11 @@ def run_iterative_ui_ux_workflow(
         if audit["returncode"] != 0:
             raise RuntimeError(
                 "Playwright screenshot audit failed.\n"
+                f"stdout:\n{audit['stdout']}\n\nstderr:\n{audit['stderr']}"
+            )
+        if int(audit.get("artifact_count") or 0) <= 0:
+            raise RuntimeError(
+                "Playwright screenshot audit completed without screenshot artifacts.\n"
                 f"stdout:\n{audit['stdout']}\n\nstderr:\n{audit['stderr']}"
             )
 

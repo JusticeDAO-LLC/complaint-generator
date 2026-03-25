@@ -1712,7 +1712,7 @@ def test_dashboard_end_to_end_complaint_journey_uses_chat_review_builder_and_opt
             )
             _capture_screenshot(page, screenshot_dir, "workspace-operations")
 
-            artifact_paths = sorted(screenshot_dir.glob("*.png"))
+            artifact_paths = sorted(_artifact_dir(screenshot_dir).glob("*.png"))
             assert len(artifact_paths) >= 8
             assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 
@@ -1899,7 +1899,7 @@ def test_homepage_navigation_can_drive_a_full_complaint_journey_with_real_handof
             )
             _capture_screenshot(page, screenshot_dir, "workspace-final-packet")
 
-            artifact_paths = sorted(screenshot_dir.glob("*.png"))
+            artifact_paths = sorted(_artifact_dir(screenshot_dir).glob("*.png"))
             assert len(artifact_paths) >= 7
             assert all(path.exists() and path.stat().st_size > 0 for path in artifact_paths)
 

@@ -223,6 +223,7 @@ class UIOptimizationBundle:
 
     timestamp: str
     screenshot_dir: str
+    screenshot_paths: List[str]
     artifact_count: int
     summary: str
     issues: List[Dict[str, Any]]
@@ -239,6 +240,7 @@ class UIOptimizationBundle:
         return {
             "timestamp": self.timestamp,
             "screenshot_dir": self.screenshot_dir,
+            "screenshot_paths": list(self.screenshot_paths or []),
             "artifact_count": self.artifact_count,
             "summary": self.summary,
             "issues": list(self.issues or []),
@@ -3699,6 +3701,11 @@ class Optimizer:
         return UIOptimizationBundle(
             timestamp=datetime.now(UTC).isoformat(),
             screenshot_dir=str(report.get("screenshot_dir") or ""),
+            screenshot_paths=[
+                str((item or {}).get("path") or "").strip()
+                for item in list(report.get("screenshots") or [])
+                if isinstance(item, dict) and str((item or {}).get("path") or "").strip()
+            ],
             artifact_count=int(len(list(report.get("screenshots") or []))),
             summary=str(review.get("summary") or ""),
             issues=[dict(item) for item in list(review.get("issues") or []) if isinstance(item, dict)],
@@ -3766,6 +3773,7 @@ class Optimizer:
                     "actor_plan": dict(bundle.actor_plan or {}),
                     "critic_review": dict(bundle.critic_review or {}),
                     "playwright_followups": list(bundle.playwright_followups or []),
+                    "screenshot_paths": list(bundle.screenshot_paths or []),
                     "complaint_output_feedback": dict(bundle.complaint_output_feedback or {}),
                     "complaint_output_suggestions": list((bundle.complaint_output_feedback or {}).get("ui_suggestions") or []),
                     "formal_diagnostics": dict((bundle.complaint_output_feedback or {}).get("formal_diagnostics") or {}),
