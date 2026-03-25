@@ -1,5 +1,6 @@
 import os
 import importlib
+import sys
 import types
 
 import pytest
@@ -253,6 +254,42 @@ def test_generate_text_with_metadata_uses_hf_cli_token_fallback(monkeypatch):
     assert payload["status"] == "available"
     assert observed["provider"] == "openrouter"
     assert observed["api_key"] == "cli-token"
+
+
+def test_resolve_hf_token_prefers_ipfs_datasets_vault(monkeypatch):
+    _clear_hf_router_env(monkeypatch)
+    monkeypatch.setattr(llm.importlib, "import_module", lambda name: types.SimpleNamespace(get_token=lambda: ""))
+
+    class _FakeVault:
+        def get(self, name: str) -> str | None:
+            if name == "IPFS_DATASETS_PY_HF_API_TOKEN":
+                return "vault-token"
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "ipfs_datasets_py.mcp_server.secrets_vault",
+        types.SimpleNamespace(get_secrets_vault=lambda: _FakeVault()),
+    )
+
+    assert llm._resolve_hf_token() == "vault-token"
+
+
+def test_resolve_hf_token_uses_keyring_when_vault_is_unavailable(monkeypatch):
+    _clear_hf_router_env(monkeypatch)
+    monkeypatch.setattr(llm.importlib, "import_module", lambda name: types.SimpleNamespace(get_token=lambda: ""))
+    monkeypatch.setitem(sys.modules, "ipfs_datasets_py.mcp_server.secrets_vault", types.SimpleNamespace(get_secrets_vault=lambda: (_ for _ in ()).throw(RuntimeError("no vault"))))
+
+    class _FakeKeyring:
+        @staticmethod
+        def get_password(service: str, name: str) -> str | None:
+            if service == "ipfs_datasets_py" and name == "HUGGINGFACEHUB_API_TOKEN":
+                return "keyring-token"
+            return None
+
+    monkeypatch.setitem(sys.modules, "keyring", _FakeKeyring)
+
+    assert llm._resolve_hf_token() == "keyring-token"
 
 
 def test_generate_text_with_metadata_treats_huggingface_base_url_as_remote(monkeypatch):

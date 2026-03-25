@@ -47,18 +47,98 @@ def _env_value(name: str, overrides: Optional[Mapping[str, str]] = None) -> str:
 
 def _resolve_hf_token(env_overrides: Optional[Mapping[str, str]] = None) -> str:
 	token = (
-		_env_value("IPFS_DATASETS_PY_OPENROUTER_API_KEY", env_overrides)
+		_env_value("IPFS_DATASETS_PY_HF_API_TOKEN", env_overrides)
+		or _env_value("HUGGINGFACEHUB_API_TOKEN", env_overrides)
 		or _env_value("HF_TOKEN", env_overrides)
 		or _env_value("HUGGINGFACE_HUB_TOKEN", env_overrides)
 		or _env_value("HUGGINGFACE_API_KEY", env_overrides)
+		or _env_value("HUGGINGFACE_API_TOKEN", env_overrides)
 		or _env_value("HF_API_TOKEN", env_overrides)
 	)
 	if token:
 		return token
 
 	try:
+		from ipfs_datasets_py.mcp_server.secrets_vault import get_secrets_vault
+
+		vault = get_secrets_vault()
+		for name in (
+			"IPFS_DATASETS_PY_HF_API_TOKEN",
+			"HUGGINGFACEHUB_API_TOKEN",
+			"HF_TOKEN",
+			"HUGGINGFACE_HUB_TOKEN",
+			"HUGGINGFACE_API_KEY",
+			"HUGGINGFACE_API_TOKEN",
+			"HF_API_TOKEN",
+		):
+			resolved = str(vault.get(name) or "").strip()
+			if resolved:
+				return resolved
+	except Exception:
+		pass
+
+	try:
+		import keyring  # type: ignore
+
+		for name in (
+			"IPFS_DATASETS_PY_HF_API_TOKEN",
+			"HUGGINGFACEHUB_API_TOKEN",
+			"HF_TOKEN",
+			"HUGGINGFACE_HUB_TOKEN",
+			"HUGGINGFACE_API_KEY",
+			"HUGGINGFACE_API_TOKEN",
+			"HF_API_TOKEN",
+		):
+			resolved = str(keyring.get_password("ipfs_datasets_py", name) or "").strip()
+			if resolved:
+				return resolved
+	except Exception:
+		pass
+
+	try:
 		hub = importlib.import_module("huggingface_hub")
 		getter = getattr(hub, "get_token", None)
+		resolved = getter() if callable(getter) else ""
+		if resolved is not None and str(resolved).strip():
+			return str(resolved).strip()
+	except Exception:
+		return ""
+	return ""
+
+
+def _resolve_openai_api_key(env_overrides: Optional[Mapping[str, str]] = None) -> str:
+	token = (
+		_env_value("OPENAI_API_KEY", env_overrides)
+		or _env_value("OPENAI_KEY", env_overrides)
+		or _env_value("OPENAI_TOKEN", env_overrides)
+	)
+	if token:
+		return token
+
+	try:
+		from ipfs_datasets_py.mcp_server.secrets_vault import get_secrets_vault
+
+		vault = get_secrets_vault()
+		for name in ("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN"):
+			resolved = str(vault.get(name) or "").strip()
+			if resolved:
+				return resolved
+	except Exception:
+		pass
+
+	try:
+		import keyring  # type: ignore
+
+		for name in ("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN"):
+			resolved = str(keyring.get_password("ipfs_datasets_py", name) or "").strip()
+			if resolved:
+				return resolved
+	except Exception:
+		pass
+
+	try:
+		engine_env = importlib.import_module("ipfs_datasets_py.utils.engine_env")
+		getter = getattr(engine_env, "_openai_key_from_common_files", None)
 		resolved = getter() if callable(getter) else ""
 		if resolved is not None and str(resolved).strip():
 			return str(resolved).strip()
@@ -96,9 +176,9 @@ def _provider_preflight_error(
 			)
 
 	if provider_key == "openai":
-		openai_key = _env_value("OPENAI_API_KEY", env_overrides)
+		openai_key = _resolve_openai_api_key(env_overrides)
 		if not openai_key:
-			return "OpenAI unavailable: missing API key. Set OPENAI_API_KEY."
+			return "OpenAI unavailable: missing API key. Set OPENAI_API_KEY, store one in the ipfs_datasets_py vault/keyring, or log in with a compatible local OpenAI CLI config."
 
 	if provider_key == "anthropic":
 		anthropic_key = _env_value("ANTHROPIC_API_KEY", env_overrides)
