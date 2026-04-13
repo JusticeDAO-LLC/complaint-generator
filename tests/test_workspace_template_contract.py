@@ -1,5 +1,10 @@
 from pathlib import Path
 
+import pytest
+
+
+pytestmark = [pytest.mark.no_auto_llm]
+
 
 def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     content = Path("templates/workspace.html").read_text()
