@@ -865,6 +865,104 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
             browser.close()
 
 
+def test_dashboard_page_reacts_to_shared_workspace_sync_events(site_app: FastAPI):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with _serve_app(site_app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.on("dialog", _dismiss_dialog)
+
+            page.goto(f"{base_url}/dashboards?user_id=dashboard-sync-user")
+            page.wait_for_function(
+                "() => typeof window.ComplaintMcpSdk?.SYNC_EVENT_NAME === 'string'"
+            )
+
+            page.evaluate(
+                """() => {
+                    const detail = {
+                        event_type: 'workspace.updated',
+                        user_id: 'dashboard-sync-user',
+                        payload: {
+                            session: {
+                                user_id: 'dashboard-sync-user',
+                                claim_type: 'retaliation',
+                                case_synopsis: 'Protected activity preceded the adverse action.',
+                                intake_answers: {
+                                    party_name: 'Jane Doe',
+                                    opposing_party: 'Acme Corporation',
+                                },
+                                evidence: {
+                                    testimony: [{ title: 'Timeline note' }],
+                                    documents: [{ title: 'Termination notice' }],
+                                },
+                                draft: {
+                                    title: 'Draft complaint',
+                                },
+                            },
+                            review: {
+                                overview: {
+                                    missing_elements: 0,
+                                },
+                            },
+                            complaint_readiness: {
+                                recommended_route: '/workspace',
+                            },
+                        },
+                    };
+                    window.dispatchEvent(new CustomEvent(window.ComplaintMcpSdk.SYNC_EVENT_NAME, { detail }));
+                }"""
+            )
+
+            page.wait_for_function(
+                "() => document.getElementById('dashboard-workspace-session-chip').textContent.includes('dashboard-sync-user')"
+            )
+            assert page.locator("#dashboard-workspace-answered").text_content() == "2"
+            assert page.locator("#dashboard-workspace-evidence").text_content() == "2"
+            assert page.locator("#dashboard-workspace-draft").text_content() == "Yes"
+            assert "Refine draft" in (page.locator("#dashboard-heads-up-action").text_content() or "")
+
+            page.evaluate(
+                """() => {
+                    const detail = {
+                        event_type: 'workspace.reset',
+                        user_id: 'dashboard-sync-user',
+                        payload: {
+                            session: {
+                                user_id: 'dashboard-sync-user',
+                                claim_type: 'retaliation',
+                                case_synopsis: '',
+                                intake_answers: {},
+                                evidence: {
+                                    testimony: [],
+                                    documents: [],
+                                },
+                            },
+                            review: {
+                                overview: {
+                                    missing_elements: 0,
+                                },
+                            },
+                            complaint_readiness: {
+                                recommended_route: '/workspace',
+                            },
+                        },
+                    };
+                    window.dispatchEvent(new CustomEvent(window.ComplaintMcpSdk.SYNC_EVENT_NAME, { detail }));
+                }"""
+            )
+
+            page.wait_for_function(
+                "() => document.getElementById('dashboard-workspace-evidence').textContent.trim() === '0'"
+            )
+            assert page.locator("#dashboard-workspace-draft").text_content() == "No"
+            assert "Continue intake" in (page.locator("#dashboard-heads-up-action").text_content() or "")
+
+            browser.close()
+
+
 def test_real_workspace_browser_flow_generates_formal_complaint_downloads_and_optimizer_feedback(site_app: FastAPI, tmp_path: Path):
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
