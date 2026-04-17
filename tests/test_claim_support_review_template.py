@@ -759,6 +759,12 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         ("/api/complaint-workspace/packaged-docket/view", "GET"),
         ("/api/complaint-workspace/packaged-docket/operator-dashboard", "GET"),
         ("/api/complaint-workspace/packaged-docket/operator-dashboard-report", "GET"),
+        ("/api/complaint-workspace/docket-dataset/view", "GET"),
+        ("/api/complaint-workspace/docket-dataset/search", "GET"),
+        ("/api/complaint-workspace/docket-dataset/metadata", "GET"),
+        ("/api/complaint-workspace/docket-dataset/graph", "GET"),
+        ("/api/complaint-workspace/workspace-dataset/view", "GET"),
+        ("/api/complaint-workspace/workspace-dataset/search", "GET"),
         ("/api/complaint-workspace/mcp/tools", "GET"),
         ("/api/complaint-workspace/mcp/call", "POST"),
         ("/api/complaint-workspace/mcp/rpc", "POST"),
@@ -855,6 +861,12 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert "Chat Upload Modal" in dashboard_hub_response.text
     assert "Complaint Workspace Snapshot" in dashboard_hub_response.text
     assert "Heads-Up Display Dashboard" in dashboard_hub_response.text
+    assert "Docket Dataset Parquet Dashboard" in dashboard_hub_response.text
+    assert "Workspace Dataset Parquet Entry Point" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/docket-dataset/view" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/workspace-dataset/view" in dashboard_hub_response.text
+    assert "dashboard-load-docket-dataset" in dashboard_hub_response.text
+    assert "dashboard-load-workspace-dataset" in dashboard_hub_response.text
     assert "Case Calendar Preview" in dashboard_hub_response.text
     assert "Operator Queue" in dashboard_hub_response.text
     assert "Reset Workspace" in dashboard_hub_response.text

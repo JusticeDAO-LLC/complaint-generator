@@ -327,6 +327,8 @@ def _render_dashboard_hub(
     *,
     default_user_id: str = "",
     default_manifest_path: str = "",
+    default_docket_dataset_path: str = "",
+    default_workspace_dataset_path: str = "",
 ) -> str:
     complaint_links = "".join(
         f'<li><a href="{escape(path)}">{escape(label)}</a></li>'
@@ -573,6 +575,91 @@ def _render_dashboard_hub(
                     </div>
                 </div>
                 <pre id="dashboard-docket-preview">Packaged docket details will appear here.</pre>
+            </article>
+
+            <article class="dashboard-card" id="docket-dataset-parquet-dashboard">
+                <div class="eyebrow" style="color: var(--accent);">Docket Dataset</div>
+                <h2>Docket Dataset Parquet Dashboard</h2>
+                <p>Review docket dataset parquet files through the same ipfs_datasets_py dataset loader, search index, graph projection, and case-calendar extraction used by the MCP tools.</p>
+                <label class="field-label" for="dashboard-docket-dataset-path">Docket Dataset Path</label>
+                <input id="dashboard-docket-dataset-path" type="text" value="{escape(default_docket_dataset_path)}" placeholder="/absolute/path/to/docket.dataset.parquet">
+                <div class="field-row" style="margin-top: 12px;">
+                    <div>
+                        <label class="field-label" for="dashboard-docket-dataset-query">Search Query</label>
+                        <input id="dashboard-docket-dataset-query" type="text" placeholder="hearing, deadline, motion, due process">
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-docket-dataset-input-type">Input</label>
+                        <select id="dashboard-docket-dataset-input-type">
+                            <option value="single" selected>Single parquet</option>
+                            <option value="packaged">Packaged manifest</option>
+                            <option value="json">Source JSON</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="button-row" style="margin-top: 12px;">
+                    <button id="dashboard-load-docket-dataset" type="button">Load Docket Dataset</button>
+                    <button id="dashboard-search-docket-dataset" type="button" class="secondary">Search Docket Dataset</button>
+                    <button id="dashboard-load-docket-dataset-graph" type="button" class="secondary">Load Graph</button>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card"><strong id="dashboard-docket-dataset-documents">0</strong><span>Docket documents</span></div>
+                    <div class="stat-card"><strong id="dashboard-docket-dataset-events">0</strong><span>Calendar events</span></div>
+                    <div class="stat-card"><strong id="dashboard-docket-dataset-results">0</strong><span>Search results</span></div>
+                    <div class="stat-card"><strong id="dashboard-docket-dataset-graph-count">0</strong><span>Graph links</span></div>
+                </div>
+                <div class="chip-row" style="margin-top: 14px;">
+                    <span class="chip" id="dashboard-docket-dataset-case-chip">case: waiting</span>
+                    <span class="chip" id="dashboard-docket-dataset-source-chip">source: waiting</span>
+                </div>
+                <div class="status-line" id="dashboard-docket-dataset-status">Add a docket dataset parquet path to review docket filings.</div>
+                <pre id="dashboard-docket-dataset-preview">Docket dataset details will appear here.</pre>
+            </article>
+
+            <article class="dashboard-card" id="workspace-dataset-parquet-dashboard">
+                <div class="eyebrow" style="color: var(--accent);">Workspace Dataset</div>
+                <h2>Workspace Dataset Parquet Entry Point</h2>
+                <p>Browse and search ipfs_datasets_py workspace dataset parquet files, then use filters that match the stored workspace schema.</p>
+                <label class="field-label" for="dashboard-workspace-dataset-path">Workspace Dataset Path</label>
+                <input id="dashboard-workspace-dataset-path" type="text" value="{escape(default_workspace_dataset_path)}" placeholder="/absolute/path/to/workspace.dataset.parquet">
+                <div class="modal-grid">
+                    <div>
+                        <label class="field-label" for="dashboard-workspace-dataset-input-type">Input</label>
+                        <select id="dashboard-workspace-dataset-input-type">
+                            <option value="single" selected>Single parquet</option>
+                            <option value="packaged">Packaged manifest</option>
+                            <option value="json">Source JSON</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-workspace-dataset-query">Search Query</label>
+                        <input id="dashboard-workspace-dataset-query" type="text" placeholder="accommodation, retaliation, notice">
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-workspace-dataset-claim-type">Claim Type</label>
+                        <input id="dashboard-workspace-dataset-claim-type" type="text" placeholder="housing_discrimination">
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-workspace-dataset-document-type">Document Type</label>
+                        <input id="dashboard-workspace-dataset-document-type" type="text" placeholder="email, pdf, notice">
+                    </div>
+                </div>
+                <div class="button-row" style="margin-top: 12px;">
+                    <button id="dashboard-load-workspace-dataset" type="button">Load Workspace Dataset</button>
+                    <button id="dashboard-search-workspace-dataset" type="button" class="secondary">Search Workspace Dataset</button>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card"><strong id="dashboard-workspace-dataset-documents">0</strong><span>Workspace documents</span></div>
+                    <div class="stat-card"><strong id="dashboard-workspace-dataset-collections">0</strong><span>Collections</span></div>
+                    <div class="stat-card"><strong id="dashboard-workspace-dataset-results">0</strong><span>Search results</span></div>
+                    <div class="stat-card"><strong id="dashboard-workspace-dataset-entities">0</strong><span>Graph entities</span></div>
+                </div>
+                <div class="chip-row" style="margin-top: 14px;">
+                    <span class="chip" id="dashboard-workspace-dataset-workspace-chip">workspace: waiting</span>
+                    <span class="chip" id="dashboard-workspace-dataset-source-chip">source: waiting</span>
+                </div>
+                <div class="status-line" id="dashboard-workspace-dataset-status">Add a workspace dataset parquet path to enter the dataset workspace.</div>
+                <pre id="dashboard-workspace-dataset-preview">Workspace dataset details will appear here.</pre>
             </article>
 
             <article class="dashboard-card">
@@ -1029,6 +1116,116 @@ def _render_dashboard_hub(
                 renderHeadsUpCard();
             }}
 
+            function datasetQueryParams(pathInputId, typeInputId, extra) {{
+                const pathNode = document.getElementById(pathInputId);
+                const typeNode = document.getElementById(typeInputId);
+                const inputPath = String((pathNode && pathNode.value) || '').trim();
+                if (!inputPath) {{
+                    throw new Error('Add a dataset path first.');
+                }}
+                const params = new URLSearchParams();
+                params.set('input_path', inputPath);
+                params.set('input_type', String((typeNode && typeNode.value) || 'single'));
+                Object.entries(extra || {{}}).forEach(([key, value]) => {{
+                    if (value !== null && value !== undefined && String(value).trim() !== '') {{
+                        params.set(key, String(value).trim());
+                    }}
+                }});
+                return params;
+            }}
+
+            function renderDocketDatasetCard(payload, label) {{
+                const summary = (payload && payload.summary) || {{}};
+                const documents = Array.isArray(payload && payload.documents) ? payload.documents : [];
+                const searchResults = (payload && payload.search_results) || {{}};
+                const results = Array.isArray(searchResults.results) ? searchResults.results : [];
+                const calendarEvents = prioritizeCalendarEvents(extractCalendarEvents(payload || {{}}).length ? extractCalendarEvents(payload || {{}}) : extractCalendarEventsFromDocketView(payload || {{}}));
+                const graph = (payload && payload.knowledge_graph) || {{}};
+                const issueLinkCount = Number(graph.issue_link_count || graph.relationship_count || 0);
+                setText('dashboard-docket-dataset-documents', String(Number(summary.document_count || documents.length || 0)));
+                setText('dashboard-docket-dataset-events', String(calendarEvents.length));
+                setText('dashboard-docket-dataset-results', String(Number(searchResults.result_count || results.length || 0)));
+                setText('dashboard-docket-dataset-graph-count', String(issueLinkCount));
+                setText('dashboard-docket-dataset-case-chip', `case: ${{String((payload && (payload.case_name || payload.docket_id)) || summary.case_name || summary.docket_id || 'unknown')}}`);
+                setText('dashboard-docket-dataset-source-chip', `source: ${{String((payload && payload.source) || label || 'dataset')}}`);
+                setText('dashboard-docket-dataset-status', `Loaded docket dataset ${{label || 'view'}} through ipfs_datasets_py.`);
+                setText('dashboard-docket-dataset-preview', JSON.stringify(Object.assign({{}}, payload || {{}}, {{
+                    extracted_calendar_events: calendarEvents.slice(0, 10),
+                }}), null, 2));
+            }}
+
+            function renderWorkspaceDatasetCard(payload, label) {{
+                const summary = (payload && payload.summary) || {{}};
+                const documents = Array.isArray(payload && payload.documents) ? payload.documents : [];
+                const collections = Array.isArray(payload && payload.collections) ? payload.collections : [];
+                const searchResults = (payload && payload.search_results) || {{}};
+                const results = Array.isArray(searchResults.results) ? searchResults.results : [];
+                setText('dashboard-workspace-dataset-documents', String(Number(summary.document_count || documents.length || 0)));
+                setText('dashboard-workspace-dataset-collections', String(Number(summary.collection_count || collections.length || 0)));
+                setText('dashboard-workspace-dataset-results', String(Number(searchResults.result_count || results.length || 0)));
+                setText('dashboard-workspace-dataset-entities', String(Number(summary.knowledge_graph_entity_count || 0)));
+                setText('dashboard-workspace-dataset-workspace-chip', `workspace: ${{String(summary.workspace_name || summary.workspace_id || 'unknown')}}`);
+                setText('dashboard-workspace-dataset-source-chip', `source: ${{String((payload && payload.source) || label || 'dataset')}}`);
+                setText('dashboard-workspace-dataset-status', `Loaded workspace dataset ${{label || 'view'}} through ipfs_datasets_py.`);
+                setText('dashboard-workspace-dataset-preview', JSON.stringify(payload || {{}}, null, 2));
+            }}
+
+            async function loadDocketDatasetDashboard(mode) {{
+                const statusId = 'dashboard-docket-dataset-status';
+                setText(statusId, mode === 'search' ? 'Searching docket dataset parquet...' : mode === 'graph' ? 'Loading docket dataset graph...' : 'Loading docket dataset parquet...');
+                try {{
+                    let endpoint = '/api/complaint-workspace/docket-dataset/view';
+                    const extra = {{
+                        include_document_text: 'true',
+                        document_limit: '40',
+                    }};
+                    if (mode === 'search') {{
+                        const query = String((document.getElementById('dashboard-docket-dataset-query') || {{}}).value || '').trim();
+                        if (!query) {{
+                            throw new Error('Enter a docket dataset query before searching.');
+                        }}
+                        endpoint = '/api/complaint-workspace/docket-dataset/search';
+                        extra.query = query;
+                        extra.top_k = '10';
+                    }} else if (mode === 'graph') {{
+                        endpoint = '/api/complaint-workspace/docket-dataset/graph';
+                    }}
+                    const params = datasetQueryParams('dashboard-docket-dataset-path', 'dashboard-docket-dataset-input-type', extra);
+                    const payload = await fetchJson(`${{endpoint}}?${{params.toString()}}`);
+                    renderDocketDatasetCard(payload, mode || 'view');
+                }} catch (error) {{
+                    setText(statusId, `Docket dataset load failed: ${{error.message}}`);
+                }}
+            }}
+
+            async function loadWorkspaceDatasetDashboard(mode) {{
+                const statusId = 'dashboard-workspace-dataset-status';
+                setText(statusId, mode === 'search' ? 'Searching workspace dataset parquet...' : 'Loading workspace dataset parquet...');
+                try {{
+                    const extra = {{
+                        include_document_text: 'true',
+                        document_limit: '40',
+                        claim_type: String((document.getElementById('dashboard-workspace-dataset-claim-type') || {{}}).value || '').trim(),
+                        document_type: String((document.getElementById('dashboard-workspace-dataset-document-type') || {{}}).value || '').trim(),
+                    }};
+                    let endpoint = '/api/complaint-workspace/workspace-dataset/view';
+                    if (mode === 'search') {{
+                        const query = String((document.getElementById('dashboard-workspace-dataset-query') || {{}}).value || '').trim();
+                        if (!query) {{
+                            throw new Error('Enter a workspace dataset query before searching.');
+                        }}
+                        endpoint = '/api/complaint-workspace/workspace-dataset/search';
+                        extra.query = query;
+                        extra.top_k = '10';
+                    }}
+                    const params = datasetQueryParams('dashboard-workspace-dataset-path', 'dashboard-workspace-dataset-input-type', extra);
+                    const payload = await fetchJson(`${{endpoint}}?${{params.toString()}}`);
+                    renderWorkspaceDatasetCard(payload, mode || 'view');
+                }} catch (error) {{
+                    setText(statusId, `Workspace dataset load failed: ${{error.message}}`);
+                }}
+            }}
+
             function clearDocketCard(reason) {{
                 dashboardState.docketPayload = null;
                 dashboardState.docketViewPayload = null;
@@ -1346,6 +1543,11 @@ def _render_dashboard_hub(
             document.getElementById('dashboard-unload-docket').addEventListener('click', function() {{
                 clearDocketCard('Packaged docket unloaded from the dashboard.');
             }});
+            document.getElementById('dashboard-load-docket-dataset').addEventListener('click', function() {{ loadDocketDatasetDashboard('view'); }});
+            document.getElementById('dashboard-search-docket-dataset').addEventListener('click', function() {{ loadDocketDatasetDashboard('search'); }});
+            document.getElementById('dashboard-load-docket-dataset-graph').addEventListener('click', function() {{ loadDocketDatasetDashboard('graph'); }});
+            document.getElementById('dashboard-load-workspace-dataset').addEventListener('click', function() {{ loadWorkspaceDatasetDashboard('view'); }});
+            document.getElementById('dashboard-search-workspace-dataset').addEventListener('click', function() {{ loadWorkspaceDatasetDashboard('search'); }});
             document.getElementById('dashboard-open-upload-modal').addEventListener('click', function() {{ toggleUploadModal(true); }});
             document.getElementById('dashboard-close-upload-modal').addEventListener('click', function() {{ toggleUploadModal(false); }});
             document.getElementById('dashboard-cancel-upload-modal').addEventListener('click', function() {{ toggleUploadModal(false); }});
@@ -1372,6 +1574,12 @@ def _render_dashboard_hub(
             loadWorkspaceDashboard();
             if (String(document.getElementById('dashboard-docket-manifest-path').value || '').trim()) {{
                 loadDocketDashboard(false);
+            }}
+            if (String(document.getElementById('dashboard-docket-dataset-path').value || '').trim()) {{
+                loadDocketDatasetDashboard('view');
+            }}
+            if (String(document.getElementById('dashboard-workspace-dataset-path').value || '').trim()) {{
+                loadWorkspaceDatasetDashboard('view');
             }}
         }})();
     </script>
@@ -1413,10 +1621,14 @@ def create_dashboard_ui_router() -> APIRouter:
     async def dashboard_hub(
         user_id: str = "",
         manifest_path: str = "",
+        docket_dataset_path: str = "",
+        workspace_dataset_path: str = "",
     ) -> str:
         return _render_dashboard_hub(
             default_user_id=str(user_id or "").strip(),
             default_manifest_path=str(manifest_path or "").strip(),
+            default_docket_dataset_path=str(docket_dataset_path or "").strip(),
+            default_workspace_dataset_path=str(workspace_dataset_path or "").strip(),
         )
 
     @router.get("/dashboards/ipfs-datasets/{slug}", response_class=HTMLResponse)

@@ -94,6 +94,108 @@ def _build_packaged_docket_manifest(tmp_path, *, routing_reason: str = "Workspac
     return str(package["manifest_json_path"])
 
 
+def _build_single_docket_parquet(tmp_path) -> str:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    output_path = tmp_path / "single_parquet_docket.dataset.parquet"
+    rows = [
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "dataset_core",
+            "row_index": 1,
+            "row_id": "dataset_core_1",
+            "title": "Single Parquet Docket",
+            "document_number": "",
+            "source_url": "",
+            "text": "",
+            "payload_json": json.dumps(
+                {
+                    "dataset_id": "docket_dataset_single-parquet-docket-1",
+                    "docket_id": "single-parquet-docket-1",
+                    "case_name": "Single Parquet Docket",
+                    "court": "D. Example",
+                    "metadata": {"fixture": "single-parquet"},
+                },
+                sort_keys=True,
+            ),
+        },
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "documents",
+            "row_index": 1,
+            "row_id": "doc_1",
+            "title": "Motion to Compel",
+            "document_number": "21",
+            "source_url": "",
+            "text": "Plaintiff moves to compel production of the housing file.",
+            "payload_json": json.dumps(
+                {
+                    "id": "doc_1",
+                    "title": "Motion to Compel",
+                    "document_number": "21",
+                    "text": "Plaintiff moves to compel production of the housing file.",
+                },
+                sort_keys=True,
+            ),
+        },
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "documents",
+            "row_index": 2,
+            "row_id": "doc_2",
+            "title": "Notice of Hearing",
+            "document_number": "22",
+            "source_url": "",
+            "text": "The court sets a hearing for April 21, 2026.",
+            "payload_json": json.dumps(
+                {
+                    "id": "doc_2",
+                    "title": "Notice of Hearing",
+                    "date_filed": "2026-04-01",
+                    "document_number": "22",
+                    "text": "The court sets a hearing for April 21, 2026.",
+                },
+                sort_keys=True,
+            ),
+        },
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "bm25_documents",
+            "row_index": 1,
+            "row_id": "doc_2",
+            "title": "Notice of Hearing",
+            "document_number": "22",
+            "source_url": "",
+            "text": "Notice of Hearing The court sets a hearing for April 21, 2026.",
+            "payload_json": json.dumps(
+                {
+                    "document_id": "doc_2",
+                    "title": "Notice of Hearing",
+                    "text": "Notice of Hearing The court sets a hearing for April 21, 2026.",
+                    "tokens": ["notice", "hearing", "court", "sets", "hearing", "april"],
+                    "metadata": {"document_number": "22"},
+                },
+                sort_keys=True,
+            ),
+        },
+    ]
+    pq.write_table(pa.Table.from_pylist(rows), output_path)
+    return str(output_path)
+
+
 def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "tool-list-sessions")
     payload = tool_list_payload(service)
@@ -1713,6 +1815,70 @@ def test_packaged_docket_operator_dashboard_is_exposed_across_package_mcp_and_ap
     assert view_response.json()["case_calendar"][0]["kind"] == "hearing"
     assert view_response.json()["case_calendar"][0]["title"] == "Notice of Hearing"
     assert view_response.json()["case_calendar"][0]["date"] == "May 1, 2024"
+
+
+@pytest.mark.no_auto_llm
+def test_single_parquet_docket_dataset_dashboard_routes_use_ipfs_dataset_loader(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "single-parquet-docket-dashboard")
+    parquet_path = _build_single_docket_parquet(tmp_path)
+
+    view_payload = service.view_docket_dataset(
+        parquet_path,
+        input_type="single",
+        include_document_text=True,
+        document_limit=10,
+    )
+    assert view_payload["input_type"] == "single"
+    assert view_payload["summary"]["case_name"] == "Single Parquet Docket"
+    assert view_payload["summary"]["document_count"] == 2
+    assert any(document["title"] == "Notice of Hearing" for document in view_payload["documents"])
+
+    search_payload = service.search_docket_dataset(
+        parquet_path,
+        input_type="single",
+        query="hearing",
+        search_backend="bm25",
+        top_k=5,
+    )
+    assert search_payload["source"] == "complaint_workspace_docket_search"
+    assert search_payload["search_results"]["result_count"] >= 1
+
+    app = FastAPI()
+    attach_complaint_workspace_routes(app, service)
+    client = TestClient(app)
+
+    view_response = client.get(
+        "/api/complaint-workspace/docket-dataset/view",
+        params={
+            "input_path": parquet_path,
+            "input_type": "single",
+            "include_document_text": True,
+            "document_limit": 10,
+        },
+    )
+    assert view_response.status_code == 200
+    assert view_response.json()["summary"]["case_name"] == "Single Parquet Docket"
+    assert view_response.json()["case_calendar_summary"]["count"] == 1
+    assert view_response.json()["case_calendar"][0]["date"] == "April 21, 2026"
+
+    search_response = client.get(
+        "/api/complaint-workspace/docket-dataset/search",
+        params={
+            "input_path": parquet_path,
+            "input_type": "single",
+            "query": "hearing",
+            "search_backend": "bm25",
+        },
+    )
+    assert search_response.status_code == 200
+    assert search_response.json()["search_results"]["result_count"] >= 1
+
+    graph_response = client.get(
+        "/api/complaint-workspace/docket-dataset/graph",
+        params={"input_path": parquet_path, "input_type": "single"},
+    )
+    assert graph_response.status_code == 200
+    assert graph_response.json()["source"] == "complaint_workspace_docket_graph"
 
 
 def test_successful_llm_draft_persists_effective_router_backend_metadata(monkeypatch, tmp_path):

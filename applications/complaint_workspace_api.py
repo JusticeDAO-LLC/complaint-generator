@@ -563,6 +563,106 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             report_format=report_format,
         )
 
+    @router.get("/api/complaint-workspace/docket-dataset/view")
+    async def view_docket_dataset_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+        include_document_text: bool = Query(default=False),
+        document_limit: int = Query(default=25),
+    ) -> Dict[str, Any]:
+        return _attach_case_calendar(
+            workspace.view_docket_dataset(
+                input_path,
+                input_type=input_type,
+                include_document_text=include_document_text,
+                document_limit=document_limit,
+            )
+        )
+
+    @router.get("/api/complaint-workspace/docket-dataset/search")
+    async def search_docket_dataset_route(
+        input_path: str,
+        query: str,
+        input_type: str = Query(default="single"),
+        search_backend: str = Query(default="bm25"),
+        top_k: int = Query(default=10),
+        vector_dimension: int = Query(default=32),
+    ) -> Dict[str, Any]:
+        return workspace.search_docket_dataset(
+            input_path,
+            input_type=input_type,
+            query=query,
+            search_backend=search_backend,
+            top_k=top_k,
+            vector_dimension=vector_dimension,
+        )
+
+    @router.get("/api/complaint-workspace/docket-dataset/metadata")
+    async def get_docket_dataset_metadata_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+    ) -> Dict[str, Any]:
+        return workspace.get_docket_dataset_metadata(input_path, input_type=input_type)
+
+    @router.get("/api/complaint-workspace/docket-dataset/graph")
+    async def get_docket_dataset_graph_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+    ) -> Dict[str, Any]:
+        return workspace.get_docket_dataset_graph(input_path, input_type=input_type)
+
+    @router.get("/api/complaint-workspace/workspace-dataset/view")
+    async def view_workspace_dataset_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+        include_document_text: bool = Query(default=False),
+        document_limit: int = Query(default=25),
+        collection_id: Optional[str] = Query(default=None),
+        document_type: Optional[str] = Query(default=None),
+        claim_type: Optional[str] = Query(default=None),
+        claim_element_id: Optional[str] = Query(default=None),
+        source_type: Optional[str] = Query(default=None),
+    ) -> Dict[str, Any]:
+        return workspace.view_workspace_dataset(
+            input_path,
+            input_type=input_type,
+            include_document_text=include_document_text,
+            document_limit=document_limit,
+            collection_id=collection_id,
+            document_type=document_type,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
+            source_type=source_type,
+        )
+
+    @router.get("/api/complaint-workspace/workspace-dataset/search")
+    async def search_workspace_dataset_route(
+        input_path: str,
+        query: str,
+        input_type: str = Query(default="single"),
+        search_backend: str = Query(default="bm25"),
+        top_k: int = Query(default=10),
+        vector_dimension: int = Query(default=32),
+        collection_id: Optional[str] = Query(default=None),
+        document_type: Optional[str] = Query(default=None),
+        claim_type: Optional[str] = Query(default=None),
+        claim_element_id: Optional[str] = Query(default=None),
+        source_type: Optional[str] = Query(default=None),
+    ) -> Dict[str, Any]:
+        return workspace.search_workspace_dataset(
+            input_path,
+            input_type=input_type,
+            query=query,
+            search_backend=search_backend,
+            top_k=top_k,
+            vector_dimension=vector_dimension,
+            collection_id=collection_id,
+            document_type=document_type,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
+            source_type=source_type,
+        )
+
     @router.post("/api/complaint-workspace/packaged-docket/revalidation/execute")
     async def execute_packaged_docket_revalidation_route(
         request: PackagedDocketRevalidationRequest,

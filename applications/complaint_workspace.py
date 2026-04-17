@@ -4827,9 +4827,81 @@ class ComplaintWorkspaceService:
             dataset = load_packaged_docket_dataset(resolved_path)
         elif normalized_type == "json":
             dataset = DocketDatasetBuilder().build_from_json_file(resolved_path)
+        elif normalized_type == "single":
+            dataset = self._load_docket_dataset_single_parquet(resolved_path)
         else:
             raise ValueError(f"Unsupported docket input_type: {input_type}")
         return dict(dataset.to_dict() if hasattr(dataset, "to_dict") else dataset)
+
+    @staticmethod
+    def _decode_parquet_bundle_section(rows: List[Dict[str, Any]], section: str) -> List[Dict[str, Any]]:
+        decoded: List[Dict[str, Any]] = []
+        for row in rows:
+            if str(row.get("section") or "") != section:
+                continue
+            payload_json = str(row.get("payload_json") or "").strip()
+            if not payload_json:
+                continue
+            decoded.append(dict(json.loads(payload_json)))
+        return decoded
+
+    @classmethod
+    def _load_docket_dataset_single_parquet(cls, parquet_path: str | Path) -> Dict[str, Any]:
+        import pyarrow.parquet as pq
+
+        resolved_path = Path(str(parquet_path)).expanduser().resolve()
+        rows = [dict(row) for row in pq.read_table(resolved_path).to_pylist()]
+        dataset_core_rows = cls._decode_parquet_bundle_section(rows, "dataset_core")
+        dataset_core = dict(dataset_core_rows[0]) if dataset_core_rows else {}
+        documents = cls._decode_parquet_bundle_section(rows, "documents")
+        knowledge_graph_entities = cls._decode_parquet_bundle_section(rows, "knowledge_graph_entities")
+        knowledge_graph_relationships = cls._decode_parquet_bundle_section(rows, "knowledge_graph_relationships")
+        deontic_nodes = cls._decode_parquet_bundle_section(rows, "deontic_nodes")
+        deontic_rules = cls._decode_parquet_bundle_section(rows, "deontic_rules")
+        proof_agenda = cls._decode_parquet_bundle_section(rows, "proof_agenda")
+        proof_evidence_packets = cls._decode_parquet_bundle_section(rows, "proof_evidence_packets")
+        proof_revalidation_runs = cls._decode_parquet_bundle_section(rows, "proof_revalidation_runs")
+        bm25_documents = cls._decode_parquet_bundle_section(rows, "bm25_documents")
+        vector_items = cls._decode_parquet_bundle_section(rows, "vector_items")
+        return {
+            "dataset_id": str(dataset_core.get("dataset_id") or ""),
+            "docket_id": str(dataset_core.get("docket_id") or ""),
+            "case_name": str(dataset_core.get("case_name") or ""),
+            "court": str(dataset_core.get("court") or ""),
+            "documents": documents,
+            "plaintiff_docket": cls._decode_parquet_bundle_section(rows, "plaintiff_docket"),
+            "defendant_docket": cls._decode_parquet_bundle_section(rows, "defendant_docket"),
+            "authorities": cls._decode_parquet_bundle_section(rows, "authorities"),
+            "knowledge_graph": {
+                "entities": knowledge_graph_entities,
+                "relationships": knowledge_graph_relationships,
+            },
+            "deontic_graph": {
+                "nodes": {str(item.get("node_id") or item.get("id") or index): item for index, item in enumerate(deontic_nodes, start=1)},
+                "rules": {str(item.get("rule_id") or item.get("id") or index): item for index, item in enumerate(deontic_rules, start=1)},
+            },
+            "proof_assistant": {
+                "agenda": proof_agenda,
+                "evidence_packets": proof_evidence_packets,
+                "revalidation_runs": proof_revalidation_runs,
+            },
+            "bm25_index": {
+                "backend": "local_bm25",
+                "documents": bm25_documents,
+                "document_count": len(bm25_documents),
+            },
+            "vector_index": {
+                "backend": "local_hashed_term_projection",
+                "items": vector_items,
+                "document_count": len(vector_items),
+            },
+            "metadata": dict(dataset_core.get("metadata") or {}),
+            "bundle": {
+                "parquet_path": str(resolved_path),
+                "row_count": len(rows),
+                "sections": sorted({str(row.get("section") or "") for row in rows if str(row.get("section") or "")}),
+            },
+        }
 
     @staticmethod
     def _build_docket_document_view(
