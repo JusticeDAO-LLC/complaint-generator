@@ -863,10 +863,13 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert "Heads-Up Display Dashboard" in dashboard_hub_response.text
     assert "Docket Dataset Parquet Dashboard" in dashboard_hub_response.text
     assert "Workspace Dataset Parquet Entry Point" in dashboard_hub_response.text
+    assert "Dataset Document Annotation" in dashboard_hub_response.text
     assert "/api/complaint-workspace/docket-dataset/view" in dashboard_hub_response.text
     assert "/api/complaint-workspace/workspace-dataset/view" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/evidence" in dashboard_hub_response.text
     assert "dashboard-load-docket-dataset" in dashboard_hub_response.text
     assert "dashboard-load-workspace-dataset" in dashboard_hub_response.text
+    assert "dashboard-save-dataset-annotation" in dashboard_hub_response.text
     assert "Case Calendar Preview" in dashboard_hub_response.text
     assert "Operator Queue" in dashboard_hub_response.text
     assert "Reset Workspace" in dashboard_hub_response.text

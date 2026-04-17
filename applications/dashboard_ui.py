@@ -662,6 +662,46 @@ def _render_dashboard_hub(
                 <pre id="dashboard-workspace-dataset-preview">Workspace dataset details will appear here.</pre>
             </article>
 
+            <article class="dashboard-card" id="dataset-document-annotation-dashboard">
+                <div class="eyebrow" style="color: var(--accent);">Document Annotation</div>
+                <h2>Dataset Document Annotation</h2>
+                <p>Capture a review note from the currently loaded docket or workspace dataset document and save it into the complaint workspace evidence record.</p>
+                <div class="modal-grid">
+                    <div>
+                        <label class="field-label" for="dashboard-dataset-annotation-user-id">Workspace User ID</label>
+                        <input id="dashboard-dataset-annotation-user-id" type="text" value="{escape(default_user_id)}" placeholder="dashboard-review-user">
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-dataset-annotation-document-id">Document ID</label>
+                        <input id="dashboard-dataset-annotation-document-id" type="text" placeholder="Load or search a dataset to choose a document">
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-dataset-annotation-claim-element">Claim Element</label>
+                        <select id="dashboard-dataset-annotation-claim-element">
+                            <option value="protected_activity">Protected activity</option>
+                            <option value="employer_knowledge">Employer knowledge</option>
+                            <option value="adverse_action">Adverse action</option>
+                            <option value="causation" selected>Causal link</option>
+                            <option value="harm">Damages</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label" for="dashboard-dataset-annotation-title">Annotation Title</label>
+                        <input id="dashboard-dataset-annotation-title" type="text" value="Dataset document annotation">
+                    </div>
+                </div>
+                <div style="margin-top: 14px;">
+                    <label class="field-label" for="dashboard-dataset-annotation-note">Review Note</label>
+                    <textarea id="dashboard-dataset-annotation-note" placeholder="Summarize what this document proves, what needs follow-up, or how it should be used in the complaint record."></textarea>
+                </div>
+                <div class="button-row" style="margin-top: 12px;">
+                    <button id="dashboard-save-dataset-annotation" type="button">Annotate Dataset Document</button>
+                    <button id="dashboard-use-loaded-document" type="button" class="secondary">Use Loaded Document</button>
+                </div>
+                <div class="status-line" id="dashboard-dataset-annotation-status">Load or search a dataset document before saving an annotation.</div>
+                <pre id="dashboard-dataset-annotation-preview">The saved annotation payload will appear here.</pre>
+            </article>
+
             <article class="dashboard-card">
                 <div class="eyebrow" style="color: var(--accent);">Chat Card</div>
                 <h2>Chat Upload Modal</h2>
@@ -785,6 +825,7 @@ def _render_dashboard_hub(
                 workspacePayload: null,
                 docketPayload: null,
                 docketViewPayload: null,
+                selectedDatasetDocument: null,
             }};
 
             function parseCount(value, fallback) {{
@@ -868,6 +909,55 @@ def _render_dashboard_hub(
                     .filter(Boolean)
                     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                     .join(' ');
+            }}
+
+            function selectDatasetDocument(datasetDocument, datasetKind) {{
+                const normalizedDocument = datasetDocument && typeof datasetDocument === 'object' ? datasetDocument : null;
+                dashboardState.selectedDatasetDocument = normalizedDocument
+                    ? Object.assign({{}}, normalizedDocument, {{ dataset_kind: datasetKind || normalizedDocument.dataset_kind || 'dataset' }})
+                    : null;
+                const documentId = String(
+                    normalizedDocument && (
+                        normalizedDocument.document_id
+                        || normalizedDocument.id
+                        || normalizedDocument.row_id
+                        || normalizedDocument.source_document_id
+                        || ''
+                    ) || ''
+                ).trim();
+                const title = String(normalizedDocument && (normalizedDocument.title || normalizedDocument.source_document_title || '') || '').trim();
+                setText(
+                    'dashboard-dataset-annotation-status',
+                    documentId
+                        ? `Selected ${{datasetKind || 'dataset'}} document ${{documentId}} for annotation.`
+                        : 'Loaded dataset data, but no document ID was available for annotation.'
+                );
+                const idNode = document.getElementById('dashboard-dataset-annotation-document-id');
+                const titleNode = document.getElementById('dashboard-dataset-annotation-title');
+                if (idNode && documentId) {{
+                    idNode.value = documentId;
+                }}
+                if (titleNode && title) {{
+                    titleNode.value = `${{title}} annotation`;
+                }}
+            }}
+
+            function firstDocumentFromPayload(payload) {{
+                const documents = Array.isArray(payload && payload.documents) ? payload.documents : [];
+                if (documents.length) {{
+                    return documents[0];
+                }}
+                const searchResults = (payload && payload.search_results) || {{}};
+                const results = Array.isArray(searchResults.results) ? searchResults.results : [];
+                if (!results.length) {{
+                    return null;
+                }}
+                const firstResult = results[0];
+                return Object.assign({{}}, firstResult, {{
+                    id: firstResult.document_id || firstResult.id || firstResult.row_id || '',
+                    title: firstResult.title || firstResult.document_title || '',
+                    text: firstResult.text || firstResult.snippet || firstResult.preview || '',
+                }});
             }}
 
             function extractCalendarEvents(payload) {{
@@ -1152,6 +1242,7 @@ def _render_dashboard_hub(
                 setText('dashboard-docket-dataset-preview', JSON.stringify(Object.assign({{}}, payload || {{}}, {{
                     extracted_calendar_events: calendarEvents.slice(0, 10),
                 }}), null, 2));
+                selectDatasetDocument(firstDocumentFromPayload(payload || {{}}), 'docket');
             }}
 
             function renderWorkspaceDatasetCard(payload, label) {{
@@ -1168,6 +1259,64 @@ def _render_dashboard_hub(
                 setText('dashboard-workspace-dataset-source-chip', `source: ${{String((payload && payload.source) || label || 'dataset')}}`);
                 setText('dashboard-workspace-dataset-status', `Loaded workspace dataset ${{label || 'view'}} through ipfs_datasets_py.`);
                 setText('dashboard-workspace-dataset-preview', JSON.stringify(payload || {{}}, null, 2));
+                selectDatasetDocument(firstDocumentFromPayload(payload || {{}}), 'workspace');
+            }}
+
+            function useLoadedDatasetDocument() {{
+                selectDatasetDocument(dashboardState.selectedDatasetDocument, dashboardState.selectedDatasetDocument && dashboardState.selectedDatasetDocument.dataset_kind || 'dataset');
+            }}
+
+            async function saveDatasetDocumentAnnotation() {{
+                const userId = String((document.getElementById('dashboard-dataset-annotation-user-id') || {{}}).value || '').trim();
+                const documentId = String((document.getElementById('dashboard-dataset-annotation-document-id') || {{}}).value || '').trim();
+                const claimElementId = String((document.getElementById('dashboard-dataset-annotation-claim-element') || {{}}).value || 'causation').trim();
+                const title = String((document.getElementById('dashboard-dataset-annotation-title') || {{}}).value || 'Dataset document annotation').trim();
+                const note = String((document.getElementById('dashboard-dataset-annotation-note') || {{}}).value || '').trim();
+                if (!documentId) {{
+                    setText('dashboard-dataset-annotation-status', 'Choose or load a dataset document before saving an annotation.');
+                    return;
+                }}
+                if (!note) {{
+                    setText('dashboard-dataset-annotation-status', 'Add a review note before saving the annotation.');
+                    return;
+                }}
+                const selected = dashboardState.selectedDatasetDocument || {{}};
+                const sourceKind = String(selected.dataset_kind || 'dataset');
+                setText('dashboard-dataset-annotation-status', 'Saving dataset document annotation into the complaint workspace...');
+                try {{
+                    const payload = await fetchJson('/api/complaint-workspace/evidence', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            user_id: userId || undefined,
+                            kind: 'document',
+                            claim_element_id: claimElementId || 'causation',
+                            title,
+                            content: [
+                                `Dataset: ${{sourceKind}}`,
+                                `Document ID: ${{documentId}}`,
+                                selected.title ? `Document title: ${{selected.title}}` : '',
+                                selected.text ? `Document text preview: ${{String(selected.text).slice(0, 500)}}` : '',
+                                `Review note: ${{note}}`,
+                            ].filter(Boolean).join('\\n'),
+                            source: `dashboard-${{sourceKind}}-dataset-annotation`,
+                            attachment_names: [documentId],
+                        }}),
+                    }});
+                    setText('dashboard-dataset-annotation-status', `Saved annotation for ${{documentId}} into the complaint workspace.`);
+                    setText('dashboard-dataset-annotation-preview', JSON.stringify(payload, null, 2));
+                    publishSharedSyncEvent({{
+                        event_type: 'workspace.updated',
+                        source: 'dashboard-dataset-document-annotation',
+                        user_id: String(((payload || {{}}).session || {{}}).user_id || userId || ''),
+                        payload: payload || null,
+                    }});
+                    if (payload && payload.session) {{
+                        renderWorkspaceCard(payload);
+                    }}
+                }} catch (error) {{
+                    setText('dashboard-dataset-annotation-status', `Annotation save failed: ${{error.message}}`);
+                }}
             }}
 
             async function loadDocketDatasetDashboard(mode) {{
@@ -1548,6 +1697,8 @@ def _render_dashboard_hub(
             document.getElementById('dashboard-load-docket-dataset-graph').addEventListener('click', function() {{ loadDocketDatasetDashboard('graph'); }});
             document.getElementById('dashboard-load-workspace-dataset').addEventListener('click', function() {{ loadWorkspaceDatasetDashboard('view'); }});
             document.getElementById('dashboard-search-workspace-dataset').addEventListener('click', function() {{ loadWorkspaceDatasetDashboard('search'); }});
+            document.getElementById('dashboard-save-dataset-annotation').addEventListener('click', saveDatasetDocumentAnnotation);
+            document.getElementById('dashboard-use-loaded-document').addEventListener('click', useLoadedDatasetDocument);
             document.getElementById('dashboard-open-upload-modal').addEventListener('click', function() {{ toggleUploadModal(true); }});
             document.getElementById('dashboard-close-upload-modal').addEventListener('click', function() {{ toggleUploadModal(false); }});
             document.getElementById('dashboard-cancel-upload-modal').addEventListener('click', function() {{ toggleUploadModal(false); }});

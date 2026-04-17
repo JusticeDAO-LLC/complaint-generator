@@ -2,6 +2,7 @@ import json
 import socket
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -503,6 +504,230 @@ def _wait_for_input_value(page, selector: str, expected_value: str) -> None:
     )
 
 
+def _write_sectioned_parquet(path: Path, rows: list[dict]) -> Path:
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(rows), path)
+    return path
+
+
+def _bundle_row(
+    *,
+    dataset_id: str,
+    docket_id: str = "",
+    workspace_id: str = "",
+    case_name: str = "",
+    workspace_name: str = "",
+    section: str,
+    row_index: int,
+    row_id: str,
+    title: str = "",
+    text: str = "",
+    payload: dict | None = None,
+) -> dict:
+    payload_dict = dict(payload or {})
+    return {
+        "dataset_id": dataset_id,
+        "docket_id": docket_id,
+        "workspace_id": workspace_id,
+        "case_name": case_name,
+        "workspace_name": workspace_name,
+        "court": payload_dict.get("court", "D. Example"),
+        "section": section,
+        "row_index": row_index,
+        "row_id": row_id,
+        "title": title,
+        "document_number": str(payload_dict.get("document_number") or ""),
+        "source_url": str(payload_dict.get("source_url") or ""),
+        "text": text,
+        "payload_json": json.dumps(payload_dict, sort_keys=True),
+    }
+
+
+def _write_dashboard_docket_parquet(tmp_path: Path) -> Path:
+    dataset_id = "docket_dataset_dashboard_playwright"
+    docket_id = "dashboard-docket-playwright"
+    case_name = "Dashboard Playwright Docket"
+    return _write_sectioned_parquet(
+        tmp_path / "dashboard_docket.dataset.parquet",
+        [
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="dataset_core",
+                row_index=1,
+                row_id="dataset_core_1",
+                title=case_name,
+                payload={
+                    "dataset_id": dataset_id,
+                    "docket_id": docket_id,
+                    "case_name": case_name,
+                    "court": "D. Example",
+                    "metadata": {"fixture": "dashboard-playwright"},
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="documents",
+                row_index=1,
+                row_id="docket-doc-1",
+                title="Motion to Compel Accommodation Records",
+                text="Plaintiff moves to compel production of accommodation records.",
+                payload={
+                    "id": "docket-doc-1",
+                    "title": "Motion to Compel Accommodation Records",
+                    "document_number": "17",
+                    "text": "Plaintiff moves to compel production of accommodation records.",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="documents",
+                row_index=2,
+                row_id="docket-doc-2",
+                title="Notice of Hearing",
+                text="The court sets a hearing for April 21, 2026.",
+                payload={
+                    "id": "docket-doc-2",
+                    "title": "Notice of Hearing",
+                    "date_filed": "2026-04-01",
+                    "document_number": "22",
+                    "text": "The court sets a hearing for April 21, 2026.",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="bm25_documents",
+                row_index=1,
+                row_id="docket-doc-2",
+                title="Notice of Hearing",
+                text="Notice of Hearing The court sets a hearing for April 21, 2026.",
+                payload={
+                    "document_id": "docket-doc-2",
+                    "title": "Notice of Hearing",
+                    "text": "Notice of Hearing The court sets a hearing for April 21, 2026.",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="knowledge_graph_entities",
+                row_index=1,
+                row_id="issue-hearing",
+                title="Hearing issue",
+                payload={"id": "issue-hearing", "type": "legal_issue", "label": "Hearing issue"},
+            ),
+        ],
+    )
+
+
+def _write_dashboard_workspace_parquet(tmp_path: Path) -> Path:
+    dataset_id = "workspace_dataset_dashboard_playwright"
+    workspace_id = "dashboard-workspace-playwright"
+    workspace_name = "Dashboard Playwright Workspace"
+    return _write_sectioned_parquet(
+        tmp_path / "dashboard_workspace.dataset.parquet",
+        [
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="dataset_core",
+                row_index=1,
+                row_id="dataset_core_1",
+                title=workspace_name,
+                payload={
+                    "dataset_id": dataset_id,
+                    "workspace_id": workspace_id,
+                    "workspace_name": workspace_name,
+                    "source_type": "workspace",
+                    "metadata": {"fixture": "dashboard-playwright"},
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="documents",
+                row_index=1,
+                row_id="workspace-doc-1",
+                title="Accommodation Request Email",
+                text="Tenant requested a reasonable accommodation and attached medical support.",
+                payload={
+                    "document_id": "workspace-doc-1",
+                    "title": "Accommodation Request Email",
+                    "document_type": "email",
+                    "claim_type": "housing_discrimination",
+                    "claim_element_id": "causation",
+                    "text": "Tenant requested a reasonable accommodation and attached medical support.",
+                    "metadata": {
+                        "collection_id": "workspace-collection-1",
+                        "document_type": "email",
+                        "claim_type": "housing_discrimination",
+                        "claim_element_id": "causation",
+                    },
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="collections",
+                row_index=1,
+                row_id="workspace-collection-1",
+                title="Accommodation Evidence",
+                payload={
+                    "id": "workspace-collection-1",
+                    "title": "Accommodation Evidence",
+                    "document_ids": ["workspace-doc-1"],
+                    "source_type": "workspace",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="bm25_documents",
+                row_index=1,
+                row_id="workspace-doc-1",
+                title="Accommodation Request Email",
+                text="Accommodation Request Email Tenant requested a reasonable accommodation and attached medical support.",
+                payload={
+                    "document_id": "workspace-doc-1",
+                    "title": "Accommodation Request Email",
+                    "text": "Accommodation Request Email Tenant requested a reasonable accommodation and attached medical support.",
+                    "metadata": {
+                        "collection_id": "workspace-collection-1",
+                        "document_type": "email",
+                        "claim_type": "housing_discrimination",
+                        "claim_element_id": "causation",
+                    },
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="knowledge_graph_entities",
+                row_index=1,
+                row_id="entity-request",
+                title="Accommodation request",
+                payload={"id": "entity-request", "type": "event", "label": "Accommodation request"},
+            ),
+        ],
+    )
+
+
 def test_review_surface_site_navigation_serves_all_operator_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     _require_browser_stack()
 
@@ -971,6 +1196,76 @@ def test_review_surface_ipfs_dashboard_raw_routes_render_all_registered_dashboar
                     body_text = page.locator("body").inner_text().strip()
                     assert body_text
                     assert page.title().strip()
+            finally:
+                browser.close()
+
+
+@pytest.mark.no_auto_llm
+def test_review_surface_dashboard_parquet_cards_support_search_review_and_annotation(tmp_path: Path):
+    _require_browser_stack()
+
+    docket_parquet = _write_dashboard_docket_parquet(tmp_path)
+    workspace_parquet = _write_dashboard_workspace_parquet(tmp_path)
+    user_id = f"dashboard-playwright-user-{uuid.uuid4().hex}"
+    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    screenshot_dir = tmp_path / "dashboard-parquet-review-screenshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page(viewport={"width": 1440, "height": 1100})
+            try:
+                page.goto(f"{base_url}/dashboards?user_id={user_id}", wait_until="domcontentloaded")
+                assert page.get_by_role("heading", name="Unified Dashboard Hub").is_visible()
+                assert page.get_by_role("heading", name="Docket Dataset Parquet Dashboard").is_visible()
+                assert page.get_by_role("heading", name="Workspace Dataset Parquet Entry Point").is_visible()
+                assert page.get_by_role("heading", name="Dataset Document Annotation").is_visible()
+
+                page.locator("#dashboard-docket-dataset-path").fill(str(docket_parquet))
+                page.locator("#dashboard-docket-dataset-query").fill("hearing")
+                page.locator("#dashboard-load-docket-dataset").click()
+                _wait_for_text(page, "#dashboard-docket-dataset-status", "Loaded docket dataset view")
+                _wait_for_text(page, "#dashboard-docket-dataset-preview", "Notice of Hearing")
+                assert page.locator("#dashboard-docket-dataset-documents").inner_text() == "2"
+                assert page.locator("#dashboard-docket-dataset-events").inner_text() == "1"
+
+                page.locator("#dashboard-search-docket-dataset").click()
+                _wait_for_text(page, "#dashboard-docket-dataset-status", "Loaded docket dataset search")
+                _wait_for_text(page, "#dashboard-docket-dataset-preview", "docket-doc-2")
+                _wait_for_input_value(page, "#dashboard-dataset-annotation-document-id", "docket-doc-2")
+                assert int(page.locator("#dashboard-docket-dataset-results").inner_text()) >= 1
+                page.screenshot(path=str(screenshot_dir / "docket-dataset-search.png"), full_page=True)
+
+                page.locator("#dashboard-workspace-dataset-path").fill(str(workspace_parquet))
+                page.locator("#dashboard-workspace-dataset-query").fill("accommodation")
+                page.locator("#dashboard-workspace-dataset-claim-type").fill("housing_discrimination")
+                page.locator("#dashboard-workspace-dataset-document-type").fill("email")
+                page.locator("#dashboard-load-workspace-dataset").click()
+                _wait_for_text(page, "#dashboard-workspace-dataset-status", "Loaded workspace dataset view")
+                _wait_for_text(page, "#dashboard-workspace-dataset-preview", "Accommodation Request Email")
+                assert page.locator("#dashboard-workspace-dataset-documents").inner_text() == "1"
+                assert page.locator("#dashboard-workspace-dataset-collections").inner_text() == "1"
+
+                page.locator("#dashboard-search-workspace-dataset").click()
+                _wait_for_text(page, "#dashboard-workspace-dataset-status", "Loaded workspace dataset search")
+                _wait_for_text(page, "#dashboard-workspace-dataset-preview", "workspace-doc-1")
+                _wait_for_input_value(page, "#dashboard-dataset-annotation-document-id", "workspace-doc-1")
+                assert int(page.locator("#dashboard-workspace-dataset-results").inner_text()) >= 1
+
+                page.locator("#dashboard-dataset-annotation-user-id").fill(user_id)
+                page.locator("#dashboard-dataset-annotation-note").fill(
+                    "Reviewed in Playwright: this document supports the accommodation causation theory."
+                )
+                page.locator("#dashboard-save-dataset-annotation").click()
+                _wait_for_text(page, "#dashboard-dataset-annotation-status", "Saved annotation for workspace-doc-1")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "dashboard-workspace-dataset-annotation")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "Accommodation Request Email annotation")
+                assert page.locator("#dashboard-workspace-evidence").inner_text() == "1"
+                page.screenshot(path=str(screenshot_dir / "workspace-dataset-annotation.png"), full_page=True)
+
+                assert (screenshot_dir / "docket-dataset-search.png").stat().st_size > 0
+                assert (screenshot_dir / "workspace-dataset-annotation.png").stat().st_size > 0
             finally:
                 browser.close()
 
