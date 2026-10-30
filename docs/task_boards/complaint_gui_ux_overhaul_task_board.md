@@ -688,7 +688,7 @@ Implementation instructions:
 
 ## CIMP-UX-23 Expose a current factual graph projection for the workspace
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
