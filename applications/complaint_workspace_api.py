@@ -521,6 +521,31 @@ def create_complaint_workspace_router(
         return JSONResponse(resumed, headers={"Cache-Control": "private, no-store",
             "Pragma": "no-cache", "Expires": "0"})
 
+    @router.get("/api/complaint-workspace/factual-graph")
+    async def read_current_factual_graph(
+        user_id: Optional[str] = None,
+        case_id: Optional[str] = None,
+    ):
+        """Current factual projection. Cached flags are not a second graph store."""
+        try:
+            return workspace.current_factual_graph_projection(user_id, case_id=case_id)
+        except WorkspacePersistenceError as error:
+            code = str(error.code or "")
+            if code == "cross_case_id":
+                status_code = 403
+            elif code == "revision_conflict":
+                status_code = 409
+            else:
+                status_code = 503
+            public = code if code in {
+                "unlock_needed", "key_unavailable", "revision_conflict", "cross_case_id",
+                "knowledge_graph_unavailable", "data_graph_owner_unavailable", "factual_ledger_invalid",
+            } else "private_session_unavailable"
+            return JSONResponse(status_code=status_code, content={
+                "status": "unavailable", "error": public, "read_only": True,
+                "user_statements": [], "adopted_evidence": [], "corrections": [], "contradictions": [],
+            })
+
     @router.get("/api/complaint-workspace/session")
     async def get_session(
         user_id: Optional[str] = None,
