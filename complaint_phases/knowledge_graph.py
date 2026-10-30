@@ -38,6 +38,19 @@ def _utc_now_isoformat() -> str:
 logger = logging.getLogger(__name__)
 
 _LOCAL_BUILDER_ID = re.compile(r"^(?:entity|ent|rel)_\d+$")
+_ENTITY_FIELDS = ("id", "type", "name", "attributes", "confidence", "source", "provenance")
+_RELATIONSHIP_FIELDS = ("id", "source_id", "target_id", "relation_type", "attributes", "confidence", "source", "provenance")
+_INFERENCE_SOURCES = {"model", "inference", "llm", "ai"}
+_NON_USER_CLASSES = {"extraction_hypothesis", "legal_text", "supporting_evidence"}
+
+
+def _graph_record_fields(record: Mapping[str, Any], fields: Sequence[str]) -> Dict[str, Any]:
+    """Copy only the graph record fields. Extra caller keys stay on the caller."""
+    payload: Dict[str, Any] = {}
+    for key in fields:
+        if key in record:
+            payload[key] = copy.deepcopy(record[key])
+    return payload
 _INACTIVE_ASSERTION_STATES = frozenset({"superseded", "retracted"})
 _UNSETTLED_ASSERTION_STATES = frozenset({"superseded", "retracted", "conflict"})
 _SUPPORT_RELATION_TYPES = frozenset({
@@ -833,8 +846,12 @@ class Entity:
     provenance: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
-        self.provenance = _validated_graph_provenance(self.provenance, record_type=self.type,
-            name=self.name, attributes=self.attributes, source=self.source)
+        # Copy before validation. Envelope checks replace nested proof and must
+        # not write back into the caller's serialized JSON.
+        self.attributes = copy.deepcopy(self.attributes) if isinstance(self.attributes, dict) else {}
+        self.provenance = _validated_graph_provenance(
+            copy.deepcopy(self.provenance) if isinstance(self.provenance, Mapping) else {},
+            record_type=self.type, name=self.name, attributes=self.attributes, source=self.source)
     
     def to_dict(self) -> dict:
         payload = asdict(self)
@@ -856,9 +873,11 @@ class Relationship:
     provenance: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
-        self.provenance = _validated_graph_provenance(self.provenance, record_type=self.relation_type,
-            attributes=self.attributes, source=self.source, relationship=True,
-            graph_source_id=self.source_id, graph_target_id=self.target_id)
+        self.attributes = copy.deepcopy(self.attributes) if isinstance(self.attributes, dict) else {}
+        self.provenance = _validated_graph_provenance(
+            copy.deepcopy(self.provenance) if isinstance(self.provenance, Mapping) else {},
+            record_type=self.relation_type, attributes=self.attributes, source=self.source,
+            relationship=True, graph_source_id=self.source_id, graph_target_id=self.target_id)
     
     def to_dict(self) -> dict:
         payload = asdict(self)
@@ -2463,7 +2482,9 @@ class KnowledgeGraph:
             if isinstance(item, Mapping)
         )
         for eid, edata in entity_records:
-            entity = Entity(**edata)
+            if not isinstance(edata, Mapping):
+                continue
+            entity = Entity(**_graph_record_fields(edata, _ENTITY_FIELDS))
             graph.entities[str(eid or entity.id)] = entity
 
         raw_relationships = data.get('relationships', {})
@@ -2473,7 +2494,9 @@ class KnowledgeGraph:
             if isinstance(item, Mapping)
         )
         for rid, rdata in relationship_records:
-            rel = Relationship(**rdata)
+            if not isinstance(rdata, Mapping):
+                continue
+            rel = Relationship(**_graph_record_fields(rdata, _RELATIONSHIP_FIELDS))
             graph.relationships[str(rid or rel.id)] = rel
         
         return graph
@@ -2485,7 +2508,8 @@ class KnowledgeGraph:
             data = json.load(f)
         logger.info(f"Knowledge graph loaded from {filepath}")
         return cls.from_dict(data)
-    
+
+
     def _update_metadata(self):
         """Update timestamps and invalidate the previous immutable snapshot."""
         revision = int(self.metadata.get('revision', 0) or 0) + 1
@@ -2635,6 +2659,169 @@ class KnowledgeGraph:
         
         return max(connection_counts.items(), key=lambda x: x[1])[0]
 
+
+
+def _caller_json_fingerprint(payload: Mapping[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+
+
+def _source_provenance(envelope: Optional[UserAssertionEnvelope], *, verified: bool) -> Dict[str, Any]:
+    if envelope is None:
+        return {"verified": False, "source_id": "", "source_identity": "", "extractor_version": "",
+            "source_hash": "", "source_generation": "", "source_span": None}
+    return {
+        "verified": verified,
+        "source_id": envelope.source_id,
+        "source_identity": envelope.source_identity,
+        "extractor_version": envelope.extractor_version,
+        "source_hash": envelope.source_hash,
+        "source_generation": envelope.source_generation or "",
+        "contract_version": envelope.contract_version,
+        "source_span": {
+            "start": envelope.source_span_start,
+            "end": envelope.source_span_end,
+            "text": envelope.source_span_text,
+            "unit": "byte",
+        },
+    }
+
+
+def _entity_envelope(entity: Entity) -> Optional[UserAssertionEnvelope]:
+    try:
+        return assertion_from_provenance(entity.provenance)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _inference_or_role_only(entity: Entity, envelope: Optional[UserAssertionEnvelope]) -> bool:
+    source = str(entity.source or "").lower()
+    if source in _INFERENCE_SOURCES:
+        return True
+    if envelope is not None and (
+        envelope.factual_record_class in {"extraction_hypothesis", "legal_text"}
+        or envelope.record_type in {"model_suggestion", "inferred_claim_label", "legal_text"}
+        or envelope.source_kind in _INFERENCE_SOURCES
+    ):
+        return True
+    return False
+
+
+def _explicit_adoption(entity: Entity, envelope: Optional[UserAssertionEnvelope], graph: "KnowledgeGraph") -> bool:
+    """A boolean, role label, or cached authority flag is not an adoption."""
+    if envelope is None or not envelope.is_asserted_user_fact:
+        return False
+    if envelope.factual_record_class != "supporting_evidence":
+        return False
+    attrs = entity.attributes if isinstance(entity.attributes, dict) else {}
+    if attrs.get("adoption") == "explicit" and attrs.get("adoption_assertion_id") == envelope.stable_id:
+        return True
+    for relationship in graph.relationships.values():
+        rel_attrs = relationship.attributes if isinstance(relationship.attributes, dict) else {}
+        if relationship.relation_type not in {"supports", "adopted_evidence"}:
+            continue
+        if rel_attrs.get("adoption") != "explicit":
+            continue
+        if rel_attrs.get("adoption_assertion_id") != envelope.stable_id:
+            continue
+        if entity.id not in {relationship.source_id, relationship.target_id}:
+            continue
+        return True
+    return False
+
+
+def _annotate_item(item: Dict[str, Any], graph: "KnowledgeGraph") -> Dict[str, Any]:
+    entity = graph.entities.get(str(item.get("graph_entity_id") or ""))
+    envelope = _entity_envelope(entity) if entity is not None else None
+    verified = bool(envelope is not None and envelope.is_asserted_user_fact and not _inference_or_role_only(entity, envelope))
+    annotated = dict(item)
+    annotated["source_provenance"] = _source_provenance(envelope, verified=verified)
+    annotated["explicitly_adopted_evidence"] = bool(entity is not None and _explicit_adoption(entity, envelope, graph))
+    if not verified or _inference_or_role_only(entity, envelope):
+        annotated["authority_is_user_fact"] = False
+        annotated["admitted_user_fact"] = False
+    if annotated["explicitly_adopted_evidence"]:
+        annotated["authority_is_user_fact"] = False
+        annotated["admitted_user_fact"] = False
+    return annotated
+
+
+def project_current_factual_graph(caller_json: Mapping[str, Any], *, case_id: str) -> Dict[str, Any]:
+    """Project one case graph through the pinned factual KG adapter.
+
+    Hydration copies the caller document. Cached authority booleans, role
+    labels, and model inferences stay out of user assertions and verified facts.
+    Explicitly adopted evidence keeps source, version, and span provenance.
+    """
+    from mediator.integrations.graph_tools import project_factual_kg
+
+    if not isinstance(caller_json, Mapping):
+        raise TypeError("knowledge graph data must be a mapping")
+    fingerprint = _caller_json_fingerprint(caller_json)
+    graph = KnowledgeGraph.from_dict(caller_json)
+    if _caller_json_fingerprint(caller_json) != fingerprint:
+        raise RuntimeError("graph hydration mutated caller JSON")
+    projected = project_factual_kg(graph, case_id=case_id)
+    if _caller_json_fingerprint(caller_json) != fingerprint:
+        raise RuntimeError("graph projection mutated caller JSON")
+
+    user_statements = []
+    withheld = list(projected.get("unresolved") or [])
+    for item in projected.get("user_statements") or []:
+        annotated = _annotate_item(item, graph)
+        entity = graph.entities.get(str(annotated.get("graph_entity_id") or ""))
+        envelope = _entity_envelope(entity) if entity is not None else None
+        real_user = (
+            envelope is not None
+            and envelope.is_asserted_user_fact
+            and envelope.factual_record_class not in _NON_USER_CLASSES
+            and not _inference_or_role_only(entity, envelope)
+            and annotated.get("provenance_status") == "verified"
+        )
+        if real_user:
+            user_statements.append(annotated)
+        else:
+            withheld.append({**annotated, "reason": "not_a_user_assertion"})
+
+    adopted = []
+    evidence_revisions = []
+    for item in projected.get("evidence_revisions") or []:
+        annotated = _annotate_item(item, graph)
+        if annotated.get("explicitly_adopted_evidence") and annotated["source_provenance"]["verified"]:
+            adopted.append(annotated)
+        evidence_revisions.append(annotated)
+
+    corrections = [dict(item) for item in projected.get("revisions") or []
+        if item.get("action") in {"supersede", "retract"}]
+    contradictions = [dict(item) for item in projected.get("unresolved_conflicts") or []]
+    seen = {
+        str(item.get("graph_entity_id") or "")
+        for bucket in (user_statements, adopted, evidence_revisions, projected.get("hypotheses") or [], projected.get("allegations") or [])
+        for item in bucket
+    }
+    for entity in graph.entities.values():
+        if entity.id in seen:
+            continue
+        envelope = _entity_envelope(entity)
+        withheld.append({
+            "graph_entity_id": entity.id,
+            "reason": "not_a_user_assertion",
+            "admitted_user_fact": False,
+            "authority_is_user_fact": False,
+            "explicitly_adopted_evidence": False,
+            "source_provenance": _source_provenance(envelope, verified=False),
+        })
+    result = dict(projected)
+    result.update({
+        "user_statements": user_statements,
+        "adopted_evidence": adopted,
+        "evidence_revisions": evidence_revisions,
+        "corrections": corrections,
+        "contradictions": contradictions,
+        "unresolved": withheld,
+        "projection_kind": "current_factual_graph",
+        "caller_json_mutated": False,
+    })
+    return result
 
 class KnowledgeGraphBuilder:
     """

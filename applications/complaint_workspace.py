@@ -5929,6 +5929,57 @@ class ComplaintWorkspaceService:
             "private_artifact": True,
         }
 
+    def current_factual_graph_projection(
+        self,
+        user_id: Optional[str] = None,
+        *,
+        case_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Project the current encrypted session graph. This read does not write it."""
+        from complaint_phases.knowledge_graph import project_current_factual_graph
+        from mediator.integrations.graph_tools import FactualGraphProjectionError
+
+        resolved = self._resolve_user_id(user_id)
+        session = self.get_session(resolved, case_id=case_id)
+        state = session.get("session") if isinstance(session, dict) else None
+        if not isinstance(state, dict):
+            raise WorkspacePersistenceError(
+                "Factual graph is not available.",
+                code="knowledge_graph_unavailable",
+                public_status="recoverable",
+            )
+        binding_case = str(case_id or state.get("case_id") or "")
+        if case_id and str(state.get("case_id") or "") != str(case_id):
+            raise WorkspacePersistenceError(
+                "Factual graph is bound to another case.",
+                code="cross_case_id",
+                public_status="recoverable",
+            )
+        interview = state.get("shared_interview") if isinstance(state.get("shared_interview"), dict) else {}
+        raw = interview.get("knowledge_graph")
+        if not isinstance(raw, dict) or not raw:
+            raise WorkspacePersistenceError(
+                "Factual graph is not available.",
+                code="knowledge_graph_unavailable",
+                public_status="recoverable",
+            )
+        try:
+            projected = project_current_factual_graph(raw, case_id=binding_case)
+        except FactualGraphProjectionError as exc:
+            code = exc.code if exc.code in {
+                "cross_case_id", "knowledge_graph_unavailable", "data_graph_owner_unavailable", "factual_ledger_invalid",
+            } else "knowledge_graph_unavailable"
+            raise WorkspacePersistenceError(
+                "Factual graph projection was refused.",
+                code=code,
+                public_status="recoverable",
+            ) from None
+        projected["owner"] = resolved
+        projected["session_case_id"] = str(state.get("case_id") or "")
+        projected["private_revision"] = state.get("private_revision")
+        projected["read_only"] = True
+        return projected
+
     def recover_joined_intake_revision(self, user_id: str, *, case_id: Optional[str] = None) -> Dict[str, Any]:
         from integrations.private_storage import PrivateArtifactBinding, recover_private_revision
 
