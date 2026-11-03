@@ -837,6 +837,38 @@ def _historical_preflight_identity(raw: bytes, record: Mapping[str, Any], contex
         'current_launch_child_authority': False, 'signals_sent': False}
 
 
+def _owned_attempt_budget_terminal(heartbeat: Mapping[str, Any]) -> bool:
+    """A dead supervisor's own exhausted-frontier stop, with no restart authority."""
+    if not isinstance(heartbeat, Mapping) or heartbeat.get('status') != 'task_attempt_budget_exhausted':
+        return False
+    if (heartbeat.get('daemon_pid') is not None
+            or heartbeat.get('last_recycle_reason') != 'task_attempt_budget_exhausted'
+            or heartbeat.get('attempt_budget_terminal_pending') is not False
+            or heartbeat.get('active_worker_count') not in (0, None)
+            or heartbeat.get('active_worker_pids') not in ([], None)
+            or heartbeat.get('worker_descendant_count') not in (0, None)):
+        return False
+    guard = heartbeat.get('attempt_budget_terminal_guard')
+    blocker = heartbeat.get('selection_blocker')
+    tasks = blocker.get('limited_tasks') if isinstance(blocker, Mapping) else None
+    if (not isinstance(guard, Mapping) or not isinstance(blocker, Mapping) or not isinstance(tasks, list)
+            or not tasks or guard.get('safe') is not True
+            or guard.get('generation_restart_authorized') is not False
+            or guard.get('operator_successor_required') is not True
+            or guard.get('task_completion_authority') is not False
+            or guard.get('local_implementation_in_progress') is not False
+            or guard.get('local_active_task_id') not in ('', None)
+            or guard.get('attempt_budget_consumed') is not False
+            or guard.get('provider_invocation_consumed') is not False
+            or blocker.get('reason') != 'task_attempt_budget_exhausted'
+            or blocker.get('completion_authority') is not False
+            or blocker.get('max_task_attempts') != 3
+            or blocker.get('operator_successor_required') is not True):
+        return False
+    return all(isinstance(task, Mapping) and isinstance(task.get('task_id'), str) and task.get('task_id')
+        and task.get('attempt_count') == 3 for task in tasks)
+
+
 def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
                                    context: Mapping[str, Any],
                                    retained_native_child_proof: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -880,6 +912,7 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
     before = custody()
     heartbeat = json.loads(before[1])
     repo = Path(context['repo_root'])
+    budget_terminal = _owned_attempt_budget_terminal(heartbeat)
     preflight_without_daemon = _preflight_without_daemon(heartbeat, record, context, before[2])
     historical_identity = None
     if marker_snapshot is not None:
@@ -903,9 +936,11 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
         'state_prefix': runner.STATE_PREFIX, 'task_prefix': runner.TASK_PREFIX}
     source_revision = heartbeat.get('control_plane_source_revision')
     if (heartbeat.get('schema') != 'ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor'
-        or heartbeat.get('status') not in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed'}
+        or heartbeat.get('status') not in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed', 'task_attempt_budget_exhausted'}
+        or (heartbeat.get('status') == 'task_attempt_budget_exhausted' and not budget_terminal)
         or heartbeat.get('supervisor_pid') != parent['pid']
-        or (not preflight_without_daemon and (type(daemon) is not int or daemon <= 1 or daemon == parent['pid']))
+        or (budget_terminal and daemon is not None)
+        or (not preflight_without_daemon and not budget_terminal and (type(daemon) is not int or daemon <= 1 or daemon == parent['pid']))
         or heartbeat.get('max_task_attempts') != 3
         or any(heartbeat.get(key) != value for key, value in expected_paths.items())
         or not context['started_at'] <= _timestamp(heartbeat.get('updated_at')) <= time.time()
@@ -924,7 +959,7 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
         or not math.floor(context['started_at']) <= datetime.strptime(run_id, '%Y%m%dT%H%M%SZ').replace(tzinfo=timezone.utc).timestamp() <= _timestamp(heartbeat['updated_at'])
         or heartbeat.get('log_path') != str(state_dir / f'{runner.STATE_PREFIX}_managed_daemon_{run_id}.log')):
         raise ValueError('missing-marker heartbeat run paths differ')
-    old_ids = {parent['pid']} if preflight_without_daemon else {parent['pid'], daemon}
+    old_ids = {parent['pid']} if preflight_without_daemon or budget_terminal else {parent['pid'], daemon}
     minimum_start_ticks = parent['start_ticks']
     if historical_identity is not None:
         old_ids.update((historical_identity['historical_daemon_pid'], historical_identity['historical_parent_pid']))
@@ -980,7 +1015,8 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
     if markers() != marker_snapshot or (historical_identity is not None and
             _historical_preflight_identity(marker_snapshot[0], record, context) != historical_identity):
         raise ValueError('historical native identity changed during second census')
-    return {'source': ('owned_completed_preflight_native_receipt_and_double_complete_proc_inventory'
+    return {'source': ('owned_attempt_budget_terminal_and_double_complete_proc_inventory' if budget_terminal
+            else 'owned_completed_preflight_native_receipt_and_double_complete_proc_inventory'
             if preflight_without_daemon and before[2] is not None
             else 'owned_preflight_failure_and_double_complete_proc_inventory' if preflight_without_daemon
             else 'owned_historical_heartbeat_and_double_complete_proc_inventory'),
@@ -1232,7 +1268,7 @@ def _parent_closed(state_dir: Path, record: Mapping[str, Any], context: Mapping[
         return preheartbeat(state_dir, record, context)
     if heartbeat.get('status') == 'stopped' and (heartbeat.get('managed_daemon_cleanup') or {}).get('quiesced') is True:
         return
-    if heartbeat.get('status') in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed'}:
+    if heartbeat.get('status') in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed'} or _owned_attempt_budget_terminal(heartbeat):
         pid_path = state_dir / f'{runner.STATE_PREFIX}_managed_daemon.pid'
         identity_path = pid_path.with_suffix('.identity.json')
         if not os.path.lexists(pid_path):

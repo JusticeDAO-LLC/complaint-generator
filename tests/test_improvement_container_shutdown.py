@@ -1435,6 +1435,46 @@ def failed_preflight_campaign(missing_marker_campaign):
     return SimpleNamespace(**vars(fixture), preflight_heartbeat=heartbeat)
 
 
+def _budget_terminal_heartbeat(heartbeat):
+    return {**heartbeat, 'status': 'task_attempt_budget_exhausted', 'daemon_pid': None,
+        'active_worker_count': 0, 'active_worker_pids': [], 'worker_descendant_count': 0,
+        'last_recycle_reason': 'task_attempt_budget_exhausted', 'attempt_budget_terminal_pending': False,
+        'attempt_budget_terminal_guard': {'safe': True, 'generation_restart_authorized': False,
+            'operator_successor_required': True, 'task_completion_authority': False,
+            'local_implementation_in_progress': False, 'local_active_task_id': '',
+            'attempt_budget_consumed': False, 'provider_invocation_consumed': False},
+        'selection_blocker': {'reason': 'task_attempt_budget_exhausted', 'completion_authority': False,
+            'max_task_attempts': 3, 'operator_successor_required': True,
+            'limited_tasks': [{'task_id': 'CIMP-UX-11', 'attempt_count': 3},
+                {'task_id': 'CIMP-UX-24', 'attempt_count': 3}]}}
+
+
+def test_budget_exhausted_terminal_stop_closes_without_rearming_or_completing(missing_marker_campaign, docker):
+    fixture = missing_marker_campaign
+    heartbeat = _budget_terminal_heartbeat(fixture.heartbeat)
+    runner._atomic_json(fixture.state / 'complaint_intake_supervisor_status.json', heartbeat)
+    before = (fixture.state / 'complaint_intake_supervisor_status.json').read_bytes()
+    result = runner.stop(fixture.state)
+    proof = result['container_shutdown']['process_closure']
+    assert result['status'] == 'stopped' and result['signalled'] is False
+    assert proof['source'] == 'owned_attempt_budget_terminal_and_double_complete_proc_inventory'
+    assert proof['attempt_refunded'] is False and proof['completion_authority'] is False
+    assert result['container_shutdown']['attempt_refunded'] is False
+    assert result['container_shutdown']['completion_authority'] is False
+    assert not docker[0].effects
+    assert (fixture.state / 'complaint_intake_supervisor_status.json').read_bytes() == before
+
+
+def test_budget_exhausted_restart_authority_remains_unclosed(missing_marker_campaign, docker):
+    fixture = missing_marker_campaign
+    heartbeat = _budget_terminal_heartbeat(fixture.heartbeat)
+    heartbeat['attempt_budget_terminal_guard']['generation_restart_authorized'] = True
+    runner._atomic_json(fixture.state / 'complaint_intake_supervisor_status.json', heartbeat)
+    result = runner.stop(fixture.state)
+    assert result['status'] == 'stop_incomplete' and result['signalled'] is False
+    assert not docker[0].calls and not docker[0].effects
+
+
 def test_failed_preflight_public_stop_proves_closure_without_fabricating_a_child(failed_preflight_campaign, docker, monkeypatch):
     fixture = failed_preflight_campaign
     observations = []
