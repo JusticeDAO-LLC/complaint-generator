@@ -81,6 +81,30 @@ def test_failed_first_validation_blocks_child_after_both_results_are_observed():
     assert result == before
 
 
+def test_scope_reason_without_retained_proof_still_blocks_child_dispatch():
+    result = {"maintenance_blocked": False, "worktree_reconciliation": {
+        "processed": [{
+            "branch": "implementation/cimp-ux-24-retained",
+            "head": "c0eab9002438d072a2e6bb0a04101f101abb8ca2",
+            "merged": False,
+            "merge_result": {
+                "attempted": False, "merged": False, "provider_dispatched": False,
+                "attempt_consumed": False, "reason": "integrated_candidate_delta_outside_task_scope",
+            },
+        }],
+        "skipped": [],
+    }}
+    before = deepcopy(result)
+    supervisor, trace = _startup_with_result(result)
+
+    with pytest.raises(RuntimeError, match="candidate recovery remains unresolved"):
+        supervisor._run_forever_loop()
+
+    assert trace == [("maintenance", False)]
+    assert supervisor._complaint_startup_preflight_pending is True
+    assert result == before
+
+
 def test_two_successful_candidate_results_allow_child_dispatch():
     result = {"maintenance_blocked": False, "worktree_reconciliation": {
         "processed": [{"merged": True}, {"merged": True}],
