@@ -3901,3 +3901,120 @@ def qualify_private_evidence_hooks(**kwargs: Any) -> dict[str, Any]:
     receipt["workflow"] = "qualify_private_evidence_hooks"
     receipt["handler_enabled_by_caller"] = False
     return receipt
+
+
+def qualify_claim_support_and_legal_authority(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Public workflow for claim support and legal authority search, storage, and analysis.
+
+    Admitted passages, requirement IDs, source and definition versions, and an
+    explicit support lineage can qualify a projection. Search hits, stale
+    caches, suggestions, and caller support flags cannot. Source drift and
+    contradictions retire the affected projections. The caller's mapping is
+    not modified.
+    """
+
+    import tempfile
+    from pathlib import Path
+
+    from mediator.claim_support_hooks import ClaimSupportHook, apply_qualified_claim_support
+    from mediator.legal_authority_hooks import (
+        LegalAuthorityAnalysisHook,
+        LegalAuthorityStorageHook,
+        classify_non_governing_materials,
+        project_authority_support,
+        store_admitted_authority_passages,
+        _passage_record,
+    )
+
+    class _QuietLog:
+        def log(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "refused",
+            "code": "malformed_input",
+            "workflow": "qualify_claim_support_and_legal_authority",
+            "governing_authority": False,
+            "verified_support": False,
+            "provider_invoked": False,
+            "handler_enabled_by_caller": False,
+        }
+    before = dict(payload)
+    working = {key: payload[key] for key in payload}
+    materials = classify_non_governing_materials(working)
+    passages = []
+    for item in working.get("admitted_passages") or []:
+        if isinstance(item, dict):
+            record = _passage_record(item)
+            if record is not None:
+                passages.append(record)
+    mediator = _QuietLog()
+    analysis = LegalAuthorityAnalysisHook(mediator=mediator)
+    projections = project_authority_support(working, passages)
+    analysis_view = analysis.bind_support_projections(projections)
+    with tempfile.TemporaryDirectory(prefix="cimp-ux-53-") as directory:
+        root = Path(directory)
+        storage = LegalAuthorityStorageHook(mediator, db_path=str(root / "authority.duckdb"))
+        support = ClaimSupportHook(mediator, db_path=str(root / "claim_support.duckdb"))
+        mediator_storage = store_admitted_authority_passages(storage, working, passages)
+        if any(row.get("status") == "unavailable" for row in mediator_storage["stored_passages"]):
+            return {
+                "status": "unavailable",
+                "code": "missing_capability",
+                "workflow": "qualify_claim_support_and_legal_authority",
+                "materials": materials,
+                "projections": analysis_view,
+                "storage": mediator_storage,
+                "governing_authority": False,
+                "verified_support": False,
+                "provider_invoked": False,
+                "handler_enabled_by_caller": False,
+                "input_mutated": dict(payload) != before,
+            }
+        claim_effect = apply_qualified_claim_support(support, working, analysis_view)
+    governing = [row for row in analysis_view if row.get("governing_authority") is True]
+    if dict(payload) != before:
+        raise RuntimeError("qualification input was mutated")
+    admitted_count = sum(1 for row in passages if row.get("admitted") is True)
+    code = "grounded" if governing else ("retired" if any(row.get("projection_status") == "retired" for row in analysis_view) else "unverified")
+    if admitted_count == 0 and not analysis_view:
+        code = "no_admitted_passage"
+    return {
+        "status": "qualified",
+        "code": code,
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "owners": [
+            "ClaimSupportHook",
+            "LegalAuthoritySearchHook",
+            "LegalAuthorityStorageHook",
+            "LegalAuthorityAnalysisHook",
+        ],
+        "materials": materials,
+        "passages": [
+            {
+                "passage_id": row["passage_id"],
+                "requirement_id": row["requirement_id"],
+                "source_version": row["source_version"],
+                "definition_version": row["definition_version"],
+                "source_hash": row["source_hash"],
+                "admitted": row["admitted"],
+            }
+            for row in passages
+        ],
+        "storage": mediator_storage,
+        "projections": analysis_view,
+        "claim_support": claim_effect,
+        "governing_count": len(governing),
+        "governing_authority": bool(governing),
+        "verified_support": bool(governing) and claim_effect["verified_support_count"] == len(governing),
+        "search_hit_governing": False,
+        "stale_cache_governing": False,
+        "suggestion_governing": False,
+        "caller_flags_applied": False,
+        "provider_invoked": False,
+        "handler_enabled_by_caller": False,
+        "proof": False,
+        "legal_sufficiency": False,
+        "input_mutated": False,
+    }

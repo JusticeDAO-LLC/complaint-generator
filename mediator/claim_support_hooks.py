@@ -10553,3 +10553,103 @@ class ClaimSupportHook(PrivateDerivedIndexMixin):
             bound['proof_satisfied'] = False
             bound['proof_changed'] = False
         return bound
+
+
+def apply_qualified_claim_support(
+    hook: "ClaimSupportHook",
+    payload: Dict[str, Any],
+    projections: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Write support rows only from analysis projections.
+
+    A caller ``verified_support`` flag is not consulted. Retired and unverified
+    projections stay unverified. The stored rows are read back from the hook.
+    """
+    user_id = str(payload.get("user_id") or "actor")
+    complaint_id = str(payload.get("complaint_id") or "case")
+    claim_type = str(payload.get("claim_type") or "claim")
+    written = []
+    for projection in projections:
+        verified = projection.get("verified_support") is True and projection.get("governing_authority") is True
+        retired = projection.get("projection_status") == "retired"
+        if not verified and not retired and projection.get("projection_status") != "unverified":
+            continue
+        lineage = list(projection.get("lineage") or [])
+        primary = lineage[0] if lineage else {}
+        kind = "admitted_lineage" if verified else ("retired_projection" if retired else "unverified_requirement")
+        metadata = {
+            "passage_id": projection.get("passage_id"),
+            "requirement_id": projection.get("requirement_id"),
+            "source_version": projection.get("source_version"),
+            "definition_version": projection.get("definition_version"),
+            "source_hash": projection.get("source_hash"),
+            "lineage_id": primary.get("lineage_id") or "",
+            "fact_id": primary.get("fact_id") or "",
+            "evidence_ref": primary.get("evidence_ref") or "",
+            "verified_support": verified,
+            "governing_authority": verified,
+            "projection_status": projection.get("projection_status"),
+            "retirement_reason": projection.get("retirement_reason") or "",
+            "caller_flag_ignored": True,
+        }
+        support_ref = str(primary.get("evidence_ref") or projection.get("passage_id") or "projection")
+        result = hook.upsert_support_link(
+            user_id=user_id,
+            complaint_id=complaint_id,
+            claim_type=claim_type,
+            claim_element_id=str(projection.get("requirement_id") or ""),
+            claim_element_text=str(projection.get("requirement_id") or ""),
+            support_kind=kind,
+            support_ref=support_ref,
+            support_label=str(projection.get("citation") or projection.get("passage_id") or ""),
+            source_table="admitted_passages",
+            support_strength=1.0 if verified else 0.0,
+            metadata=metadata,
+        )
+        written.append({"record_id": result.get("record_id"), "support_kind": kind, "created": result.get("created")})
+    stored = hook.get_support_links(user_id, claim_type)
+    verified_rows = [
+        row for row in stored
+        if (row.get("metadata") or {}).get("verified_support") is True
+        and row.get("support_kind") == "admitted_lineage"
+    ]
+    retired_rows = [
+        row for row in stored
+        if row.get("support_kind") == "retired_projection"
+        and (row.get("metadata") or {}).get("verified_support") is not True
+    ]
+    return {
+        "owner": "ClaimSupportHook",
+        "written": written,
+        "stored_count": len(stored),
+        "verified_support_count": len(verified_rows),
+        "retired_count": len(retired_rows),
+        "verified_links": [
+            {
+                "record_id": row.get("id"),
+                "requirement_id": (row.get("metadata") or {}).get("requirement_id"),
+                "passage_id": (row.get("metadata") or {}).get("passage_id"),
+                "source_version": (row.get("metadata") or {}).get("source_version"),
+                "definition_version": (row.get("metadata") or {}).get("definition_version"),
+                "source_hash": (row.get("metadata") or {}).get("source_hash"),
+                "lineage_id": (row.get("metadata") or {}).get("lineage_id"),
+                "fact_id": (row.get("metadata") or {}).get("fact_id"),
+                "evidence_ref": (row.get("metadata") or {}).get("evidence_ref"),
+                "support_kind": row.get("support_kind"),
+                "verified_support": True,
+                "governing_authority": (row.get("metadata") or {}).get("governing_authority") is True,
+            }
+            for row in verified_rows
+        ],
+        "retired_links": [
+            {
+                "record_id": row.get("id"),
+                "requirement_id": (row.get("metadata") or {}).get("requirement_id"),
+                "retirement_reason": (row.get("metadata") or {}).get("retirement_reason"),
+                "verified_support": False,
+                "governing_authority": False,
+                "projection_status": "retired",
+            }
+            for row in retired_rows
+        ],
+    }
