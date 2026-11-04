@@ -874,7 +874,7 @@ Implementation instructions:
 
 ## CIMP-UX-29 Expose conditional IR, formal checks, and genuine proof outcomes
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
