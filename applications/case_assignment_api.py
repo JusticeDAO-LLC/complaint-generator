@@ -44,6 +44,13 @@ ASSIGNMENT_LIMITATIONS = (
     "revocation_denies_later_api_download_inference_and_browser_resume",
 )
 GRANT_SURFACES = frozenset({"api", "download", "inference", "browser_resume"})
+SCOPE_LABELS = {
+    "case.read": "Read",
+    "case.review": "Review",
+    "case.download": "Download",
+    "case.message.send": "Message",
+}
+ACCESS_DAY_CHOICES = frozenset({7, 30, 90})
 _SURFACE_ACTION = {
     "download": "case.download",
     "inference": "case.review",
@@ -77,6 +84,11 @@ _REJECTED_BODY_FIELDS = frozenset({
     "wrapped_nonce",
     "envelope",
     "key_material",
+    "version",
+    "server_version",
+    "grant_id",
+    "key_grant_id",
+    "owner_principal_id",
 })
 _VISIBLE = frozenset({"pending", "accepted", "declined", "expired", "removed"})
 
@@ -149,7 +161,10 @@ class CaseAssignmentService:
         lawyers = []
         for record in self._principals.recover():
             if record.status == "active" and "lawyer" in record.roles:
-                lawyers.append({"principal_id": record.principal_id})
+                lawyers.append({
+                "principal_id": record.principal_id,
+                "display_label": "Lawyer participant",
+            })
         return {
             "actor_principal_id": actor_principal_id,
             "lawyers": lawyers,
@@ -179,7 +194,7 @@ class CaseAssignmentService:
                 resource_id=case.resource_id,
                 tenant_id=case.tenant_id,
                 actions=_scope(payload.get("scope")),
-                expires_at=payload.get("expires_at"),
+                expires_at=self._expires(payload),
                 expected_case_revision=payload.get("expected_case_revision"),
                 idempotency_key=_label(payload.get("idempotency_key"), "idempotency_key"),
                 before_publish=before_publish,
@@ -213,6 +228,8 @@ class CaseAssignmentService:
                *, before_publish: Callable[[], Any] | None = None) -> dict[str, Any]:
         """The explicit remove route uses the same durable cryptographic cutoff."""
         payload = self._body(body)
+        grant = self._visible(self._active(actor_principal_id), grant_id)
+        self._same_case(grant, payload)
         expected = payload.get("expected_version")
         if type(expected) is not int:
             raise CaseAssignmentError("revision_conflict")
@@ -244,6 +261,7 @@ class CaseAssignmentService:
         if payload.get("confirm_grant_change") is not True:
             raise CaseAssignmentError("confirmation_required")
         grant = self._visible(actor, grant_id)
+        self._same_case(grant, payload)
         if grant.owner_principal_id != actor:
             raise CaseAssignmentError("missing_grant")
         key = _label(payload.get("idempotency_key"), "idempotency_key")
@@ -545,6 +563,7 @@ class CaseAssignmentService:
         grant = self._visible(actor, grant_id)
         if grant.member_principal_id != actor:
             raise CaseAssignmentError("missing_grant")
+        self._same_case(grant, payload)
         if self._display(grant) == "expired" and grant.status == "pending":
             raise CaseAssignmentError("grant_expired")
         if status == "accepted" and _scope(payload.get("scope")) != set(grant.actions):
@@ -584,6 +603,18 @@ class CaseAssignmentService:
             view["key_grant_id"] = admitted["key_grant_id"]
             view["artifact_kind"] = admitted["artifact_kind"]
             view["artifact_revision"] = admitted["artifact_revision"]
+        labels = [SCOPE_LABELS[name] for name in grant.actions if name in SCOPE_LABELS]
+        view["scope_labels"] = labels
+        view["server_version"] = grant.version
+        view["version_source"] = "server"
+        view["acceptance_prompt"] = (
+            "Accept " + ", ".join(labels) + " for this case at server version "
+            + str(grant.version) + ". Accepting does not create a key grant or ownership."
+        )
+        view["revocation_prompt"] = (
+            "Remove this participant at server version " + str(grant.version)
+            + ". Later reads stay denied. Removal does not create a grant."
+        )
         view["actor_is_encrypted_owner"] = False
         view["canonical_owner_principal_id"] = grant.tenant_id
         view["revision"] = grant.version
@@ -629,6 +660,30 @@ class CaseAssignmentService:
         if record.status != "active":
             raise CaseAssignmentError("inactive_principal")
         return record.principal_id
+
+    def _expires(self, payload: Mapping[str, Any]) -> int:
+        days = payload.get("access_for_days")
+        raw = payload.get("expires_at")
+        if days is not None and raw is not None:
+            raise CaseAssignmentError("expiry")
+        if days is not None:
+            if type(days) is not int or days not in ACCESS_DAY_CHOICES:
+                raise CaseAssignmentError("expiry")
+            return self._now() + days * 86400
+        if type(raw) is not int:
+            raise CaseAssignmentError("expiry")
+        return raw
+
+    def _same_case(self, grant, payload: Mapping[str, Any]) -> None:
+        supplied = payload.get("case_id")
+        if supplied is not None and supplied != grant.case_id:
+            raise CaseAssignmentError("missing_grant")
+        tenant = payload.get("tenant_id")
+        if tenant is not None and tenant != grant.tenant_id:
+            raise CaseAssignmentError("missing_grant")
+        resource = payload.get("resource_id")
+        if resource is not None and resource != grant.resource_id:
+            raise CaseAssignmentError("missing_grant")
 
     def _now(self) -> int:
         value = self._clock()

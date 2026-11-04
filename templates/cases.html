@@ -14,6 +14,19 @@
         fieldset { min-width: 0; max-width: 100%; }
         .notice { font-size: 0.95rem; }
         .gap { margin: 0.2rem 0; }
+        /* The case shell stays on screen. Cap it so invitation controls below remain clickable. */
+        #complaint-case-shell.case-shell {
+            max-height: 16rem;
+            overflow: auto;
+        }
+        #case-list button,
+        #lawyer-queue-list button,
+        #assignment-list button,
+        #invite-lawyer button,
+        #invite-lawyer input {
+            scroll-margin-top: 18rem;
+            scroll-margin-bottom: 2rem;
+        }
     </style>
 </head>
 <body class="case-catalog-page">
@@ -82,12 +95,41 @@
                 <label><input type="checkbox" name="scope" value="case.download"> Download</label>
                 <label><input type="checkbox" name="scope" value="case.message.send"> Message</label>
             </fieldset>
-            <label for="assignment-expires">Expires at (unix seconds)</label>
-            <input id="assignment-expires" inputmode="numeric" autocomplete="off">
-            <button type="submit">Invite lawyer</button>
+            <label for="assignment-access">Access lasts</label>
+            <select id="assignment-access">
+                <option value="7">7 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="90">90 days</option>
+            </select>
+            <button type="submit">Review invitation</button>
         </form>
         <ul id="assignment-list"></ul>
         <p id="assignment-content"></p>
+        <dialog id="invitation-dialog" aria-labelledby="invitation-dialog-title">
+            <h2 id="invitation-dialog-title">Invite a participant</h2>
+            <p id="invitation-dialog-summary"></p>
+            <p>The server issues the membership version. This page cannot set ownership, a key grant, or a version.</p>
+            <p id="invitation-dialog-error" role="alert"></p>
+            <button id="invitation-dialog-cancel" type="button">Cancel</button>
+            <button id="invitation-dialog-confirm" type="button">Send invitation</button>
+        </dialog>
+        <dialog id="acceptance-dialog" aria-labelledby="acceptance-dialog-title">
+            <h2 id="acceptance-dialog-title">Accept this scope</h2>
+            <p id="acceptance-dialog-summary"></p>
+            <p id="acceptance-dialog-version"></p>
+            <p id="acceptance-dialog-key">A key grant is separate. Accepting this scope does not open complaint text.</p>
+            <label for="acceptance-dialog-confirm-scope"><input id="acceptance-dialog-confirm-scope" type="checkbox"> I accept this exact case and scope</label>
+            <p id="acceptance-dialog-error" role="alert"></p>
+            <button id="acceptance-dialog-cancel" type="button">Cancel</button>
+            <button id="acceptance-dialog-accept" type="button">Accept scope</button>
+        </dialog>
+        <dialog id="revocation-dialog" aria-labelledby="revocation-dialog-title">
+            <h2 id="revocation-dialog-title">Revoke access</h2>
+            <p id="revocation-dialog-summary"></p>
+            <p id="revocation-dialog-error" role="alert"></p>
+            <button id="revocation-dialog-cancel" type="button">Cancel</button>
+            <button id="revocation-dialog-confirm" type="button">Revoke access</button>
+        </dialog>
     </section>
     <form id="create-case">
         <label for="case-label">Label</label>
@@ -132,7 +174,17 @@
     var contentRevision = null;
     var csrf = "";
     var generation = 0;
+    var signingIn = false;
     var catalogRequest = null;
+    var inviteKeys = {};
+    var pendingInvite = null;
+    var pendingDecision = null;
+    var scopeLabels = {
+        "case.read": "Read",
+        "case.review": "Review",
+        "case.download": "Download",
+        "case.message.send": "Message"
+    };
 
     function retireCatalogRequest() {
         if (catalogRequest) {
@@ -294,6 +346,7 @@
 
     async function logout() {
         var ownGeneration = ++generation;
+        signingIn = false;
         var token = csrf;
         retireCatalogRequest();
         csrf = "";
@@ -336,6 +389,7 @@
     document.getElementById("case-login").addEventListener("submit", async function (event) {
         event.preventDefault();
         var ownGeneration = ++generation;
+        signingIn = true;
         retireCatalogRequest();
         var credential = document.getElementById("case-credential").value;
         document.getElementById("case-credential").value = "";
@@ -377,6 +431,7 @@
             if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
         } catch (error) {
             credential = "";
+            if (error && error.name === "AbortError") return;
             if (ownGeneration === generation) {
                 csrf = "";
                 document.getElementById("case-auth-status").textContent = "Sign in required";
@@ -398,6 +453,8 @@
                     document.getElementById("complaint-entry-boundary").textContent = "Sign-in was denied. No replacement case was opened.";
                 }
             }
+        } finally {
+            if (ownGeneration === generation) signingIn = false;
         }
     });
 
@@ -425,38 +482,48 @@
         });
     }
 
+    function scopeSentence(scope) {
+        return (scope || []).map(function (name) { return scopeLabels[name] || name; }).join(", ");
+    }
+
+    function closeDialog(id) {
+        var dialog = document.getElementById(id);
+        if (dialog && dialog.open) dialog.close();
+    }
+
     function renderAssignments(rows) {
         var list = document.getElementById("assignment-list");
         list.replaceChildren();
         (rows || []).forEach(function (item) {
             var row = document.createElement("li");
-            row.dataset.grantId = item.grant_id;
             row.dataset.state = item.state;
+            row.dataset.caseId = item.case_id || "";
             var label = document.createElement("span");
             label.className = "assignment-state";
-            label.textContent = item.state + " " + (item.scope || []).join(",");
+            var version = item.server_version || item.revision;
+            label.textContent = (item.state || "") + ". " + scopeSentence(item.scope) + ". Server version " + version + ".";
             row.appendChild(label);
-            function act(name, path, extra) {
+            function act(name, handler) {
                 var button = document.createElement("button");
                 button.type = "button";
                 button.textContent = name;
-                button.addEventListener("click", function () {
-                    assignmentAction(item, path, extra);
-                });
+                button.addEventListener("click", handler);
                 row.appendChild(button);
             }
             if (item.party === "recipient" && item.state === "pending") {
-                act("Accept scope", "/accept", {scope: item.scope});
-                act("Decline", "/decline", {});
+                act("Review invitation", function () { openAcceptance(item.grant_id); });
+                act("Decline", function () { assignmentAction(item, "/decline", {case_id: item.case_id}); });
             }
             if (item.party === "owner" && (item.state === "pending" || item.state === "accepted")) {
-                act("Remove", "/remove", {});
+                act("Revoke access", function () { openRevocation(item.grant_id); });
             }
             if (item.party === "recipient" && item.state === "accepted" && item.key_grant_id) {
-                act("Open content", "/content", {
-                    key_grant_id: item.key_grant_id,
-                    artifact_kind: item.artifact_kind,
-                    artifact_revision: item.artifact_revision
+                act("Open content", function () {
+                    assignmentAction(item, "/content", {
+                        key_grant_id: item.key_grant_id,
+                        artifact_kind: item.artifact_kind,
+                        artifact_revision: item.artifact_revision
+                    });
                 });
             }
             list.appendChild(row);
@@ -473,7 +540,7 @@
             (lawyers.lawyers || []).forEach(function (lawyer) {
                 var option = document.createElement("option");
                 option.value = lawyer.principal_id;
-                option.textContent = lawyer.principal_id;
+                option.textContent = lawyer.display_label || "Lawyer participant";
                 select.appendChild(option);
             });
             var listed = await api("/api/cases/assignments");
@@ -502,6 +569,9 @@
             }
             await loadAssignments(ownGeneration);
             await loadNotifications(ownGeneration);
+            if (window.complaintReviewer && ownGeneration === generation) {
+                await window.complaintReviewer.load({generation: ownGeneration, current: function () { return generation; }});
+            }
             showError("");
         } catch (error) {
             if (ownGeneration === generation) showError(error.message);
@@ -560,37 +630,172 @@
         }
     }
 
-    document.getElementById("invite-lawyer").addEventListener("submit", async function (event) {
+    function inviteIdentity(caseId, member, scope, days) {
+        return [caseId, member, scope.join("|"), String(days)].join(":");
+    }
+
+    document.getElementById("invite-lawyer").addEventListener("submit", function (event) {
         event.preventDefault();
         if (!selected) {
             showError("case_not_selected");
             return;
         }
+        var scope = selectedScope();
+        if (!scope.length) {
+            showError("scope_required");
+            return;
+        }
+        var member = document.getElementById("lawyer-select").value;
+        if (!member) {
+            showError("lawyer_required");
+            return;
+        }
+        var days = Number(document.getElementById("assignment-access").value);
+        var caseLabel = document.getElementById("selected-case-label").textContent || selected;
+        pendingInvite = {caseId: selected, member: member, scope: scope, days: days};
+        document.getElementById("invitation-dialog-error").textContent = "";
+        document.getElementById("invitation-dialog-summary").textContent =
+            "Invite a lawyer participant to " + caseLabel + " for " + scopeSentence(scope)
+            + " for " + days + " days. The server will issue the version after you confirm.";
+        document.getElementById("invitation-dialog").showModal();
+    });
+
+    document.getElementById("invitation-dialog-cancel").addEventListener("click", function () {
+        pendingInvite = null;
+        closeDialog("invitation-dialog");
+    });
+
+    document.getElementById("invitation-dialog-confirm").addEventListener("click", async function () {
+        var draft = pendingInvite;
+        if (!draft) return;
         var ownGeneration = generation;
-        var caseId = selected;
-        var expires = Number(document.getElementById("assignment-expires").value);
+        var identity = inviteIdentity(draft.caseId, draft.member, draft.scope, draft.days);
+        if (!inviteKeys[identity]) inviteKeys[identity] = "invite-" + String(Object.keys(inviteKeys).length + 1);
         try {
-            var current = await api("/api/cases/" + encodeURIComponent(caseId));
-            if (ownGeneration !== generation || selected !== caseId) return;
-            await api("/api/cases/assignments", {
+            var current = await api("/api/cases/" + encodeURIComponent(draft.caseId));
+            if (ownGeneration !== generation || selected !== draft.caseId) return;
+            var created = await api("/api/cases/assignments", {
                 method: "POST",
                 body: {
-                    case_id: caseId,
-                    member_principal_id: document.getElementById("lawyer-select").value,
-                    scope: selectedScope(),
-                    expires_at: expires,
+                    case_id: draft.caseId,
+                    member_principal_id: draft.member,
+                    scope: draft.scope,
+                    access_for_days: draft.days,
                     expected_case_revision: current.directory_revision,
-                    idempotency_key: "invite-" + caseId + "-" + String(expires)
+                    idempotency_key: inviteKeys[identity]
                 }
             });
             if (ownGeneration !== generation) return;
+            if (!created || created.version_source !== "server" || typeof created.server_version !== "number") {
+                throw new Error("server_version_required");
+            }
+            pendingInvite = null;
+            closeDialog("invitation-dialog");
             await loadAssignments(ownGeneration);
             await loadNotifications(ownGeneration);
             showError("");
         } catch (error) {
-            if (ownGeneration === generation) showError(error.message);
+            if (ownGeneration === generation) {
+                document.getElementById("invitation-dialog-error").textContent = error.message;
+                showError(error.message);
+            }
         }
     });
+
+    async function openAcceptance(grantId) {
+        var ownGeneration = generation;
+        document.getElementById("acceptance-dialog-error").textContent = "";
+        document.getElementById("acceptance-dialog-confirm-scope").checked = false;
+        try {
+            var issued = await api("/api/cases/assignments/" + encodeURIComponent(grantId));
+            if (ownGeneration !== generation) return;
+            if (!issued || issued.version_source !== "server" || typeof issued.server_version !== "number") {
+                throw new Error("server_version_required");
+            }
+            pendingDecision = issued;
+            document.getElementById("acceptance-dialog-summary").textContent = issued.acceptance_prompt || "";
+            document.getElementById("acceptance-dialog-version").textContent = "Server version " + issued.server_version + ".";
+            document.getElementById("acceptance-dialog").showModal();
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    document.getElementById("acceptance-dialog-cancel").addEventListener("click", function () {
+        pendingDecision = null;
+        closeDialog("acceptance-dialog");
+    });
+
+    document.getElementById("acceptance-dialog-accept").addEventListener("click", async function () {
+        var issued = pendingDecision;
+        if (!issued) return;
+        if (!document.getElementById("acceptance-dialog-confirm-scope").checked) {
+            document.getElementById("acceptance-dialog-error").textContent = "Confirm the exact case and scope before accepting.";
+            return;
+        }
+        await assignmentAction(issued, "/accept", {scope: issued.scope, case_id: issued.case_id});
+        if (!document.getElementById("case-error").textContent) {
+            pendingDecision = null;
+            closeDialog("acceptance-dialog");
+        } else {
+            document.getElementById("acceptance-dialog-error").textContent = document.getElementById("case-error").textContent;
+        }
+    });
+
+    async function openRevocation(grantId) {
+        var ownGeneration = generation;
+        document.getElementById("revocation-dialog-error").textContent = "";
+        try {
+            var issued = await api("/api/cases/assignments/" + encodeURIComponent(grantId));
+            if (ownGeneration !== generation) return;
+            if (!issued || issued.version_source !== "server" || typeof issued.server_version !== "number") {
+                throw new Error("server_version_required");
+            }
+            pendingDecision = issued;
+            document.getElementById("revocation-dialog-summary").textContent = issued.revocation_prompt || "";
+            document.getElementById("revocation-dialog").showModal();
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    document.getElementById("revocation-dialog-cancel").addEventListener("click", function () {
+        pendingDecision = null;
+        closeDialog("revocation-dialog");
+    });
+
+    document.getElementById("revocation-dialog-confirm").addEventListener("click", async function () {
+        var issued = pendingDecision;
+        if (!issued) return;
+        await assignmentAction(issued, "/remove", {case_id: issued.case_id});
+        if (!document.getElementById("case-error").textContent) {
+            pendingDecision = null;
+            closeDialog("revocation-dialog");
+            document.getElementById("assignment-content").textContent = "";
+        } else {
+            document.getElementById("revocation-dialog-error").textContent = document.getElementById("case-error").textContent;
+        }
+    });
+
+    window.complaintInvitations = {
+        acceptForCase: async function (caseId) {
+            var ownGeneration = generation;
+            try {
+                var listed = await api("/api/cases/assignments");
+                if (ownGeneration !== generation) return;
+                var match = (listed.assignments || []).find(function (item) {
+                    return item.case_id === caseId && item.party === "recipient" && item.state === "pending";
+                });
+                if (!match) {
+                    showError("invitation_unavailable");
+                    return;
+                }
+                await openAcceptance(match.grant_id);
+            } catch (error) {
+                if (ownGeneration === generation) showError(error.message);
+            }
+        }
+    };
 
     document.getElementById("save-draft").addEventListener("click", async function () {
         if (!selected) return;
@@ -653,6 +858,9 @@
 
     window.complaintCasesSelect = selectCase;
     window.retireComplaintCaseRequests = function () {
+        // A shell refresh can retire the catalog while sign-in is still in
+        // flight. Aborting that request leaves the status on "Signing in".
+        if (signingIn) return;
         ++generation;
         retireCatalogRequest();
         selected = null;
