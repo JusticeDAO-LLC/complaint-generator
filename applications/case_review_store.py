@@ -32,6 +32,7 @@ SOURCE_KIND = 'case-review-source'
 REVIEW_KIND = 'case-review'
 REVIEW_ARTIFACT_REVISION = 'review-v1'
 _DRAFT_SUGGESTION_OPERATIONS = {'propose_bounded_change','record_draft_model_suggestion','record_draft_machine_proof'}
+_SECTION_REVIEW_OPERATIONS = {'comment_review_target','accept_review_target','reject_review_target'}
 _SUGGESTION_ERROR = {
     'draft_field':'lawyer_review_field','draft_bounds':'lawyer_review_bounds',
     'actor_not_permitted':'lawyer_assignment_required','draft_revision_required':'proposal_required',
@@ -622,13 +623,15 @@ class CaseReviewService:
             'draft_id','expected_revision','expected_text_digest','provenance','proposed_text'}
         if kind=='items':
             allowed={'operation','request_id','expected_review_revision','expected_case_revision','expected_source_revision',
-                'expected_fact_revision','expected_proof_revision','body','title','target_kind','target_id','proposed_text','proposal_id'}
+                'expected_fact_revision','expected_proof_revision','body','title','target_kind','target_id','proposed_text','proposal_id',
+                'artifact_id','artifact_version','span_start','span_end','section_id','draft_id','qualification','qualification_reason',
+                'expected_target_revision','comment_id','target_revision'}
         if (not isinstance(request,dict) or set(request)-allowed or len(_json(request))>65536
                 or type(request.get('expected_review_revision')) is not int):
             raise CaseReviewStoreError('lawyer_review_field')
         if request.get('operation') == 'record_machine_proof':
             raise CaseReviewStoreError('proof_producer_unavailable')
-        if kind=='items' and request.get('operation') not in {'create_task','create_comment','create_proposal','dissent'}:
+        if kind=='items' and request.get('operation') not in {'create_task','create_comment','create_proposal','dissent'}|_SECTION_REVIEW_OPERATIONS:
             raise CaseReviewStoreError('review_transition_owner_unavailable')
         with private_revision_source_scope(bound.workspace.joined_revision_repository(case.tenant_id,case_id)) as identity:
             source,envelope,sreceipt,sargs,credentials,session = self._source(actor,bound,case)
@@ -683,8 +686,32 @@ class CaseReviewService:
                         canonical_owner_principal_id=case.tenant_id,case_revision=case.revision,
                         membership=decision.membership,live_context=live)
                 else:
-                    from applications.case_review import _require_live
+                    from applications.case_review import CaseReviewError, _require_live, record_section_review
                     _require_live(request,live)
+                    if request.get('operation') in _SECTION_REVIEW_OPERATIONS:
+                        try:
+                            created=record_section_review(collaborative,request,actor_principal_id=actor,
+                                canonical_owner_principal_id=case.tenant_id,membership=decision.membership,
+                                action='case.review',case_id=case_id)
+                        except CaseReviewError as exc:
+                            code=exc.code if exc.code in {'review_field','review_bounds','stale_revision','replay_mismatch','actor_not_permitted'} else 'review_field'
+                            raise CaseReviewStoreError(code) from exc
+                        row=created['record'];row['request_fingerprint']=fingerprint
+                        updated={'schema':'case-review-ledger@1','scope':self._scope(case),
+                            'review_revision':ledger['review_revision']+1,'rows':ledger['rows'],
+                            'collaborative_case_file':collaborative}
+                        sealed=self.grants.write_delegated(**rargs,plaintext=_json(updated),action='case.review')
+                        def late_section():
+                            self._late(actor,case_id,authority,'case.review',sreceipt,envelope,sargs,sealed,sealed['envelope'],rargs)
+                        _atomic(bound.directory/'head',_json({'revision':updated['review_revision'],
+                            'envelope':base64.b64encode(sealed['envelope']).decode()}),late_section)
+                        result=self._project(updated,live,case_id)
+                        late_section()
+                        result.update(read_only=False,record=deepcopy(row),operation=request['operation'])
+                        return {**result['collaborative_reviews'],'case_id':case_id,'review_revision':updated['review_revision'],
+                            'private_revision':live['private_revision'],'live_revisions':live,'record':deepcopy(row),
+                            'read_only':False,'replayed':created.get('replayed') is True,'operation':request['operation'],
+                            'uses_owner_master_key':False,'draft_review_actions':result['draft_review_actions']}
                     created=submit_collaborative_record(collaborative,request,actor_principal_id=actor,
                         canonical_owner_principal_id=case.tenant_id,case_id=case_id,
                         membership=decision.membership,authorized=True)
