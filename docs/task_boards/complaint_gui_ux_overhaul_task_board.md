@@ -657,7 +657,7 @@ Implementation instructions:
 
 ## CIMP-UX-22 Add evidence search, chronology, and complaint-context filters
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
