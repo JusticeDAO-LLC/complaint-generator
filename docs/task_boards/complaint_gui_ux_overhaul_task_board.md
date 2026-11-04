@@ -843,7 +843,7 @@ Implementation instructions:
 
 ## CIMP-UX-28 Surface source refresh, changed context, and support retirement
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
