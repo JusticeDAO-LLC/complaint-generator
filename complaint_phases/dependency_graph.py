@@ -3349,6 +3349,99 @@ class DependencyGraphBuilder:
         return {"affected_node_ids": affected + added, "added_node_ids": added,
                 "preserved_node_ids": [key for key in graph.nodes if key not in set(affected + added)]}
 
+    def apply_derived_dependency_requirements(self, graph: DependencyGraph, derivation: Dict[str, Any]) -> Dict[str, Any]:
+        """Install SDK-derived requirements and visible unresolved research.
+
+        Earlier nodes from this derivation are replaced. Fact support is stored
+        on the requirement and does not change its rule text. Other graph
+        nodes stay in place.
+        """
+        if not isinstance(derivation, dict):
+            raise ValueError("derivation_invalid")
+        task_id = "CIMP-UX-26"
+        removed = []
+        for node in list(graph.nodes.values()):
+            attributes = node.attributes if isinstance(node.attributes, dict) else {}
+            if attributes.get("derivation_task") == task_id:
+                removed.append(node.id)
+                graph.nodes.pop(node.id, None)
+        if removed:
+            removed_ids = set(removed)
+            graph.dependencies = {key: edge for key, edge in graph.dependencies.items()
+                                  if edge.source_id not in removed_ids and edge.target_id not in removed_ids}
+        claims = graph.get_nodes_by_type(NodeType.CLAIM)
+        installed = []
+        for requirement in derivation.get("requirements") or []:
+            if not isinstance(requirement, dict) or requirement.get("rule_text") != requirement.get("description"):
+                continue
+            node = self._add_legal_requirement_node(graph, claims[0] if claims else DependencyNode(
+                id="case", node_type=NodeType.CLAIM, name="case", attributes={"claim_type": "unspecified"}), requirement)
+            if not claims:
+                graph.dependencies = {key: edge for key, edge in graph.dependencies.items() if edge.target_id != "case"}
+                graph.nodes.pop("case", None)
+            node.attributes["derivation_task"] = task_id
+            node.attributes["derivation_lineage"] = deepcopy(requirement.get("derivation_lineage") or {})
+            node.attributes["fact_support"] = list(requirement.get("fact_support") or [])
+            node.attributes["support_state"] = requirement.get("support_state") or "unsupported"
+            node.attributes["effective_date"] = requirement.get("effective_date") or ""
+            node.attributes["authority_version"] = requirement.get("authority_version") or ""
+            node.attributes["jurisdiction"] = requirement.get("jurisdiction") or ""
+            node.attributes["admitted_law"] = True
+            node.attributes["proof"] = False
+            node.description = str(requirement.get("rule_text") or "")
+            node.satisfied = False
+            installed.append(node.id)
+            for fact in node.attributes["fact_support"]:
+                fact_node = next((item for item in graph.nodes.values()
+                                  if item.node_type == NodeType.FACT and fact.get("fact_id") in {item.id, item.name}), None)
+                if fact_node is None:
+                    continue
+                graph.add_dependency(Dependency(
+                    id=self._get_dependency_id(), source_id=fact_node.id, target_id=node.id,
+                    dependency_type=DependencyType.SUPPORTS, required=False,
+                ))
+        unresolved_ids = []
+        for item in derivation.get("unresolved_research") or []:
+            if not isinstance(item, dict):
+                continue
+            reason = str(item.get("reason") or "unresolved")
+            node = DependencyNode(
+                id=self._get_namespaced_node_id("legal_requirement", {"gap": "unresolved_research", "reason": reason,
+                    "passage_id": str(item.get("passage_id") or ""), "task": task_id}),
+                node_type=NodeType.REQUIREMENT,
+                name="Unresolved legal research",
+                description="Admitted authority did not yield a current requirement. No generic element was substituted.",
+                satisfied=False,
+                attributes={
+                    "record_kind": "unresolved_research",
+                    "dependency_class": "unresolved_research",
+                    "derivation_task": task_id,
+                    "unresolved_reason": reason,
+                    "visible": True,
+                    "law_derived": False,
+                    "admitted_law": False,
+                    "proof": False,
+                    "review_reasons": list(item.get("review_reasons") or []),
+                    "passage_id": str(item.get("passage_id") or ""),
+                    "passage_ids": list(item.get("passage_ids") or []),
+                },
+            )
+            graph.add_node(node)
+            unresolved_ids.append(node.id)
+            for claim in claims:
+                graph.add_dependency(Dependency(
+                    id=self._get_dependency_id(), source_id=node.id, target_id=claim.id,
+                    dependency_type=DependencyType.REQUIRES, required=True,
+                ))
+        graph.metadata["derived_dependency_requirements"] = {
+            "task_id": task_id,
+            "status": derivation.get("status"),
+            "requirement_ids": installed,
+            "unresolved_ids": unresolved_ids,
+            "hardcoded_elements_used": False,
+        }
+        return graph.metadata["derived_dependency_requirements"]
+
     def _refresh_legal_source_gaps(self, graph, claims=None):
         gap_ids = {node.id for node in graph.nodes.values()
                    if node.attributes.get("dependency_class") == _LEGAL_SOURCE_GAP_CLASS}

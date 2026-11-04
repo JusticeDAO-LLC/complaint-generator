@@ -3592,3 +3592,293 @@ Provide brief analysis of:
             return response
         except Exception:
             return f'Found {len(authorities)} legal authorities. Review citations for strongest support.'
+
+    def derive_dependency_requirements(self, case_file: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+        """Public workflow entry: derive requirements from admitted passages.
+
+        The effect is the returned derivation. It is produced by the Dataset
+        corpus lookup and the source-bound rule extractor. This method does
+        not invent elements when authority is missing or in conflict.
+        """
+        result = derive_admitted_dependency_requirements(case_file, body)
+        if hasattr(self.mediator, "log"):
+            self.mediator.log(
+                "derived_dependency_requirements",
+                status=str(result.get("status") or ""),
+                requirement_count=len(result.get("requirements") or []),
+                unresolved_count=len(result.get("unresolved_research") or []),
+            )
+        return result
+
+
+DEPENDENCY_REQUIREMENT_TASK_ID = "CIMP-UX-26"
+_DERIVATION_TOOL = "extract_source_bound_rule_candidates"
+_CORPUS_TOOL = "lookup_bounded_legal_corpus"
+
+
+def _passage_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("text", "source_text", "content", "full_text"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                return item
+    return ""
+
+
+def _case_coordinate(case_file: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, str]:
+    context = case_file.get("legal_context") if isinstance(case_file.get("legal_context"), dict) else {}
+    law_date = context.get("applicable_law_date") if isinstance(context.get("applicable_law_date"), dict) else {}
+    event_date = context.get("event_date") if isinstance(context.get("event_date"), dict) else {}
+    effective = str(law_date.get("precise_date") or law_date.get("raw_text") or "")
+    as_of = str(event_date.get("precise_date") or effective or "")
+    version = body.get("authority_version")
+    return {
+        "jurisdiction": str(context.get("jurisdiction") or ""),
+        "effective_date": effective,
+        "as_of_date": as_of,
+        "authority_version": version.strip() if isinstance(version, str) else "",
+    }
+
+
+def _support_facts(body: Dict[str, Any]) -> List[Dict[str, str]]:
+    raw = body.get("facts") if isinstance(body.get("facts"), list) else []
+    facts: List[Dict[str, str]] = []
+    for item in raw[:8]:
+        if not isinstance(item, dict):
+            continue
+        fact_id = str(item.get("fact_id") or "").strip()
+        text = str(item.get("text") or "").strip()
+        if fact_id and text and len(fact_id) <= 80 and len(text) <= 500:
+            facts.append({"fact_id": fact_id, "text": text})
+    return facts
+
+
+def _authority_for_passage(passage: Dict[str, Any], coordinates: Dict[str, str]) -> Dict[str, Any]:
+    from integrations.ipfs_datasets.logic import sha256_utf8
+
+    text = passage["text"]
+    authority_id = str(passage.get("citation") or passage.get("passage_id") or "admitted-passage")
+    version = coordinates["authority_version"]
+    return {
+        "source_text": text,
+        "source_hash": sha256_utf8(text),
+        "content_hash_scope": "authority_text",
+        "jurisdiction": coordinates["jurisdiction"],
+        "authority_id": authority_id,
+        "citation": str(passage.get("citation") or ""),
+        "authority_version": version,
+        "effective_date": coordinates["effective_date"],
+        "as_of_date": coordinates["as_of_date"] or coordinates["effective_date"],
+        "law_version_id": authority_id + ":" + version,
+        "law_versions": [{
+            "law_version_id": authority_id + ":" + version,
+            "authority_id": authority_id,
+            "citation": str(passage.get("citation") or ""),
+            "jurisdiction": coordinates["jurisdiction"],
+            "version": version,
+            "effective_date": coordinates["effective_date"],
+        }],
+    }
+
+
+def _lineage(candidate: Dict[str, Any], passage: Dict[str, Any], coordinates: Dict[str, str]) -> Dict[str, Any]:
+    temporal = candidate.get("temporal_applicability") if isinstance(candidate.get("temporal_applicability"), dict) else {}
+    return {
+        "tool": _DERIVATION_TOOL,
+        "module": "integrations.ipfs_datasets.logic",
+        "contract": str(candidate.get("contract") or ""),
+        "corpus_tool": _CORPUS_TOOL,
+        "temporal_api": str(temporal.get("api") or ""),
+        "temporal_graph_id": str(temporal.get("temporal_authority_graph_id") or ""),
+        "passage_id": passage.get("passage_id") or "",
+        "jurisdiction": str(candidate.get("jurisdiction") or coordinates["jurisdiction"]),
+        "effective_date": coordinates["effective_date"],
+        "authority_version": str(candidate.get("authority_version") or coordinates["authority_version"]),
+        "source_hash": str(candidate.get("source_hash") or ""),
+        "span_sha256": str(candidate.get("span_sha256") or ""),
+        "authority_text_sha256": str(candidate.get("authority_text_sha256") or ""),
+    }
+
+
+def _attach_fact_support(requirement: Dict[str, Any], facts: List[Dict[str, str]]) -> None:
+    """Facts may be recorded against a requirement. They do not edit the rule."""
+    frozen = (
+        requirement.get("rule_text"),
+        requirement.get("jurisdiction"),
+        requirement.get("authority_version"),
+        requirement.get("effective_date"),
+        json.dumps(requirement.get("source_span"), sort_keys=True),
+    )
+    words = {word.lower() for word in str(requirement.get("rule_text") or "").split() if len(word) > 4}
+    support = []
+    for fact in facts:
+        tokens = {word.lower().strip(".,") for word in fact["text"].split()}
+        support.append({
+            "fact_id": fact["fact_id"],
+            "affects": "support",
+            "rewrites_law": False,
+            "overlap": sorted(words & tokens),
+        })
+    requirement["fact_support"] = support
+    requirement["support_state"] = "fact_recorded" if any(item["overlap"] for item in support) else "unsupported"
+    requirement["satisfied"] = False
+    requirement["proof"] = False
+    requirement["legal_sufficiency"] = False
+    assert (
+        requirement.get("rule_text"),
+        requirement.get("jurisdiction"),
+        requirement.get("authority_version"),
+        requirement.get("effective_date"),
+        json.dumps(requirement.get("source_span"), sort_keys=True),
+    ) == frozen
+
+
+def derive_admitted_dependency_requirements(case_file: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    """Build current requirements from admitted passages through the real SDK tools.
+
+    A fact can change only the support record. Missing coordinates and
+    conflicting full texts stay unresolved research. Keyword templates are
+    not substituted.
+    """
+    from applications.legal_context_api import LegalContextError, conduct_legal_source_flow
+    from integrations.ipfs_datasets.logic import extract_source_bound_rule_candidates
+
+    if not isinstance(case_file, dict) or not isinstance(body, dict):
+        raise LegalContextError("legal_context_field")
+    flow = conduct_legal_source_flow(case_file, body)
+    coordinates = _case_coordinate(case_file, body)
+    facts = _support_facts(body)
+    base = {
+        "task_id": DEPENDENCY_REQUIREMENT_TASK_ID,
+        "tools": [_CORPUS_TOOL, _DERIVATION_TOOL],
+        "admitted_law": False,
+        "proof": False,
+        "legal_sufficiency": False,
+        "hardcoded_elements_used": False,
+        "fact_rewrites_ignored": any(isinstance(item, dict) and "rule_text" in item for item in (body.get("facts") or []) if isinstance(body.get("facts"), list)),
+        "coordinates": coordinates,
+        "source_flow_status": flow.get("status"),
+        "requirements": [],
+        "unresolved_research": [],
+        "derivation_lineage": [],
+    }
+    if flow.get("status") == "questions_open" or flow.get("tool") == "not_called":
+        base["status"] = "unresolved_research"
+        base["unresolved_research"] = [{
+            "reason": "missing_legal_context",
+            "questions": list(flow.get("questions") or []),
+            "visible": True,
+        }]
+        return base
+    passages = []
+    citations: Dict[str, List[str]] = {}
+    for item in (flow.get("decisions") or {}).get("custody") or []:
+        if not isinstance(item, dict):
+            continue
+        text = _passage_text(item.get("source_passage"))
+        discovery = next((row for row in (flow.get("decisions") or {}).get("discovery") or []
+                          if isinstance(row, dict) and row.get("passage_id") == item.get("passage_id")), {})
+        citation = str(discovery.get("citation") or "")
+        passage = {"passage_id": str(item.get("passage_id") or ""), "text": text, "citation": citation}
+        passages.append(passage)
+        citations.setdefault(citation or passage["passage_id"], []).append(text)
+    conflicts = [key for key, texts in citations.items() if len({text for text in texts if text}) > 1]
+    admitted_ids = set(flow.get("admitted_passage_ids") or [])
+    admitted = [passage for passage in passages if passage["passage_id"] in admitted_ids and passage["text"]]
+    if conflicts:
+        for passage in passages:
+            if not passage["text"]:
+                continue
+            authority = _authority_for_passage(passage, coordinates)
+            extracted = extract_source_bound_rule_candidates(authority)
+            base["derivation_lineage"].append({
+                "tool": _DERIVATION_TOOL,
+                "module": "integrations.ipfs_datasets.logic",
+                "contract": extracted.get("contract"),
+                "passage_id": passage["passage_id"],
+                "promoted_count": extracted.get("promoted_count"),
+                "withheld_because": "conflicting_authority",
+            })
+        base["status"] = "unresolved_research"
+        base["unresolved_research"] = [{
+            "reason": "conflicting_authority",
+            "citations": conflicts,
+            "passage_ids": [passage["passage_id"] for passage in passages],
+            "visible": True,
+        }]
+        return base
+    if not admitted:
+        base["status"] = "unresolved_research"
+        base["unresolved_research"] = [{
+            "reason": "no_admitted_passage",
+            "visible": True,
+            "discovery_admitted": False,
+        }]
+        return base
+    requirements = []
+    unresolved = []
+    for passage in admitted:
+        authority = _authority_for_passage(passage, coordinates)
+        extracted = extract_source_bound_rule_candidates(authority)
+        promoted = list(extracted.get("promoted_requirements") or [])
+        if not promoted:
+            candidate = (extracted.get("candidates") or [{}])[0]
+            unresolved.append({
+                "reason": "authority_not_promoted",
+                "visible": True,
+                "passage_id": passage["passage_id"],
+                "review_reasons": list(candidate.get("review_reasons") or []),
+                "temporal_reason": str((candidate.get("temporal_applicability") or {}).get("reason") or ""),
+                "rule_text": "",
+            })
+            base["derivation_lineage"].append(_lineage(candidate if isinstance(candidate, dict) else {}, passage, coordinates))
+            continue
+        for candidate in promoted:
+            if candidate.get("applicable") is not True or candidate.get("support_eligible") is not True:
+                unresolved.append({
+                    "reason": "authority_not_current",
+                    "visible": True,
+                    "passage_id": passage["passage_id"],
+                    "review_reasons": list(candidate.get("review_reasons") or []),
+                })
+                continue
+            requirement = {
+                "name": str(candidate.get("citation") or passage["citation"] or "Admitted requirement"),
+                "description": candidate.get("rule_text") or "",
+                "rule_text": candidate.get("rule_text") or "",
+                "source_span": candidate.get("source_span"),
+                "source_hash": candidate.get("source_hash"),
+                "span_sha256": candidate.get("span_sha256"),
+                "authority_text_sha256": candidate.get("authority_text_sha256"),
+                "authority_id": candidate.get("authority_id"),
+                "authority_version": candidate.get("authority_version"),
+                "jurisdiction": candidate.get("jurisdiction"),
+                "effective_date": coordinates["effective_date"],
+                "applicable_date": coordinates["as_of_date"],
+                "temporal_applicability": candidate.get("temporal_applicability"),
+                "treatment_edges": candidate.get("treatment_edges"),
+                "blocking_treatments": candidate.get("blocking_treatments"),
+                "applicable": True,
+                "support_eligible": True,
+                "treatment_blocks_support": False,
+                "source_record": authority,
+                "passage_id": passage["passage_id"],
+                "citation": candidate.get("citation") or passage["citation"],
+                "verification_status": "promoted",
+                "source_bound": True,
+                "admitted_law": True,
+                "proof": False,
+                "legal_sufficiency": False,
+                "derivation_lineage": _lineage(candidate, passage, coordinates),
+                "derivation_task": DEPENDENCY_REQUIREMENT_TASK_ID,
+            }
+            _attach_fact_support(requirement, facts)
+            requirements.append(requirement)
+            base["derivation_lineage"].append(requirement["derivation_lineage"])
+    base["requirements"] = requirements
+    base["unresolved_research"] = unresolved
+    base["status"] = "current" if requirements and not unresolved else "unresolved_research" if not requirements else "current_with_gaps"
+    base["admitted_law"] = bool(requirements)
+    return base

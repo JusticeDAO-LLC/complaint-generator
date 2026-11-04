@@ -25,6 +25,8 @@ LEGAL_ANALYSIS_PREFIX = "/api/legal-analysis"
 DEFINITION_CORRESPONDENCE_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/definition-correspondence"
 PROOF_TRACE_TASK_ID = "CIMP-GUI-31"
 PROOF_TRACE_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/proof-traces"
+DEPENDENCY_REQUIREMENT_TASK_ID = "CIMP-UX-26"
+DEPENDENCY_REQUIREMENT_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/dependency-requirements"
 _TRACE_STATUSES = ("executed", "degraded", "not_executed", "missing_prover", "timeout", "source_drift")
 _UNAVAILABLE_TRACE_STATUSES = ("missing_prover", "timeout", "source_drift")
 
@@ -846,6 +848,40 @@ def project_current_case_proof_traces(analysis: Mapping[str, Any], *, source_tex
             "Client engine/status claims and old cached display rows are not proof provenance."]}
 
 
+def project_dependency_requirements(case_file: Mapping[str, Any]) -> Dict[str, Any]:
+    """Read the stored derivation. An empty case is unresolved, not a template."""
+    stored = case_file.get("derived_dependency_requirements") if isinstance(case_file, Mapping) else None
+    if not isinstance(stored, dict):
+        return {"task_id": DEPENDENCY_REQUIREMENT_TASK_ID, "status": "empty", "requirements": [],
+            "unresolved_research": [], "admitted_law": False, "proof": False, "legal_sufficiency": False,
+            "hardcoded_elements_used": False}
+    payload = deepcopy(stored)
+    payload["task_id"] = DEPENDENCY_REQUIREMENT_TASK_ID
+    payload["proof"] = False
+    payload["legal_sufficiency"] = False
+    payload["hardcoded_elements_used"] = False
+    return payload
+
+
+def derive_case_dependency_requirements(case_file: Mapping[str, Any], body: Mapping[str, Any]) -> Dict[str, Any]:
+    """Derive from the case's admitted passages. Caller rule text is not authority."""
+    from applications.legal_context_api import LegalContextError
+    from mediator.legal_authority_hooks import derive_admitted_dependency_requirements
+
+    if not isinstance(case_file, Mapping) or not isinstance(body, Mapping):
+        raise LegalAnalysisError("legal_analysis_field")
+    request_id = body.get("request_id")
+    if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 80:
+        raise LegalAnalysisError("legal_analysis_field")
+    try:
+        payload = derive_admitted_dependency_requirements(dict(case_file), dict(body))
+    except LegalContextError as exc:
+        raise LegalAnalysisError("legal_analysis_field" if exc.code == "legal_context_field" else exc.code) from None
+    payload["request_id"] = request_id
+    payload["supplied_rule_text_ignored"] = "rule_text" in body or "elements" in body
+    return payload
+
+
 def mount_legal_analysis_routes(app: Any) -> None:
     """Serve only the current encrypted owner, under the issued case capability."""
     from fastapi.responses import JSONResponse
@@ -991,6 +1027,46 @@ def mount_legal_analysis_routes(app: Any) -> None:
         except LegalAnalysisError as exc:
             return proof_fail(exc.code)
         return JSONResponse(payload)
+
+    def dependency_fail(code):
+        return JSONResponse({"task_id": DEPENDENCY_REQUIREMENT_TASK_ID, "error": code, "status": "denied",
+            "requirements": [], "unresolved_research": [], "admitted_law": False, "proof": False,
+            "legal_sufficiency": False, "hardcoded_elements_used": False},
+            status_code=legal_analysis_http_status(code))
+
+    def dependency_execute(workspace, authority, actor, case_id, body=None):
+        with workspace_access_scope(WorkspaceAccess.authenticated(actor, case_id)):
+            authority.revalidate(actor_principal_id=actor, workspace=workspace, require_owner=True)
+            payload = (workspace.read_case_dependency_requirements(actor, case_id=case_id) if body is None
+                else workspace.derive_case_dependency_requirements(actor, case_id=case_id, request=body))
+            authority.revalidate(actor_principal_id=actor, workspace=workspace, require_owner=True)
+            return payload
+
+    async def dependency_apply(request, case_id, *, write=False):
+        try:
+            workspace, authority, actor = authorized(request, case_id)
+            body = await request.json() if write else None
+            if write and not isinstance(body, dict):
+                raise LegalAnalysisError("legal_analysis_field")
+            payload = await run_in_threadpool(dependency_execute, workspace, authority, actor, case_id, body)
+        except (WorkspaceAuthorizationDenied, WorkspaceCaseAuthorityError):
+            return dependency_fail("legal_analysis_ungranted")
+        except WorkspacePersistenceError as exc:
+            return dependency_fail("revision_conflict" if exc.code == "revision_conflict" else (
+                "unlock_needed" if exc.code == "unlock_needed" else "legal_analysis_unavailable"))
+        except LegalAnalysisError as exc:
+            return dependency_fail(exc.code)
+        except (ValueError, UnicodeDecodeError):
+            return dependency_fail("legal_analysis_field")
+        return JSONResponse(payload)
+
+    @app.get(DEPENDENCY_REQUIREMENT_ROUTE)
+    async def read_dependency_requirements(case_id: str, request: Request):
+        return await dependency_apply(request, case_id)
+
+    @app.post(DEPENDENCY_REQUIREMENT_ROUTE)
+    async def derive_dependency_requirements(case_id: str, request: Request):
+        return await dependency_apply(request, case_id, write=True)
 
     @app.post(PROOF_TRACE_ROUTE)
     async def record_proof_traces(case_id: str, request: Request):

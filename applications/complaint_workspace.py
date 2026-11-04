@@ -11430,6 +11430,91 @@ class ComplaintWorkspaceService:
         return {**payload, "attachment_persisted": True,
             "private_revision": committed.get("private_revision"), "session_revision": projection["session_revision"]}
 
+    def read_case_dependency_requirements(self, user_id: Optional[str], *, case_id: str) -> Dict[str, Any]:
+        """Project the current encrypted derivation without writing the case."""
+        from applications.legal_analysis_api import project_dependency_requirements
+
+        authority = self._owner_case_authority()
+        if authority is None or authority.action != "case.read":
+            raise WorkspaceAuthorizationDenied()
+        snapshot = self.read_case_legal_materials_snapshot(user_id, case_id=case_id)
+        payload = project_dependency_requirements(snapshot["case_file"])
+        current = self.read_case_legal_materials_snapshot(user_id, case_id=case_id)
+        if (snapshot["source_identity"], snapshot["key_id"]) != (current["source_identity"], current["key_id"]):
+            raise WorkspacePersistenceError("Dependency requirements changed during read.",
+                code="revision_conflict", public_status="conflict")
+        authority.revalidate(actor_principal_id=snapshot["actor_principal_id"], workspace=self, require_owner=True)
+        return {**payload, "case_id": case_id, "read_only": True,
+            "private_revision": snapshot["private_revision"], "session_revision": snapshot["session_revision"]}
+
+    def derive_case_dependency_requirements(self, user_id: Optional[str], *, case_id: str,
+                                            request: Mapping[str, Any]) -> Dict[str, Any]:
+        """Derive requirements from admitted passages and commit them on the case.
+
+        The request may name a corpus cache, a review decision, and facts.
+        It cannot supply the legal text that becomes the requirement.
+        """
+        from complaint_phases.dependency_graph import DependencyGraph, DependencyGraphBuilder
+        from integrations.private_storage import PrivateStorageError
+        from mediator.legal_authority_hooks import LegalAuthorityAnalysisHook
+        from mediator.workflow_service import WorkflowActionService
+
+        authority = self._owner_case_authority()
+        if authority is None or authority.action != "case.update" or not isinstance(request, Mapping):
+            raise WorkspaceAuthorizationDenied()
+        snapshot = self.read_case_legal_materials_snapshot(user_id, case_id=case_id)
+        actor, canonical = snapshot["actor_principal_id"], snapshot["canonical_owner_principal_id"]
+        for field, actual in (("expected_private_revision", snapshot["private_revision"]),
+                              ("expected_session_revision", snapshot["session_revision"])):
+            value = request.get(field)
+            valid_type = (type(value) is str and 1 <= len(value) <= 19
+                and value.isascii() and value.isdecimal() and (value == "0" or not value.startswith("0"))
+                ) if field == "expected_private_revision" else type(value) is int
+            if not valid_type or value != actual:
+                raise WorkspacePersistenceError("Dependency requirement precondition changed.",
+                    code="revision_conflict", public_status="conflict")
+        _context, admitted_key_id, admitted_key = self._joined_key(canonical, case_id)
+        if admitted_key_id != snapshot["key_id"]:
+            raise WorkspacePersistenceError("Dependency requirement key changed.",
+                code="revision_conflict", public_status="conflict")
+
+        def before_publish():
+            authority.revalidate(actor_principal_id=actor, workspace=self, require_owner=True)
+            _current, key_id, key = self._joined_key(canonical, case_id)
+            if (key_id, key) != (admitted_key_id, admitted_key):
+                raise WorkspacePersistenceError("Dependency requirement key changed.",
+                    code="revision_conflict", public_status="conflict")
+            current = self._load_state(canonical, case_id=case_id)
+            if self._case_legal_context_identity(current) != snapshot["source_identity"]:
+                raise WorkspacePersistenceError("Dependency requirement source changed.",
+                    code="revision_conflict", public_status="conflict")
+            authority.revalidate(actor_principal_id=actor, workspace=self, require_owner=True)
+
+        state = snapshot["state"]
+        shared = state["shared_interview"]
+        mediator = self._mediator_for_shared_interview(canonical, case_id, cache=False)
+        payload = LegalAuthorityAnalysisHook(mediator).derive_dependency_requirements(dict(snapshot["case_file"]), dict(request))
+        payload["request_id"] = request.get("request_id")
+        payload["supplied_rule_text_ignored"] = "rule_text" in request or "elements" in request
+        before_publish()
+        case_file = deepcopy(snapshot["case_file"])
+        case_file["derived_dependency_requirements"] = deepcopy(payload)
+        graph = DependencyGraph.from_dict(deepcopy(shared["dependency_graph"]))
+        DependencyGraphBuilder().apply_derived_dependency_requirements(graph, payload)
+        projection = WorkflowActionService.project_legal_context_selection(shared, case_file=case_file, dependency_graph=graph)
+        draft = deepcopy(state)
+        draft["shared_interview"] = projection
+        draft["updated_at"] = _utc_now()
+        try:
+            committed = self._commit_joined_snapshot(draft, before_publish=before_publish)
+        except PrivateStorageError as exc:
+            raise WorkspacePersistenceError("Dependency requirements did not commit.",
+                code=str(getattr(exc, "code", "") or "durability_unproven"), public_status="recoverable") from None
+        self._interview_mediators.pop((canonical, case_id), None)
+        authority.revalidate(actor_principal_id=actor, workspace=self, require_owner=True)
+        return {**payload, "case_id": case_id, "derivation_persisted": True,
+            "private_revision": committed.get("private_revision"), "session_revision": projection["session_revision"]}
+
 
     def read_case_definition_correspondence(self, user_id: Optional[str], *, case_id: str) -> Dict[str, Any]:
         """Project current encrypted IR only after live owner/key/source reproof."""
