@@ -905,7 +905,7 @@ Implementation instructions:
 
 ## CIMP-UX-30 Build a complaint outline tied to facts, requirements, and evidence
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
