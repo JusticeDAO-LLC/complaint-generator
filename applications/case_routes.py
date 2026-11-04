@@ -99,6 +99,28 @@ class CaseHandlerRegistry:
                 raise CaseAccessError("case_download_root_overlap")
         self._bindings[key] = (mediator, workspace_service, root, authorize_delegated)
 
+    def authorized_correspondence_activity(self, *, actor_principal_id: str, case_id: str,
+                                           tenant_id: str, resource_id: str) -> Mapping[str, Any]:
+        """Read mediator turns and review decisions from the bound workspace.
+
+        A missing binding or a workspace without this view is unavailable.
+        The registry does not copy the records or grant access.
+        """
+
+        binding = self._bindings.get((tenant_id, case_id, resource_id))
+        unavailable = {"mediator_turns": "unavailable", "review_decisions": "unavailable"}
+        if binding is None or resource_id == "":
+            return unavailable
+        reader = getattr(binding[1], "authorized_correspondence_activity", None)
+        if not callable(reader):
+            return unavailable
+        payload = reader(actor_principal_id=actor_principal_id, case_id=case_id,
+                         tenant_id=tenant_id, resource_id=resource_id)
+        if not isinstance(payload, Mapping):
+            from .case_correspondence_api import CaseCorrespondenceError
+            raise CaseCorrespondenceError("activity_record")
+        return payload
+
     def resolve(self, decision: Any) -> Tuple[Any, Any, Any]:
         key = (decision.tenant_id, decision.case_id, decision.resource_id)
         try:
@@ -268,6 +290,8 @@ def compose_case_routes(app: Any, *, authorizer: Optional[CaseActionAuthorizer],
     if case_messages is not None and not isinstance(case_messages, CaseMessageService):
         raise CaseAccessError("case_messages")
     mount_case_messages(app)
+    from .case_correspondence_api import mount_case_correspondence
+    mount_case_correspondence(app)
     _mount_case_message_inbox(app)
     from .case_attachment_api import CaseAttachmentService, mount_case_attachments
     if case_attachments is not None and not isinstance(case_attachments, CaseAttachmentService):
