@@ -1370,7 +1370,7 @@ Implementation instructions:
 
 ## CIMP-UX-45 Qualify keyboard, focus, screen-reader structure, and contrast
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
