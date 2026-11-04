@@ -7,6 +7,7 @@ which puts the accelerate checkout on ``sys.path`` before importing.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Mapping
 
 from integrations.ipfs_datasets.loader import ensure_import_paths, import_attr_optional, import_failure_message
@@ -138,6 +139,45 @@ UNPINNED_GROK_PROVIDER_ALIASES = frozenset(
         "grok-build-cli",
     }
 )
+
+
+def pinned_grok47_adapter_binding(adapter: Any) -> dict[str, Any] | None:
+    """Bind the pinned route to a live adapter signature.
+
+    A missing or incompatible signature is not a successful fallback. Callers
+    refuse dispatch when this returns None. The binding never enables fallback
+    and never calls the adapter.
+    """
+
+    try:
+        signature = inspect.signature(adapter)
+    except (TypeError, ValueError):
+        return None
+    proposed = pinned_grok47_dispatch_kwargs()
+    try:
+        bound = signature.bind_partial(**proposed)
+    except TypeError:
+        return None
+    arguments: dict[str, Any] = {}
+    for name, value in bound.arguments.items():
+        parameter = signature.parameters[name]
+        if parameter.kind is inspect.Parameter.VAR_KEYWORD and isinstance(value, dict):
+            arguments.update(value)
+        else:
+            arguments[name] = value
+    if arguments.get("provider") != PINNED_GROK_PROVIDER or arguments.get("model_name") != PINNED_GROK_MODEL:
+        return None
+    if arguments.get("allow_local_fallback") is not False or arguments.get("allow_cross_provider_fallback") is not False:
+        return None
+    parameters = signature.parameters
+    for name in ("provider", "model_name", "allow_local_fallback", "allow_cross_provider_fallback"):
+        parameter = parameters.get(name)
+        if parameter is None:
+            if not any(item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()):
+                return None
+        elif parameter.kind in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.VAR_POSITIONAL}:
+            return None
+    return arguments
 
 
 def pinned_grok47_dispatch_kwargs() -> dict[str, Any]:
@@ -321,6 +361,7 @@ __all__ = [
     "UNPINNED_GROK_PROVIDER_ALIASES",
     "interpret_canary_dispatch",
     "normalize_accelerate_provider",
+    "pinned_grok47_adapter_binding",
     "pinned_grok47_canary_kwargs",
     "pinned_grok47_dispatch_kwargs",
     "provider_reported_model_from_usage",

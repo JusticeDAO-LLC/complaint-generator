@@ -16,6 +16,7 @@ from integrations.ipfs_accelerate.routers import (
     PINNED_GROK_CANARY_PROMPT,
     PINNED_GROK_MODEL,
     PINNED_GROK_PROVIDER,
+    pinned_grok47_adapter_binding,
     unpinned_grok_route_reason,
     load_observed_llm_symbols,
 )
@@ -595,7 +596,8 @@ class LLMRouterBackend:
             self._fail("privacy_denied", route_observation="refused")
         self._raise_if_cancelled()
         generate, result_type, observation_type = load_observed_llm_symbols()
-        if not callable(generate) or not isinstance(result_type, type) or not isinstance(observation_type, type):
+        if (not callable(generate) or not isinstance(result_type, type) or not isinstance(observation_type, type)
+                or pinned_grok47_adapter_binding(generate) is None):
             self._fail("route_unverified", route_observation="unverified")
         request_id = self._request_id
         remaining = deadline - time.monotonic() if deadline is not None else 60.0

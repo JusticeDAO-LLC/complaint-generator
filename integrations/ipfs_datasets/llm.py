@@ -27,6 +27,7 @@ from integrations.ipfs_accelerate.routers import (
 	load_llm_symbols,
 	load_observed_llm_symbols,
 	normalize_accelerate_provider,
+	pinned_grok47_adapter_binding,
 	pinned_grok47_canary_kwargs,
 	pinned_grok47_dispatch_kwargs,
 	development_campaign_authorizes_user_complaint_egress,
@@ -1206,7 +1207,8 @@ def _generate_intake_with_metadata(prompt, *, provider, model_name, request_id, 
 		if cancel_event is not None and cancel_event.is_set():
 			return fail("cancelled")
 		generate, result_type, observation_type = load_observed_llm_symbols()
-		if not callable(generate) or not isinstance(result_type, type) or not isinstance(observation_type, type):
+		if (not callable(generate) or not isinstance(result_type, type) or not isinstance(observation_type, type)
+				or pinned_grok47_adapter_binding(generate) is None):
 			return fail("route_unverified")
 		provider_prompt = _intake_provider_prompt(prompt, request_id=request_id,
 			operation=operation, source_text=source_text, targets=targets)
@@ -1404,6 +1406,8 @@ def generate_observed_hook_purpose(
 		return finish("cancelled", route_observation="cancelled")
 	generate, result_type, observation_type = load_observed_llm_symbols()
 	if not callable(generate) or not isinstance(result_type, type) or not isinstance(observation_type, type):
+		return finish("route_unverified", route_observation="unverified")
+	if pinned_grok47_adapter_binding(generate) is None:
 		return finish("route_unverified", route_observation="unverified")
 	qualified = _qualified_native_observation_types()
 	native_qualified = qualified is not None and result_type is qualified[0] and observation_type is qualified[1]
