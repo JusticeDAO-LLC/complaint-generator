@@ -3932,6 +3932,45 @@
                             <p id="conversation-stopping-summary">Stopping has not been read. No further questions, a filled form, and a completed software task are not legal sufficiency.</p>
                             <p id="conversation-stopping-next"></p>
                         </section>
+                        <section id="conversation-privacy" data-ux-task="CIMP-UX-12" data-default-processing="local_private" data-egress-authorized="false">
+                            <h3>Privacy and Grok processing</h3>
+                            <p id="conversation-privacy-default">Local private processing is the default. No case data leaves this machine for Grok 4.7 until you persist consent for one case and one purpose.</p>
+                            <p id="conversation-privacy-minimized">If you authorize extract_facts, Grok 4.7 through grok_cli would receive only a bounded source_text fragment and its target_ref. propose_questions would send only a gap_code and a target_ref. explain_candidate would send only a candidate_ref and a gap_code. citation_acquisition and public_law_citation would send only the public citation, not the complaint. Attachments, evidence bytes, drafts, keys, logs, and every other purpose stay on this machine.</p>
+                            <p id="conversation-privacy-nonconsent">Unlocking a key, a staff role, development-provider authorization, and omitted flags do not create consent.</p>
+                            <p id="conversation-late-result" data-display-allowed="false" data-admission="withheld" data-code="local_private">No remote Grok result is admitted. Processing stays on this machine until persisted case and purpose consent is current.</p>
+                        </section>
+                        <section id="case-processing-consent" data-task="CIMP-GUI-33" data-ux-task="CIMP-UX-12">
+                            <h3>Case processing consent</h3>
+                            <p id="consent-implication-notice">Local private is the default. Grok processing is authorized only for one case and one purpose. Lawyer membership, an admin role, development Grok authorization, and message receipt do not authorize case egress. Unlocking a key, a staff role, development-provider authorization, and omitted flags do not create consent.</p>
+                            <p id="consent-minimized-notice">Nothing from this case leaves the machine for Grok 4.7 (grok_cli) until this case owner persists explicit consent for one purpose. extract_facts would send only a bounded source_text fragment and its target_ref. propose_questions would send only a gap_code and a target_ref. explain_candidate would send only a candidate_ref and a gap_code. citation_acquisition and public_law_citation would send only the public citation, not the complaint. Attachments, evidence bytes, drafts, keys, and every other purpose stay on this machine. A revoked or cancelled result is checked again before it is shown or admitted.</p>
+                            <p id="consent-minimized-egress" data-leaves="none">The selected purpose has not been read from persisted consent. Nothing leaves the machine.</p>
+                            <div class="field-row">
+                                <div>
+                                    <label for="consent-case-id">Case</label>
+                                    <input id="consent-case-id" type="text" autocomplete="off">
+                                </div>
+                                <div>
+                                    <label for="consent-purpose">Purpose</label>
+                                    <select id="consent-purpose">
+                                        <option value="extract_facts">extract_facts</option>
+                                        <option value="propose_questions">propose_questions</option>
+                                        <option value="explain_candidate">explain_candidate</option>
+                                        <option value="citation_acquisition">citation_acquisition</option>
+                                        <option value="public_law_citation">public_law_citation</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p id="consent-choice-local">Local private: this purpose never calls a remote provider.</p>
+                            <p id="consent-choice-grok">Explicitly authorized Grok processing: grok_cli / grok-4.7 for this case and purpose.</p>
+                            <p id="consent-choice-revoked">Revoked: Grok processing for this purpose is not authorized. Processing is local private.</p>
+                            <div class="status" id="consent-decision-display" data-egress-authorized="unknown" data-verification="unknown">Consent has not been verified for this case and purpose.</div>
+                            <div class="button-row">
+                                <button type="button" id="consent-refresh">Show persisted decision</button>
+                                <button type="button" id="consent-choose-local">Keep local private</button>
+                                <button type="button" id="consent-authorize-grok">Authorize Grok for this purpose</button>
+                                <button type="button" id="consent-revoke">Revoke Grok authorization</button>
+                            </div>
+                        </section>
                         <div class="mediator-conversation__controls">
                             <button type="button" id="mediator-conversation-refresh">Refresh conversation</button>
                             <button type="button" id="mediator-conversation-cancel" disabled>Cancel refresh</button>
@@ -6231,37 +6270,6 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                     </div>
                 </section>
 
-                <section id="case-processing-consent" data-task="CIMP-GUI-33">
-                    <h2>Case processing consent</h2>
-                    <p id="consent-implication-notice">Local private is the default. Grok processing is authorized only for one case and one purpose. Lawyer membership, an admin role, development Grok authorization, and message receipt do not authorize case egress.</p>
-                    <div class="field-row">
-                        <div>
-                            <label for="consent-case-id">Case</label>
-                            <input id="consent-case-id" type="text" autocomplete="off">
-                        </div>
-                        <div>
-                            <label for="consent-purpose">Purpose</label>
-                            <select id="consent-purpose">
-                                <option value="extract_facts">extract_facts</option>
-                                <option value="propose_questions">propose_questions</option>
-                                <option value="explain_candidate">explain_candidate</option>
-                                <option value="citation_acquisition">citation_acquisition</option>
-                                <option value="public_law_citation">public_law_citation</option>
-                            </select>
-                        </div>
-                    </div>
-                    <p id="consent-choice-local">Local private: this purpose never calls a remote provider.</p>
-                    <p id="consent-choice-grok">Explicitly authorized Grok processing: grok_cli / grok-4.7 for this case and purpose.</p>
-                    <p id="consent-choice-revoked">Revoked: Grok processing for this purpose is not authorized. Processing is local private.</p>
-                    <div class="status" id="consent-decision-display" data-egress-authorized="unknown" data-verification="unknown">Consent has not been verified for this case and purpose.</div>
-                    <div class="button-row">
-                        <button type="button" id="consent-refresh">Show persisted decision</button>
-                        <button type="button" id="consent-choose-local">Keep local private</button>
-                        <button type="button" id="consent-authorize-grok">Authorize Grok for this purpose</button>
-                        <button type="button" id="consent-revoke">Revoke Grok authorization</button>
-                    </div>
-                </section>
-
                 <section id="legal-source-candidates" data-task="CIMP-GUI-25">
                     <h2>Bounded legal source candidates</h2>
                     <p id="legal-research-notice">Search uses the current case purpose and a bounded query. Snippets, missing archives, and model text are research gaps. Results are candidates, never admitted law.</p>
@@ -6733,6 +6741,11 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             node.dataset.egressAuthorized = 'unknown';
             node.dataset.verification = 'unknown';
             delete node.dataset.generation;
+            const minimized = document.getElementById('consent-minimized-egress');
+            if (minimized) {
+                minimized.dataset.leaves = 'none';
+                minimized.textContent = 'The selected purpose has not been read from persisted consent. Nothing leaves the machine.';
+            }
         }
 
         function consentCapture() {
@@ -6769,6 +6782,16 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             node.dataset.egressAuthorized = match.egress_authorized ? 'true' : 'false';
             node.dataset.generation = String(payload.generation);
             node.dataset.verification = 'verified';
+            const minimized = document.getElementById('consent-minimized-egress');
+            const detail = match.minimized_egress;
+            if (minimized && detail && Array.isArray(detail.leaves_the_machine)) {
+                const leaves = detail.leaves_the_machine.join('; ');
+                const stays = Array.isArray(detail.stays_on_the_machine) ? detail.stays_on_the_machine.join('; ') : '';
+                minimized.dataset.leaves = match.egress_authorized ? leaves : 'none';
+                minimized.textContent = match.egress_authorized
+                    ? ('Grok 4.7 (grok_cli) may receive only: ' + leaves + '. Stays on this machine: ' + stays + '.')
+                    : ('Local private remains the default for ' + capture.purpose + '. Nothing leaves the machine. If you later authorize Grok 4.7, it would receive only: ' + leaves + '.');
+            }
             return true;
         }
 

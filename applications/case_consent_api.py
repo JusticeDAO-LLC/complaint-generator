@@ -62,6 +62,80 @@ IMPLICATIONS = (
     "development_grok_authorization",
     "message_receipt",
 )
+DOES_NOT_CREATE_CONSENT = (
+    "key_unlock",
+    "staff_role",
+    "development_provider_authorization",
+    "omitted_flags",
+)
+MINIMIZED_EGRESS = {
+    "extract_facts": {
+        "provider": PRIVACY_GROK_PROVIDER,
+        "model": PRIVACY_GROK_MODEL,
+        "data_class": "raw_intake",
+        "leaves_the_machine": (
+            "bounded source_text fragment for this purpose",
+            "target_ref for that fragment",
+        ),
+        "stays_on_the_machine": (
+            "the rest of the complaint",
+            "attachments and evidence bytes",
+            "drafts, keys, logs, and other purposes",
+        ),
+    },
+    "propose_questions": {
+        "provider": PRIVACY_GROK_PROVIDER,
+        "model": PRIVACY_GROK_MODEL,
+        "data_class": "raw_intake",
+        "leaves_the_machine": (
+            "gap_code for the open question",
+            "target_ref for that gap",
+        ),
+        "stays_on_the_machine": (
+            "the complaint narrative",
+            "attachments and evidence bytes",
+            "drafts, keys, logs, and other purposes",
+        ),
+    },
+    "explain_candidate": {
+        "provider": PRIVACY_GROK_PROVIDER,
+        "model": PRIVACY_GROK_MODEL,
+        "data_class": "raw_intake",
+        "leaves_the_machine": (
+            "candidate_ref for the suggestion being explained",
+            "gap_code for that candidate",
+        ),
+        "stays_on_the_machine": (
+            "the complaint narrative",
+            "attachments and evidence bytes",
+            "drafts, keys, logs, and other purposes",
+        ),
+    },
+    "citation_acquisition": {
+        "provider": PRIVACY_GROK_PROVIDER,
+        "model": PRIVACY_GROK_MODEL,
+        "data_class": "public_legal_source_graph",
+        "leaves_the_machine": (
+            "public citation text only",
+        ),
+        "stays_on_the_machine": (
+            "complaint text is not copied into the citation query",
+            "attachments, evidence bytes, drafts, and keys",
+        ),
+    },
+    "public_law_citation": {
+        "provider": PRIVACY_GROK_PROVIDER,
+        "model": PRIVACY_GROK_MODEL,
+        "data_class": "public_legal_source_graph",
+        "leaves_the_machine": (
+            "public citation text only",
+        ),
+        "stays_on_the_machine": (
+            "complaint text is not copied into the citation query",
+            "attachments, evidence bytes, drafts, and keys",
+        ),
+    },
+}
 _IMPLIED_FIELDS = frozenset({
     "lawyer_membership",
     "admin_role",
@@ -76,6 +150,22 @@ _IMPLIED_FIELDS = frozenset({
     "role",
     "roles",
     "staff_role",
+    "staff",
+    "staff_roles",
+    "is_staff",
+    "key_unlock",
+    "key_unlocked",
+    "unlocked",
+    "unlock",
+    "development_provider_authorization",
+    "development_provider_authorized",
+    "development_authorization",
+    "provider_authorized",
+    "grok_cli_authorized",
+    "omitted_flag",
+    "omitted_flags",
+    "allow_remote",
+    "cloud_processing",
     "trusted_local",
     "trust",
 })
@@ -87,6 +177,11 @@ LIMITATIONS = (
     "development_grok_authorization_does_not_imply_egress",
     "message_receipt_does_not_imply_egress",
     "revocation_bumps_generation",
+    "cancellation_rechecked_before_late_result",
+    "key_unlock_does_not_create_consent",
+    "staff_role_does_not_create_consent",
+    "development_provider_authorization_does_not_create_consent",
+    "omitted_flags_do_not_create_consent",
     "no_model_dispatch",
     "no_websocket_or_sse",
 )
@@ -118,6 +213,25 @@ def _label(value: Any, code: str) -> str:
     if any(char in value for char in ("\x00", "\n", "\r", "/", "\\")):
         raise CaseConsentError(code)
     return value
+
+
+def _result_id(value: Any) -> str:
+    label = _label(value, "missing_result")
+    if len(label) > 64:
+        raise CaseConsentError("missing_result")
+    return label
+
+
+def _minimized_egress(purpose: str) -> dict[str, Any]:
+    spec = MINIMIZED_EGRESS[purpose]
+    return {
+        "provider": spec["provider"],
+        "model": spec["model"],
+        "data_class": spec["data_class"],
+        "leaves_the_machine": list(spec["leaves_the_machine"]),
+        "stays_on_the_machine": list(spec["stays_on_the_machine"]),
+        "requires_persisted_case_purpose_consent": True,
+    }
 
 
 def _generation(value: Any) -> int:
@@ -223,6 +337,7 @@ class CaseConsentService:
             if expected != current:
                 raise CaseConsentError("revision_conflict")
             generation = current + 1
+            cancelled = list(stored.get("cancelled_results") or [])
             decisions = {key: dict(value) for key, value in stored["decisions"].items()}
             decision = dict(decisions[purpose])
             decision["generation"] = generation
@@ -253,6 +368,7 @@ class CaseConsentService:
                 "generation": generation,
                 "decided_at": self._now(),
                 "decisions": decisions,
+                "cancelled_results": cancelled,
             }
             self._write(record, stored, admit=admit)
         return self._view(record, stored)
@@ -268,6 +384,61 @@ class CaseConsentService:
         material["mode"] = PRIVACY_PROCESSING_LOCAL
         material.pop("explicit_case_purpose", None)
         return self.choose(actor_principal_id, case_id, material, authorizer=authorizer, verify_session=verify_session)
+
+    def admit_late_result(self, actor_principal_id: str, case_id: str, body: Mapping[str, Any], *,
+                          authorizer: CaseActionAuthorizer | None = None, verify_session: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Recheck persisted consent before a late Grok result may be shown."""
+
+        material = self._body(body)
+        self._reject_implications(material)
+        purpose = _label(material.get("purpose"), "missing_purpose")
+        if purpose not in PURPOSE_DATA_CLASS:
+            raise CaseConsentError("missing_purpose")
+        if "consent_generation" not in material or "expected_generation" not in material or "result_id" not in material:
+            raise CaseConsentError("consent_not_implied")
+        result_id = _result_id(material.get("result_id"))
+        consent_generation = _generation(material.get("consent_generation"))
+        expected = _generation(material.get("expected_generation"))
+        with self._lock():
+            if verify_session is not None:
+                verify_session()
+            record = self._owned(actor_principal_id, case_id)
+            self._authorize(authorizer, actor_principal_id, record, "case.read", material, verify_session)
+            stored = self._load(record)
+            self._authorize(authorizer, actor_principal_id, record, "case.read", material, verify_session)
+            if expected != int(stored["generation"]):
+                raise CaseConsentError("revision_conflict")
+        return self._admission(record, stored, purpose, result_id, consent_generation)
+
+    def cancel_late_result(self, actor_principal_id: str, case_id: str, body: Mapping[str, Any], *,
+                           authorizer: CaseActionAuthorizer | None = None, verify_session: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Remember a cancelled result so a late copy cannot be admitted later."""
+
+        material = self._body(body)
+        self._reject_implications(material)
+        purpose = _label(material.get("purpose"), "missing_purpose")
+        if purpose not in PURPOSE_DATA_CLASS:
+            raise CaseConsentError("missing_purpose")
+        if "result_id" not in material or "expected_generation" not in material:
+            raise CaseConsentError("consent_not_implied")
+        result_id = _result_id(material.get("result_id"))
+        expected = _generation(material.get("expected_generation"))
+        with self._lock():
+            if verify_session is not None:
+                verify_session()
+            record = self._owned(actor_principal_id, case_id)
+            admit = lambda: self._authorize(authorizer, actor_principal_id, record, "case.read", material, verify_session)
+            admit()
+            stored = self._load(record)
+            if expected != int(stored["generation"]):
+                raise CaseConsentError("revision_conflict")
+            cancelled = list(stored.get("cancelled_results") or [])
+            if result_id not in cancelled:
+                cancelled.append(result_id)
+            stored["cancelled_results"] = cancelled[-32:]
+            self._write(record, stored, admit=admit)
+            stored = self._load(record)
+        return self._admission(record, stored, purpose, result_id, _generation(stored["decisions"][purpose].get("generation")))
 
     @staticmethod
     def _authorize(authorizer, actor, record, action, material, verify_session=None) -> None:
@@ -350,6 +521,7 @@ class CaseConsentService:
             "generation": 0,
             "decided_at": 0,
             "decisions": {purpose: _blank_decision(purpose) for purpose in PURPOSE_DATA_CLASS},
+            "cancelled_results": [],
         }
 
     def _load(self, record) -> dict[str, Any]:
@@ -399,6 +571,13 @@ class CaseConsentService:
                         or type(decision.get("explicit")) is not bool or type(decision.get("revoked")) is not bool
                         or _generation(decision.get("generation")) > document["generation"]):
                     raise CaseConsentError("consent_unavailable")
+        except CaseConsentError as exc:
+            raise CaseConsentError("consent_unavailable") from exc
+        cancelled = document.get("cancelled_results", [])
+        if not isinstance(cancelled, list) or len(cancelled) > 32:
+            raise CaseConsentError("consent_unavailable")
+        try:
+            document["cancelled_results"] = [_result_id(item) for item in cancelled]
         except CaseConsentError as exc:
             raise CaseConsentError("consent_unavailable") from exc
         return document
@@ -478,6 +657,7 @@ class CaseConsentService:
                 "generation": int(raw.get("generation") or 0),
                 "egress_authorized": _egress(raw),
                 "display": _display(raw),
+                "minimized_egress": _minimized_egress(purpose),
             }
             decisions.append(item)
             if item["egress_authorized"]:
@@ -498,8 +678,11 @@ class CaseConsentService:
             "generation": int(stored["generation"]),
             "processing_choices": list(MODES),
             "decisions": decisions,
+            "default_processing": PRIVACY_PROCESSING_LOCAL,
             "egress_authorized": any(item["egress_authorized"] for item in decisions),
+            "minimized_egress": {purpose: _minimized_egress(purpose) for purpose in PURPOSE_DATA_CLASS},
             "implications": {name: False for name in IMPLICATIONS},
+            "does_not_create_consent": {name: False for name in DOES_NOT_CREATE_CONSENT},
             "operation_consent": {
                 "contract": OPERATION_CONSENT_CONTRACT,
                 "version": OPERATION_CONSENT_VERSION,
@@ -510,6 +693,33 @@ class CaseConsentService:
                 "grants": grants,
             },
             "limitations": list(LIMITATIONS),
+        }
+
+    def _admission(self, record, stored: Mapping[str, Any], purpose: str, result_id: str, consent_generation: int) -> dict[str, Any]:
+        raw = dict(stored["decisions"][purpose])
+        cancelled = result_id in list(stored.get("cancelled_results") or [])
+        if cancelled:
+            code = "consent_cancelled"
+        elif raw.get("revoked") is True or not _egress(raw):
+            code = "consent_revoked" if raw.get("revoked") is True else "local_private"
+        elif int(raw.get("generation") or 0) != consent_generation:
+            code = "consent_generation_mismatch"
+        else:
+            code = "current_consent"
+        admitted = code == "current_consent"
+        return {
+            "task_id": "CIMP-UX-12",
+            "case_id": record.case_id,
+            "purpose": purpose,
+            "result_id": result_id,
+            "admitted": admitted,
+            "display_allowed": admitted,
+            "code": code,
+            "generation": int(stored["generation"]),
+            "consent_generation": int(raw.get("generation") or 0),
+            "default_processing": PRIVACY_PROCESSING_LOCAL,
+            "minimized_egress": _minimized_egress(purpose),
+            "does_not_create_consent": {name: False for name in DOES_NOT_CREATE_CONSENT},
         }
 
 
@@ -580,6 +790,22 @@ def mount_case_consent(app: Any) -> None:
     async def consent_revoke(case_id: str, request: Request):
         try:
             return JSONResponse(_service(request).revoke(_actor(request), case_id, _material(request), authorizer=_authorizer(request),
+                verify_session=_session_verifier(request)))
+        except CaseConsentError as exc:
+            return _fail(exc)
+
+    @app.post("/api/cases/{case_id}/processing-consent/late-result")
+    async def consent_late_result(case_id: str, request: Request):
+        try:
+            return JSONResponse(_service(request).admit_late_result(_actor(request), case_id, _material(request), authorizer=_authorizer(request),
+                verify_session=_session_verifier(request)))
+        except CaseConsentError as exc:
+            return _fail(exc)
+
+    @app.post("/api/cases/{case_id}/processing-consent/late-result/cancel")
+    async def consent_cancel_late_result(case_id: str, request: Request):
+        try:
+            return JSONResponse(_service(request).cancel_late_result(_actor(request), case_id, _material(request), authorizer=_authorizer(request),
                 verify_session=_session_verifier(request)))
         except CaseConsentError as exc:
             return _fail(exc)
