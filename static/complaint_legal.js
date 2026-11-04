@@ -137,7 +137,10 @@
     function install(bound) {
         client = bound || window.workspaceClient;
         var search = document.getElementById('legal-source-flow-search');
-        if (!search || search.dataset.bound === 'true') return;
+        if (!search || search.dataset.bound === 'true') {
+            ensureFormalPanel();
+            return;
+        }
         search.dataset.bound = 'true';
         search.addEventListener('click', function () {
             reviewedPassageId = '';
@@ -158,6 +161,155 @@
             });
         });
         bindProvenance();
+        ensureFormalPanel();
+    }
+
+    function formalRoot() {
+        return document.getElementById('legal-formal-panel');
+    }
+
+    function ensureFormalPanel() {
+        if (formalRoot()) return formalRoot();
+        var host = provenanceRoot() || document.body;
+        if (!host) return null;
+        var section = document.createElement('section');
+        section.id = 'legal-formal-panel';
+        section.dataset.task = 'CIMP-UX-29';
+        section.dataset.state = 'empty';
+        section.dataset.executedProof = 'false';
+        section.innerHTML = ''
+            + '<h3 id="legal-formal-title">Formal check</h3>'
+            + '<p id="legal-formal-notice">A formal result is shown only with its source, definition, premise, and execution binding. An unavailable, unexecuted, or refused check stays unexplained only when the producer did not say why.</p>'
+            + '<label for="legal-formal-source">Source text<textarea id="legal-formal-source"></textarea></label>'
+            + '<label for="legal-formal-source-version">Source version<input id="legal-formal-source-version" type="text" autocomplete="off"></label>'
+            + '<label for="legal-formal-definition">Definition identity<input id="legal-formal-definition" type="text" autocomplete="off"></label>'
+            + '<label for="legal-formal-requirement">Requirement<input id="legal-formal-requirement" type="text" autocomplete="off"></label>'
+            + '<label for="legal-formal-premise">Premise<textarea id="legal-formal-premise"></textarea></label>'
+            + '<button type="button" id="legal-formal-run">Run formal check</button>'
+            + '<p id="legal-formal-explanation" role="status" data-state="empty">No formal check has run.</p>'
+            + '<dl id="legal-formal-bindings"></dl>'
+            + '<ul id="legal-formal-premises"></ul>'
+            + '<p id="legal-formal-proof" data-executed-proof="false" data-producer="route_bound_legal_ir_proof">Not verified.</p>'
+            + '<p id="legal-formal-caller" data-executed-proof="false" data-rejected="true">Parsed IR, solver availability, training metrics, and a caller status packet are not a proof.</p>';
+        host.appendChild(section);
+        var button = document.getElementById('legal-formal-run');
+        if (button && button.dataset.bound !== 'true') {
+            button.dataset.bound = 'true';
+            button.addEventListener('click', function () { runFormalCheck(); });
+        }
+        return section;
+    }
+
+    function paintFormal(payload) {
+        var panel = ensureFormalPanel();
+        if (!panel) return;
+        var body = payload && typeof payload === 'object' ? payload : {};
+        var bindings = body.bindings && typeof body.bindings === 'object' ? body.bindings : {};
+        var executed = body.executed_proof === true;
+        var state = text(body.status || body.execution || 'unavailable');
+        panel.dataset.state = state;
+        panel.dataset.executedProof = executed ? 'true' : 'false';
+        panel.dataset.callerRejected = body.caller_claim_rejected === false ? 'false' : 'true';
+        panel.dataset.sourceVersion = text(bindings.source_version);
+        panel.dataset.definitionIdentity = text(bindings.definition_identity);
+        panel.dataset.requirementId = text(bindings.requirement_id);
+        panel.dataset.sourceHash = text(bindings.source_hash);
+        panel.dataset.execution = text(bindings.execution || body.execution || 'unexecuted');
+        var explanation = document.getElementById('legal-formal-explanation');
+        if (explanation) {
+            explanation.textContent = text(body.explanation || 'The formal check did not return an explanation.');
+            explanation.dataset.state = state;
+        }
+        var list = document.getElementById('legal-formal-bindings');
+        if (list) {
+            list.replaceChildren();
+            [['source', bindings.source_version], ['definition', bindings.definition_identity], ['requirement', bindings.requirement_id], ['source hash', bindings.source_hash], ['execution', bindings.execution || body.execution]].forEach(function (pair) {
+                var row = document.createElement('div');
+                row.dataset.role = 'formal-binding';
+                row.dataset.binding = pair[0];
+                var term = document.createElement('dt');
+                term.textContent = pair[0];
+                var value = document.createElement('dd');
+                value.textContent = text(pair[1]) || 'unbound';
+                row.appendChild(term);
+                row.appendChild(value);
+                list.appendChild(row);
+            });
+        }
+        var premises = document.getElementById('legal-formal-premises');
+        if (premises) {
+            premises.replaceChildren();
+            (Array.isArray(body.premises) ? body.premises : []).forEach(function (item) {
+                var row = document.createElement('li');
+                row.dataset.role = 'formal-premise';
+                row.dataset.premiseId = text(item && item.premise_id);
+                row.dataset.textSha256 = text(item && item.text_sha256);
+                row.dataset.executedProof = 'false';
+                row.textContent = text(item && item.premise_id) + ' ' + text(item && item.text_sha256);
+                premises.appendChild(row);
+            });
+        }
+        var proof = document.getElementById('legal-formal-proof');
+        if (proof) {
+            proof.dataset.executedProof = executed ? 'true' : 'false';
+            proof.dataset.producerInvoked = body.producer_invoked === true ? 'true' : 'false';
+            proof.textContent = executed
+                ? 'Verified by the bound producer for this source and definition.'
+                : 'Not verified. ' + state + ' is not an executed proof.';
+        }
+        var caller = document.getElementById('legal-formal-caller');
+        if (caller) {
+            caller.dataset.executedProof = 'false';
+            caller.dataset.rejected = 'true';
+            caller.textContent = 'Parsed IR, solver availability, training metrics, and a caller status packet are not a proof.';
+        }
+    }
+
+    async function runFormalCheck() {
+        ensureFormalPanel();
+        var id = activeCaseId();
+        if (!client || !id) {
+            paintFormal({status: 'refused', execution: 'unexecuted', executed_proof: false, explanation: 'Select a case before running a formal check. No producer ran.', bindings: {}, premises: [], caller_claim_rejected: true});
+            return;
+        }
+        var premise = text((document.getElementById('legal-formal-premise') || {}).value).trim();
+        var source = text((document.getElementById('legal-formal-source') || {}).value).trim();
+        var body = {
+            source_text: source,
+            source_version: text((document.getElementById('legal-formal-source-version') || {}).value).trim(),
+            current_source_version: text((document.getElementById('legal-formal-source-version') || {}).value).trim(),
+            definition_identity: text((document.getElementById('legal-formal-definition') || {}).value).trim(),
+            current_definition_identity: text((document.getElementById('legal-formal-definition') || {}).value).trim(),
+            requirement_id: text((document.getElementById('legal-formal-requirement') || {}).value).trim(),
+            premises: premise ? [{premise_id: 'premise-panel', text: premise, revision: 'rev-1'}] : [],
+            current_premises: premise ? [{premise_id: 'premise-panel', revision: 'rev-1'}] : [],
+            parsed_formula: {formula: 'forall x. Employer(x) -> Obligation(x)', status: 'proved', legal_sufficiency: true},
+            training_metric: {accuracy: 1, status: 'proved'},
+            fake_producer: {outcome: 'proved', executed_proof: true, substantive_trust_satisfied: true},
+            executed_proof: true,
+            proof: true,
+            proof_status: 'verified'
+        };
+        try {
+            var payload = await client._request('/api/legal-analysis/' + encodeURIComponent(id) + '/formal-checks', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+            paintFormal(payload);
+        } catch (error) {
+            var code = text(error && (error.code || error.message));
+            paintFormal({
+                status: code.indexOf('unlock') >= 0 ? 'locked' : 'unavailable',
+                execution: 'unexecuted',
+                executed_proof: false,
+                caller_claim_rejected: true,
+                explanation: code.indexOf('unlock') >= 0
+                    ? 'The case key is locked, so the formal check was not run.'
+                    : 'The formal check could not be read (' + (code || 'unavailable') + '). Nothing was verified.',
+                bindings: {},
+                premises: []
+            });
+        }
     }
 
     var provenance = {requirements: [], links: [], facts: [], evidence: [], suggestions: [], contradictions: [], selected: '', submittedFacts: [], binding: null};
@@ -852,6 +1004,7 @@
         if (!refresh || refresh.dataset.bound === 'true') return;
         refresh.dataset.bound = 'true';
         refresh.addEventListener('click', function () { loadProvenance(); });
+        ensureFormalPanel();
         document.getElementById('legal-provenance-derive').addEventListener('click', function () { deriveProvenance(); });
         ensureRetirement();
         ['legal-provenance-step-requirement', 'legal-provenance-step-passage', 'legal-provenance-step-assertion', 'legal-provenance-step-evidence'].forEach(function (id) {
@@ -867,5 +1020,5 @@
         });
     }
 
-    window.complaintLegal = {install: install, renderQuestions: renderQuestions, loadProvenance: loadProvenance};
+    window.complaintLegal = {install: install, renderQuestions: renderQuestions, loadProvenance: loadProvenance, paintFormal: paintFormal, runFormalCheck: runFormalCheck};
 }());

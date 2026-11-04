@@ -29,6 +29,8 @@ DEPENDENCY_REQUIREMENT_TASK_ID = "CIMP-UX-26"
 DEPENDENCY_REQUIREMENT_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/dependency-requirements"
 REVIEW_WORKSPACE_TASK_ID = "CIMP-UX-40"
 REVIEW_WORKSPACE_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/lawyer-review-workspace"
+FORMAL_CHECK_TASK_ID = "CIMP-UX-29"
+FORMAL_CHECK_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/formal-checks"
 _REVIEW_SCOPE_LABELS = (
     ("case.read", "Read"),
     ("case.review", "Review"),
@@ -1254,6 +1256,124 @@ def compose_recipient_review_workspace(service: Any, actor: str, case_id: str, a
     return payload
 
 
+def _formal_explanation(result: Mapping[str, Any], *, caller_claimed: bool) -> str:
+    status = str(result.get("status") or "unexecuted")
+    code = str(result.get("code") or "")
+    execution = str(result.get("execution") or "unexecuted")
+    route = result.get("route") if isinstance(result.get("route"), Mapping) else {}
+    outcome = str(route.get("outcome") or execution)
+    if status == "refused" and code == "missing_source_text":
+        text = "The formal check was refused because no source text is bound. Nothing was executed or verified."
+    elif status == "refused" and code == "missing_binding":
+        text = "The formal check was refused because the source version or definition identity is missing. The producer did not run."
+    elif status == "refused":
+        text = "The formal check was refused (" + code + "). A refused check is not a proof."
+    elif status == "unavailable" or code == "missing_producer":
+        text = "The canonical producer is unavailable, so this check is unexecuted. Parsed IR, solver availability, and a caller status packet are not a proof."
+    elif status == "unexecuted" and code == "stale_binding":
+        text = "The definition or source binding does not match the current identity, so the producer stayed unexecuted."
+    elif status == "unexecuted" and code == "premise_drift":
+        text = "A premise revision does not match the current premise, so the check stayed unexecuted."
+    elif status == "unexecuted" and code == "source_drift":
+        text = "The source hash does not match the bound text, so the check stayed unexecuted."
+    elif status == "unexecuted":
+        text = "The formal check stayed unexecuted (" + (code or outcome) + "). Unexecuted work is not verified."
+    elif result.get("executed_proof") is True and route.get("outcome") == "proved":
+        text = "The bound producer returned a proved result for this source, definition, and premise binding."
+    else:
+        text = "The bound producer ran and returned " + outcome + ". That result is not an executed proof."
+    if caller_claimed or (isinstance(result.get("nonproof"), Mapping) and (result.get("nonproof") or {}).get("fake_producer", {}).get("rejected") is True):
+        text += " Parsed IR, solver availability, training metrics, and the caller status packet were not accepted as proof."
+    return text
+
+
+def run_case_formal_check(body: Mapping[str, Any]) -> Dict[str, Any]:
+    """Project one live formal-check result for the legal panel.
+
+    The call does not write the encrypted case. Caller proof flags are recorded
+    as a rejected claim. Executed proof is copied only from the bound producer.
+    """
+
+    from mediator.hook_runtime import dispatch_formal_neurosymbolic_analysis
+
+    if not isinstance(body, Mapping) or isinstance(body, (str, bytes)):
+        raise LegalAnalysisError("legal_analysis_field")
+    caller_claimed = (
+        body.get("executed_proof") is True
+        or body.get("proof") is True
+        or body.get("proof_status") in {"executed", "verified", "proved"}
+        or (isinstance(body.get("fake_producer"), Mapping) and body.get("fake_producer", {}).get("outcome") == "proved")
+    )
+    result = dispatch_formal_neurosymbolic_analysis(body)
+    if not isinstance(result, Mapping):
+        result = {"status": "unavailable", "code": "missing_producer", "execution": "unexecuted", "executed_proof": False, "producer_invoked": False}
+    route = result.get("route") if isinstance(result.get("route"), Mapping) else {}
+    producer_proved = (
+        result.get("status") == "grounded"
+        and result.get("producer_invoked") is True
+        and result.get("executed_proof") is True
+        and route.get("producer") == "route_bound_legal_ir_proof"
+        and route.get("producer_invoked") is True
+        and route.get("outcome") == "proved"
+        and route.get("executed_proof") is True
+        and route.get("substantive_trust_satisfied") is True
+    )
+    premises_in = body.get("premises") if isinstance(body.get("premises"), list) else []
+    premises = []
+    for item in premises_in:
+        if not isinstance(item, Mapping):
+            continue
+        premise_text = item.get("text") if isinstance(item.get("text"), str) else ""
+        premises.append({
+            "premise_id": str(item.get("premise_id") or item.get("id") or ""),
+            "revision": str(item.get("revision") or ""),
+            "text_sha256": hashlib.sha256(premise_text.encode("utf-8")).hexdigest(),
+            "executed_proof": False,
+        })
+    nonproof = result.get("nonproof") if isinstance(result.get("nonproof"), Mapping) else {}
+    return {
+        "task_id": FORMAL_CHECK_TASK_ID,
+        "status": result.get("status") or "unexecuted",
+        "code": result.get("code") or "",
+        "execution": result.get("execution") or "unexecuted",
+        "workflow": "ground_formal_neurosymbolic_analysis",
+        "executed_proof": producer_proved,
+        "legal_sufficiency": False,
+        "proof": False,
+        "producer_invoked": result.get("producer_invoked") is True,
+        "caller_claimed_proof": caller_claimed,
+        "caller_claim_rejected": True,
+        "explanation": _formal_explanation(result, caller_claimed=caller_claimed),
+        "bindings": {
+            "source_version": str(result.get("source_version") or body.get("source_version") or ""),
+            "definition_identity": str(result.get("definition_identity") or body.get("definition_identity") or ""),
+            "requirement_id": str(result.get("requirement_id") or ""),
+            "source_hash": str(result.get("source_hash") or ""),
+            "execution": str(result.get("execution") or "unexecuted"),
+        },
+        "premises": premises,
+        "route": {
+            "outcome": route.get("outcome") or result.get("execution") or "unexecuted",
+            "reason": route.get("reason") or result.get("code") or "",
+            "producer": route.get("producer") or "",
+            "producer_invoked": route.get("producer_invoked") is True,
+            "executed_proof": route.get("executed_proof") is True and producer_proved,
+        },
+        "canonical_status": (result.get("canonical") or {}).get("status") if isinstance(result.get("canonical"), Mapping) else "unexecuted",
+        "fol_executed_proof": False,
+        "parsed_ir_is_proof": False,
+        "solver_availability_is_proof": False,
+        "training_metric_is_proof": False,
+        "caller_status_is_proof": False,
+        "nonproof_rejected": {
+            "parsed_formula": (nonproof.get("parsed_formula") or {}).get("executed_proof") is not True if isinstance(nonproof.get("parsed_formula"), Mapping) else True,
+            "training_metric": True,
+            "fake_producer": (nonproof.get("fake_producer") or {}).get("rejected") is True if isinstance(nonproof.get("fake_producer"), Mapping) else caller_claimed,
+        },
+        "case_head_mutated": False,
+    }
+
+
 def mount_legal_analysis_routes(app: Any) -> None:
     """Serve only the current encrypted owner, under the issued case capability."""
     from fastapi.responses import JSONResponse
@@ -1439,6 +1559,43 @@ def mount_legal_analysis_routes(app: Any) -> None:
     @app.post(DEPENDENCY_REQUIREMENT_ROUTE)
     async def derive_dependency_requirements(case_id: str, request: Request):
         return await dependency_apply(request, case_id, write=True)
+
+    def formal_fail(code):
+        return JSONResponse({
+            "task_id": FORMAL_CHECK_TASK_ID,
+            "error": code,
+            "status": "unavailable" if code in {"legal_analysis_unavailable", "unlock_needed"} else "refused",
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "proof": False,
+            "legal_sufficiency": False,
+            "caller_claim_rejected": True,
+            "explanation": "The formal check did not run. " + code.replace("_", " ") + " is not a proof.",
+            "bindings": {"source_version": "", "definition_identity": "", "requirement_id": "", "source_hash": "", "execution": "unexecuted"},
+            "premises": [],
+            "case_head_mutated": False,
+        }, status_code=legal_analysis_http_status(code))
+
+    def formal_execute(body):
+        return run_case_formal_check(body)
+
+    @app.post(FORMAL_CHECK_ROUTE)
+    async def run_formal_check(case_id: str, request: Request):
+        try:
+            _workspace, _authority, _actor = authorized(request, case_id)
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise LegalAnalysisError("legal_analysis_field")
+            payload = await run_in_threadpool(formal_execute, body)
+        except (WorkspaceAuthorizationDenied, WorkspaceCaseAuthorityError):
+            return formal_fail("legal_analysis_ungranted")
+        except WorkspacePersistenceError as exc:
+            return formal_fail("unlock_needed" if exc.code == "unlock_needed" else "legal_analysis_unavailable")
+        except LegalAnalysisError as exc:
+            return formal_fail(exc.code)
+        except (ValueError, UnicodeDecodeError, TypeError):
+            return formal_fail("legal_analysis_field")
+        return JSONResponse(payload)
 
     @app.post(PROOF_TRACE_ROUTE)
     async def record_proof_traces(case_id: str, request: Request):

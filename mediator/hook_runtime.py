@@ -4020,6 +4020,16 @@ def qualify_claim_support_and_legal_authority(payload: Mapping[str, Any]) -> dic
     }
 
 
+def dispatch_formal_neurosymbolic_analysis(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Public workflow entry for a bound formal check.
+
+    Callers reach the live producer only through this name. A status packet
+    on the payload is input, not the result.
+    """
+
+    return ground_formal_neurosymbolic_analysis(payload)
+
+
 def ground_formal_neurosymbolic_analysis(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Public workflow for formal IR and neurosymbolic analysis.
 
