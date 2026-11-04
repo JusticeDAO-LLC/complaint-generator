@@ -812,7 +812,7 @@ Implementation instructions:
 
 ## CIMP-UX-27 Create a navigable legal-requirement and provenance view
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
