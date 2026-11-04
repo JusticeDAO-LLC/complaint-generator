@@ -64,6 +64,21 @@ ARTIFACT_KIND = "case-ui-revision"
 _MAX_GAPS = 32
 _MAX_GAP_LENGTH = 200
 _MAX_DRAFT = 4000
+_QUEUE_PAGE_MAX = 10
+_QUEUE_STATES = ("authorized", "pending", "locked", "revoked")
+_QUEUE_SORTS = ("priority", "label", "state", "expires")
+_SCOPE_LABELS = {
+    "case.read": "Read",
+    "case.review": "Review",
+    "case.download": "Download",
+    "case.message.send": "Message",
+}
+_STATE_LABELS = {
+    "authorized": "Authorized",
+    "pending": "Pending acceptance",
+    "locked": "Locked",
+    "revoked": "Revoked",
+}
 
 
 @dataclass(frozen=True)
@@ -102,6 +117,7 @@ class CaseCatalog:
         self._key = bytes(key)
         self._key_id = key_id
         self._ui: dict[str, _TransientUI] = {}
+        self._queue_work: dict[str, dict[str, Any]] = {}
 
     def create(self, actor_principal_id: str, body: Mapping[str, Any] | None = None) -> dict[str, Any]:
         payload = self._body(body)
@@ -189,6 +205,159 @@ class CaseCatalog:
             self._write_sealed(record, content_revision=sealed.content_revision + 1,
                                gaps=gaps, label=sealed.label, directory=directory)
         return self._owner_view(decision, record, switched=False)
+
+    def record_queue_work(self, actor_principal_id: str, case_id: str, body: Mapping[str, Any] | None) -> dict[str, Any]:
+        """Owner-published queue labels. Ciphertext and grant ids stay out of this record."""
+
+        actor = self._actor(actor_principal_id)
+        payload = self._body(body)
+        record = self._owned(actor, case_id)
+        if record is None:
+            raise CaseAccessError("missing_case")
+        decision = self._authorize_owned(actor, record, action="case.update")
+        if decision.membership != "owner":
+            raise CaseAccessError("key_grant_required")
+        tasks = self._queue_labels(payload.get("review_tasks"), "review_tasks")
+        actions = self._queue_labels(payload.get("owner_actions"), "owner_actions")
+        label = payload.get("label", "")
+        if not isinstance(label, str) or len(label) > _MAX_GAP_LENGTH or label != label.strip():
+            raise CaseAccessError("label")
+        self._queue_work[record.case_id] = {
+            "label": label,
+            "review_tasks": tasks,
+            "owner_actions": actions,
+        }
+        return {
+            "actor_principal_id": actor,
+            "case_id": record.case_id,
+            "label": label,
+            "review_task_count": len(tasks),
+            "owner_action_count": len(actions),
+            "published_to_unassigned_lawyers": False,
+        }
+
+    def lawyer_review_queue(self, actor_principal_id: str, query: Mapping[str, Any] | None, *, assignments: Any) -> dict[str, Any]:
+        """Assigned-lawyer queue. A lawyer role does not list every complaint."""
+
+        actor = self._actor(actor_principal_id)
+        if assignments is None or not hasattr(assignments, "list_assignments"):
+            raise CaseAccessError("lawyer_queue_unavailable")
+        filters = _queue_query(query)
+        try:
+            listed = assignments.list_assignments(actor)
+        except Exception as exc:
+            code = getattr(exc, "code", "")
+            if code in {"unauthenticated", "missing_principal", "inactive_principal"}:
+                raise CaseAccessError("unauthenticated") from exc
+            raise CaseAccessError("lawyer_queue_unavailable") from exc
+        sessions = getattr(assignments, "_sessions", {})
+        session = sessions.get(actor) if isinstance(sessions, Mapping) else None
+        unlocked = getattr(session, "unlocked", False) is True
+        rows = []
+        for view in listed.get("assignments") or []:
+            if not isinstance(view, dict) or view.get("party") != "recipient":
+                continue
+            if view.get("member_principal_id") not in (None, actor) and view.get("member_principal_id") != actor:
+                continue
+            item = self._queue_item(actor, view, unlocked=unlocked)
+            if filters["state"] not in ("", "all") and item["state"] != filters["state"]:
+                continue
+            if filters["q"] and filters["q"] not in item["display_label"].casefold():
+                continue
+            rows.append(item)
+        reverse = filters["direction"] == "desc"
+        rows.sort(key=lambda item: (_queue_sort_value(item, filters["sort"]), item["case_id"]), reverse=reverse)
+        total = len(rows)
+        page_count = max(1, (total + filters["page_size"] - 1) // filters["page_size"]) if total else 1
+        if filters["page"] > page_count:
+            raise CaseAccessError("queue_page")
+        start = (filters["page"] - 1) * filters["page_size"]
+        page_rows = rows[start:start + filters["page_size"]]
+        return {
+            "actor_principal_id": actor,
+            "role_alone_grants_cases": False,
+            "unassigned_complaints_included": False,
+            "filters": {"state": filters["state"] or "all", "q": filters["q"]},
+            "sort": {
+                "field": filters["sort"],
+                "direction": filters["direction"],
+                "labels": {
+                    "priority": "Priority",
+                    "label": "Label",
+                    "state": "Status",
+                    "expires": "Expiry",
+                },
+            },
+            "page": {
+                "number": filters["page"],
+                "page_size": filters["page_size"],
+                "total": total,
+                "page_count": page_count if total else 0,
+            },
+            "items": page_rows,
+            "empty": total == 0,
+            "empty_label": "No assigned cases match this queue.",
+            "states": [{"value": name, "label": _STATE_LABELS[name]} for name in _QUEUE_STATES],
+        }
+
+    def _queue_item(self, actor: str, view: Mapping[str, Any], *, unlocked: bool) -> dict[str, Any]:
+        shown = str(view.get("state") or "")
+        scope = [name for name in view.get("scope") or [] if isinstance(name, str)]
+        scope_label = ", ".join(_SCOPE_LABELS[name] for name in scope if name in _SCOPE_LABELS) or "Assigned review"
+        case_id = str(view.get("case_id") or "")
+        if shown in {"removed", "declined", "expired"} or view.get("revoked") is True:
+            state = "revoked"
+            state_label = {"removed": "Revoked", "declined": "Declined", "expired": "Expired"}.get(shown, "Revoked")
+        elif shown == "pending":
+            state = "pending"
+            state_label = "Pending acceptance"
+        elif shown == "accepted" and view.get("change_pending") is True:
+            state = "locked"
+            state_label = "Locked while an owner change is pending"
+        elif shown == "accepted" and view.get("key_grant") == "admitted" and unlocked and view.get("effective", True) is not False:
+            state = "authorized"
+            state_label = "Authorized"
+        elif shown == "accepted":
+            state = "locked"
+            state_label = "Locked until a key grant is admitted" if view.get("key_grant") != "admitted" else "Locked while the recipient key is unavailable"
+        else:
+            state = "locked"
+            state_label = "Locked"
+        work = self._queue_work.get(case_id) if state == "authorized" else None
+        review_tasks = [{"label": label, "status_label": "Open"} for label in (work or {}).get("review_tasks") or []]
+        owner_actions = [{"label": label, "status_label": "Waiting on owner"} for label in (work or {}).get("owner_actions") or []]
+        private_label = (work or {}).get("label") or ""
+        if state == "authorized" and private_label:
+            display_label = private_label + " — " + scope_label
+        else:
+            display_label = state_label + " — " + scope_label
+        if review_tasks or owner_actions:
+            priority = 300 + len(owner_actions) + len(review_tasks)
+            priority_label = "High"
+        elif state == "pending":
+            priority = 150
+            priority_label = "Normal"
+        elif state == "locked":
+            priority = 50
+            priority_label = "Low"
+        else:
+            priority = 10
+            priority_label = "Low"
+        expires_at = view.get("expires_at") if type(view.get("expires_at")) is int else 0
+        return {
+            "display_label": display_label,
+            "state": state,
+            "state_label": state_label,
+            "scope_label": scope_label,
+            "priority": priority,
+            "priority_label": priority_label,
+            "review_tasks": review_tasks,
+            "pending_owner_actions": owner_actions,
+            "case_id": case_id,
+            "expires_at": expires_at,
+            "control": {"label": display_label, "action": "open-queue-item"},
+            "actor_principal_id": actor,
+        }
 
     def session(self, actor_principal_id: str) -> dict[str, Any]:
         actor = self._actor(actor_principal_id)
@@ -504,6 +673,70 @@ class CaseCatalog:
             gaps.append(item)
         return tuple(gaps)
 
+    def _queue_labels(self, value: Any, code: str) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if not isinstance(value, list) or len(value) > 8:
+            raise CaseAccessError(code)
+        labels = []
+        for item in value:
+            if not isinstance(item, str) or item.strip() == "" or item != item.strip() or len(item) > _MAX_GAP_LENGTH:
+                raise CaseAccessError(code)
+            if item in labels:
+                raise CaseAccessError(code)
+            labels.append(item)
+        return tuple(labels)
+
+
+def _queue_query(query: Mapping[str, Any] | None) -> dict[str, Any]:
+    source = query if isinstance(query, Mapping) else {}
+    state = source.get("state", "")
+    if state is None:
+        state = ""
+    if not isinstance(state, str) or state not in {"", "all", *_QUEUE_STATES}:
+        raise CaseAccessError("queue_filter")
+    sort = source.get("sort", "priority")
+    if not isinstance(sort, str) or sort not in _QUEUE_SORTS:
+        raise CaseAccessError("queue_filter")
+    direction = source.get("direction", "desc" if sort == "priority" else "asc")
+    if not isinstance(direction, str) or direction not in {"asc", "desc"}:
+        raise CaseAccessError("queue_filter")
+    page = _queue_int(source.get("page", "1"), minimum=1, maximum=1000)
+    page_size = _queue_int(source.get("page_size", "2"), minimum=1, maximum=_QUEUE_PAGE_MAX)
+    text = source.get("q", "")
+    if text is None:
+        text = ""
+    if not isinstance(text, str) or len(text) > _MAX_GAP_LENGTH:
+        raise CaseAccessError("queue_filter")
+    return {
+        "state": "" if state == "all" else state,
+        "sort": sort,
+        "direction": direction,
+        "page": page,
+        "page_size": page_size,
+        "q": text.casefold().strip(),
+    }
+
+
+def _queue_int(value: Any, *, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        raise CaseAccessError("queue_filter")
+    if isinstance(value, str) and value.isdigit():
+        value = int(value)
+    if type(value) is not int or value < minimum or value > maximum:
+        raise CaseAccessError("queue_filter")
+    return value
+
+
+def _queue_sort_value(item: Mapping[str, Any], field: str) -> Any:
+    if field == "priority":
+        return int(item["priority"])
+    if field == "expires":
+        return int(item["expires_at"])
+    if field == "state":
+        return _QUEUE_STATES.index(item["state"]) if item["state"] in _QUEUE_STATES else 99
+    return str(item["display_label"]).casefold()
+
 
 def cases_template_text() -> str:
     from pathlib import Path
@@ -523,8 +756,13 @@ def mount_case_catalog(app: Any) -> None:
             "revision_conflict": 409,
             "case_catalog_unavailable": 503,
             "case_revision_unavailable": 503,
+            "lawyer_queue_unavailable": 503,
             "unauthenticated": 401,
             "authorizer_required": 401,
+            "queue_filter": 422,
+            "queue_page": 422,
+            "review_tasks": 422,
+            "owner_actions": 422,
         }.get(exc.code, 403)
         return JSONResponse({"error": exc.code}, status_code=status)
 
@@ -555,6 +793,15 @@ def mount_case_catalog(app: Any) -> None:
     async def case_session(request: Request):
         try:
             return JSONResponse(_catalog(request).session(_actor(request)))
+        except CaseAccessError as exc:
+            return _fail(exc)
+
+    @app.get("/api/cases/lawyer-queue")
+    async def lawyer_review_queue(request: Request):
+        try:
+            assignments = getattr(request.app.state, "case_assignments", None)
+            return JSONResponse(_catalog(request).lawyer_review_queue(
+                _actor(request), request.query_params, assignments=assignments))
         except CaseAccessError as exc:
             return _fail(exc)
 
@@ -593,6 +840,14 @@ def mount_case_catalog(app: Any) -> None:
             return JSONResponse(_catalog(request).set_transient(_actor(request), case_id, _material(request)))
         except CaseAccessError as exc:
             return _fail(exc)
+
+    @app.post("/api/cases/{case_id}/queue-work")
+    async def case_queue_work(case_id: str, request: Request):
+        try:
+            recorded = _catalog(request).record_queue_work(_actor(request), case_id, _material(request))
+        except CaseAccessError as exc:
+            return _fail(exc)
+        return JSONResponse(recorded)
 
     @app.post("/api/cases/{case_id}/gaps")
     async def case_gaps(case_id: str, request: Request):
