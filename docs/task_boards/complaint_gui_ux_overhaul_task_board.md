@@ -1277,7 +1277,7 @@ Implementation instructions:
 
 ## CIMP-UX-42 Create an operational user and case administration workspace
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
