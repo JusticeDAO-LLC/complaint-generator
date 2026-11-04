@@ -750,7 +750,7 @@ Implementation instructions:
 
 ## CIMP-UX-25 Design legal context and source acquisition/review flows
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
