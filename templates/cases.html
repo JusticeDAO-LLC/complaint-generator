@@ -38,6 +38,38 @@
         <span id="case-auth-status" role="status">Sign in required</span>
     </form>
     <p id="membership-notice" class="notice">Newly created cases are owner-only until you invite a lawyer. A lawyer role alone does not open a case. The recipient must accept the exact scope. Content stays closed until that membership is accepted and a key grant is admitted. Pending, declined, expired, and removed assignments stay visible to both parties. This screen does not send external messages.</p>
+    <section id="lawyer-review-queue" data-state="empty" aria-labelledby="lawyer-queue-title">
+        <h2 id="lawyer-queue-title">Review queue</h2>
+        <p id="lawyer-queue-notice" class="notice">This queue lists cases assigned to you. A lawyer role alone does not include every complaint. Status, sort, and pages come from the server. Grant identifiers are not the controls.</p>
+        <form id="lawyer-queue-filters">
+            <label for="lawyer-queue-state">Status</label>
+            <select id="lawyer-queue-state" name="state">
+                <option value="all">All assigned</option>
+                <option value="authorized">Authorized</option>
+                <option value="pending">Pending acceptance</option>
+                <option value="locked">Locked</option>
+                <option value="revoked">Revoked</option>
+            </select>
+            <label for="lawyer-queue-sort">Sort</label>
+            <select id="lawyer-queue-sort" name="sort">
+                <option value="priority">Priority</option>
+                <option value="label">Label</option>
+                <option value="state">Status</option>
+                <option value="expires">Expiry</option>
+            </select>
+            <label for="lawyer-queue-query">Find</label>
+            <input id="lawyer-queue-query" name="q" maxlength="200" autocomplete="off">
+            <button type="submit">Apply queue</button>
+        </form>
+        <p id="lawyer-queue-status" class="cg-state-loading" role="status" hidden></p>
+        <p id="lawyer-queue-empty" class="cg-state-empty" hidden>No assigned cases match this queue.</p>
+        <ol id="lawyer-queue-list"></ol>
+        <nav aria-label="Review queue pages">
+            <button id="lawyer-queue-prev" type="button">Previous page</button>
+            <span id="lawyer-queue-page">Page 0 of 0</span>
+            <button id="lawyer-queue-next" type="button">Next page</button>
+        </nav>
+    </section>
     <section id="assignments">
         <h2>Lawyer assignments</h2>
         <form id="invite-lawyer">
@@ -93,6 +125,7 @@
     <img id="case-external-asset" alt="" width="1" height="1">
 </main>
 <script src="/static/complaint_case_shell.js"></script>
+<script src="/static/complaint_reviewer.js"></script>
 <script>
 (function () {
     var selected = null;
@@ -272,6 +305,7 @@
         document.getElementById("assignment-list").replaceChildren();
         document.getElementById("notification-list").replaceChildren();
         document.getElementById("notification-badge").textContent = "0";
+        if (window.complaintReviewer) window.complaintReviewer.clear();
         document.getElementById("case-auth-status").textContent = "Sign in required";
         renderCases([]);
         if (window.complaintCaseShell) window.complaintCaseShell.clearPlaintext();
@@ -338,6 +372,7 @@
             await loadSession(ownGeneration);
             await loadAssignments(ownGeneration);
             await loadNotifications(ownGeneration);
+            if (window.complaintReviewer) await window.complaintReviewer.load({bare: true, generation: ownGeneration, current: function () { return generation; }});
             if (ownGeneration === generation) showError("");
             if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
         } catch (error) {
