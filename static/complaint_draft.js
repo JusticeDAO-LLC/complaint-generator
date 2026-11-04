@@ -192,7 +192,7 @@
         layout.appendChild(draftColumn);
         layout.appendChild(supportColumn);
         host.appendChild(layout);
-        mountEditor(host, arguments[2] || null);
+        mountEditor(host, arguments[2] || null, arguments[3] || null);
     }
 
     function ensureStyles() {
@@ -248,6 +248,199 @@
         });
         panel.appendChild(stored);
         host.appendChild(panel);
+        mountReviewActions(host, arguments[2] || null);
+    }
+
+    function actionCard(record, role) {
+        var card = node("article", {
+            "data-role": role,
+            "data-record-id": text(record.record_id),
+            "data-provenance": text(record.provenance),
+            "data-author": text(record.author),
+            "data-target-revision": text(record.target_revision),
+            "data-target-author": text(record.target_author),
+            "data-status": text(record.status)
+        });
+        card.appendChild(node("p", {
+            "data-role": "suggestion-provenance",
+            text: text(record.provenance) + " author " + text(record.author) + " on revision " + text(record.target_revision)
+        }));
+        if (record.proposed_text) {
+            card.appendChild(node("p", {"data-role": "proposed-text", text: text(record.proposed_text)}));
+        }
+        if (record.proof_status) {
+            card.appendChild(node("p", {"data-role": "proof-status", text: "Machine proof " + text(record.proof_status)}));
+        }
+        return card;
+    }
+
+    function mountReviewActions(host, actions) {
+        var panel = node("section", {
+            "class": "complaint-draft-suggestions",
+            "data-role": "draft-suggestions",
+            "aria-label": "AI suggestions and human review"
+        });
+        if (actions && actions.status !== "unavailable") {
+            host.dataset.currentRevision = text(actions.target_revision || 0);
+            host.dataset.targetDigest = text(actions.target_text_digest || "");
+            if (actions.draft_id) host.dataset.draftId = text(actions.draft_id);
+        }
+        if (!actions || actions.status === "unavailable") {
+            panel.appendChild(node("p", {
+                "data-role": "suggestions-unavailable",
+                text: "Review suggestions are unavailable. The owner's draft was not changed."
+            }));
+            host.appendChild(panel);
+            return;
+        }
+        panel.appendChild(node("h4", {text: "Suggestions and review"}));
+        panel.appendChild(node("p", {
+            "data-role": "target-version",
+            "data-target-revision": text(actions.target_revision || 0),
+            "data-target-author": text(actions.target_author),
+            "data-draft-id": text(actions.draft_id),
+            text: "Target revision " + text(actions.target_revision || 0) + " by " + (text(actions.target_author) || "no author yet")
+        }));
+        var human = node("div", {"data-role": "human-reviews"});
+        human.appendChild(node("h5", {text: "Human review"}));
+        var humanRows = actions.human_reviews || [];
+        if (!humanRows.length) human.appendChild(node("p", {"data-role": "human-empty", text: "No human review is recorded."}));
+        humanRows.forEach(function (record) { human.appendChild(actionCard(record, "human-review")); });
+        var proposal = node("textarea", {"data-role": "proposal-input", "aria-label": "Bounded human change"});
+        var propose = node("button", {"type": "button", "data-role": "propose-change", text: "Propose bounded change"});
+        propose.addEventListener("click", function () { proposeChange(host, proposal, "propose_bounded_change", "human"); });
+        human.appendChild(proposal);
+        human.appendChild(propose);
+        human.appendChild(node("p", {"data-role": "proposal-note", text: "A proposal does not change the owner's draft."}));
+        panel.appendChild(human);
+        var models = node("div", {"data-role": "model-suggestions"});
+        models.appendChild(node("h5", {text: "Model suggestion"}));
+        var modelRows = actions.model_suggestions || [];
+        if (!modelRows.length) models.appendChild(node("p", {"data-role": "model-empty", text: "No model suggestion is recorded."}));
+        modelRows.forEach(function (record) {
+            var card = actionCard(record, "model-suggestion");
+            if (host.dataset.actorMembership === "owner" && record.status === "proposed") {
+                var accept = node("button", {"type": "button", "data-role": "accept-suggestion", "data-record-id": text(record.record_id), text: "Accept suggestion"});
+                accept.addEventListener("click", function () { acceptSuggestion(host, record); });
+                card.appendChild(accept);
+            }
+            models.appendChild(card);
+        });
+        var modelText = node("textarea", {"data-role": "model-input", "aria-label": "Model suggestion text"});
+        var modelId = node("input", {"data-role": "model-id", "aria-label": "Model id"});
+        var recordModel = node("button", {"type": "button", "data-role": "record-model-suggestion", text: "Record model suggestion"});
+        recordModel.addEventListener("click", function () { proposeChange(host, modelText, "record_draft_model_suggestion", "model", modelId.value); });
+        models.appendChild(modelId);
+        models.appendChild(modelText);
+        models.appendChild(recordModel);
+        panel.appendChild(models);
+        var proofs = node("div", {"data-role": "machine-proofs"});
+        proofs.appendChild(node("h5", {text: "Machine proof"}));
+        var proofRows = actions.machine_proofs || [];
+        if (!proofRows.length) proofs.appendChild(node("p", {"data-role": "proof-empty", text: "No machine proof is recorded."}));
+        proofRows.forEach(function (record) { proofs.appendChild(actionCard(record, "machine-proof")); });
+        var recordProof = node("button", {"type": "button", "data-role": "record-machine-proof", text: "Record machine proof"});
+        recordProof.addEventListener("click", function () { proposeChange(host, null, "record_draft_machine_proof", "machine"); });
+        proofs.appendChild(recordProof);
+        panel.appendChild(proofs);
+        var messages = node("div", {"data-role": "review-messages"});
+        messages.appendChild(node("h5", {text: "Messages"}));
+        var messageRows = actions.messages || [];
+        if (!messageRows.length) messages.appendChild(node("p", {"data-role": "messages-empty", text: "Messages stay in correspondence, separate from suggestions."}));
+        messageRows.forEach(function (record) {
+            messages.appendChild(node("p", {
+                "data-role": "case-message",
+                "data-author": text(record.author || record.actor_principal_id),
+                text: text(record.body || record.text || "Message")
+            }));
+        });
+        panel.appendChild(messages);
+        humanRows.forEach(function (record) {
+            if (host.dataset.actorMembership !== "owner" || record.status !== "proposed") return;
+            var card = panel.querySelector("[data-role='human-review'][data-record-id='" + text(record.record_id) + "']");
+            if (!card) return;
+            var accept = node("button", {"type": "button", "data-role": "accept-suggestion", "data-record-id": text(record.record_id), text: "Accept suggestion"});
+            accept.addEventListener("click", function () { acceptSuggestion(host, record); });
+            card.appendChild(accept);
+        });
+        host.appendChild(panel);
+    }
+
+    function reviewPayload(host, operation, provenance, proposed, modelId) {
+        return {
+            operation: operation,
+            request_id: operation + "-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+            draft_id: host.dataset.draftId || "complaint-draft",
+            expected_revision: Number(host.dataset.currentRevision || host.dataset.headRevision || "0"),
+            expected_text_digest: host.dataset.targetDigest || "",
+            provenance: provenance,
+            proposed_text: proposed || "",
+            model_id: modelId || ""
+        };
+    }
+
+    async function refreshActions(host) {
+        var caseId = host.dataset.caseId || "";
+        var response = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/workflow-stage", {
+            credentials: "same-origin",
+            headers: jsonHeaders(host)
+        });
+        var payload = await response.json();
+        var existing = host.querySelector("[data-role='draft-suggestions']");
+        if (existing) existing.remove();
+        var actions = response.ok && payload.draft_review_actions ? payload.draft_review_actions : {status: "unavailable"};
+        mountReviewActions(host, actions);
+    }
+
+    async function proposeChange(host, field, operation, provenance, modelId) {
+        var storedBefore = (host.querySelector("[data-role='stored-draft']") || {}).textContent || "";
+        var caseId = host.dataset.caseId || "";
+        var response = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/draft-reviews", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: jsonHeaders(host),
+            body: JSON.stringify(reviewPayload(host, operation, provenance, field ? field.value : "", modelId))
+        });
+        var payload = await response.json();
+        var note = host.querySelector("[data-role='proposal-note']");
+        if (!response.ok) {
+            if (note) note.textContent = "The suggestion was not recorded. The owner's draft was not changed.";
+            return payload;
+        }
+        var stored = host.querySelector("[data-role='stored-draft']");
+        if (stored) stored.textContent = storedBefore;
+        if (note) note.textContent = "Recorded as " + provenance + ". The owner's draft was not changed.";
+        await refreshActions(host);
+        return payload;
+    }
+
+    async function acceptSuggestion(host, record) {
+        if (host.dataset.actorMembership !== "owner") return null;
+        var caseId = host.dataset.caseId || "";
+        var response = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/draft-versions", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: jsonHeaders(host),
+            body: JSON.stringify({
+                operation: "accept_draft_suggestion",
+                request_id: "accept-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+                proposal_id: record.record_id,
+                draft_id: record.draft_id || host.dataset.draftId,
+                expected_revision: Number(record.target_revision),
+                expected_text_digest: record.target_text_digest || "",
+                proposed_text: record.proposed_text
+            })
+        });
+        var payload = await response.json();
+        if (!response.ok || !payload.adopted_text) return payload;
+        var field = host.querySelector("[data-role='draft-input']");
+        var saveState = host.querySelector("[data-role='save-state']");
+        if (field && saveState) {
+            field.value = payload.adopted_text;
+            await saveDraft(host, field, saveState);
+        }
+        await refreshActions(host);
+        return payload;
     }
 
     function saveLabel(state) {
@@ -356,11 +549,21 @@
         }
         host.dataset.caseId = caseId;
         host.dataset.requestHeaders = JSON.stringify(headers);
+        if (supplied.membership) host.dataset.actorMembership = supplied.membership;
         var response = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/complaint-outline", {
             credentials: "same-origin",
             headers: headers
         });
         var payload = await response.json();
+        var stageResponse = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/workflow-stage", {
+            credentials: "same-origin",
+            headers: headers
+        });
+        var stagePayload = null;
+        try { stagePayload = await stageResponse.json(); } catch (error) { stagePayload = null; }
+        var actions = stageResponse.ok && stagePayload && stagePayload.draft_review_actions
+            ? stagePayload.draft_review_actions
+            : {status: "unavailable"};
         var editorResponse = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/draft-editor", {
             credentials: "same-origin",
             headers: headers
@@ -384,7 +587,7 @@
                 sections: [],
                 gaps: [{reason: text(payload.detail || payload.error || "outline_unavailable"), visible: true}],
                 facts: []
-            }, editorPayload);
+            }, editorPayload, actions);
             return payload;
         }
         if (editorResponse.ok && editorPayload && editorPayload.durable === true) {
@@ -395,7 +598,7 @@
             payload.draft.draft_id = editorPayload.draft_id || payload.draft.draft_id;
         }
         host.dataset.currentRevision = text(editorPayload && editorPayload.current_revision || 0);
-        render(host, payload, editorPayload);
+        render(host, payload, editorPayload, actions);
         return payload;
     }
 
