@@ -36,6 +36,7 @@ from integrations.ipfs_datasets.search import (
     UNIFIED_WEB_SCRAPER_AVAILABLE,
     BraveSearchAPI,
     CommonCrawlSearchEngine,
+    dispatch_bounded_web_adapter,
     evaluate_scraped_content,
     scrape_archived_domain,
     scrape_web_content,
@@ -245,6 +246,26 @@ class WebEvidenceSearchHook:
             self.brave_search = None
             self.mediator.log('web_evidence_warning',
                 message='Brave Search client not available')
+
+    def acquire_bounded(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Acquire one source through the bounded search adapter.
+
+        The result is custody for an acquisition. It is not a review, a
+        support link, or an adopted fact. The dispatched query is the public
+        query retained by the adapter.
+        """
+
+        result = dispatch_bounded_web_adapter(request if isinstance(request, dict) else {})
+        custody = result.get('custody') if isinstance(result.get('custody'), dict) else {}
+        self.mediator.log(
+            'web_evidence_bounded_acquisition',
+            status=result.get('status'),
+            code=result.get('code'),
+            adapter=result.get('adapter'),
+            custody_id=custody.get('custody_id', ''),
+            network_invoked=bool(result.get('network_invoked')),
+        )
+        return result
     
     def search_common_crawl(self, domain: str, keywords: Optional[List[str]] = None,
                            max_results: int = 10) -> List[Dict[str, Any]]:
@@ -1805,3 +1826,223 @@ Return only the keywords, one per line, focused on finding factual evidence."""
         """
         query = f'"{statute_name}" full text statute'
         return self._get_search_hook().search_brave(query, max_results=max_results)
+
+    def write_stage_record(self, directory: str, stage: str, body: Dict[str, Any]) -> str:
+        """Persist one acquisition, review, or support record under custody."""
+
+        root = Path(directory)
+        root.mkdir(parents=True, exist_ok=True)
+        custody_id = str(body.get('custody_id') or 'unbound')
+        path = root / f"{custody_id}.{stage}.json"
+        path.write_text(json.dumps(body, sort_keys=True), encoding='utf-8')
+        return str(path)
+
+    def review_acquired_source(self, acquisition: Dict[str, Any], *, reviewer_id: str) -> Dict[str, Any]:
+        """Record a human review of acquired custody without creating support."""
+
+        custody = acquisition.get('custody') if isinstance(acquisition.get('custody'), dict) else None
+        if acquisition.get('status') != 'qualified' or custody is None:
+            return {
+                'status': acquisition.get('status') or 'unavailable',
+                'code': acquisition.get('code') or 'not_acquired',
+                'stage': 'review',
+                'review_status': 'not_reviewed',
+                'support_status': 'not_support',
+                'fact_adopted': False,
+                'custody_id': '',
+            }
+        return {
+            'status': 'qualified',
+            'code': 'reviewed',
+            'custody_id': custody['custody_id'],
+            'source_url': custody['source_url'],
+            'content_sha256': custody['content_sha256'],
+            'byte_length': custody['byte_length'],
+            'adapter': custody['adapter'],
+            'query_dispatched': custody['query_dispatched'],
+            'reviewer_id': reviewer_id,
+            'stage': 'review',
+            'review_status': 'reviewed',
+            'support_status': 'not_support',
+            'fact_adopted': False,
+            'text': custody.get('text') or '',
+        }
+
+    def adopt_reviewed_source(self, review: Dict[str, Any], decision: Dict[str, Any]) -> Dict[str, Any]:
+        """Adopt a reviewed source only when the decision names that custody.
+
+        Adoption creates an explicit support candidate. It does not create a
+        factual assertion.
+        """
+
+        custody_id = str(review.get('custody_id') or '')
+        if review.get('review_status') != 'reviewed' or not custody_id:
+            return {
+                'status': 'refused',
+                'code': 'review_required',
+                'stage': 'adoption',
+                'support_status': 'not_support',
+                'fact_adopted': False,
+                'custody_id': custody_id,
+            }
+        intent = str(decision.get('intent') or '')
+        actor_id = str(decision.get('actor_id') or '')
+        if intent != 'adopt_source_not_fact' or not actor_id or str(decision.get('custody_id') or '') != custody_id:
+            return {
+                'status': 'refused',
+                'code': 'missing_explicit_adoption',
+                'stage': 'adoption',
+                'support_status': 'not_support',
+                'fact_adopted': False,
+                'custody_id': custody_id,
+            }
+        if decision.get('adopt_as_fact') is True:
+            return {
+                'status': 'refused',
+                'code': 'automatic_fact_adoption_refused',
+                'stage': 'adoption',
+                'support_status': 'not_support',
+                'fact_adopted': False,
+                'custody_id': custody_id,
+            }
+        return {
+            'status': 'qualified',
+            'code': 'explicit_support',
+            'stage': 'adoption',
+            'custody_id': custody_id,
+            'source_url': review.get('source_url'),
+            'content_sha256': review.get('content_sha256'),
+            'byte_length': review.get('byte_length'),
+            'adapter': review.get('adapter'),
+            'query_dispatched': review.get('query_dispatched'),
+            'actor_id': actor_id,
+            'review_status': 'reviewed',
+            'support_status': 'explicit_support',
+            'fact_adopted': False,
+            'facts': [],
+            'text': review.get('text') or '',
+        }
+
+
+def qualify_web_evidence_request(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Run bounded acquisition, then review, then optional explicit adoption.
+
+    Caller flags cannot adopt a fact or turn an acquisition into support.
+    The caller's mapping is not modified.
+    """
+
+    import copy
+
+    if not isinstance(payload, dict):
+        return {
+            'status': 'refused',
+            'code': 'malformed_input',
+            'workflow': 'qualify_web_evidence_hooks',
+            'fact_adopted': False,
+            'facts': [],
+            'private_complaint_egress': False,
+            'network_invoked': False,
+            'commoncrawl_mutated': False,
+            'provider_invoked': False,
+            'handler_enabled_by_caller': False,
+            'caller_flags_applied': False,
+        }
+    before = copy.deepcopy(payload)
+
+    class _QuietLog:
+        def __init__(self) -> None:
+            self.events: List[tuple] = []
+
+        def log(self, *args: Any, **kwargs: Any) -> None:
+            self.events.append((args, kwargs))
+
+    mediator = _QuietLog()
+    search = object.__new__(WebEvidenceSearchHook)
+    search.mediator = mediator
+    integration = object.__new__(WebEvidenceIntegrationHook)
+    integration.mediator = mediator
+    integration._search_hook = search
+    acquisition = search.acquire_bounded(payload)
+    directory = payload.get('custody_directory')
+    review: Optional[Dict[str, Any]] = None
+    support: Optional[Dict[str, Any]] = None
+    effects: Dict[str, Any] = {'log_count': len(mediator.events), 'files': {}}
+    status = str(acquisition.get('status') or 'unavailable')
+    code = str(acquisition.get('code') or 'unavailable')
+    if status == 'qualified':
+        if not directory:
+            status = 'unavailable'
+            code = 'custody_root_missing'
+        else:
+            custody = dict(acquisition['custody'])
+            custody['stage'] = 'acquisition'
+            effects['files']['acquisition'] = integration.write_stage_record(str(directory), 'acquisition', custody)
+            review = integration.review_acquired_source(acquisition, reviewer_id=str(payload.get('actor_id') or ''))
+            effects['files']['review'] = integration.write_stage_record(str(directory), 'review', review)
+            adoption = payload.get('adoption') if isinstance(payload.get('adoption'), dict) else None
+            caller_flags = payload.get('caller_flags') if isinstance(payload.get('caller_flags'), dict) else {}
+            if adoption is not None:
+                support = integration.adopt_reviewed_source(review, adoption)
+            elif caller_flags.get('adopt_as_fact') or caller_flags.get('verified_support') or caller_flags.get('auto_adopt'):
+                support = {
+                    'status': 'refused',
+                    'code': 'automatic_fact_adoption_refused',
+                    'stage': 'adoption',
+                    'support_status': 'not_support',
+                    'fact_adopted': False,
+                    'custody_id': review.get('custody_id', ''),
+                    'facts': [],
+                }
+            if isinstance(support, dict) and support.get('status') == 'qualified':
+                effects['files']['support'] = integration.write_stage_record(str(directory), 'support', support)
+                code = 'explicit_support'
+            elif isinstance(support, dict) and adoption is not None:
+                code = str(support.get('code') or code)
+            else:
+                code = 'reviewed'
+    if copy.deepcopy(payload) != before:
+        raise RuntimeError('web evidence qualification mutated its input')
+    private_text = str(payload.get('private_complaint') or '')
+    leaked = False
+    if private_text:
+        for path in effects['files'].values():
+            if private_text in Path(path).read_text(encoding='utf-8'):
+                leaked = True
+        if private_text in str(acquisition.get('query_dispatched') or ''):
+            leaked = True
+    return {
+        'status': status,
+        'code': code,
+        'workflow': 'qualify_web_evidence_hooks',
+        'owners': ['WebEvidenceSearchHook', 'WebEvidenceIntegrationHook'],
+        'acquisition': {
+            'status': acquisition.get('status'),
+            'code': acquisition.get('code'),
+            'stage': 'acquisition',
+            'adapter': acquisition.get('adapter'),
+            'query_dispatched': acquisition.get('query_dispatched'),
+            'custody_id': (acquisition.get('custody') or {}).get('custody_id', '') if isinstance(acquisition.get('custody'), dict) else '',
+            'content_sha256': (acquisition.get('custody') or {}).get('content_sha256', '') if isinstance(acquisition.get('custody'), dict) else '',
+            'source_url': (acquisition.get('custody') or {}).get('source_url', '') if isinstance(acquisition.get('custody'), dict) else '',
+            'byte_length': (acquisition.get('custody') or {}).get('byte_length', 0) if isinstance(acquisition.get('custody'), dict) else 0,
+            'review_status': 'unreviewed',
+            'support_status': 'not_support',
+            'fact_adopted': False,
+        },
+        'review': review,
+        'support': support,
+        'effects': effects,
+        'facts': [],
+        'fact_adopted': False,
+        'automatic_fact_adoption': False,
+        'private_complaint_egress': bool(acquisition.get('private_complaint_egress')) or leaked,
+        'network_invoked': bool(acquisition.get('network_invoked')),
+        'commoncrawl_mutated': bool(acquisition.get('commoncrawl_mutated')),
+        'uncontrolled_crawl': bool(acquisition.get('uncontrolled_crawl')),
+        'provider_invoked': False,
+        'handler_enabled_by_caller': False,
+        'caller_flags_applied': False,
+        'proof': False,
+        'legal_sufficiency': False,
+        'input_mutated': False,
+    }

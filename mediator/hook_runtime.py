@@ -4087,3 +4087,38 @@ def ground_formal_neurosymbolic_analysis(payload: Mapping[str, Any]) -> dict[str
         "fake_producer_is_proof": False,
         "input_mutated": False,
     }
+
+
+def qualify_web_evidence_hooks(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Public workflow for bounded web acquisition, review, and explicit adoption.
+
+    WebEvidenceSearch acquires one source through a bounded adapter and keeps
+    source custody. WebEvidenceIntegration may review that custody and adopt it
+    as support only when the caller names the custody identity. Offline gaps
+    and missing remote permission stay unavailable. Common Crawl is not cloned
+    or reset, private complaint text is not dispatched, and no fact is adopted
+    automatically. The caller's mapping is not modified.
+    """
+
+    from mediator.web_evidence_hooks import qualify_web_evidence_request
+
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "refused",
+            "code": "malformed_input",
+            "workflow": "qualify_web_evidence_hooks",
+            "fact_adopted": False,
+            "facts": [],
+            "private_complaint_egress": False,
+            "network_invoked": False,
+            "commoncrawl_mutated": False,
+            "provider_invoked": False,
+            "handler_enabled_by_caller": False,
+            "caller_flags_applied": False,
+            "proof": False,
+            "legal_sufficiency": False,
+        }
+    receipt = qualify_web_evidence_request(dict(payload))
+    receipt["workflow"] = "qualify_web_evidence_hooks"
+    receipt["handler_enabled_by_caller"] = False
+    return receipt

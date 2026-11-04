@@ -13,6 +13,7 @@ flow use narrow exception types and are never silently ignored.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import os
@@ -23,7 +24,7 @@ from datetime import datetime
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
 import requests
@@ -1320,6 +1321,168 @@ def evaluate_scraped_content(
     return payload
 
 
+_WEB_MUTATION_OPERATIONS = frozenset({
+    "clone",
+    "reset",
+    "clone_commoncrawl",
+    "reset_commoncrawl",
+    "commoncrawl_clone",
+    "commoncrawl_reset",
+})
+_WEB_CRAWL_OPERATIONS = frozenset({
+    "crawl",
+    "unbounded_crawl",
+    "domain_sweep",
+    "recursive_crawl",
+})
+_BOUNDED_WEB_ADAPTERS = frozenset({"offline_asset", "brave_search", "common_crawl_index"})
+_MAX_BOUNDED_QUERY_CHARS = 240
+_MAX_OFFLINE_ASSET_BYTES = 65536
+
+
+def bounded_web_custody_id(adapter: str, source_url: str, content_sha256: str) -> str:
+    """Stable custody identity for one acquired source byte string."""
+
+    digest = hashlib.sha256(f"{adapter}\n{source_url}\n{content_sha256}".encode("utf-8")).hexdigest()
+    return f"custody-{digest[:32]}"
+
+
+def _bounded_web_refusal(code: str, *, operation: str, adapter: str) -> Dict[str, Any]:
+    return {
+        "status": "refused",
+        "code": code,
+        "operation": operation,
+        "adapter": adapter,
+        "stage": "acquisition",
+        "network_invoked": False,
+        "commoncrawl_mutated": False,
+        "uncontrolled_crawl": code == "uncontrolled_crawl",
+        "private_complaint_egress": code == "private_complaint_egress",
+        "query_dispatched": "",
+        "custody": None,
+        "fact_adopted": False,
+        "support_status": "not_support",
+        "review_status": "unreviewed",
+    }
+
+
+def _bounded_web_unavailable(code: str, *, operation: str, adapter: str, query: str) -> Dict[str, Any]:
+    return {
+        "status": "unavailable",
+        "code": code,
+        "operation": operation,
+        "adapter": adapter,
+        "stage": "acquisition",
+        "network_invoked": False,
+        "commoncrawl_mutated": False,
+        "uncontrolled_crawl": False,
+        "private_complaint_egress": False,
+        "query_dispatched": query,
+        "custody": None,
+        "fact_adopted": False,
+        "support_status": "not_support",
+        "review_status": "unreviewed",
+    }
+
+
+def dispatch_bounded_web_adapter(request: Mapping[str, Any]) -> Dict[str, Any]:
+    """Dispatch one bounded web adapter without crawling or mutating Common Crawl.
+
+    Offline bytes are read only from a file inside ``asset_root``. Remote
+    adapters stay unavailable unless the caller holds an explicit remote
+    permission and a live credential, and even then this function does not
+    clone or reset Common Crawl. Private complaint text is never copied into
+    the dispatched query. Acquisition is not review, support, or a fact.
+    """
+
+    operation = str(request.get("operation") or "bounded_search").strip().lower()
+    adapter = str(request.get("adapter") or "").strip().lower()
+    if operation in _WEB_MUTATION_OPERATIONS or request.get("clone") is True or request.get("reset") is True:
+        return _bounded_web_refusal("commoncrawl_mutation_refused", operation=operation, adapter=adapter)
+    if operation in _WEB_CRAWL_OPERATIONS or request.get("unbounded_crawl") is True:
+        return _bounded_web_refusal("uncontrolled_crawl", operation=operation, adapter=adapter)
+    if adapter not in _BOUNDED_WEB_ADAPTERS:
+        return _bounded_web_unavailable("unknown_adapter", operation=operation, adapter=adapter, query="")
+
+    private_complaint = str(request.get("private_complaint") or "")
+    public_query = str(request.get("public_query") or "").strip()
+    if request.get("include_private_complaint") is True or request.get("include_complaint") is True:
+        return _bounded_web_refusal("private_complaint_egress", operation=operation, adapter=adapter)
+    if private_complaint and private_complaint in public_query:
+        return _bounded_web_refusal("private_complaint_egress", operation=operation, adapter=adapter)
+    if not public_query or len(public_query) > _MAX_BOUNDED_QUERY_CHARS:
+        return _bounded_web_refusal("unbounded_query", operation=operation, adapter=adapter)
+    for forbidden in ("complaint_text", "narrative", "case_facts", "private_complaint"):
+        if forbidden in request and forbidden != "private_complaint" and request.get(forbidden):
+            return _bounded_web_refusal("private_complaint_egress", operation=operation, adapter=adapter)
+
+    if adapter == "offline_asset":
+        root_value = request.get("asset_root")
+        asset_value = request.get("offline_asset")
+        if not root_value or not asset_value:
+            return _bounded_web_unavailable("offline_asset_missing", operation=operation, adapter=adapter, query=public_query)
+        root = Path(str(root_value)).resolve()
+        target = Path(str(asset_value))
+        if not target.is_absolute():
+            target = root / target
+        try:
+            target = target.resolve()
+        except OSError:
+            return _bounded_web_unavailable("offline_asset_missing", operation=operation, adapter=adapter, query=public_query)
+        if target != root and root not in target.parents:
+            return _bounded_web_refusal("asset_path_escape", operation=operation, adapter=adapter)
+        if not target.is_file():
+            return _bounded_web_unavailable("offline_asset_missing", operation=operation, adapter=adapter, query=public_query)
+        data = target.read_bytes()
+        if len(data) > _MAX_OFFLINE_ASSET_BYTES:
+            return _bounded_web_refusal("unbounded_asset", operation=operation, adapter=adapter)
+        content_sha256 = hashlib.sha256(data).hexdigest()
+        source_url = target.as_uri()
+        custody = {
+            "custody_id": bounded_web_custody_id(adapter, source_url, content_sha256),
+            "adapter": adapter,
+            "source_url": source_url,
+            "content_sha256": content_sha256,
+            "byte_length": len(data),
+            "query_dispatched": public_query,
+            "permission": "local",
+            "stage": "acquisition",
+            "review_status": "unreviewed",
+            "support_status": "not_support",
+            "fact_adopted": False,
+            "text": data.decode("utf-8", errors="replace"),
+        }
+        return {
+            "status": "qualified",
+            "code": "acquired",
+            "operation": operation,
+            "adapter": adapter,
+            "stage": "acquisition",
+            "network_invoked": False,
+            "commoncrawl_mutated": False,
+            "uncontrolled_crawl": False,
+            "private_complaint_egress": False,
+            "query_dispatched": public_query,
+            "custody": custody,
+            "fact_adopted": False,
+            "support_status": "not_support",
+            "review_status": "unreviewed",
+        }
+
+    permission = str(request.get("remote_permission") or "").strip().lower()
+    if permission != "granted":
+        return _bounded_web_unavailable("remote_permission_gap", operation=operation, adapter=adapter, query=public_query)
+    if adapter == "brave_search":
+        credential = os.environ.get("BRAVE_SEARCH_API_KEY") or os.environ.get("BRAVE_API_KEY")
+        if not BRAVE_SEARCH_AVAILABLE or not credential:
+            return _bounded_web_unavailable("remote_credential_missing", operation=operation, adapter=adapter, query=public_query)
+    elif adapter == "common_crawl_index" and not COMMON_CRAWL_AVAILABLE:
+        return _bounded_web_unavailable("remote_credential_missing", operation=operation, adapter=adapter, query=public_query)
+    if request.get("execute_remote") is not True:
+        return _bounded_web_unavailable("remote_execution_not_authorized", operation=operation, adapter=adapter, query=public_query)
+    return _bounded_web_unavailable("remote_execution_not_authorized", operation=operation, adapter=adapter, query=public_query)
+
+
 __all__ = [
     "CommonCrawlSearchEngine",
     "BraveSearchAPI",
@@ -1345,4 +1508,6 @@ __all__ = [
     "scrape_web_content",
     "scrape_archived_domain",
     "evaluate_scraped_content",
+    "bounded_web_custody_id",
+    "dispatch_bounded_web_adapter",
 ]
