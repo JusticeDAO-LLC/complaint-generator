@@ -29,7 +29,26 @@ LIMITATIONS = (
     "original_encrypted_owner_preserved",
     "actor_remains_distinct_from_canonical_encrypted_owner",
     "missing_source_is_unavailable",
+    "display_does_not_adopt_or_relabel",
 )
+_WORKFLOW_TARGETS = {
+    "evidence": "evidence",
+    "evidence_artifact": "evidence",
+    "artifact": "evidence",
+    "draft": "draft",
+    "draft_section": "draft",
+    "complaint_section": "draft",
+    "inquiry": "inquiry",
+    "intake_question": "inquiry",
+    "intake_inquiry": "inquiry",
+    "question": "inquiry",
+}
+_ATTRIBUTION = {
+    "human_message": "human",
+    "ai_mediator_turn": "ai",
+    "review_decision": "review",
+    "case_action": "action",
+}
 _MINT_FIELDS = frozenset({
     "canonical_owner_principal_id",
     "actor_is_encrypted_owner",
@@ -135,6 +154,36 @@ def _entry(
     return row
 
 
+def _workflow_view(case_id: str, context: Mapping[str, Any], *, attribution: str, eligible: bool, adopted: bool, reason: str) -> dict[str, Any]:
+    navigation = {
+        "surface": context.get("context_kind"),
+        "case_id": case_id,
+        "context_kind": context.get("context_kind"),
+        "context_id": context.get("context_id"),
+        "context_revision": context.get("context_revision"),
+        "section_id": context.get("section_id"),
+        "span": context.get("span"),
+    }
+    return {
+        "exact": True,
+        "eligible": eligible,
+        "adopted": adopted,
+        "explicit": False,
+        "context_kind": context.get("context_kind"),
+        "context_id": context.get("context_id"),
+        "context_revision": context.get("context_revision"),
+        "section_id": context.get("section_id"),
+        "span": context.get("span"),
+        "navigation": navigation,
+        "attribution": attribution,
+        "reason": reason,
+        "accepted_by_display": False,
+        "display_changes_attribution": False,
+        "wrote_evidence_artifact": False,
+        "wrote_intake_answer": False,
+    }
+
+
 def _sort_key(entry: Mapping[str, Any]) -> tuple:
     occurred = entry.get("occurred_at")
     timed = type(occurred) is int
@@ -221,6 +270,7 @@ class CaseCorrespondenceService:
         )
         actions, action_status = self._actions(actor_principal_id, body, listed)
         entries = [*turns, *self._message_entries(messages, owner), *reviews, *actions]
+        entries = [self._with_workflow(entry, case_id) for entry in entries]
         entries.sort(key=_sort_key)
         if any(_sort_key(entries[index]) > _sort_key(entries[index + 1]) for index in range(len(entries) - 1)):
             raise CaseCorrespondenceError("order_mismatch")
@@ -341,6 +391,83 @@ class CaseCorrespondenceService:
             raise CaseCorrespondenceError("activity_record")
         rows = [_activity_row(item, expected_type=record_type, case_id=case_id, owner=owner) for item in raw]
         return rows, "available" if rows else "empty"
+
+    def _with_workflow(self, entry: Mapping[str, Any], case_id: str) -> dict[str, Any]:
+        row = dict(entry)
+        row["workflow"] = self._workflow_for(row, case_id)
+        row["adopts_evidence"] = False
+        row["adopts_answer"] = False
+        if row.get("record_type") == "ai_mediator_turn":
+            row["attribution"] = "ai"
+        elif row.get("record_type") == "human_message":
+            row["attribution"] = "human"
+            row["disposition"] = row.get("disposition") or "conversation"
+        return row
+
+    def _workflow_for(self, entry: Mapping[str, Any], case_id: str) -> dict[str, Any]:
+        record_type = str(entry.get("record_type") or "")
+        attribution = _ATTRIBUTION.get(record_type, "unknown")
+        base = {
+            "exact": False,
+            "eligible": False,
+            "adopted": False,
+            "explicit": False,
+            "context_kind": None,
+            "context_id": None,
+            "context_revision": None,
+            "section_id": None,
+            "span": None,
+            "navigation": None,
+            "attribution": attribution,
+            "reason": "human_message_stays_conversation" if record_type == "human_message" else "no_workflow_context",
+            "accepted_by_display": False,
+            "display_changes_attribution": False,
+            "wrote_evidence_artifact": False,
+            "wrote_intake_answer": False,
+        }
+        if record_type == "human_message":
+            source_id = str(entry.get("source_id") or "")
+            link = self._messages.workflow_link(source_id) if hasattr(self._messages, "workflow_link") else None
+            adoption = self._messages.workflow_adoption(source_id) if hasattr(self._messages, "workflow_adoption") else None
+            if not isinstance(link, Mapping) or link.get("case_id") != case_id:
+                return base
+            context = link.get("context") if isinstance(link.get("context"), Mapping) else {}
+            if context.get("eligible") is not True:
+                base["reason"] = "material_not_eligible"
+                return base
+            adopted = isinstance(adoption, Mapping) and adoption.get("explicit") is True and adoption.get("case_id") == case_id
+            view = _workflow_view(case_id, context, attribution="human", eligible=True, adopted=adopted, reason="exact_workflow_context")
+            view["message_version"] = link.get("message_version")
+            if adopted:
+                view["explicit"] = True
+                view["authorized_action"] = adoption.get("authorized_action")
+                view["accepted_by_display"] = False
+                view["ai_text_became_human"] = False
+                view["ai_text_became_fact"] = False
+            return view
+        target = entry.get("target") if isinstance(entry.get("target"), Mapping) else {}
+        kind = _WORKFLOW_TARGETS.get(str(target.get("kind") or ""))
+        if kind is None or not target.get("id"):
+            if record_type == "ai_mediator_turn":
+                base["reason"] = "ai_text_is_not_human_or_evidence"
+                base["eligible"] = False
+            return base
+        reason = "ai_text_is_not_human_or_evidence" if record_type == "ai_mediator_turn" else "navigation_is_not_adoption"
+        return _workflow_view(
+            case_id,
+            {
+                "context_kind": kind,
+                "context_id": target.get("id"),
+                "context_revision": entry.get("revision"),
+                "section_id": None,
+                "span": None,
+                "eligible": False,
+            },
+            attribution=attribution,
+            eligible=False,
+            adopted=False,
+            reason=reason,
+        )
 
     def _resource_id(self, actor: str, case_id: str, owner: str) -> str:
         cases = getattr(getattr(self._messages, "store", None), "_cases", None)
