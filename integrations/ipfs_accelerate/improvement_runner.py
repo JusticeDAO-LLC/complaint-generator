@@ -5325,7 +5325,8 @@ def _run_evidence_daemon_adapter(argv, *, repo_root, validation_scheduler, proof
     # includes validation workers/budget, generated paths, reservations, source
     # root expectations, slices, worktree/merge scope and all custody options.
     REPO_ROOT = Path(repo_root).resolve()
-    daemon = native.PortalImplementationDaemon(
+    from .docker_isolation_capacity import capacity_isolating_daemon
+    daemon = capacity_isolating_daemon(native.PortalImplementationDaemon)(
         assumed_completed_task_ids=args.assume_completed_task_id,
         board_namespace=str(getattr(args, "board_namespace", "") or ""),
         events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
