@@ -11,7 +11,7 @@ import math
 import re
 from typing import Any, Dict, List, Mapping, Optional
 from .knowledge_graph import KnowledgeGraph, Entity
-from .dependency_graph import DependencyGraph, DependencyNode, NodeType
+from .dependency_graph import Dependency, DependencyGraph, DependencyNode, DependencyType, NodeType
 from .legal_graph import LegalGraph, LegalElement
 
 logger = logging.getLogger(__name__)
@@ -655,6 +655,111 @@ Relationship catalog:
     # ------------------------------------------------------------------ #
     # Batch 205: Matching analysis and diagnostic methods                #
     # ------------------------------------------------------------------ #
+
+    def assess_structural_graph(self, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        """Run the graph matcher and keep the result structural.
+
+        A satisfied dependency node, a confidence score, or a caller graph
+        packet is a structural check. It is not executed proof or legal
+        sufficiency. Missing claim or requirement rows stay unexecuted.
+        """
+
+        refused = {
+            "status": "unexecuted",
+            "execution": "unexecuted",
+            "structural_match": False,
+            "confidence": 0.0,
+            "satisfied_claims": 0,
+            "total_claims": 0,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "satisfied_is_proof": False,
+            "producer": "NeurosymbolicMatcher.match_claims_to_law",
+        }
+        if not isinstance(payload, Mapping):
+            refused["status"] = "refused"
+            return refused
+        claims = payload.get("claims")
+        requirements = payload.get("requirements")
+        if not isinstance(claims, list) or not claims or not isinstance(requirements, list) or not requirements:
+            return refused
+        knowledge_graph = KnowledgeGraph(graph_id="cimp-ux-54-structural")
+        dependency_graph = DependencyGraph()
+        legal_graph = LegalGraph()
+        built_claims = 0
+        for index, claim in enumerate(claims):
+            if not isinstance(claim, Mapping):
+                continue
+            claim_id = str(claim.get("id") or f"claim-{index}")
+            claim_type = str(claim.get("claim_type") or "unknown")
+            claim_name = str(claim.get("name") or claim_type)
+            dependency_graph.add_node(DependencyNode(
+                id=claim_id,
+                node_type=NodeType.CLAIM,
+                name=claim_name,
+                attributes={"claim_type": claim_type},
+                satisfied=False,
+                confidence=0.0,
+            ))
+            built_claims += 1
+        if built_claims == 0:
+            return refused
+        for index, requirement in enumerate(requirements):
+            if not isinstance(requirement, Mapping):
+                continue
+            requirement_id = str(requirement.get("id") or f"requirement-{index}")
+            name = str(requirement.get("name") or requirement_id)
+            claim_type = str(requirement.get("claim_type") or "unknown")
+            legal_graph.add_element(LegalElement(
+                id=requirement_id,
+                element_type="requirement",
+                name=name,
+                description=str(requirement.get("description") or name),
+                citation=str(requirement.get("citation") or ""),
+                attributes={
+                    "applicable_claim_types": [claim_type],
+                    "applicable": True,
+                    "source_version": str(requirement.get("source_version") or ""),
+                    "definition_identity": str(requirement.get("definition_identity") or ""),
+                },
+            ))
+            node_id = "node-" + requirement_id
+            dependency_graph.add_node(DependencyNode(
+                id=node_id,
+                node_type=NodeType.REQUIREMENT,
+                name=name,
+                satisfied=bool(requirement.get("satisfied")),
+                confidence=float(requirement.get("confidence") or 0.0),
+                attributes={"requirement_id": requirement_id},
+            ))
+            for claim in claims:
+                if not isinstance(claim, Mapping):
+                    continue
+                if str(claim.get("claim_type") or "unknown") != claim_type:
+                    continue
+                dependency_graph.add_dependency(Dependency(
+                    id=f"dep-{node_id}-{claim.get('id')}",
+                    source_id=node_id,
+                    target_id=str(claim.get("id")),
+                    dependency_type=DependencyType.REQUIRES,
+                ))
+        matched = self.match_claims_to_law(knowledge_graph, dependency_graph, legal_graph)
+        caller_graph = payload.get("structural_graph") if isinstance(payload.get("structural_graph"), Mapping) else {}
+        return {
+            "status": "checked",
+            "execution": "structural_only",
+            "structural_match": int(matched.get("satisfied_claims") or 0) > 0,
+            "confidence": float(matched.get("overall_satisfaction") or 0.0),
+            "satisfied_claims": int(matched.get("satisfied_claims") or 0),
+            "total_claims": int(matched.get("total_claims") or 0),
+            "matched_requirement_count": len(matched.get("matched_requirements") or []),
+            "caller_graph_status": caller_graph.get("status"),
+            "caller_graph_ignored": True,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "satisfied_is_proof": False,
+            "producer": "NeurosymbolicMatcher.match_claims_to_law",
+        }
 
     def matching_history_size(self) -> int:
         """Return number of matching results stored in history.
