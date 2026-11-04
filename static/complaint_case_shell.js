@@ -841,6 +841,9 @@
             host.dataset.refreshState = "loading";
             host.setAttribute("aria-busy", "true");
         }
+        if (document.getElementById("complaint-state-surface")) {
+            showStateSurface({kind: "loading", operation: "shell-refresh", permitCancel: true});
+        }
     }
 
     function finished() {
@@ -1077,6 +1080,287 @@
         if (presentationMode === "chat-plus-context") paintPresentationContext();
     });
 
+    var RETRY_LIMIT = 3;
+    var retryCounts = {};
+    var surfaceGeneration = 0;
+    var replayController = null;
+    var lastReplay = null;
+    var nativeFetch = null;
+
+    var STATE_COPY = {
+        loading: ["Loading", "The case state is still being read. You can cancel this check."],
+        empty: ["Nothing to show yet", "This view is empty. An empty result is not a confirmed or complete case."],
+        error: ["The action did not finish", "Your unsent text is unchanged. You can retry a limited number of times."],
+        locked: ["Private key access is locked", "An authorized local key owner must unlock the private keys outside this page. No replacement case was opened."],
+        key: ["A private key is required", "An authorized local key owner must unlock the private keys outside this page. This page never receives a passphrase."],
+        access: ["Access is not available", "This session cannot open that case content. No replacement case was opened."],
+        denied: ["This session is denied", "The account cannot open case content. No replacement case is shown as complete."],
+        unavailable: ["This capability is unavailable", "The case service could not complete the request. Nothing was replaced with an empty case."],
+        conflict: ["This case conflicts with the server", "The case changed elsewhere. Your unsent text is unchanged. You can retry a limited number of times."],
+        cancelled: ["The request was cancelled", "Your unsent text is unchanged. Nothing was confirmed."]
+    };
+
+    function ensureStateSurface() {
+        var existing = document.getElementById("complaint-state-surface");
+        if (existing) return existing;
+        var host = document.createElement("section");
+        host.id = "complaint-state-surface";
+        host.className = "case-state";
+        host.setAttribute("role", "status");
+        host.setAttribute("aria-live", "polite");
+        host.setAttribute("aria-labelledby", "complaint-state-title");
+        host.innerHTML = ''
+            + '<h2 id="complaint-state-title">Loading</h2>'
+            + '<p id="complaint-state-detail"></p>'
+            + '<p id="complaint-state-intent" hidden>Your unsent text is still in the composer.</p>'
+            + '<div class="case-state__actions">'
+            + '<button type="button" id="complaint-state-retry" hidden>Retry</button>'
+            + '<button type="button" id="complaint-state-cancel" hidden>Cancel</button>'
+            + '<button type="button" id="complaint-state-check-key" hidden>Check private key access</button>'
+            + '</div>';
+        var parent = document.querySelector("main") || document.body;
+        parent.insertBefore(host, parent.firstChild);
+        return host;
+    }
+
+    function wireStateSurface(host) {
+        if (!host || host.dataset.wired === "true") return;
+        host.dataset.wired = "true";
+        host.querySelector("#complaint-state-retry").addEventListener("click", retryLastFailure);
+        host.querySelector("#complaint-state-cancel").addEventListener("click", cancelActiveCall);
+        host.querySelector("#complaint-state-check-key").addEventListener("click", function () {
+            if (typeof checkPrivateKeyAccessAndResume === "function") checkPrivateKeyAccessAndResume();
+        });
+    }
+
+    function intentFields() {
+        return ["message-text", "draft-body", "case-label"].map(function (id) {
+            return document.getElementById(id);
+        }).filter(function (node) {
+            return node && "value" in node;
+        });
+    }
+
+    function rememberIntent() {
+        var kept = false;
+        intentFields().forEach(function (node) {
+            node.dataset.preservedIntent = node.value;
+            if (node.value) kept = true;
+        });
+        return kept;
+    }
+
+    function restoreIntent() {
+        var kept = false;
+        intentFields().forEach(function (node) {
+            if (node.dataset.preservedIntent === undefined) return;
+            if (node.value !== node.dataset.preservedIntent) node.value = node.dataset.preservedIntent;
+            if (node.value) kept = true;
+        });
+        return kept;
+    }
+
+    function classifyFailure(status, body) {
+        var code = text(body && (body.error || body.code || body.detail)).toLowerCase();
+        if (code === "unlock_needed" || code === "key_unavailable" || code === "key_owner_required" || code === "missing_key") return "key";
+        if (status === 409 || code.indexOf("conflict") !== -1 || code === "replay_mismatch" || code === "stale_revision") return "conflict";
+        if (status === 401 || status === 403 || code.indexOf("denied") !== -1 || code.indexOf("not_permitted") !== -1 || code === "missing_case") return "access";
+        if (status === 503 || status === 502 || status === 0 || code.indexOf("unavailable") !== -1) return "unavailable";
+        return "error";
+    }
+
+    function denySuccessPaint() {
+        ["complaint-readiness", "complaint-entry", "send-message", "complaint-state-surface"].forEach(function (id) {
+            var node = document.getElementById(id);
+            if (!node) return;
+            node.dataset.outcome = "failed";
+            if ("legalSufficiency" in node.dataset || id === "complaint-readiness") node.dataset.legalSufficiency = "false";
+            if ("courtReady" in node.dataset || id === "complaint-readiness") node.dataset.courtReady = "false";
+            if ("filingSucceeded" in node.dataset || id === "complaint-readiness") node.dataset.filingSucceeded = "false";
+            node.dataset.ready = "false";
+            node.dataset.supported = "false";
+            node.dataset.verified = "false";
+        });
+        var composer = document.getElementById("composer-state");
+        if (composer && /ready|supported|verified/i.test(composer.textContent || "")) {
+            composer.textContent = "The action did not finish.";
+        }
+        var send = document.getElementById("send-message");
+        if (send) send.dataset.state = "failed";
+    }
+
+    function showStateSurface(model) {
+        var host = ensureStateSurface();
+        wireStateSurface(host);
+        var kind = STATE_COPY[model.kind] ? model.kind : "error";
+        var pair = STATE_COPY[kind];
+        var failed = kind !== "loading" && kind !== "empty";
+        var kept = failed ? rememberIntent() : restoreIntent();
+        if (failed) restoreIntent();
+        host.hidden = false;
+        host.dataset.kind = kind;
+        host.dataset.outcome = failed ? "failed" : (kind === "loading" ? "pending" : "empty");
+        host.dataset.operation = model.operation || "";
+        var attempts = retryCounts[model.operation || kind] || 0;
+        var retryPermitted = failed && (kind === "conflict" || kind === "unavailable" || kind === "error") && attempts < RETRY_LIMIT && !!lastReplay && lastReplay.operation === (model.operation || kind);
+        if (model.kind === "loading") retryPermitted = false;
+        var cancelPermitted = kind === "loading" || !!model.permitCancel;
+        host.dataset.retryPermitted = retryPermitted ? "true" : "false";
+        host.dataset.cancelPermitted = cancelPermitted ? "true" : "false";
+        host.dataset.retryCount = String(attempts);
+        host.dataset.retryLimit = String(RETRY_LIMIT);
+        host.dataset.ready = "false";
+        host.dataset.supported = "false";
+        host.dataset.verified = "false";
+        host.dataset.intentPreserved = kept ? "true" : "false";
+        document.getElementById("complaint-state-title").textContent = attempts >= RETRY_LIMIT && failed && (kind === "conflict" || kind === "unavailable" || kind === "error")
+            ? "Retry limit reached"
+            : pair[0];
+        var detail = pair[1];
+        if (attempts >= RETRY_LIMIT && retryPermitted === false && failed && kind !== "key" && kind !== "access" && kind !== "locked" && kind !== "denied" && kind !== "cancelled") {
+            detail = "The retry limit for this action was reached. Your unsent text is unchanged.";
+        }
+        document.getElementById("complaint-state-detail").textContent = detail;
+        var intent = document.getElementById("complaint-state-intent");
+        intent.hidden = !kept;
+        document.getElementById("complaint-state-retry").hidden = !retryPermitted;
+        document.getElementById("complaint-state-cancel").hidden = !cancelPermitted;
+        var checkKey = document.getElementById("complaint-state-check-key");
+        checkKey.hidden = kind !== "key" && kind !== "locked";
+        if (failed) denySuccessPaint();
+        host.dataset.technicalHidden = "true";
+    }
+
+    function noteFailure(model) {
+        if (model.generation !== undefined && model.generation !== surfaceGeneration) return;
+        var operation = (model.method || "GET") + " " + (model.url || "");
+        var status = model.status;
+        var body = model.body;
+        if (status === 401 && /\/auth\/session$/.test(model.url || "")) return;
+        retryCounts[operation] = (retryCounts[operation] || 0) + 1;
+        if (model.url && model.url.indexOf("/auth/login") === -1) {
+            lastReplay = {
+                url: model.url,
+                method: model.method || "GET",
+                headers: model.headers || {},
+                body: model.requestBody || "",
+                operation: operation
+            };
+        }
+        showStateSurface({
+            kind: classifyFailure(status, body),
+            status: status,
+            operation: operation
+        });
+    }
+
+    function retryLastFailure() {
+        if (!lastReplay) return;
+        var operation = lastReplay.operation;
+        if ((retryCounts[operation] || 0) >= RETRY_LIMIT) {
+            showStateSurface({kind: classifyFailure(409, {error: "revision_conflict"}), operation: operation});
+            return;
+        }
+        surfaceGeneration += 1;
+        if (replayController) replayController.abort();
+        replayController = new AbortController();
+        showStateSurface({kind: "loading", operation: operation, permitCancel: true});
+        var headers = lastReplay.headers || {};
+        window.fetch(lastReplay.url, {
+            method: lastReplay.method,
+            credentials: "same-origin",
+            headers: headers,
+            body: lastReplay.method === "GET" || lastReplay.method === "HEAD" ? undefined : lastReplay.body,
+            signal: replayController.signal
+        }).catch(function (error) {
+            if (error && error.name === "AbortError") return;
+        });
+    }
+
+    function cancelActiveCall() {
+        surfaceGeneration += 1;
+        if (activeController) activeController.abort();
+        if (replayController) replayController.abort();
+        restoreIntent();
+        showStateSurface({kind: "cancelled", operation: "cancelled", permitCancel: false});
+        var host = document.getElementById("complaint-state-surface");
+        if (host) {
+            host.dataset.outcome = "cancelled";
+            host.dataset.ready = "false";
+            host.dataset.supported = "false";
+            host.dataset.verified = "false";
+        }
+    }
+
+    function headerRecord(headers) {
+        var record = {};
+        if (!headers) return record;
+        if (typeof headers.forEach === "function") {
+            headers.forEach(function (value, key) { record[key] = value; });
+            return record;
+        }
+        Object.keys(headers).forEach(function (key) { record[key] = headers[key]; });
+        return record;
+    }
+
+    function installFetchObserver() {
+        if (window.fetch && window.fetch.__complaintStateObserved) return;
+        nativeFetch = window.fetch.bind(window);
+        function wrapped(input, init) {
+            var url = typeof input === "string" ? input : (input && input.url) || "";
+            var method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
+            if (url.indexOf("/api/") === -1) return nativeFetch(input, init);
+            var requestBody = init && typeof init.body === "string" ? init.body : "";
+            var headers = headerRecord(init && init.headers);
+            var generation = surfaceGeneration;
+            return nativeFetch(input, init).then(function (response) {
+                if (response.ok) {
+                    if (url.indexOf("/messages/threads") !== -1 && method === "GET") {
+                        response.clone().json().then(function (payload) {
+                            if (generation !== surfaceGeneration) return;
+                            var threads = payload && payload.threads;
+                            var host = document.getElementById("complaint-state-surface");
+                            if (host && host.dataset.outcome !== "failed" && Array.isArray(threads) && threads.length === 0) {
+                                showStateSurface({kind: "empty", operation: method + " " + url});
+                            }
+                        }).catch(function () { /* A non-JSON success is not an empty case. */ });
+                    }
+                    return response;
+                }
+                response.clone().json().then(function (payload) {
+                    noteFailure({status: response.status, body: payload, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                }).catch(function () {
+                    noteFailure({status: response.status, body: null, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                });
+                return response;
+            }, function (error) {
+                if (!error || error.name !== "AbortError") {
+                    noteFailure({status: 0, body: {error: "unavailable"}, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                }
+                throw error;
+            });
+        }
+        wrapped.__complaintStateObserved = true;
+        window.fetch = wrapped;
+    }
+
+    function watchSuccessWords() {
+        var composer = document.getElementById("composer-state");
+        var surface = document.getElementById("complaint-state-surface");
+        if (!composer || !surface || composer.dataset.stateWatch === "true") return;
+        composer.dataset.stateWatch = "true";
+        var observer = new MutationObserver(function () {
+            if (surface.dataset.outcome === "failed" && /ready|supported|verified/i.test(composer.textContent || "")) {
+                composer.textContent = "The action did not finish.";
+            }
+        });
+        observer.observe(composer, {childList: true, characterData: true, subtree: true});
+    }
+
+    installFetchObserver();
+    ensureStateSurface();
+    wireStateSurface(document.getElementById("complaint-state-surface"));
+    watchSuccessWords();
     mount();
     applyAudience();
     window.complaintCaseShell = {
@@ -1090,23 +1374,33 @@
         binding: function () { return state.binding; },
         clearPlaintext: clearPagePlaintext,
         snapshot: function () {
+            var shellCase = document.getElementById("complaint-case-shell-case");
+            var shellActor = document.getElementById("complaint-case-shell-actor");
+            var surface = document.getElementById("complaint-state-surface");
             return {
-                case: document.getElementById("complaint-case-shell-case").textContent.trim(),
-                caseId: document.getElementById("complaint-case-shell-case").dataset.caseId || "",
-                actor: document.getElementById("complaint-case-shell-actor").textContent.trim(),
-                relationship: document.getElementById("complaint-case-shell-actor").dataset.relationship,
-                principalId: document.getElementById("complaint-case-shell-actor").dataset.principalId || "",
-                privacy: document.getElementById("complaint-case-shell-privacy").textContent.trim(),
-                stage: document.getElementById("complaint-case-shell-stage").textContent.trim(),
-                next: document.getElementById("complaint-case-shell-next").textContent.trim(),
-                nextCount: document.querySelectorAll("#complaint-case-shell-next").length
+                case: shellCase ? shellCase.textContent.trim() : "",
+                caseId: shellCase ? (shellCase.dataset.caseId || "") : "",
+                actor: shellActor ? shellActor.textContent.trim() : "",
+                relationship: shellActor ? shellActor.dataset.relationship : "",
+                principalId: shellActor ? (shellActor.dataset.principalId || "") : "",
+                privacy: document.getElementById("complaint-case-shell-privacy") ? document.getElementById("complaint-case-shell-privacy").textContent.trim() : "",
+                stage: document.getElementById("complaint-case-shell-stage") ? document.getElementById("complaint-case-shell-stage").textContent.trim() : "",
+                next: document.getElementById("complaint-case-shell-next") ? document.getElementById("complaint-case-shell-next").textContent.trim() : "",
+                nextCount: document.querySelectorAll("#complaint-case-shell-next").length,
+                surfaceKind: surface ? surface.dataset.kind : "",
+                surfaceOutcome: surface ? surface.dataset.outcome : ""
             };
         }
     };
     window.addEventListener("resize", applyViewport);
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", scheduleRefresh);
-    } else {
-        scheduleRefresh();
+    if (shellHost()) {
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", function () {
+                watchSuccessWords();
+                scheduleRefresh();
+            });
+        } else {
+            scheduleRefresh();
+        }
     }
 })();
