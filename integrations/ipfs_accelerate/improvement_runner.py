@@ -499,7 +499,9 @@ def campaign_environment(repo_root: Path, ambient: Mapping[str, str] | None = No
             env.pop(key, None)
     env.update({
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok",
-        AUTOMATIC_RETRY_REARM_ENV: "0",
+        # Once-per-recovery-revision validation rearm. Exact 0 would keep a
+        # spent frontier stopped even after this supervisor repair.
+        AUTOMATIC_RETRY_REARM_ENV: "1",
         "IPFS_ACCELERATE_AGENT_WORKTREE_SUBMODULE_PATHS": "external/ipfs_datasets_py,external/ipfs_kit_py",
         # Bound retained prepared checkouts in this campaign, without reclaiming leases.
         "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES": "1",
@@ -551,11 +553,12 @@ def _branch(repo_root: Path) -> str:
 
 def _private_runtime_checks(repo_root: Path, env: Mapping[str, str]) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
-    if env.get(AUTOMATIC_RETRY_REARM_ENV) == "0":
+    if env.get(AUTOMATIC_RETRY_REARM_ENV) in {"0", "1"}:
         from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as native
         rearm_control = getattr(native, "automatic_retry_rearm_enabled", None)
+        expected = env.get(AUTOMATIC_RETRY_REARM_ENV) == "1"
         if (getattr(native, "AUTOMATIC_RETRY_REARM_ENV", None) != AUTOMATIC_RETRY_REARM_ENV
-                or not callable(rearm_control) or rearm_control(env) is not False):
+                or not callable(rearm_control) or rearm_control(env) is not expected):
             return {"ready": False, "reason": "native_retry_budget_control_unavailable"}
     supported = getattr(grok_cli_runner, "GROK_PRIVATE_PATHS_VERSION", 0) >= 1
     validator = getattr(grok_cli_runner, "validate_grok_private_path_patterns", None)

@@ -103,7 +103,7 @@ def test_explicit_environment_removes_ambient_routes_and_pins_model():
     assert environment["TODO_DAEMON_LLM_ALLOW_LOCAL_FALLBACK"] == "0"
     assert environment["IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"] == "64"
     assert environment["IPFS_ACCELERATE_AGENT_GROK_REASONING_EFFORT"] == "low"
-    assert environment[runner.AUTOMATIC_RETRY_REARM_ENV] == "0"
+    assert environment[runner.AUTOMATIC_RETRY_REARM_ENV] == "1"
     assert environment["IPFS_ACCELERATE_AGENT_WORKTREE_SUBMODULE_PATHS"] == "external/ipfs_datasets_py,external/ipfs_kit_py"
     assert environment["IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"] == "1"
     assert environment["HOME"] == "/preserved/user"

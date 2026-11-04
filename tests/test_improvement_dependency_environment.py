@@ -24,7 +24,7 @@ def test_campaign_pins_nonfetch_dependency_policy_after_ambient_overrides(tmp_pa
     assert environment[FLAG] == "0"
     assert environment["TODO_DAEMON_LLM_PROVIDER"] == "grok_cli"
     assert environment["TODO_DAEMON_LLM_ALLOW_CROSS_PROVIDER_FALLBACK"] == "0"
-    assert environment[runner.AUTOMATIC_RETRY_REARM_ENV] == "0"
+    assert environment[runner.AUTOMATIC_RETRY_REARM_ENV] == "1"
 
 
 def test_campaign_policy_reaches_real_native_provider_and_validation_environments(tmp_path):
