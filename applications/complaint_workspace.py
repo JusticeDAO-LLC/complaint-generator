@@ -16766,8 +16766,24 @@ class ComplaintWorkspaceService:
                 holds[result["invocation_id"]] = {"actor": snapshot["actor"], "case_id": snapshot["case_id"],
                     "purpose": purpose, "deadline": now.timestamp() + timeout_seconds}
                 self._gui_server_holds = holds
+            from integrations.ipfs_accelerate.routers import development_campaign_authorizes_user_complaint_egress
+
             result["actor_principal_id"] = snapshot["actor"]
-            result["development_grok_authorization_ignored"] = True
+            # A development-agent model grant is checked and then discarded.
+            # It is never written into the case consent record.
+            agent_permission = {
+                "provider": "grok_cli",
+                "model": "grok-4.7",
+                "allow_local_fallback": False,
+                "allow_cross_provider_fallback": False,
+                "development_agent": True,
+            }
+            result["development_agent_grok_permission_is_complaint_consent"] = (
+                development_campaign_authorizes_user_complaint_egress(agent_permission)
+            )
+            result["development_grok_authorization_ignored"] = (
+                result["development_agent_grok_permission_is_complaint_consent"] is False
+            )
             return result
         except (HookContextError, WorkspaceCaseAuthorityError, CaseConsentError, WorkspaceAuthorizationDenied,
                 WorkspacePersistenceError) as exc:
