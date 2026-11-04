@@ -13,6 +13,15 @@
     var lifecycle = "idle";
     var controller = null;
     var lastPayload = null;
+    var lateGate = {
+        displayAllowed: false,
+        purpose: "",
+        generation: "",
+        resultId: "",
+        code: "local_private",
+        suppressed: false,
+        cancelledIds: {}
+    };
 
     function $(id) { return document.getElementById(id); }
 
@@ -77,20 +86,44 @@
         return text(chosen.title || chosen.label || chosen.name);
     }
 
+    function suggestionRecord(source) {
+        if (!source || typeof source !== "object") return null;
+        var wording = text(source.wording || source.name || source.text || (source.attributes && source.attributes.wording));
+        if (!wording || (source.record_type && source.record_type !== "model_suggestion")) return null;
+        return {
+            wording: wording,
+            late: source.late_result === true,
+            purpose: text(source.purpose),
+            generation: source.consent_generation === undefined || source.consent_generation === null ? "" : String(source.consent_generation),
+            resultId: text(source.result_id),
+            implied: source.key_unlocked === true || source.key_unlock === true || source.unlocked === true
+                || !!source.staff_role || source.development_provider_authorization === true
+                || source.development_provider_authorized === true
+        };
+    }
+
+    function lateAdmitted(item) {
+        if (!item || !item.late) return true;
+        if (item.implied || lateGate.suppressed || lateGate.cancelledIds[item.resultId]) return false;
+        return lateGate.displayAllowed === true
+            && item.purpose === lateGate.purpose
+            && item.generation === String(lateGate.generation)
+            && item.resultId === lateGate.resultId
+            && item.resultId !== "";
+    }
+
     function suggestionsOf(session) {
         var found = [];
         var interview = session.shared_interview && typeof session.shared_interview === "object" ? session.shared_interview : {};
         var pending = interview.pending_inquiry && typeof interview.pending_inquiry === "object" ? interview.pending_inquiry : {};
         var proposal = pending.model_proposal && typeof pending.model_proposal === "object" ? pending.model_proposal : null;
-        if (proposal && proposal.record_type === "model_suggestion" && text(proposal.wording)) {
-            found.push(text(proposal.wording));
-        }
+        var direct = suggestionRecord(proposal);
+        if (direct) found.push(direct);
         var graph = interview.knowledge_graph && typeof interview.knowledge_graph === "object" ? interview.knowledge_graph : {};
         var rows = [].concat(Array.isArray(graph.entities) ? graph.entities : [], Array.isArray(graph.nodes) ? graph.nodes : []);
         rows.forEach(function (row) {
-            if (!row || row.record_type !== "model_suggestion") return;
-            var wording = text(row.name || row.text || (row.attributes && row.attributes.wording));
-            if (wording) found.push(wording);
+            var item = suggestionRecord(row);
+            if (item) found.push(item);
         });
         return found;
     }
@@ -141,13 +174,23 @@
                 availability: "unavailable"
             });
         } else {
-            suggestions.forEach(function (wording) {
+            suggestions.forEach(function (item) {
+                if (item.late && !lateAdmitted(item)) {
+                    messages.push({
+                        type: "model-suggestion",
+                        kind: "Model suggestion",
+                        body: "A remote Grok result is withheld. Current case consent does not allow it to be shown.",
+                        why: "Revocation, cancellation, unlock, a staff role, development authorization, or a missing consent flag cannot admit a late result.",
+                        availability: "withheld"
+                    });
+                    return;
+                }
                 messages.push({
                     type: "model-suggestion",
                     kind: "Model suggestion",
-                    body: wording,
+                    body: item.wording,
                     why: "This is a model suggestion. It is not adopted as a fact, as evidence, or as law.",
-                    availability: "available"
+                    availability: item.late ? "admitted" : "available"
                 });
             });
         }
@@ -327,6 +370,23 @@
             blocked: "This case cannot be shown. No conversation text is available."
         };
         status.textContent = copy[lifecycle] || copy.idle;
+        paintLate();
+    }
+
+    function paintLate() {
+        var node = $("conversation-late-result");
+        var privacy = $("conversation-privacy");
+        if (privacy) {
+            privacy.dataset.defaultProcessing = "local_private";
+            privacy.dataset.egressAuthorized = lateGate.displayAllowed ? "true" : "false";
+        }
+        if (!node) return;
+        node.dataset.displayAllowed = lateGate.displayAllowed ? "true" : "false";
+        node.dataset.admission = lateGate.displayAllowed ? "admitted" : "withheld";
+        node.dataset.code = lateGate.code || "local_private";
+        node.textContent = lateGate.displayAllowed
+            ? "The late Grok 4.7 result matches the current persisted case and purpose consent."
+            : "No remote Grok result is admitted. Processing stays on this machine until persisted case and purpose consent is current.";
     }
 
     function render(payload) {
@@ -728,6 +788,7 @@
             projectCorrectionOffer(payload);
             retryCount = 0;
             lifecycle = "settled";
+            lateGate.suppressed = false;
             render(payload);
         } catch (error) {
             if (token !== generation) return;
@@ -746,8 +807,80 @@
         if (controller) controller.abort();
         controller = null;
         lifecycle = "cancelled";
+        lateGate.displayAllowed = false;
+        lateGate.suppressed = true;
+        lateGate.code = "consent_cancelled";
+        if (lateGate.resultId) lateGate.cancelledIds[lateGate.resultId] = true;
         if (lastPayload && !blocked()) render(lastPayload);
         paintControls();
+    }
+
+    async function considerLateResult(proposal) {
+        var client = window.workspaceClient;
+        var binding = window.complaintCaseShell && window.complaintCaseShell.binding ? window.complaintCaseShell.binding() : null;
+        var source = proposal && typeof proposal === "object" ? proposal : {};
+        var resultId = text(source.result_id);
+        lateGate.displayAllowed = false;
+        lateGate.purpose = text(source.purpose);
+        lateGate.generation = source.consent_generation === undefined || source.consent_generation === null ? "" : String(source.consent_generation);
+        lateGate.resultId = resultId;
+        if (!client || typeof client._request !== "function" || !binding || !binding.case_id || source.late_result !== true) {
+            lateGate.code = "local_private";
+            if (lastPayload) render(lastPayload);
+            else paintLate();
+            return { displayAllowed: false, code: lateGate.code };
+        }
+        if (source.key_unlocked === true || source.key_unlock === true || source.unlocked === true || source.staff_role
+                || source.development_provider_authorization === true || source.consent_generation === undefined
+                || source.consent_generation === null || !text(source.purpose) || !resultId) {
+            lateGate.code = "consent_not_implied";
+            if (resultId) lateGate.cancelledIds[resultId] = false;
+            if (lastPayload) render(lastPayload);
+            else paintLate();
+            return { displayAllowed: false, code: lateGate.code };
+        }
+        if (lateGate.suppressed || lateGate.cancelledIds[resultId]) {
+            lateGate.code = "consent_cancelled";
+            lateGate.cancelledIds[resultId] = true;
+            try {
+                var current = await client._request("/api/cases/" + encodeURIComponent(binding.case_id) + "/processing-consent", { method: "GET" });
+                await client._request("/api/cases/" + encodeURIComponent(binding.case_id) + "/processing-consent/late-result/cancel", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        purpose: text(source.purpose),
+                        result_id: resultId,
+                        expected_generation: current.generation
+                    })
+                });
+            } catch (error) {
+                lateGate.code = "consent_cancelled";
+            }
+            if (lastPayload) render(lastPayload);
+            else paintLate();
+            return { displayAllowed: false, code: "consent_cancelled" };
+        }
+        try {
+            var live = await client._request("/api/cases/" + encodeURIComponent(binding.case_id) + "/processing-consent", { method: "GET" });
+            var decision = await client._request("/api/cases/" + encodeURIComponent(binding.case_id) + "/processing-consent/late-result", {
+                method: "POST",
+                body: JSON.stringify({
+                    purpose: text(source.purpose),
+                    consent_generation: source.consent_generation,
+                    result_id: resultId,
+                    expected_generation: live.generation
+                })
+            });
+            var allowed = decision && decision.display_allowed === true && decision.admitted === true && decision.code === "current_consent";
+            lateGate.displayAllowed = allowed;
+            lateGate.code = decision && decision.code ? text(decision.code) : "local_private";
+            if (!allowed) lateGate.displayAllowed = false;
+        } catch (error) {
+            lateGate.displayAllowed = false;
+            lateGate.code = "consent_not_implied";
+        }
+        if (lastPayload) render(lastPayload);
+        else paintLate();
+        return { displayAllowed: lateGate.displayAllowed, code: lateGate.code };
     }
 
     function retry() {
@@ -958,7 +1091,8 @@
         submitAnswer: submitAnswer,
         submitCorrection: submitCorrection,
         classifyStopping: classifyStopping,
-        paintStopping: paintStopping
+        paintStopping: paintStopping,
+        considerLateResult: considerLateResult
     };
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
