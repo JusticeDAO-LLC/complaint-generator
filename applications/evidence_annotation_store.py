@@ -31,6 +31,18 @@ _MAX_NOTE = 4000
 _MAX_LABEL = 80
 
 
+class AnnotationRevisionConflict(BoundPrivateRecordError):
+    """A concurrent note or link lost the compare-and-swap.
+
+    The chain revision is unchanged. The rejected attempt is sealed in the
+    encrypted history and returned on ``conflict`` for the caller to show.
+    """
+
+    def __init__(self, conflict: dict[str, Any]) -> None:
+        super().__init__("revision_conflict")
+        self.conflict = dict(conflict)
+
+
 class EvidenceAnnotationStore:
     """Case-scoped store for the four private evidence record kinds.
 
@@ -134,6 +146,167 @@ class EvidenceAnnotationStore:
             remote_backend=remote_backend,
         )
 
+    def publish_annotation(self, **kwargs: Any) -> dict[str, Any]:
+        """Publish one note, or return conflict or access denial.
+
+        ``live_key_id`` is the key the caller just resolved. A staged
+        ``expected_key_id`` that no longer matches, or a locked session,
+        does not write. Concurrent revision loss returns the sealed
+        conflict payload instead of replacing the chain.
+        """
+
+        expected_key_id = kwargs.pop("expected_key_id", None)
+        live_key_id = kwargs.pop("live_key_id", None)
+        access_locked = kwargs.pop("access_locked", False)
+        if access_locked is True or not isinstance(live_key_id, str) or live_key_id == "":
+            return self._access_denial("operation_revoked", kwargs)
+        if not isinstance(expected_key_id, str) or expected_key_id != live_key_id:
+            return self._access_denial("key_rotated", kwargs)
+        try:
+            published = self.commit_attributed_annotation(**kwargs)
+        except AnnotationRevisionConflict as exc:
+            return exc.conflict
+        published["published"] = True
+        published["preview_allowed"] = True
+        published["history_retained"] = True
+        return published
+
+    def publish_link(
+        self,
+        *,
+        evidence_id: str,
+        artifact_version: int,
+        annotation_id: str,
+        actor_principal_id: str,
+        canonical_owner_principal_id: str,
+        tenant_id: str,
+        case_id: str,
+        idempotency_key: str,
+        expected_annotation_revision: str,
+        expected_key_id: str,
+        live_key_id: str,
+        key: bytes,
+        key_id: str,
+        access_locked: bool = False,
+        remote_backend: Any | None = None,
+    ) -> dict[str, Any]:
+        """Link a note to an artifact version under the same conflict rules."""
+
+        denial_args = {
+            "evidence_id": evidence_id,
+            "artifact_version": artifact_version,
+            "tenant_id": tenant_id,
+            "case_id": case_id,
+            "canonical_owner_principal_id": canonical_owner_principal_id,
+        }
+        if access_locked is True or not isinstance(live_key_id, str) or live_key_id == "":
+            return self._access_denial("operation_revoked", denial_args)
+        if not isinstance(expected_key_id, str) or expected_key_id != live_key_id:
+            return self._access_denial("key_rotated", denial_args)
+        self._label(annotation_id, "annotation_rejected")
+        self._token(idempotency_key, "annotation_rejected")
+        if not isinstance(expected_annotation_revision, str):
+            raise BoundPrivateRecordError("revision_conflict")
+        fingerprint = _canonical({
+            "operation": "link",
+            "evidence_id": evidence_id,
+            "artifact_version": artifact_version,
+            "annotation_id": annotation_id,
+            "actor_principal_id": actor_principal_id,
+        })
+        with self._lock:
+            head = self._load_head(
+                tenant_id=tenant_id,
+                case_id=case_id,
+                canonical_owner_principal_id=canonical_owner_principal_id,
+                key=key,
+            )
+            chain_id = _chain_key(evidence_id, artifact_version)
+            chain = head["chains"].get(chain_id)
+            if chain is None:
+                chain = {"revision": "", "items": {}, "idempotency": {}}
+                head["chains"][chain_id] = chain
+            chain.setdefault("items", {})
+            chain.setdefault("idempotency", {})
+            prior = chain["idempotency"].get(idempotency_key)
+            if prior is not None and prior.get("operation") == "link":
+                if prior.get("fingerprint") != fingerprint:
+                    raise BoundPrivateRecordError("replay_mismatch")
+                return {
+                    "published": True,
+                    "idempotent_replay": True,
+                    "annotation_id": annotation_id,
+                    "evidence_id": evidence_id,
+                    "artifact_version": artifact_version,
+                    "annotation_revision": chain["revision"],
+                    "history_retained": True,
+                    "preview_allowed": True,
+                    "link_record_id": prior.get("record_id") or "",
+                }
+            if expected_annotation_revision != chain["revision"]:
+                conflict = self._seal_conflict(
+                    head,
+                    chain,
+                    {
+                        "kind": "link",
+                        "evidence_id": evidence_id,
+                        "artifact_version": artifact_version,
+                        "annotation_id": annotation_id,
+                        "actor_principal_id": actor_principal_id,
+                        "note": "",
+                    },
+                    expected_annotation_revision=expected_annotation_revision,
+                    idempotency_key=idempotency_key,
+                    key=key,
+                    key_id=key_id,
+                    remote_backend=remote_backend,
+                )
+                return conflict
+            record_id = "lnk-" + hashlib.sha256(
+                (fingerprint + "\n" + chain["revision"] + "\n" + idempotency_key).encode("utf-8")
+            ).hexdigest()[:32]
+            binding = PrivateArtifactBinding(
+                tenant_id=tenant_id,
+                case_id=case_id,
+                artifact_kind="linkage",
+                revision=record_id,
+                principal_id=actor_principal_id,
+            )
+            linked = self.link(
+                record_id=record_id,
+                actor_principal_id=actor_principal_id,
+                evidence_id=evidence_id,
+                annotation_id=annotation_id,
+                binding=binding,
+                key=key,
+                key_id=key_id,
+                remote_backend=remote_backend,
+            )
+            if linked.get("local_durable") is not True:
+                raise BoundPrivateRecordError("annotation_unavailable")
+            revision = hashlib.sha256((chain["revision"] + "\n" + fingerprint).encode("utf-8")).hexdigest()
+            chain["idempotency"][idempotency_key] = {
+                "operation": "link",
+                "fingerprint": fingerprint,
+                "record_id": record_id,
+                "annotation_id": annotation_id,
+            }
+            chain["revision"] = revision
+            self._commit_head(head, key=key, key_id=key_id, remote_backend=remote_backend)
+            return {
+                "published": True,
+                "idempotent_replay": False,
+                "annotation_id": annotation_id,
+                "evidence_id": evidence_id,
+                "artifact_version": artifact_version,
+                "annotation_revision": revision,
+                "link_record_id": record_id,
+                "history_retained": True,
+                "preview_allowed": True,
+                "local_durable": True,
+                "support_duplicated": False,
+            }
+
     def link(
         self,
         *,
@@ -215,9 +388,13 @@ class EvidenceAnnotationStore:
                 canonical_owner_principal_id=canonical_owner_principal_id,
                 key=key,
             )
-            chain = head["chains"].get(_chain_key(evidence_id, artifact_version))
+            chain_id = _chain_key(evidence_id, artifact_version)
+            chain = head["chains"].get(chain_id)
             if chain is None:
                 chain = {"revision": "", "items": {}, "idempotency": {}}
+                head["chains"][chain_id] = chain
+            chain.setdefault("items", {})
+            chain.setdefault("idempotency", {})
             prior = chain["idempotency"].get(idempotency_key)
             if prior is not None:
                 if prior.get("fingerprint") != fingerprint or prior.get("operation") != "create":
@@ -228,7 +405,17 @@ class EvidenceAnnotationStore:
                 view["synthesized_evidence"] = False
                 return view
             if expected_annotation_revision != chain["revision"]:
-                raise BoundPrivateRecordError("revision_conflict")
+                conflict = self._seal_conflict(
+                    head,
+                    chain,
+                    semantic,
+                    expected_annotation_revision=expected_annotation_revision,
+                    idempotency_key=idempotency_key,
+                    key=key,
+                    key_id=key_id,
+                    remote_backend=remote_backend,
+                )
+                raise AnnotationRevisionConflict(conflict)
             record_id = "ann-" + hashlib.sha256(
                 (fingerprint + "\n" + chain["revision"] + "\n" + idempotency_key).encode("utf-8")
             ).hexdigest()[:32]
@@ -433,12 +620,15 @@ class EvidenceAnnotationStore:
         }
         items = [dict(item) for item in chain["items"].values()]
         items.sort(key=lambda item: str(item.get("annotation_id") or ""))
+        history = [dict(entry) for entry in chain.get("conflict_history") or [] if isinstance(entry, dict)]
         return {
             "task_id": ANNOTATION_TASK_ID,
             "evidence_id": evidence_id,
             "artifact_version": artifact_version,
             "annotation_revision": chain.get("revision") or "",
             "items": items,
+            "conflict_history": history,
+            "history_retained": True,
             "synthesized_evidence": False,
             "display_role_authoritative": False,
         }
@@ -479,6 +669,116 @@ class EvidenceAnnotationStore:
             bindings=bindings,
             max_attempts=max_attempts,
         )
+
+    def _access_denial(self, code: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        evidence_id = raw.get("evidence_id") if isinstance(raw.get("evidence_id"), str) else ""
+        version = raw.get("artifact_version") if type(raw.get("artifact_version")) is int else 0
+        preserved: list[str] = []
+        revision = ""
+        key = raw.get("key")
+        if isinstance(key, bytes) and evidence_id and version >= 1:
+            try:
+                listed = self.list_attributed_annotations(
+                    evidence_id=evidence_id,
+                    artifact_version=version,
+                    canonical_owner_principal_id=str(raw.get("canonical_owner_principal_id") or ""),
+                    tenant_id=str(raw.get("tenant_id") or ""),
+                    case_id=str(raw.get("case_id") or ""),
+                    key=key,
+                )
+                preserved = [str(item.get("annotation_id") or "") for item in listed["items"]]
+                revision = str(listed.get("annotation_revision") or "")
+            except BoundPrivateRecordError:
+                preserved = []
+        return {
+            "error": code,
+            "published": False,
+            "preview_allowed": False,
+            "operation_succeeded": False,
+            "history_retained": True,
+            "overwrote_history": False,
+            "evidence_id": evidence_id,
+            "artifact_version": version,
+            "annotation_revision": revision,
+            "preserved_annotation_ids": preserved,
+            "conflict": False,
+        }
+
+    def _seal_conflict(
+        self,
+        head: dict[str, Any],
+        chain: dict[str, Any],
+        semantic: Mapping[str, Any],
+        *,
+        expected_annotation_revision: str,
+        idempotency_key: str,
+        key: bytes,
+        key_id: str,
+        remote_backend: Any | None,
+    ) -> dict[str, Any]:
+        """Seal the rejected attempt and leave the chain revision in place."""
+
+        chain.setdefault("items", {})
+        chain.setdefault("conflict_history", [])
+        preserved = sorted(str(item_id) for item_id in chain["items"])
+        body = {
+            "schema": "evidence-annotation-conflict@1",
+            "expected_annotation_revision": expected_annotation_revision,
+            "current_annotation_revision": chain.get("revision") or "",
+            "idempotency_key": idempotency_key,
+            "rejected": dict(semantic),
+            "preserved_annotation_ids": preserved,
+        }
+        plaintext = _canonical(body).encode("utf-8")
+        prefix = (str(chain.get("revision") or "") + "\n" + str(len(chain["conflict_history"])) + "\n").encode("utf-8")
+        record_id = "cnf-" + hashlib.sha256(prefix + plaintext).hexdigest()[:32]
+        binding = self._annotation_binding(
+            tenant_id=head["tenant_id"],
+            case_id=head["case_id"],
+            canonical_owner_principal_id=head["canonical_owner_principal_id"],
+            revision=record_id,
+        )
+        receipt = commit_private_bound_record(
+            self._root,
+            record_id=record_id,
+            kind="annotation",
+            plaintext=plaintext,
+            binding=binding,
+            key=key,
+            key_id=key_id,
+            remote_backend=remote_backend,
+        )
+        if receipt.get("local_durable") is not True:
+            raise BoundPrivateRecordError("annotation_unavailable")
+        opened = json.loads(self.read(record_id=record_id, binding=binding, key=key))
+        if opened.get("schema") != "evidence-annotation-conflict@1":
+            raise BoundPrivateRecordError("readback_mismatch")
+        entry = {
+            "record_id": record_id,
+            "expected_annotation_revision": expected_annotation_revision,
+            "current_annotation_revision": chain.get("revision") or "",
+            "preserved_annotation_ids": preserved,
+            "encrypted": True,
+        }
+        chain["conflict_history"].append(entry)
+        self._commit_head(head, key=key, key_id=key_id, remote_backend=remote_backend)
+        return {
+            "error": "revision_conflict",
+            "conflict": True,
+            "published": False,
+            "preview_allowed": True,
+            "operation_succeeded": False,
+            "history_retained": True,
+            "overwrote_history": False,
+            "encrypted_history_record_id": record_id,
+            "expected_annotation_revision": expected_annotation_revision,
+            "current_annotation_revision": chain.get("revision") or "",
+            "annotation_revision": chain.get("revision") or "",
+            "evidence_id": semantic.get("evidence_id") or "",
+            "artifact_version": semantic.get("artifact_version"),
+            "preserved_annotation_ids": preserved,
+            "support_duplicated": False,
+        }
 
     def _semantic(
         self,

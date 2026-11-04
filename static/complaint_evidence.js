@@ -145,13 +145,16 @@
         return input.files[0];
     }
 
-    async function begin(file) {
+    async function begin(file, forceNew) {
         var root = panel();
         var signature = [file.name, file.size, file.lastModified].join(":");
-        if (!root.dataset.idempotencyKey || root.dataset.fileSignature !== signature) {
-            root.dataset.idempotencyKey = "ev-upload-" + signature.replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 80);
+        if (forceNew || !root.dataset.idempotencyKey || root.dataset.fileSignature !== signature) {
+            var stamp = forceNew ? ("-" + Date.now().toString(36)) : "";
+            root.dataset.idempotencyKey = ("ev-upload-" + signature.replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 48) + stamp).slice(0, 160);
             root.dataset.fileSignature = signature;
             root.dataset.evidenceId = "";
+            root.dataset.uploadId = "";
+            root.dataset.uploadState = "";
         }
         var bytes = new Uint8Array(await file.arrayBuffer());
         root._fileBytes = bytes;
@@ -198,6 +201,10 @@
         }));
         if (!done.ok) return fail(done.payload);
         remember(done.payload);
+        if (done.payload && done.payload.ingestion_status === "decision_required") {
+            showDecision();
+            return done.payload;
+        }
         root._fileBytes = null;
         paint("sealed", "Upload sealed in the private case store.", done.payload.ingestion_status, 100);
         if (window.complaintEvidenceLibrary) window.complaintEvidenceLibrary.refresh();
@@ -218,7 +225,7 @@
         }
         root._controller = new AbortController();
         paint("pending", "Opening a private upload.", "", 0);
-        var opened = await begin(file);
+        var opened = await begin(file, root.dataset.uploadState === "sealed");
         if (!opened || opened.error || opened.upload_state === "sealed") return opened;
         var streamed = await sendChunks(root._controller.signal).catch(function (error) {
             if (error && error.name === "AbortError") return null;
@@ -286,6 +293,76 @@
         return complete();
     }
 
+    function showDecision() {
+        var root = panel();
+        paint("decision", "This file matches evidence already in the case. Choose keep original, record a revision, or keep a separate copy. Artifacts are not overwritten and support links are not copied.", "decision_required", 0);
+        if (!root) return;
+        var host = document.getElementById("evidence-duplicate-decision");
+        if (!host) {
+            host = document.createElement("div");
+            host.id = "evidence-duplicate-decision";
+            root.appendChild(host);
+        }
+        host.hidden = false;
+        host.innerHTML = "";
+        var lineage = document.createElement("p");
+        lineage.id = "evidence-duplicate-lineage";
+        lineage.textContent = "The original artifact and its versions stay in the catalog. Pick one deliberate duplicate decision.";
+        host.appendChild(lineage);
+        [["retain_original", "Keep the original", "evidence-duplicate-keep"],
+            ["record_revision", "Record a revision", "evidence-duplicate-revise"],
+            ["separate_artifact", "Keep a separate copy", "evidence-duplicate-separate"]].forEach(function (spec) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.id = spec[2];
+            button.textContent = spec[1];
+            button.addEventListener("click", function () { decide(spec[0]).catch(function () { paint("error", "The duplicate decision did not reach the private store.", "", 0); }); });
+            host.appendChild(button);
+        });
+    }
+
+    async function decide(decision) {
+        var root = panel();
+        var bytes = root && root._fileBytes;
+        if (!root || !bytes) {
+            paint("error", "Choose the file again before deciding how to keep the duplicate.", "", 0);
+            return null;
+        }
+        var file = await selectedFile();
+        var posted = await post("/api/cases/evidence", identity({
+            source_filename: file ? file.name : "evidence.bin",
+            original_filename: file ? file.name : "evidence.bin",
+            media_type: file ? mediaFor(file) : "application/octet-stream",
+            content_base64: bytesToBase64(bytes),
+            idempotency_key: (root.dataset.idempotencyKey || "ev-upload") + "-" + decision,
+            duplicate_decision: decision
+        }));
+        if (!posted.ok) return fail(posted.payload);
+        if (posted.payload && posted.payload.duplicate_decision_required) {
+            showDecision();
+            return posted.payload;
+        }
+        root._fileBytes = null;
+        var host = document.getElementById("evidence-duplicate-decision");
+        if (host) host.hidden = true;
+        remember(posted.payload);
+        var applied = posted.payload.duplicate_decision_applied || decision;
+        paint("sealed", "Duplicate decision applied: " + applied + ". Support links were not copied.", posted.payload.ingestion_status, 100);
+        var lineage = document.getElementById("evidence-duplicate-lineage");
+        if (!lineage) {
+            lineage = document.createElement("p");
+            lineage.id = "evidence-duplicate-lineage";
+            root.appendChild(lineage);
+        }
+        lineage.hidden = false;
+        lineage.textContent = "Lineage " + (posted.payload.lineage_original_evidence_id || posted.payload.evidence_id || "")
+            + " version " + String(posted.payload.current_version || "")
+            + ". Overwrote artifact: " + (posted.payload.overwrote_artifact ? "yes" : "no")
+            + ". Support copied: " + (posted.payload.support_links_copied ? "yes" : "no") + ".";
+        if (window.complaintEvidenceLibrary) window.complaintEvidenceLibrary.refresh();
+        return posted.payload;
+    }
+
     function bind() {
         var startButton = document.getElementById("evidence-upload-start");
         var cancelButton = document.getElementById("evidence-upload-cancel");
@@ -295,7 +372,7 @@
         if (retryButton) retryButton.addEventListener("click", function () { retry().catch(function () { paint("error", "Retry failed before the private store responded.", "", 0); }); });
     }
 
-    window.complaintEvidenceUpload = {start: start, cancel: cancel, retry: retry};
+    window.complaintEvidenceUpload = {start: start, cancel: cancel, retry: retry, decide: decide};
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
 }());
@@ -632,9 +709,14 @@
             if (token !== previewGeneration || !currentScope(scope)) return;
             if (!result.ok || !result.body || result.body.error) {
                 ensurePreview();
-                text("evidence-preview-status", result.status === 401 || result.status === 403
+                var denied = result.body && (result.body.error === "key_rotated" || result.body.error === "operation_revoked" || result.body.error === "key_unavailable");
+                var host = document.getElementById("evidence-preview");
+                if (host && denied) host.dataset.state = "revoked";
+                text("evidence-preview-status", denied
+                    ? "Preview denied. Access was revoked or the case key was rotated. The encrypted artifact was not opened."
+                    : (result.status === 401 || result.status === 403
                     ? "This preview is not available for the current case."
-                    : "The preview could not be opened. The encrypted artifact is unchanged.");
+                    : "The preview could not be opened. The encrypted artifact is unchanged."));
                 var stage = document.getElementById("evidence-preview-stage");
                 if (stage) stage.textContent = "";
                 revokePreviewBlobs();
@@ -1907,7 +1989,7 @@
         var root = document.getElementById("evidence-support-panel");
         if (root) root.dataset.state = state;
         text("evidence-support-status", detail || "");
-        if (state === "error") text("evidence-support-error", detail || "The support link was not recorded.");
+        if (state === "error" || state === "conflict") text("evidence-support-error", detail || "The support link was not recorded.");
         else text("evidence-support-error", "");
     }
 
@@ -2171,7 +2253,8 @@
             verified_legal_support: false,
             establishes_legal_support: false,
             case_context: contextSnapshot,
-            idempotency_key: "ux20-" + posture + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8)
+            idempotency_key: "ux20-" + posture + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+            expected_support_revision: (latest && typeof latest.support_revision === "string") ? latest.support_revision : ""
         };
         if (origin === "ai_suggested") {
             extra.model_id = "workspace-ui";
@@ -2181,10 +2264,19 @@
             method: "POST", credentials: "same-origin", headers: headers(),
             body: JSON.stringify(scopeBody(extra))
         });
+        if (result.body && (result.body.conflict === true || result.body.error === "revision_conflict" || result.body.error === "key_rotated" || result.body.error === "operation_revoked")) {
+            var preserved = (result.body.preserved_support_link_ids || []).join(", ");
+            setState(result.body.error === "revision_conflict" || result.body.conflict === true ? "conflict" : "revoked",
+                result.body.error === "key_rotated" || result.body.error === "operation_revoked"
+                    ? "Late publication denied. Access was revoked or the case key was rotated. Encrypted history was kept."
+                    : "Another link was saved first. Encrypted history was kept. Preserved links: " + (preserved || "none") + ".");
+            return;
+        }
         if (!result.response.ok) {
             setState("error", "The support link was refused (" + ((result.body && result.body.error) || result.response.status) + "). A checkbox or classifier does not verify legal support.");
             return;
         }
+        if (result.body.support_revision) latest = Object.assign({}, latest || {}, {support_revision: result.body.support_revision});
         if (result.body.posture === "unavailable" || result.body.operation_succeeded === false) {
             setState("unavailable", "Support is unavailable (" + (result.body.reason || "unavailable") + "). Nothing was verified.");
             text("evidence-support-unavailable", "Unavailable: " + (result.body.reason || "support was not recorded") + ". Verified legal support: no.");
