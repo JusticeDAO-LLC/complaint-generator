@@ -967,7 +967,7 @@ Implementation instructions:
 
 ## CIMP-UX-32 Present AI suggestions and human review as distinct actions
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
