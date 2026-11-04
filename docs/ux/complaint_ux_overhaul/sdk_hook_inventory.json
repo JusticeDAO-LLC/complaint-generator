@@ -1,7 +1,13 @@
 {
   "schema": "complaint-ux-sdk-hook-inventory@1",
   "task_id": "CIMP-UX-02",
-  "qualification_vocabulary": ["present", "callable", "active", "unavailable", "unsupported"],
+  "qualification_vocabulary": [
+    "present",
+    "callable",
+    "active",
+    "unavailable",
+    "unsupported"
+  ],
   "experience_binding": {
     "contract": "docs/ux/complaint_ux_overhaul/experience_contract.md",
     "baseline_manifest": "docs/ux/complaint_ux_overhaul/baseline/screenshot_manifest.json",
@@ -119,24 +125,178 @@
     }
   ],
   "mediator_hooks": [
-    {"hook": "LegalClassificationHook", "mediator_attribute": "legal_classifier", "owner": "mediator/legal_hooks.py", "method": "classify_complaint", "signature": "(self, complaint_text: str) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "StatuteRetrievalHook", "mediator_attribute": "statute_retriever", "owner": "mediator/legal_hooks.py", "method": "retrieve_statutes", "signature": "(self, classification: Dict[str, Any]) -> List[Dict[str, str]]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "SummaryJudgmentHook", "mediator_attribute": "summary_judgment", "owner": "mediator/legal_hooks.py", "method": "generate_requirements", "signature": "(self, classification: Dict[str, Any], statutes: List[Dict[str, str]]) -> Dict[str, List[str]]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "QuestionGenerationHook", "mediator_attribute": "question_generator", "owner": "mediator/legal_hooks.py", "method": "generate_questions", "signature": "(self, requirements: Dict[str, List[str]], classification: Dict[str, Any], provenance_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "EvidenceStorageHook", "mediator_attribute": "evidence_storage", "owner": "mediator/evidence_hooks.py", "method": "store_evidence", "signature": "(self, data: bytes, evidence_type: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "EvidenceStateHook", "mediator_attribute": "evidence_state", "owner": "mediator/evidence_hooks.py", "method": "upsert_evidence_record", "signature": "(self, user_id: str, evidence_info: Dict[str, Any], complaint_id: Optional[str] = None, claim_type: Optional[str] = None, claim_element_id: Optional[str] = None, claim_element: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "EvidenceAnalysisHook", "mediator_attribute": "evidence_analysis", "owner": "mediator/evidence_hooks.py", "method": "analyze_evidence_for_claim", "signature": "(self, user_id: str, claim_type: str) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "ClaimSupportHook", "mediator_attribute": "claim_support", "owner": "mediator/claim_support_hooks.py", "method": "get_claim_support_gaps", "signature": "(self, user_id: 'str', claim_type: 'Optional[str]' = None, required_support_kinds: 'Optional[List[str]]' = None) -> 'Dict[str, Any]'", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "LegalAuthoritySearchHook", "mediator_attribute": "legal_authority_search", "owner": "mediator/legal_authority_hooks.py", "method": "lookup_bounded_corpus", "signature": "(self, **kwargs: Any) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "LegalAuthorityStorageHook", "mediator_attribute": "legal_authority_storage", "owner": "mediator/legal_authority_hooks.py", "method": "store_acquired_authority", "signature": "(self, authority_data: Dict[str, Any], user_id: str, complaint_id: Optional[str] = None, claim_type: Optional[str] = None) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "LegalAuthorityAnalysisHook", "mediator_attribute": "legal_authority_analysis", "owner": "mediator/legal_authority_hooks.py", "method": "analyze_authorities_for_claim", "signature": "(self, user_id: str, claim_type: str) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "WebEvidenceSearchHook", "mediator_attribute": "web_evidence_search", "owner": "mediator/web_evidence_hooks.py", "method": "search_for_evidence", "signature": "(self, keywords: List[str], domains: Optional[List[str]] = None, max_results: int = 20) -> Dict[str, List[Dict[str, Any]]]", "qualification": "callable", "effect_qualification": "unavailable"},
-    {"hook": "WebEvidenceIntegrationHook", "mediator_attribute": "web_evidence_integration", "owner": "mediator/web_evidence_hooks.py", "method": "discover_and_store_evidence", "signature": "(self, keywords: List[str], domains: Optional[List[str]] = None, user_id: Optional[str] = None, claim_type: Optional[str] = None, min_relevance: float = 0.5) -> Dict[str, Any]", "qualification": "callable", "effect_qualification": "unavailable"}
+    {
+      "hook": "LegalClassificationHook",
+      "mediator_attribute": "legal_classifier",
+      "owner": "mediator/legal_hooks.py",
+      "method": "classify_complaint",
+      "signature": "(self, complaint_text: str) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "StatuteRetrievalHook",
+      "mediator_attribute": "statute_retriever",
+      "owner": "mediator/legal_hooks.py",
+      "method": "retrieve_statutes",
+      "signature": "(self, classification: Dict[str, Any]) -> List[Dict[str, str]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "SummaryJudgmentHook",
+      "mediator_attribute": "summary_judgment",
+      "owner": "mediator/legal_hooks.py",
+      "method": "generate_requirements",
+      "signature": "(self, classification: Dict[str, Any], statutes: List[Dict[str, str]]) -> Dict[str, List[str]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "QuestionGenerationHook",
+      "mediator_attribute": "question_generator",
+      "owner": "mediator/legal_hooks.py",
+      "method": "generate_questions",
+      "signature": "(self, requirements: Dict[str, List[str]], classification: Dict[str, Any], provenance_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "EvidenceStorageHook",
+      "mediator_attribute": "evidence_storage",
+      "owner": "mediator/evidence_hooks.py",
+      "method": "store_evidence",
+      "signature": "(self, data: bytes, evidence_type: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_private_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "EvidenceStateHook",
+      "mediator_attribute": "evidence_state",
+      "owner": "mediator/evidence_hooks.py",
+      "method": "upsert_evidence_record",
+      "signature": "(self, user_id: str, evidence_info: Dict[str, Any], complaint_id: Optional[str] = None, claim_type: Optional[str] = None, claim_element_id: Optional[str] = None, claim_element: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_private_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "EvidenceAnalysisHook",
+      "mediator_attribute": "evidence_analysis",
+      "owner": "mediator/evidence_hooks.py",
+      "method": "analyze_evidence_for_claim",
+      "signature": "(self, user_id: str, claim_type: str) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_private_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "ClaimSupportHook",
+      "mediator_attribute": "claim_support",
+      "owner": "mediator/claim_support_hooks.py",
+      "method": "get_claim_support_gaps",
+      "signature": "(self, user_id: 'str', claim_type: 'Optional[str]' = None, required_support_kinds: 'Optional[List[str]]' = None) -> 'Dict[str, Any]'",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "LegalAuthoritySearchHook",
+      "mediator_attribute": "legal_authority_search",
+      "owner": "mediator/legal_authority_hooks.py",
+      "method": "lookup_bounded_corpus",
+      "signature": "(self, **kwargs: Any) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "LegalAuthorityStorageHook",
+      "mediator_attribute": "legal_authority_storage",
+      "owner": "mediator/legal_authority_hooks.py",
+      "method": "store_acquired_authority",
+      "signature": "(self, authority_data: Dict[str, Any], user_id: str, complaint_id: Optional[str] = None, claim_type: Optional[str] = None) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "LegalAuthorityAnalysisHook",
+      "mediator_attribute": "legal_authority_analysis",
+      "owner": "mediator/legal_authority_hooks.py",
+      "method": "analyze_authorities_for_claim",
+      "signature": "(self, user_id: str, claim_type: str) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "WebEvidenceSearchHook",
+      "mediator_attribute": "web_evidence_search",
+      "owner": "mediator/web_evidence_hooks.py",
+      "method": "search_for_evidence",
+      "signature": "(self, keywords: List[str], domains: Optional[List[str]] = None, max_results: int = 20) -> Dict[str, List[Dict[str, Any]]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_web_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "WebEvidenceIntegrationHook",
+      "mediator_attribute": "web_evidence_integration",
+      "owner": "mediator/web_evidence_hooks.py",
+      "method": "discover_and_store_evidence",
+      "signature": "(self, keywords: List[str], domains: Optional[List[str]] = None, user_id: Optional[str] = None, claim_type: Optional[str] = None, min_relevance: float = 0.5) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_web_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    }
   ],
   "registered_operations": [
-    {"operation": "acquire_legal_sources", "owner": "mediator.legal_authority_hooks.LegalAuthoritySearchHook", "handler_enabled": false, "qualification": "unavailable"},
-    {"operation": "ingest_private_evidence", "owner": "mediator.evidence_hooks.EvidenceStorageHook", "handler_enabled": false, "qualification": "unavailable"},
-    {"operation": "refresh_grounding", "owner": "mediator.mediator.Mediator.refresh_verified_legal_dependencies", "handler_enabled": false, "qualification": "unavailable"}
+    {
+      "operation": "acquire_legal_sources",
+      "owner": "mediator.legal_authority_hooks.LegalAuthoritySearchHook",
+      "handler_enabled": false,
+      "qualification": "unavailable",
+      "lifecycle_workflow": "dispatch_public_mediator_operation",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook",
+      "qualification_note": "Static handler_enabled stays false. A successful effect is the workspace dispatch receipt, not this flag."
+    },
+    {
+      "operation": "ingest_private_evidence",
+      "owner": "mediator.evidence_hooks.EvidenceStorageHook",
+      "handler_enabled": false,
+      "qualification": "unavailable",
+      "lifecycle_workflow": "dispatch_public_mediator_operation",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook",
+      "qualification_note": "Static handler_enabled stays false. A successful effect is the workspace dispatch receipt, not this flag."
+    },
+    {
+      "operation": "refresh_grounding",
+      "owner": "mediator.mediator.Mediator.refresh_verified_legal_dependencies",
+      "handler_enabled": false,
+      "qualification": "unavailable",
+      "lifecycle_workflow": "dispatch_public_mediator_operation",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook",
+      "qualification_note": "Static handler_enabled stays false. A successful effect is the workspace dispatch receipt, not this flag."
+    }
   ],
   "adapter_probes": {
     "knowledge_graph": {
@@ -182,5 +342,106 @@
         "reason": "The declared accelerate checkout is an opaque gitlink and generate_text is absent there. A different installed copy is not adopted as the pin."
       }
     ]
+  },
+  "lifecycle_proof": {
+    "task_id": "CIMP-UX-56",
+    "schema": "complaint-ux-hook-lifecycle@1",
+    "workspace_entry": "applications.complaint_workspace.ComplaintWorkspaceService.exercise_lifecycle_hook",
+    "runtime_identity": "complaint-hook-runtime:hook_execution_context_receipt_v1",
+    "bindings": [
+      "source_id",
+      "content_hash",
+      "runtime_id",
+      "owner_id",
+      "case_id",
+      "consent_generation",
+      "revision",
+      "session_id",
+      "session_revision"
+    ],
+    "hooks": [
+      {
+        "hook": "LegalClassificationHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "StatuteRetrievalHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "SummaryJudgmentHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "QuestionGenerationHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "EvidenceStorageHook",
+        "workflow": "qualify_private_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "EvidenceStateHook",
+        "workflow": "qualify_private_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "EvidenceAnalysisHook",
+        "workflow": "qualify_private_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "ClaimSupportHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "LegalAuthoritySearchHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "LegalAuthorityStorageHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "LegalAuthorityAnalysisHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "WebEvidenceSearchHook",
+        "workflow": "qualify_web_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "WebEvidenceIntegrationHook",
+        "workflow": "qualify_web_evidence_hooks",
+        "required": true
+      }
+    ],
+    "registered_operations": [
+      "acquire_legal_sources",
+      "ingest_private_evidence",
+      "refresh_grounding"
+    ],
+    "unsupported_optional": [
+      {
+        "hook": "KnowledgeGraphExtractor.extract_enhanced_knowledge_graph",
+        "qualification": "unsupported",
+        "activation": false,
+        "reason": "An unsupported optional extractor is not a completed hook activation."
+      }
+    ],
+    "missing_capability": "unavailable_dependency_failure",
+    "baseline_defect_preserved": "authenticated_backend_with_existing_stale_workspace_header",
+    "pixels_observed_by_this_task": false,
+    "metadata_is_not_success": true
   }
 }
