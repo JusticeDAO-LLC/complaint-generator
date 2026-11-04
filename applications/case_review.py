@@ -83,6 +83,244 @@ class CaseReviewError(Exception):
         super().__init__(code)
 
 
+CONTENT_ACCESS_TASK_ID = "CIMP-UX-43"
+CONTENT_ACCESS_PURPOSES = frozenset({
+    "operational_administration",
+    "legal_content_review",
+    "assignment_observation",
+})
+_FORGED_CONTENT_AUTHORITY = frozenset({
+    "role",
+    "roles",
+    "staff_role",
+    "is_admin",
+    "is_staff",
+    "is_lawyer",
+    "approval",
+    "approval_label",
+    "approved",
+    "human_approval",
+    "cached_case",
+    "cached_case_object",
+    "case_object",
+    "permits_case_content",
+    "key",
+    "keys",
+    "data_key",
+    "browser_key",
+    "key_grant",
+    "bypass_key",
+    "membership",
+    "grant",
+    "actions",
+})
+_DECISION_FIELDS = (
+    "task_id",
+    "at",
+    "actor_principal_id",
+    "subject_principal_id",
+    "purpose",
+    "decision",
+    "reason",
+    "tenant_id",
+    "case_id",
+    "case_revision",
+    "membership_revision",
+    "assignment_status",
+    "content_permitted",
+    "key_access_used",
+    "key_bypassed",
+    "authority",
+    "operational_administration",
+    "legal_review_authorized",
+)
+
+
+def _access_label(value: Any, code: str) -> str:
+    if not isinstance(value, str) or value.strip() == "" or value != value.strip():
+        raise CaseReviewError(code)
+    if any(char in value for char in ("\x00", "\n", "\r", "/", "\\")):
+        raise CaseReviewError(code)
+    return value
+
+
+def _decision_row(**fields: Any) -> Dict[str, Any]:
+    row = {name: fields.get(name) for name in _DECISION_FIELDS}
+    row["task_id"] = CONTENT_ACCESS_TASK_ID
+    row["key_bypassed"] = False
+    row["content_permitted"] = fields.get("content_permitted") is True
+    row["key_access_used"] = fields.get("key_access_used") is True
+    row["legal_review_authorized"] = fields.get("legal_review_authorized") is True
+    row["operational_administration"] = fields.get("operational_administration") is True
+    if tuple(row) != _DECISION_FIELDS:
+        raise CaseReviewError("content_access_fields")
+    return row
+
+
+def assess_content_access(
+    *,
+    actor_principal_id: str,
+    session_roles: Any,
+    purpose: str,
+    body: Mapping[str, Any],
+    live_case: Mapping[str, Any] | None,
+    subject_membership: Mapping[str, Any] | None,
+    key_grant_present: bool,
+    at: int,
+) -> Dict[str, Any]:
+    """Decide operational metadata versus legal content review.
+
+    Session roles and the live case come from server owners. A request body
+    cannot supply a role, an approval label, a cached case, or a key. Tenant,
+    case, and actor crossings are denied. A positive legal decision still
+    carries no narrative, evidence, message, export, or key material.
+    """
+
+    actor = _access_label(actor_principal_id, "unauthenticated")
+    if type(at) is not int:
+        raise CaseReviewError("clock")
+    if not isinstance(body, Mapping):
+        raise CaseReviewError("request_body")
+    roles = tuple(session_roles) if isinstance(session_roles, tuple) else ()
+    if not isinstance(session_roles, tuple):
+        raise CaseReviewError("session_roles")
+    requested_purpose = body.get("purpose", purpose)
+    if requested_purpose != purpose or purpose not in CONTENT_ACCESS_PURPOSES:
+        raise CaseReviewError("purpose_rejected")
+    subject = _access_label(body.get("subject_principal_id"), "subject_principal_id")
+    case_id = _access_label(body.get("case_id"), "case_id")
+    live = dict(live_case) if isinstance(live_case, Mapping) else None
+    membership = dict(subject_membership) if isinstance(subject_membership, Mapping) else None
+    base = {
+        "at": at,
+        "actor_principal_id": actor,
+        "subject_principal_id": subject,
+        "purpose": purpose,
+        "tenant_id": None if live is None else live.get("tenant_id"),
+        "case_id": case_id,
+        "case_revision": None if live is None else live.get("revision"),
+        "membership_revision": None if membership is None else membership.get("revision"),
+        "assignment_status": None if membership is None else membership.get("status"),
+    }
+
+    def deny(reason: str) -> Dict[str, Any]:
+        return _decision_row(
+            decision="denied",
+            reason=reason,
+            content_permitted=False,
+            key_access_used=False,
+            legal_review_authorized=False,
+            operational_administration=False,
+            authority="server_session",
+            **base,
+        )
+
+    if any(name in body for name in _FORGED_CONTENT_AUTHORITY):
+        return deny("body_authority_rejected")
+    cached = body.get("case")
+    if isinstance(cached, Mapping):
+        return deny("cached_case_rejected")
+    if live is None or live.get("case_id") != case_id:
+        return deny("missing_case")
+    for name in ("tenant_id", "case_id", "resource_id", "owner_principal_id", "revision"):
+        if name not in live:
+            return deny("missing_case")
+    if type(live.get("revision")) is not int:
+        return deny("missing_case")
+    if body.get("tenant_id") not in (None, live["tenant_id"]):
+        return deny("tenant_crossing_denied")
+    if body.get("resource_id") not in (None, live["resource_id"]):
+        return deny("case_crossing_denied")
+    if body.get("actor_principal_id") not in (None, actor):
+        return deny("actor_crossing_denied")
+    if membership is not None:
+        if membership.get("case_id") not in (None, case_id):
+            return deny("case_crossing_denied")
+        if membership.get("tenant_id") not in (None, live["tenant_id"]):
+            return deny("tenant_crossing_denied")
+        if membership.get("member_principal_id") not in (None, subject):
+            return deny("actor_crossing_denied")
+    if purpose == "operational_administration":
+        if "operational_admin" not in roles:
+            return deny("action_not_permitted")
+        return _decision_row(
+            decision="operational_administration",
+            reason="operational_metadata_only",
+            content_permitted=False,
+            key_access_used=False,
+            legal_review_authorized=False,
+            operational_administration=True,
+            authority="server_operational_admin",
+            **base,
+        )
+    if purpose == "assignment_observation":
+        if "operational_admin" not in roles:
+            return deny("action_not_permitted")
+        status = None if membership is None else membership.get("status")
+        return _decision_row(
+            decision="assignment_observation",
+            reason="assignment_observed" if isinstance(status, str) else "assignment_absent",
+            content_permitted=False,
+            key_access_used=False,
+            legal_review_authorized=False,
+            operational_administration=True,
+            authority="server_membership",
+            **base,
+        )
+    if subject != actor:
+        return deny("actor_crossing_denied")
+    accepted = (
+        membership is not None
+        and membership.get("status") == "accepted"
+        and membership.get("member_principal_id") == actor
+        and membership.get("case_id") == case_id
+        and membership.get("tenant_id") == live["tenant_id"]
+    )
+    if not accepted:
+        if "operational_admin" in roles and "lawyer" not in roles and actor != live["owner_principal_id"]:
+            return deny("operational_admin_cannot_review_content")
+        return deny("content_grant_required")
+    if key_grant_present is not True:
+        return deny("key_access_required")
+    if actor != live["owner_principal_id"] and "lawyer" not in roles:
+        return deny("content_grant_required")
+    return _decision_row(
+        decision="legal_content_review",
+        reason="separate_case_grant_and_key",
+        content_permitted=True,
+        key_access_used=True,
+        legal_review_authorized=True,
+        operational_administration=False,
+        authority="server_membership_and_key_grant",
+        **base,
+    )
+
+
+def guard_mounted_review(request: Any, case_id: str, decision: Any, authority: Any) -> None:
+    """Reject admin-only, cached, and crossed review authority before content is read."""
+
+    if decision is None or getattr(decision, "case_id", None) != case_id or authority is None:
+        raise CaseReviewError("lawyer_review_ungranted")
+    if getattr(decision, "permits_case_content", False) is not True:
+        raise CaseReviewError("operational_admin_cannot_review_content")
+    if getattr(decision, "membership", None) == "operational-admin":
+        raise CaseReviewError("operational_admin_cannot_review_content")
+    if getattr(request.state, "cached_case", None) is not None or getattr(request.state, "cached_case_object", None) is not None:
+        raise CaseReviewError("cached_case_rejected")
+    principal = getattr(request.state, "browser_principal", None)
+    actor = getattr(principal, "principal_id", None)
+    if actor is not None and actor != getattr(decision, "actor_principal_id", None):
+        raise CaseReviewError("actor_crossing_denied")
+    if getattr(authority, "case_id", None) != case_id:
+        raise CaseReviewError("case_crossing_denied")
+    authority_actor = getattr(authority, "actor_principal_id", None)
+    if actor is not None and authority_actor is not None and authority_actor != actor:
+        raise CaseReviewError("actor_crossing_denied")
+    if getattr(decision, "tenant_id", None) not in (None, getattr(authority, "canonical_owner_principal_id", None)) and getattr(authority, "canonical_owner_principal_id", None) is not None:
+        if getattr(decision, "tenant_id", None) != getattr(authority, "canonical_owner_principal_id", None):
+            raise CaseReviewError("tenant_crossing_denied")
+
+
 def case_review_http_status(code: str) -> int:
     if code in {"unauthenticated", "lawyer_review_unavailable"}:
         return 401
@@ -1664,8 +1902,10 @@ def mount_lawyer_review_routes(app: Any) -> None:
         authority = current_workspace_case_authority()
         if type(service) is not CaseReviewService:
             raise CaseReviewStoreError('review_unavailable')
-        if decision is None or decision.case_id != case_id or authority is None:
-            raise CaseReviewStoreError('lawyer_review_ungranted')
+        try:
+            guard_mounted_review(request, case_id, decision, authority)
+        except CaseReviewError as exc:
+            raise CaseReviewStoreError(exc.code) from exc
         return service, decision, authority
 
     def failed(exc):
@@ -1676,7 +1916,10 @@ def mount_lawyer_review_routes(app: Any) -> None:
             'replay_mismatch','proof_producer_unavailable','owner_share_required','recipient_review_grant_required',
             'proposal_required','approval_required','model_cannot_approve','machine_proof_cannot_approve',
             'review_transition_owner_unavailable','review_field','review_bounds','revision_conflict',
-            'review_target_capability_unavailable','proposal_already_accepted','unlock_needed'}
+            'review_target_capability_unavailable','proposal_already_accepted','unlock_needed',
+            'operational_admin_cannot_review_content','cached_case_rejected','actor_crossing_denied',
+            'case_crossing_denied','tenant_crossing_denied','body_authority_rejected','key_access_required',
+            'content_grant_required'}
         if code not in allowed:
             code = 'lawyer_review_ungranted' if code in {'grant_revoked','key_grant_rejected','late_result_after_cutoff',
                 'membership_removed','membership_expired','workspace_authorization_denied','actor_not_permitted'} else 'review_unavailable'

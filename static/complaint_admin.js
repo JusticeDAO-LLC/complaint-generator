@@ -288,6 +288,109 @@
         }).catch(function (error) { setError(error.message); });
     });
 
+    function ensureContentAccess() {
+        var panel = $("audit-panel");
+        if (!panel || $("content-access-decision")) {
+            return;
+        }
+        var form = document.createElement("form");
+        form.id = "content-access-decision";
+        form.innerHTML = [
+            "<label for=\"content-access-case\">Case</label>",
+            "<input id=\"content-access-case\" name=\"case_id\" autocomplete=\"off\">",
+            "<label for=\"content-access-subject\">Subject</label>",
+            "<input id=\"content-access-subject\" name=\"subject_principal_id\" autocomplete=\"off\">",
+            "<label for=\"content-access-purpose\">Purpose</label>",
+            "<select id=\"content-access-purpose\" name=\"purpose\">",
+            "<option value=\"operational_administration\">operational administration</option>",
+            "<option value=\"legal_content_review\">legal content review</option>",
+            "<option value=\"assignment_observation\">assignment observation</option>",
+            "</select>",
+            "<button type=\"submit\">Record content-access decision</button>"
+        ].join("");
+        var result = document.createElement("p");
+        result.id = "content-access-result";
+        result.setAttribute("role", "status");
+        var reload = document.createElement("button");
+        reload.id = "load-content-access";
+        reload.type = "button";
+        reload.textContent = "Load content-access audit";
+        var list = document.createElement("ol");
+        list.id = "content-access-events";
+        panel.appendChild(form);
+        panel.appendChild(result);
+        panel.appendChild(reload);
+        panel.appendChild(list);
+        form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            setError("");
+            result.textContent = "";
+            if (!signedIn) {
+                setWorkspaceState("locked", "Sign in before recording a content-access decision.");
+                return;
+            }
+            setWorkspaceState("loading", "Recording the content-access decision.");
+            call("POST", "/api/admin/content-access", {
+                case_id: $("content-access-case").value,
+                subject_principal_id: $("content-access-subject").value,
+                purpose: $("content-access-purpose").value
+            }).then(function (payload) {
+                var decision = payload.decision || {};
+                result.textContent = [
+                    decision.purpose,
+                    decision.decision,
+                    decision.reason,
+                    "content=" + decision.content_permitted,
+                    "key_bypassed=" + decision.key_bypassed,
+                    decision.tenant_id,
+                    decision.case_id,
+                    decision.actor_principal_id
+                ].join(" ");
+                setWorkspaceState("ready", "Content-access decision recorded. Case content stays withheld.");
+                return loadContentAccess();
+            }).catch(function (error) {
+                result.textContent = "";
+                setWorkspaceState("error", error.message || "content_access_denied");
+                setError(error.message || "content_access_denied");
+                loadContentAccess().catch(function () {});
+            });
+        });
+        reload.addEventListener("click", function () {
+            setError("");
+            loadContentAccess().catch(function (error) { setError(error.message); });
+        });
+    }
+
+    function renderContentAccess(payload) {
+        var list = $("content-access-events");
+        if (!list) {
+            return;
+        }
+        list.replaceChildren();
+        (payload.decisions || []).forEach(function (item) {
+            var line = document.createElement("li");
+            line.textContent = [
+                item.at,
+                item.actor_principal_id,
+                item.subject_principal_id,
+                item.purpose,
+                item.decision,
+                item.reason,
+                item.tenant_id,
+                item.case_id,
+                item.assignment_status,
+                "content=" + item.content_permitted,
+                "key_bypassed=" + item.key_bypassed,
+                item.authority
+            ].join(" ");
+            list.appendChild(line);
+        });
+    }
+
+    function loadContentAccess() {
+        return call("GET", "/api/admin/content-access").then(renderContentAccess);
+    }
+
     $("load-audit").addEventListener("click", function () {
         setError("");
         call("GET", "/api/admin/audit").then(function (payload) {
@@ -295,11 +398,21 @@
             list.replaceChildren();
             (payload.events || []).forEach(function (item) {
                 var line = document.createElement("li");
-                line.textContent = [item.action, item.subject_principal_id, item.detail, item.revision].join(" ");
+                line.textContent = [
+                    item.action,
+                    item.subject_principal_id,
+                    item.detail,
+                    item.revision,
+                    item.tenant_id || "",
+                    item.case_id || "",
+                    item.decision || ""
+                ].join(" ");
                 list.appendChild(line);
             });
         }).catch(function (error) { setError(error.message); });
     });
+
+    ensureContentAccess();
 
     setWorkspaceState("locked", "Sign in to load the operational directory.");
 })();

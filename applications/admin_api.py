@@ -34,10 +34,12 @@ from applications.principal_store import (
 TASK_ID = "CIMP-GUI-50"
 OPERATIONS_TASK_ID = "CIMP-GUI-51"
 UX_WORKSPACE_TASK_ID = "CIMP-UX-42"
+CONTENT_ACCESS_TASK_ID = "CIMP-UX-43"
 ADMIN_PAGE_PATH = "/admin"
 ADMIN_SCRIPT_PATH = "/static/complaint_admin.js"
 ADMIN_API_PREFIX = "/api/admin"
 WORKSPACE_PATH = ADMIN_API_PREFIX + "/workspace"
+CONTENT_ACCESS_PATH = ADMIN_API_PREFIX + "/content-access"
 OPERATIONS_PATH = ADMIN_API_PREFIX + "/operations"
 INCIDENT_PATH = OPERATIONS_PATH + "/incidents"
 ASSIGNMENT_STATUSES = ("pending", "accepted", "declined", "expired", "removed")
@@ -133,6 +135,10 @@ ADMIN_LIMITATIONS = (
     "audit_export_requires_purpose_current_grant_and_explicit_fields",
     "private_audit_exports_stay_encrypted_until_explicit_user_decryption",
     "direct_audit_download_is_denied",
+    "operational_admin_does_not_authorize_legal_content_review",
+    "body_roles_approvals_and_cached_cases_cannot_authorize_content",
+    "content_access_cannot_bypass_key_grant",
+    "tenant_case_actor_crossings_are_denied",
 )
 
 
@@ -192,6 +198,7 @@ class OperationalAdminService:
         self._case_audit = case_audit
         self._events: list[dict[str, Any]] = []
         self._incidents: list[dict[str, Any]] = []
+        self._content_access: list[dict[str, Any]] = []
 
     def list_accounts(self, actor_principal_id: str, session_roles: Sequence[str], query: Mapping[str, Any] | None = None) -> dict[str, Any]:
         actor = self._require_admin(actor_principal_id, session_roles)
@@ -486,6 +493,148 @@ class OperationalAdminService:
             "opened_case_ids": [],
         })
         return view
+
+    def decide_content_access(
+        self,
+        actor_principal_id: str,
+        session_roles: Sequence[str],
+        body: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Record one content-access or assignment decision.
+
+        The live case and membership are read from server owners. Body roles,
+        approval labels, cached case objects, and keys cannot authorize
+        content. The returned record never includes case plaintext.
+        """
+
+        from applications.case_review import CaseReviewError, assess_content_access
+
+        actor = self._require_admin(actor_principal_id, session_roles)
+        if not isinstance(body, Mapping):
+            raise OperationalAdminError("request_body")
+        self._reject_content_request(body)
+        purpose = body.get("purpose")
+        if not isinstance(purpose, str):
+            raise OperationalAdminError("purpose_rejected")
+        try:
+            case_id = _label(body.get("case_id"), "case_id")
+            subject_id = _label(body.get("subject_principal_id"), "subject_principal_id")
+        except OperationalAdminError as exc:
+            raise OperationalAdminError(exc.code) from exc
+        self._load(subject_id)
+        live = self._sealed_case(case_id)
+        membership = self._subject_membership(subject_id, case_id, live)
+        key_grant_present = False
+        if membership is not None:
+            grant_id = membership.get("key_grant_id")
+            key_grant_present = isinstance(grant_id, str) and grant_id != ""
+        try:
+            verdict = assess_content_access(
+                actor_principal_id=actor.principal_id,
+                session_roles=tuple(actor.roles),
+                purpose=purpose,
+                body=body,
+                live_case=live,
+                subject_membership=membership,
+                key_grant_present=key_grant_present,
+                at=self._now(),
+            )
+        except CaseReviewError as exc:
+            raise OperationalAdminError(exc.code) from exc
+        if verdict.get("key_bypassed") is not False or "narrative" in verdict or "key" in verdict:
+            raise OperationalAdminError("admin_case_content_denied")
+        self._content_access.append(dict(verdict))
+        self._events.append({
+            "at": verdict["at"],
+            "actor_principal_id": actor.principal_id,
+            "action": verdict["purpose"],
+            "subject_principal_id": verdict["subject_principal_id"],
+            "detail": verdict["reason"],
+            "revision": actor.revision,
+            "tenant_id": verdict["tenant_id"],
+            "case_id": verdict["case_id"],
+            "decision": verdict["decision"],
+            "content_permitted": False if verdict["purpose"] != "legal_content_review" else verdict["content_permitted"],
+            "key_bypassed": False,
+        })
+        if verdict["decision"] == "denied":
+            raise OperationalAdminError(verdict["reason"])
+        return {
+            "task_id": CONTENT_ACCESS_TASK_ID,
+            "decision": verdict,
+            "case_content": None,
+            "narratives": [],
+            "evidence": [],
+            "private_messages": [],
+            "exports": [],
+            "keys": [],
+            "limitations": list(ADMIN_LIMITATIONS),
+        }
+
+    def content_access_log(self, actor_principal_id: str, session_roles: Sequence[str]) -> dict[str, Any]:
+        actor = self._require_admin(actor_principal_id, session_roles)
+        if actor.principal_id not in self._audit_readers:
+            raise OperationalAdminError("audit_right_required")
+        return {
+            "task_id": CONTENT_ACCESS_TASK_ID,
+            "actor_principal_id": actor.principal_id,
+            "decisions": list(self._content_access),
+            "case_content": None,
+            "narratives": [],
+            "evidence": [],
+            "private_messages": [],
+            "exports": [],
+            "keys": [],
+            "limitations": list(ADMIN_LIMITATIONS),
+        }
+
+    def _sealed_case(self, case_id: str) -> dict[str, Any] | None:
+        finder = getattr(self._cases, "sealed_case", None)
+        if not callable(finder):
+            return None
+        found = finder(case_id)
+        if found is None:
+            return None
+        tenant_id = getattr(found, "tenant_id", None)
+        resource_id = getattr(found, "resource_id", None)
+        owner_id = getattr(found, "owner_principal_id", None)
+        revision = getattr(found, "revision", None)
+        if not all(isinstance(item, str) and item for item in (tenant_id, resource_id, owner_id)):
+            return None
+        if type(revision) is not int:
+            return None
+        if getattr(found, "case_id", None) != case_id:
+            return None
+        return {
+            "tenant_id": tenant_id,
+            "case_id": case_id,
+            "resource_id": resource_id,
+            "owner_principal_id": owner_id,
+            "revision": revision,
+        }
+
+    def _subject_membership(self, subject_id: str, case_id: str, live: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        memberships = self._memberships
+        if memberships is None or not hasattr(memberships, "recover") or live is None:
+            return None
+        try:
+            grants = memberships.recover()
+        except Exception as exc:
+            raise OperationalAdminError("assignment_status_unavailable") from exc
+        for grant in grants:
+            if getattr(grant, "member_principal_id", None) != subject_id:
+                continue
+            if getattr(grant, "case_id", None) != case_id:
+                continue
+            return {
+                "member_principal_id": subject_id,
+                "case_id": case_id,
+                "tenant_id": getattr(grant, "tenant_id", live["tenant_id"]),
+                "status": getattr(grant, "status", None),
+                "revision": getattr(grant, "revision", None),
+                "key_grant_id": getattr(grant, "key_grant_id", None),
+            }
+        return None
 
     def audit_log(self, actor_principal_id: str, session_roles: Sequence[str]) -> dict[str, Any]:
         actor = self._require_admin(actor_principal_id, session_roles)
@@ -1164,6 +1313,23 @@ def mount_operational_admin(app: Any) -> None:
         except OperationalAdminError as exc:
             return _fail(exc)
         return JSONResponse(payload, status_code=201)
+
+    @app.post(CONTENT_ACCESS_PATH)
+    async def admin_content_access(request: Request):
+        try:
+            actor, roles = _actor(request)
+            payload = _service(request).decide_content_access(actor, roles, _material(request))
+        except OperationalAdminError as exc:
+            return _fail(exc)
+        return JSONResponse(payload, status_code=201)
+
+    @app.get(CONTENT_ACCESS_PATH)
+    async def admin_content_access_log(request: Request):
+        try:
+            actor, roles = _actor(request)
+            return JSONResponse(_service(request).content_access_log(actor, roles))
+        except OperationalAdminError as exc:
+            return _fail(exc)
 
     @app.get(ADMIN_API_PREFIX + "/audit")
     async def admin_audit(request: Request):
