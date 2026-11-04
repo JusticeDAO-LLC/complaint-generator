@@ -1153,7 +1153,7 @@ Implementation instructions:
 
 ## CIMP-UX-38 Add an in-app inbox, unread markers, and attention states
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
