@@ -1184,7 +1184,7 @@ Implementation instructions:
 
 ## CIMP-UX-39 Build a scoped lawyer case and review queue
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
