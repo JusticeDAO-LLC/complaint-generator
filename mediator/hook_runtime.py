@@ -1781,6 +1781,7 @@ _PUBLIC_CODES = frozenset({
     "storage_unavailable",
     "binding_missing",
     "consent_missing",
+    "consent_revoked",
     "wrong_case",
     "purpose_mismatch",
     "missing_purpose",
@@ -2120,16 +2121,36 @@ def _operation_result(
     graph_revision: str = "",
     request_id: str = "",
     error_type: str = "",
+    source_search: str = "not_run",
+    admission: str = "not_run",
+    handler_invoked: bool = False,
+    effect_dispatched: bool = False,
+    writes: int = 0,
+    storage_invoked: bool = False,
+    dispatch_enabled: bool = False,
+    handler_enabled: bool = False,
+    candidate_status: str = "",
+    source_status: str = "",
+    late: bool = False,
+    host: Any = None,
+    owner_id: str = "",
+    case_id: str = "",
 ) -> dict[str, Any]:
     refused = status in {"refused", "timeout", "cancelled", "malformed"}
     public_code = _safe_code(code, "unclassified")
     operation_status, request_status, revision_status = _dispatch_stage_statuses(public_code, operation if operation in LEGAL_EVIDENCE_OPERATIONS else "")
+    if status == "successful":
+        terminal = "successful"
+    elif status == "empty":
+        terminal = "empty"
+    else:
+        terminal = _dispatch_terminal(status, public_code)
     trace = record_bounded_hook_outcome({
         "operation": operation if operation in LEGAL_EVIDENCE_OPERATIONS else "",
-        "terminal": _dispatch_terminal(status, public_code),
+        "terminal": terminal,
         "code": public_code,
-        "source_search": "not_run",
-        "admission": "not_run",
+        "source_search": source_search,
+        "admission": admission,
         "operation_status": operation_status,
         "request_status": request_status,
         "revision_status": revision_status,
@@ -2139,31 +2160,44 @@ def _operation_result(
         "error_type": error_type,
         "counts": {"seen": len(source_refs), "admitted": 0, "errors": 0 if status == "successful" else 1},
     })
-    return {
+    if status == "empty":
+        resolved_candidate = "not_candidate"
+        resolved_source = "not_admitted"
+    elif candidate_status:
+        resolved_candidate = candidate_status
+        resolved_source = source_status or ("refused" if refused else "not_admitted")
+    else:
+        resolved_candidate = "refused" if refused else "not_candidate"
+        resolved_source = "refused" if refused else "not_admitted"
+    result = {
         "schema": HOOK_OPERATION_RESULT_SCHEMA,
         "operation": operation,
         "status": status,
         "code": code,
         "role": role,
         "role_dispatched": False,
-        "candidate_status": "refused" if refused else "not_candidate",
-        "source_status": "refused" if refused else "not_admitted",
+        "candidate_status": resolved_candidate,
+        "source_status": resolved_source,
         "support_status": "refused" if refused else "unsupported",
         "proof_status": "not_proof",
         "source_refs": [dict(item) for item in source_refs],
         "source_refs_admitted": False,
         "owner": owner,
         "prerequisites": [dict(item) for item in prerequisites],
-        "handler_enabled": False,
-        "handler_invoked": False,
-        "effect_dispatched": False,
+        "handler_enabled": handler_enabled is True,
+        "handler_invoked": handler_invoked is True,
+        "effect_dispatched": effect_dispatched is True,
         "provider_invoked": False,
         "backend_invoked": False,
-        "storage_invoked": False,
-        "writes": 0,
-        "dispatch_enabled": False,
+        "storage_invoked": storage_invoked is True,
+        "writes": writes if type(writes) is int and writes > 0 else 0,
+        "dispatch_enabled": dispatch_enabled is True,
+        "late": late is True,
         "trace": trace,
     }
+    if _host_qualifies_operations(host):
+        _journal_qualified_result(host, result, owner_id=owner_id, case_id=case_id)
+    return result
 
 
 def _marked_prerequisites(operation: str, *, key_available: bool, private_store_available: bool, derived_index_ready: bool) -> list[dict[str, Any]]:
@@ -2179,6 +2213,274 @@ def _marked_prerequisites(operation: str, *, key_available: bool, private_store_
             row["status"] = "unavailable"
         rows.append(row)
     return rows
+
+
+def _host_qualifies_operations(host: Any) -> bool:
+    """A qualified host exposes saved case facts. Flags and receipts do not."""
+
+    required = (
+        "load_saved_case_record",
+        "case_knowledge_graph",
+        "case_private_artifact_binding",
+        "case_derived_index_owner",
+        "case_operation_owner",
+        "local_public_legal_text",
+        "consume_pending_late_mutation",
+        "append_mediator_operation_journal",
+    )
+    return all(callable(getattr(host, name, None)) for name in required)
+
+
+def _journal_qualified_result(host: Any, result: Mapping[str, Any], *, owner_id: str, case_id: str) -> None:
+    entry = {
+        "schema": "mediator_operation_journal_v1",
+        "operation": result.get("operation") if result.get("operation") in LEGAL_EVIDENCE_OPERATIONS else "",
+        "status": str(result.get("status") or ""),
+        "code": str(result.get("code") or ""),
+        "owner_id": owner_id if type(owner_id) is str else "",
+        "case_id": case_id if type(case_id) is str else "",
+        "late": result.get("late") is True,
+        "writes": result.get("writes") if type(result.get("writes")) is int else 0,
+        "effect_dispatched": result.get("effect_dispatched") is True,
+        "handler_invoked": result.get("handler_invoked") is True,
+        "storage_invoked": result.get("storage_invoked") is True,
+        "provider_invoked": False,
+        "proof": False,
+    }
+    host.append_mediator_operation_journal(entry)
+
+
+def _qualification_prerequisites(operation: str, *, consent: bool, artifact: bool, index: bool) -> list[dict[str, Any]]:
+    flags = {
+        "persisted_operation_consent": consent,
+        "encrypted_private_artifact_store": artifact,
+        "derived_index_boundary": index,
+    }
+    rows = []
+    for item in _prerequisite_rows(operation):
+        row = dict(item)
+        verified = flags[item["id"]] is True
+        row["implemented"] = verified
+        row["verified"] = verified
+        row["status"] = "verified" if verified else "unavailable"
+        rows.append(row)
+    return rows
+
+
+def _qualify_saved_host(
+    host: Any,
+    *,
+    operation: str,
+    owner_id: str,
+    case_id: str,
+    target: str,
+    graph_revision: str,
+    citation_ref: str,
+) -> dict[str, Any]:
+    """Re-read saved consent, the live graph, ciphertext, and the derived index."""
+
+    from complaint_phases.knowledge_graph import KnowledgeGraph
+    from integrations.private_storage import (
+        PrivateArtifactBindingError,
+        PrivateArtifactIntegrityError,
+        PrivateKeyMaterialError,
+        retrieve_private_artifact,
+    )
+    from mediator.evidence_hooks import EvidenceStorageHook
+    from mediator.legal_authority_hooks import LegalAuthoritySearchHook, LegalAuthorityStorageHook
+    from mediator.mediator import Mediator
+
+    def failed(code: str, status: str, *, consent: bool = False, artifact: bool = False, index: bool = False) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "code": code,
+            "status": status,
+            "fingerprint": "",
+            "prerequisites": _qualification_prerequisites(operation, consent=consent, artifact=artifact, index=index),
+            "opened_hash": "",
+            "citation_ref": citation_ref,
+        }
+
+    try:
+        record = host.load_saved_case_record(owner_id)
+    except Exception:
+        return failed("consent_missing", "refused")
+    if not isinstance(record, Mapping):
+        return failed("consent_missing", "refused")
+    if str(record.get("user_id") or "") != owner_id or str(record.get("case_id") or "") != case_id:
+        return failed("wrong_case", "refused")
+    consent = record.get("mediator_operation_consent")
+    if not isinstance(consent, Mapping):
+        return failed("consent_missing", "refused")
+    if consent.get("revoked") is True:
+        return failed("consent_revoked", "refused")
+    if str(consent.get("user_id") or "") != owner_id or str(consent.get("case_id") or "") != case_id:
+        return failed("wrong_case", "refused")
+    operations = consent.get("operations")
+    generation = consent.get("generation")
+    if not isinstance(operations, list) or operation not in operations:
+        return failed("consent_missing", "refused")
+    if type(generation) is not int or isinstance(generation, bool) or generation < 1:
+        return failed("consent_missing", "refused")
+    try:
+        graph = host.case_knowledge_graph(owner_id, case_id)
+    except Exception:
+        graph = None
+    if not isinstance(graph, KnowledgeGraph):
+        return failed("target_not_host_owned", "refused", consent=True)
+    token = graph_revision_token(graph)
+    if token != graph_revision:
+        return failed("stale_revision", "refused", consent=True)
+    entities = getattr(graph, "entities", None)
+    if not isinstance(entities, Mapping) or target not in entities:
+        return failed("target_not_host_owned", "refused", consent=True)
+    expected = {
+        "acquire_legal_sources": LegalAuthoritySearchHook,
+        "ingest_private_evidence": EvidenceStorageHook,
+        "refresh_grounding": Mediator,
+    }[operation]
+    try:
+        owner = host.case_operation_owner(operation, owner_id, case_id)
+    except Exception:
+        owner = None
+    if not isinstance(owner, expected):
+        return failed("binding_missing", "refused", consent=True)
+    try:
+        binding = host.case_private_artifact_binding(owner_id, case_id)
+    except Exception:
+        binding = {"code": "private_store_unavailable"}
+    if not isinstance(binding, Mapping):
+        return failed("private_store_unavailable", "unavailable", consent=True)
+    binding_code = str(binding.get("code") or "")
+    if binding_code == "key_unavailable":
+        return failed("key_unavailable", "unavailable", consent=True)
+    if binding_code != "bound":
+        return failed("private_store_unavailable", "unavailable", consent=True)
+    try:
+        opened = retrieve_private_artifact(
+            str(binding.get("cid") or ""),
+            access=binding.get("access"),
+            tenant_id=str(binding.get("tenant_id") or ""),
+            case_id=case_id,
+            artifact_kind=str(binding.get("artifact_kind") or ""),
+            revision=str(binding.get("revision") or ""),
+            principal_id=str(binding.get("principal_id") or binding.get("tenant_id") or ""),
+            key=binding.get("key"),
+            key_id=str(binding.get("key_id") or ""),
+            backend=binding.get("backend"),
+        )
+    except PrivateKeyMaterialError:
+        return failed("key_unavailable", "unavailable", consent=True)
+    except (PrivateArtifactBindingError, PrivateArtifactIntegrityError):
+        return failed("private_store_unavailable", "unavailable", consent=True)
+    except Exception:
+        return failed("private_store_unavailable", "unavailable", consent=True)
+    payload = opened.get("data") if isinstance(opened, Mapping) else None
+    if not isinstance(payload, (bytes, bytearray)) or not payload:
+        return failed("private_store_unavailable", "unavailable", consent=True)
+    opened_hash = hashlib.sha256(bytes(payload)).hexdigest()
+    try:
+        index = host.case_derived_index_owner(operation, owner_id, case_id)
+    except Exception:
+        index = None
+    if not isinstance(index, LegalAuthorityStorageHook):
+        return failed("derived_index_unready", "unavailable", consent=True, artifact=True)
+    try:
+        index_status = index.private_derived_index_status()
+    except Exception:
+        return failed("derived_index_unready", "unavailable", consent=True, artifact=True)
+    ready = (
+        isinstance(index_status, Mapping)
+        and index_status.get("status") == "available"
+        and index_status.get("case_id") == case_id
+        and index_status.get("closed") is not True
+        and index_status.get("owned") is True
+    )
+    if not ready:
+        return failed("derived_index_unready", "unavailable", consent=True, artifact=True)
+    fingerprint = json.dumps({
+        "generation": generation,
+        "graph": token,
+        "cid": str(binding.get("cid") or ""),
+        "hash": opened_hash,
+        "index": str(index_status.get("index_mode") or ""),
+        "owner": expected.__name__,
+    }, sort_keys=True)
+    return {
+        "ok": True,
+        "code": "verified",
+        "status": "successful",
+        "fingerprint": fingerprint,
+        "prerequisites": _qualification_prerequisites(operation, consent=True, artifact=True, index=True),
+        "opened_hash": opened_hash,
+        "citation_ref": citation_ref,
+        "generation": generation,
+    }
+
+
+def _apply_qualified_effect(host: Any, operation: str, snapshot: Mapping[str, Any], *, owner_id: str, case_id: str) -> dict[str, Any]:
+    index = host.case_derived_index_owner(operation, owner_id, case_id)
+    if operation == "ingest_private_evidence":
+        label = "sha256:" + str(snapshot.get("opened_hash") or "")
+        committed = index.commit_private_derived(case_id=case_id, kind="evidence", text=label)
+        ok = isinstance(committed, Mapping) and committed.get("status") == "available" and bool(committed.get("token") or committed.get("row_id"))
+        return {
+            "ok": ok,
+            "status": "successful" if ok else "unavailable",
+            "code": "successful" if ok else str(committed.get("code") or "derived_index_unready"),
+            "writes": 1 if ok else 0,
+            "storage_invoked": True,
+            "source_search": "found" if ok else "failed",
+            "admission": "admitted" if ok else "rejected",
+        }
+    if operation == "acquire_legal_sources":
+        citation = str(snapshot.get("citation_ref") or "")
+        text = host.local_public_legal_text(owner_id, case_id, citation)
+        if type(text) is not str or not text.strip():
+            return {
+                "ok": False,
+                "status": "empty",
+                "code": "empty_source_search",
+                "writes": 0,
+                "storage_invoked": False,
+                "source_search": "empty",
+                "admission": "not_run",
+            }
+        cached = index.cache_public_law_source(citation=citation, text=text)
+        ok = isinstance(cached, Mapping) and cached.get("status") == "available" and bool(cached.get("cache_id"))
+        owner = host.case_operation_owner(operation, owner_id, case_id)
+        mediator = getattr(owner, "mediator", None)
+        if mediator is not None and hasattr(mediator, "log"):
+            mediator.log("qualified_legal_source_cache", citation=citation, cached=ok)
+        return {
+            "ok": ok,
+            "status": "successful" if ok else "unavailable",
+            "code": "successful" if ok else "storage_unavailable",
+            "writes": 1 if ok else 0,
+            "storage_invoked": False,
+            "source_search": "found" if ok else "failed",
+            "admission": "admitted" if ok else "rejected",
+        }
+    graph = host.case_knowledge_graph(owner_id, case_id)
+    before = graph_revision_token(graph)
+    graph.append_revision({
+        "event_id": "grounding-" + str(snapshot.get("opened_hash") or "")[:16],
+        "kind": "grounding_refresh",
+    })
+    after = graph_revision_token(graph)
+    mediator = host.case_operation_owner(operation, owner_id, case_id)
+    if hasattr(mediator, "log"):
+        mediator.log("qualified_grounding_refresh", graph_changed=after != before)
+    ok = after != before
+    return {
+        "ok": ok,
+        "status": "successful" if ok else "unavailable",
+        "code": "successful" if ok else "stale_revision",
+        "writes": 1 if ok else 0,
+        "storage_invoked": False,
+        "source_search": "found" if ok else "not_run",
+        "admission": "admitted" if ok else "not_run",
+    }
 
 
 def dispatch_registered_hook_operation(
@@ -2207,13 +2509,15 @@ def dispatch_registered_hook_operation(
     effect: Optional[Callable[[Mapping[str, Any]], Any]] = None,
     handler: Optional[Callable[[Mapping[str, Any]], Any]] = None,
 ) -> dict[str, Any]:
-    """Validate one registered operation and refuse its effect.
+    """Validate one registered operation.
 
-    Disabled handlers, probes, and caller effects are not invoked. A true
-    persisted-consent flag cannot enable dispatch: that store is not implemented.
+    Caller booleans, probes, injected effects, and invented receipts cannot
+    enable a handler. A host dispatch runs only after saved consent, a live
+    graph target, private ciphertext, and the derived index are re-read.
     """
 
     del persisted_consent_verified, effect, handler, probes
+    qualified_host = _host_qualifies_operations(host)
     if not isinstance(request, Mapping) or isinstance(request, (str, bytes)):
         return _operation_result(operation="", status="refused", code="malformed")
     proposal = request.get("model_proposal") if "model_proposal" in request else None
@@ -2238,8 +2542,11 @@ def dispatch_registered_hook_operation(
         return _operation_result(operation=operation, status="refused", code=ref_code, owner=_OPERATION_OWNERS[operation])
     target = _as_ref(request.get("target_ref"))
     owned = tuple(item for item in host_targets if type(item) is str)
-    if target is None or target not in owned:
-        return _operation_result(operation=operation, status="refused", code="target_not_host_owned", owner=_OPERATION_OWNERS[operation])
+    if target is None or (not qualified_host and target not in owned):
+        return _operation_result(
+            operation=operation, status="refused", code="target_not_host_owned", owner=_OPERATION_OWNERS[operation],
+            host=host, owner_id=owner_id if type(owner_id) is str else "", case_id=case_id if type(case_id) is str else "",
+        )
     if operation == "acquire_legal_sources" and request.get("citation_ref") is not None and _as_ref(request.get("citation_ref")) is None:
         return _operation_result(operation=operation, status="refused", code="malformed", owner=_OPERATION_OWNERS[operation])
     if operation == "ingest_private_evidence" and request.get("evidence_ref") is not None and _as_ref(request.get("evidence_ref")) is None:
@@ -2256,6 +2563,9 @@ def dispatch_registered_hook_operation(
                 owner=_OPERATION_OWNERS[operation],
                 session_revision=session_revision if type(session_revision) is int else 0,
                 graph_revision=graph_revision if type(graph_revision) is str else "",
+                host=host,
+                owner_id=owner_id if type(owner_id) is str else "",
+                case_id=case_id if type(case_id) is str else "",
             )
     decision = authorize_hook_execution(
         context,
@@ -2295,6 +2605,9 @@ def dispatch_registered_hook_operation(
             role=role if type(role) is str else None,
             session_revision=trace_revision,
             graph_revision=trace_graph,
+            host=host,
+            owner_id=owner_id if type(owner_id) is str else "",
+            case_id=case_id if type(case_id) is str else "",
         )
     if request_state == "timeout":
         return _operation_result(
@@ -2317,16 +2630,75 @@ def dispatch_registered_hook_operation(
         code = "derived_index_unready"
     else:
         code = "prerequisite_unavailable"
-    return _operation_result(
+    if not qualified_host:
+        return _operation_result(
+            operation=operation,
+            status="unavailable",
+            code=code,
+            source_refs=source_refs,
+            owner=_OPERATION_OWNERS[operation],
+            prerequisites=prerequisites,
+            role=role if type(role) is str else None,
+            session_revision=trace_revision,
+            graph_revision=trace_graph,
+        )
+    citation_ref = ""
+    if operation == "acquire_legal_sources":
+        citation_ref = _as_ref(request.get("citation_ref")) or ""
+    identity = owner_id if type(owner_id) is str else ""
+    case_token = case_id if type(case_id) is str else ""
+    common = dict(
         operation=operation,
-        status="unavailable",
-        code=code,
         source_refs=source_refs,
         owner=_OPERATION_OWNERS[operation],
-        prerequisites=prerequisites,
         role=role if type(role) is str else None,
         session_revision=trace_revision,
         graph_revision=trace_graph,
+        host=host,
+        owner_id=identity,
+        case_id=case_token,
+    )
+    first = _qualify_saved_host(
+        host, operation=operation, owner_id=identity, case_id=case_token, target=target,
+        graph_revision=trace_graph, citation_ref=citation_ref,
+    )
+    if not first["ok"]:
+        return _operation_result(
+            status=str(first["status"]), code=str(first["code"]), prerequisites=first["prerequisites"], **common,
+        )
+    late_kind = None
+    try:
+        late_kind = host.consume_pending_late_mutation(identity, case_token)
+    except Exception:
+        late_kind = "late_failed"
+    second = _qualify_saved_host(
+        host, operation=operation, owner_id=identity, case_id=case_token, target=target,
+        graph_revision=trace_graph, citation_ref=citation_ref,
+    )
+    if late_kind or not second["ok"] or second.get("fingerprint") != first.get("fingerprint"):
+        status = str(second["status"]) if not second["ok"] else "refused"
+        code = str(second["code"]) if not second["ok"] else "stale_request"
+        return _operation_result(
+            status=status, code=code, prerequisites=second["prerequisites"], late=True, **common,
+        )
+    _HANDLER_CALLS["count"] += 1
+    applied = _apply_qualified_effect(host, operation, second, owner_id=identity, case_id=case_token)
+    succeeded = applied["ok"] is True
+    return _operation_result(
+        status=str(applied["status"]),
+        code=str(applied["code"]),
+        prerequisites=second["prerequisites"],
+        source_search=str(applied["source_search"]),
+        admission=str(applied["admission"]),
+        handler_invoked=True,
+        effect_dispatched=succeeded,
+        writes=int(applied["writes"]),
+        storage_invoked=applied["storage_invoked"] is True,
+        dispatch_enabled=succeeded,
+        handler_enabled=succeeded,
+        candidate_status="candidate" if succeeded else "",
+        source_status="referenced" if succeeded else "",
+        **common,
     )
 
 

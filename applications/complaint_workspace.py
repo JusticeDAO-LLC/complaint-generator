@@ -16593,6 +16593,422 @@ class ComplaintWorkspaceService:
             current_session_revision=current_session_revision,
         )
 
+    def _mediator_host_slot(self, user_id: str) -> Dict[str, Any]:
+        slots = getattr(self, "_mediator_operation_hosts", None)
+        if not isinstance(slots, dict):
+            slots = {}
+            self._mediator_operation_hosts = slots
+        slot = slots.get(user_id)
+        if not isinstance(slot, dict):
+            slot = {"owners": {}, "late": None, "public_sources": {}}
+            slots[user_id] = slot
+        return slot
+
+    def save_mediator_operation_consent(self, user_id: Optional[str], operations: Sequence[str]) -> Dict[str, Any]:
+        """Persist an explicit local grant for mediator operations.
+
+        A caller boolean is not an argument. The saved record is what dispatch re-reads.
+        """
+
+        from mediator.hook_runtime import LEGAL_EVIDENCE_OPERATIONS
+
+        resolved = str(user_id or DEFAULT_USER_ID)
+        if type(operations) is not list or not operations or any(item not in LEGAL_EVIDENCE_OPERATIONS for item in operations):
+            raise WorkspacePersistenceError("Mediator consent must name a registered operation.", code="consent_missing", public_status="recoverable")
+        state = self._load_state(resolved)
+        case_id = _state_case_id(state, resolved)
+        prior = state.get("mediator_operation_consent") if isinstance(state.get("mediator_operation_consent"), dict) else {}
+        raw_generation = prior.get("generation")
+        generation = raw_generation + 1 if type(raw_generation) is int and not isinstance(raw_generation, bool) and raw_generation >= 0 else 1
+        state["mediator_operation_consent"] = {
+            "contract": "mediator_operation_consent_v1",
+            "user_id": resolved,
+            "case_id": case_id,
+            "generation": generation,
+            "revoked": False,
+            "operations": list(operations),
+        }
+        self._save_state(state)
+        return {"saved": True, "generation": generation, "case_id": case_id, "operations": list(operations), "revoked": False}
+
+    def load_saved_case_record(self, owner_id: str) -> Dict[str, Any]:
+        state = self._load_state(str(owner_id))
+        case_id = _state_case_id(state, str(owner_id))
+        return {
+            "user_id": str(state.get("user_id") or owner_id),
+            "case_id": case_id,
+            "mediator_operation_consent": state.get("mediator_operation_consent") if isinstance(state.get("mediator_operation_consent"), dict) else None,
+        }
+
+    def publish_case_host_entity(self, user_id: Optional[str], entity_id: str) -> Dict[str, Any]:
+        """Add one entity on the case graph. Dispatch targets come only from this graph."""
+
+        from complaint_phases.knowledge_graph import Entity, KnowledgeGraph
+        from mediator.hook_runtime import graph_revision_token
+
+        resolved = str(user_id or DEFAULT_USER_ID)
+        if type(entity_id) is not str or not entity_id.strip():
+            raise WorkspacePersistenceError("Host target is missing.", code="target_not_host_owned", public_status="recoverable")
+        slot = self._mediator_host_slot(resolved)
+        graph = slot.get("graph")
+        if not isinstance(graph, KnowledgeGraph):
+            graph = KnowledgeGraph()
+        graph.add_entity(Entity(id=entity_id.strip(), type="fact", name=entity_id.strip(), attributes={"description": entity_id.strip()}))
+        graph.append_revision({"event_id": "host-" + entity_id.strip(), "kind": "host_target"})
+        slot["graph"] = graph
+        token = graph_revision_token(graph)
+        state = self._load_state(resolved)
+        state["mediator_host_entities"] = sorted(str(key) for key in graph.entities.keys())
+        state["mediator_graph_revision"] = token
+        self._save_state(state)
+        return {"graph_revision": token, "entities": list(state["mediator_host_entities"])}
+
+    def case_knowledge_graph(self, owner_id: str, case_id: str) -> Any:
+        state = self._load_state(str(owner_id))
+        if _state_case_id(state, str(owner_id)) != case_id:
+            return None
+        graph = self._mediator_host_slot(str(owner_id)).get("graph")
+        return graph
+
+    def store_case_private_source(self, user_id: Optional[str], payload: bytes, *, key: bytes, key_id: str) -> Dict[str, Any]:
+        """Seal one synthetic private source. The key stays in this process."""
+
+        from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend
+        from integrations.private_storage import store_private_artifact
+
+        resolved = str(user_id or DEFAULT_USER_ID)
+        if not isinstance(payload, (bytes, bytearray)) or not payload:
+            raise WorkspacePersistenceError("Private source is empty.", code="private_store_unavailable", public_status="recoverable")
+        state = self._load_state(resolved)
+        case_id = _state_case_id(state, resolved)
+        access = WorkspaceAccess.authenticated(resolved, case_id=case_id)
+        cache_dir = self._session_dir / "mediator-artifacts" / resolved
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        backend = LocalCacheIPFSBackend(cache_dir=str(cache_dir))
+        receipt = store_private_artifact(
+            bytes(payload),
+            access=access,
+            tenant_id=resolved,
+            case_id=case_id,
+            artifact_kind="intake-note",
+            revision="rev-mediator-source",
+            principal_id=resolved,
+            key=key,
+            key_id=key_id,
+            backend=backend,
+            pin_content=True,
+        )
+        state = self._load_state(resolved)
+        state["mediator_private_artifact"] = {
+            "cid": receipt["cid"],
+            "artifact_kind": "intake-note",
+            "revision": "rev-mediator-source",
+            "case_id": case_id,
+            "tenant_id": resolved,
+            "principal_id": resolved,
+            "key_id": key_id,
+            "cache_dir": str(cache_dir),
+        }
+        self._save_state(state)
+        slot = self._mediator_host_slot(resolved)
+        slot["key"] = bytes(key)
+        slot["key_id"] = key_id
+        slot["backend"] = backend
+        slot["access"] = access
+        return {"stored": True, "cid": receipt["cid"], "verified": receipt.get("verified") is True, "case_id": case_id}
+
+    def case_private_artifact_binding(self, owner_id: str, case_id: str) -> Dict[str, Any]:
+        from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend
+
+        state = self._load_state(str(owner_id))
+        saved = state.get("mediator_private_artifact") if isinstance(state.get("mediator_private_artifact"), dict) else {}
+        if str(saved.get("case_id") or "") != case_id or not saved.get("cid"):
+            return {"code": "private_store_unavailable"}
+        slot = self._mediator_host_slot(str(owner_id))
+        key = slot.get("key")
+        if not isinstance(key, (bytes, bytearray)):
+            return {"code": "key_unavailable", "cid": saved.get("cid")}
+        backend = slot.get("backend")
+        if backend is None and saved.get("cache_dir"):
+            backend = LocalCacheIPFSBackend(cache_dir=str(saved["cache_dir"]))
+            slot["backend"] = backend
+        access = slot.get("access")
+        if access is None:
+            access = WorkspaceAccess.authenticated(str(saved.get("tenant_id") or owner_id), case_id=case_id)
+            slot["access"] = access
+        return {
+            "code": "bound",
+            "cid": saved.get("cid"),
+            "artifact_kind": saved.get("artifact_kind"),
+            "revision": saved.get("revision"),
+            "tenant_id": saved.get("tenant_id"),
+            "principal_id": saved.get("principal_id") or saved.get("tenant_id"),
+            "key_id": slot.get("key_id") or saved.get("key_id"),
+            "key": key,
+            "backend": backend,
+            "access": access,
+        }
+
+    def bind_case_mediator_owners(self, user_id: Optional[str], *, key: bytes, key_id: str) -> Dict[str, Any]:
+        """Bind the canonical search, evidence, mediator, and derived-index owners."""
+
+        from integrations.private_storage import InjectedCaseKeyProvider
+        from mediator.evidence_hooks import EvidenceStorageHook
+        from mediator.legal_authority_hooks import LegalAuthoritySearchHook, LegalAuthorityStorageHook
+        from mediator.mediator import Mediator
+
+        resolved = str(user_id or DEFAULT_USER_ID)
+        state = self._load_state(resolved)
+        case_id = _state_case_id(state, resolved)
+        root = self._session_dir / "mediator-owners" / resolved
+        root.mkdir(parents=True, exist_ok=True)
+        mediator = Mediator(
+            [],
+            evidence_db_path=str(root / "evidence.duckdb"),
+            legal_authority_db_path=str(root / "authority.duckdb"),
+            claim_support_db_path=str(root / "support.duckdb"),
+        )
+        evidence = EvidenceStorageHook(mediator)
+        search = LegalAuthoritySearchHook(mediator)
+        index = LegalAuthorityStorageHook(mediator, db_path=str(root / "derived-index.duckdb"))
+        access = WorkspaceAccess.authenticated(resolved, case_id=case_id)
+        provider = InjectedCaseKeyProvider({(resolved, case_id): (key_id, bytes(key))})
+        cache_dir = self._session_dir / "mediator-artifacts" / resolved
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend
+        backend = LocalCacheIPFSBackend(cache_dir=str(cache_dir))
+        context = {
+            "access": access,
+            "tenant_id": resolved,
+            "case_id": case_id,
+            "principal_id": resolved,
+            "key_provider": provider,
+            "backend": backend,
+            "backend_name": "local_cache",
+            "pin_content": False,
+            "index_mode": "ephemeral",
+        }
+        evidence.bind_private_artifact_context(context)
+        index.bind_private_derived_index(context)
+        slot = self._mediator_host_slot(resolved)
+        slot["owners"] = {
+            "acquire_legal_sources": search,
+            "ingest_private_evidence": evidence,
+            "refresh_grounding": mediator,
+        }
+        slot["index"] = index
+        slot["key"] = bytes(key)
+        slot["key_id"] = key_id
+        slot["backend"] = backend
+        slot["access"] = access
+        status = index.private_derived_index_status()
+        return {"bound": True, "index_status": status.get("status"), "index_mode": status.get("index_mode"), "case_id": case_id}
+
+    def case_operation_owner(self, operation: str, owner_id: str, case_id: str) -> Any:
+        state = self._load_state(str(owner_id))
+        if _state_case_id(state, str(owner_id)) != case_id:
+            return None
+        return self._mediator_host_slot(str(owner_id)).get("owners", {}).get(operation)
+
+    def case_derived_index_owner(self, operation: str, owner_id: str, case_id: str) -> Any:
+        del operation
+        state = self._load_state(str(owner_id))
+        if _state_case_id(state, str(owner_id)) != case_id:
+            return None
+        return self._mediator_host_slot(str(owner_id)).get("index")
+
+    def detach_mediator_operation_owner(self, user_id: Optional[str], operation: str) -> Dict[str, Any]:
+        resolved = str(user_id or DEFAULT_USER_ID)
+        owners = self._mediator_host_slot(resolved).setdefault("owners", {})
+        owners[operation] = None
+        return {"detached": operation, "present": False}
+
+    def save_local_public_legal_text(self, user_id: Optional[str], citation: str, text: str) -> Dict[str, Any]:
+        resolved = str(user_id or DEFAULT_USER_ID)
+        if type(citation) is not str or not citation.strip() or type(text) is not str or not text.strip():
+            raise WorkspacePersistenceError("Public legal text is missing.", code="empty_source_search", public_status="recoverable")
+        state = self._load_state(resolved)
+        sources = dict(state.get("mediator_public_sources") or {})
+        sources[citation] = text
+        state["mediator_public_sources"] = sources
+        self._save_state(state)
+        self._mediator_host_slot(resolved)["public_sources"] = sources
+        return {"saved": True, "citation": citation, "bytes": len(text.encode("utf-8"))}
+
+    def local_public_legal_text(self, owner_id: str, case_id: str, citation: str) -> str:
+        state = self._load_state(str(owner_id))
+        if _state_case_id(state, str(owner_id)) != case_id:
+            return ""
+        sources = state.get("mediator_public_sources") if isinstance(state.get("mediator_public_sources"), dict) else {}
+        text = sources.get(citation)
+        return text if type(text) is str else ""
+
+    def schedule_late_mediator_mutation(self, user_id: Optional[str], kind: str) -> Dict[str, Any]:
+        resolved = str(user_id or DEFAULT_USER_ID)
+        if kind not in {"revoke_consent", "advance_graph", "drop_artifact", "drop_index"}:
+            raise WorkspacePersistenceError("Unknown late mutation.", code="malformed", public_status="recoverable")
+        self._mediator_host_slot(resolved)["late"] = kind
+        return {"scheduled": kind}
+
+    def consume_pending_late_mutation(self, owner_id: str, case_id: str) -> Optional[str]:
+        from complaint_phases.knowledge_graph import KnowledgeGraph
+        from mediator.hook_runtime import graph_revision_token
+
+        slot = self._mediator_host_slot(str(owner_id))
+        kind = slot.get("late")
+        slot["late"] = None
+        if kind is None:
+            return None
+        state = self._load_state(str(owner_id))
+        if _state_case_id(state, str(owner_id)) != case_id:
+            return kind
+        if kind == "revoke_consent":
+            consent = dict(state.get("mediator_operation_consent") or {})
+            raw = consent.get("generation")
+            consent["generation"] = raw + 1 if type(raw) is int and not isinstance(raw, bool) else 1
+            consent["revoked"] = True
+            state["mediator_operation_consent"] = consent
+            self._save_state(state)
+        elif kind == "advance_graph":
+            graph = slot.get("graph")
+            if isinstance(graph, KnowledgeGraph):
+                graph.append_revision({"event_id": "late-graph", "kind": "late_revision"})
+                state["mediator_graph_revision"] = graph_revision_token(graph)
+                self._save_state(state)
+        elif kind == "drop_artifact":
+            state["mediator_private_artifact"] = {}
+            slot["key"] = None
+            self._save_state(state)
+        elif kind == "drop_index":
+            slot["index"] = None
+        return kind
+
+    def append_mediator_operation_journal(self, entry: Mapping[str, Any]) -> Dict[str, Any]:
+        owner_id = str(entry.get("owner_id") or "")
+        state = self._load_state(owner_id)
+        journal = list(state.get("mediator_operation_journal") or [])
+        stored = {
+            "schema": "mediator_operation_journal_v1",
+            "ordinal": len(journal) + 1,
+            "operation": entry.get("operation") if type(entry.get("operation")) is str else "",
+            "status": entry.get("status") if type(entry.get("status")) is str else "",
+            "code": entry.get("code") if type(entry.get("code")) is str else "",
+            "owner_id": owner_id,
+            "case_id": entry.get("case_id") if type(entry.get("case_id")) is str else "",
+            "late": entry.get("late") is True,
+            "writes": entry.get("writes") if type(entry.get("writes")) is int else 0,
+            "effect_dispatched": entry.get("effect_dispatched") is True,
+            "handler_invoked": entry.get("handler_invoked") is True,
+            "storage_invoked": entry.get("storage_invoked") is True,
+            "provider_invoked": False,
+            "proof": False,
+        }
+        journal.append(stored)
+        state["mediator_operation_journal"] = journal
+        self._save_state(state)
+        return {"ordinal": stored["ordinal"]}
+
+    def mediator_operation_journal(self, user_id: Optional[str] = None) -> list:
+        resolved = str(user_id or DEFAULT_USER_ID)
+        state = self._load_state(resolved)
+        journal = state.get("mediator_operation_journal")
+        return [dict(item) for item in journal] if isinstance(journal, list) else []
+
+    def dispatch_public_mediator_operation(
+        self,
+        user_id: Optional[str],
+        request: Mapping[str, Any],
+        *,
+        session_id: str,
+        session_revision: int,
+        now: Any,
+        source_bindings: Sequence[Mapping[str, Any]],
+        legal_context: Mapping[str, Any],
+        purpose: Optional[str] = None,
+        persisted_consent_verified: Any = None,
+        key_available: Any = None,
+        private_store_available: Any = None,
+        derived_index_ready: Any = None,
+        handler_enabled: Any = None,
+        receipt: Any = None,
+        host_targets: Any = None,
+        effect: Any = None,
+        handler: Any = None,
+    ) -> Dict[str, Any]:
+        """Dispatch one mediator operation from saved case facts.
+
+        Caller booleans, registry rows, host target lists, and receipts are ignored.
+        """
+
+        from mediator.hook_runtime import (
+            HookContextError,
+            bind_hook_execution_context,
+            dispatch_registered_hook_operation,
+            graph_revision_token,
+        )
+
+        del persisted_consent_verified, key_available, private_store_available, derived_index_ready
+        del handler_enabled, receipt, host_targets, effect, handler
+        resolved = str(user_id or DEFAULT_USER_ID)
+        policy = self.get_privacy_policy(resolved)
+        case_id = str(policy.get("case_id") or resolved)
+        helpers = _privacy_helpers()
+        privacy = helpers["build_complaint_privacy_context"](
+            policy.get("policy"), user_id=resolved, case_id=case_id, data_class="fact_kg",
+        )
+        graph = self.case_knowledge_graph(resolved, case_id)
+        token = graph_revision_token(graph) if graph is not None else "gr-missing"
+        operation = request.get("operation") if isinstance(request, Mapping) else ""
+        try:
+            context = bind_hook_execution_context(
+                operation=operation if type(operation) is str else "",
+                owner_id=resolved,
+                case_id=case_id,
+                session_id=session_id,
+                session_revision=session_revision,
+                graph_revision=token,
+                legal_context=legal_context,
+                purpose=purpose or (operation if type(operation) is str else ""),
+                deadline=now,
+                source_bindings=source_bindings,
+                privacy_context=privacy,
+                host=self,
+            )
+        except HookContextError as exc:
+            refused = {
+                "operation": operation if type(operation) is str else "",
+                "status": "refused",
+                "code": str(exc.code),
+                "effect_dispatched": False,
+                "handler_invoked": False,
+                "writes": 0,
+                "provider_invoked": False,
+                "proof_status": "not_proof",
+                "late": False,
+            }
+            self.append_mediator_operation_journal({**refused, "owner_id": resolved, "case_id": case_id, "storage_invoked": False})
+            return refused
+        return dispatch_registered_hook_operation(
+            request,
+            context=context,
+            host_targets=(),
+            owner_id=resolved,
+            case_id=case_id,
+            session_id=session_id,
+            session_revision=session_revision,
+            graph_revision=token,
+            legal_context=legal_context,
+            purpose=context.purpose,
+            source_bindings=source_bindings,
+            privacy_context=privacy,
+            now=now,
+            host=self,
+            persisted_consent_verified=False,
+            key_available=False,
+            private_store_available=False,
+            derived_index_ready=False,
+        )
+
     def record_gui_inference_authority(self, user_id: Optional[str], **untrusted: Any) -> Dict[str, Any]:
         """Caller JSON is not a browser grant or a source/revision owner."""
         return {"recorded": False, "code": "server_case_authority_required",
