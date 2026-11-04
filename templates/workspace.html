@@ -3424,6 +3424,7 @@
     </style>
     <link id="complaint-evidence-style" rel="stylesheet" href="/static/complaint_evidence.css">
     <link id="complaint-facts-style" rel="stylesheet" href="/static/complaint_facts.css">
+    <link id="complaint-legal-style" rel="stylesheet" href="/static/complaint_legal.css">
     <link id="complaint-conversation-style" rel="stylesheet" href="/static/complaint_conversation.css">
     <style id="complaint-presentation-style">
         html[data-workspace-presentation="chat-only"] [data-tab-panel="intake"],
@@ -6211,6 +6212,61 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                     <div class="button-row">
                         <button type="button" id="proof-trace-refresh">Show proof traces</button>
                     </div>
+                </section>
+
+                <section id="legal-provenance" data-task="CIMP-UX-27" data-state="empty" aria-labelledby="legal-provenance-title">
+                    <h2 id="legal-provenance-title">Legal requirements and provenance</h2>
+                    <p id="legal-provenance-notice">Follow a current requirement to its admitted law passage, then to a factual assertion and an evidence span. Support, contradictions, and missing inputs stay visible. The factual graph is not the legal dependency graph. Source admission, an AI suggestion, and legal sufficiency are separate labels.</p>
+                    <div class="legal-provenance-actions">
+                        <button type="button" id="legal-provenance-refresh">Show requirement provenance</button>
+                        <button type="button" id="legal-provenance-derive">Derive from the admitted passage</button>
+                    </div>
+                    <div class="legal-provenance-fields">
+                        <label for="legal-provenance-authority-version">Authority version
+                            <input id="legal-provenance-authority-version" type="text" autocomplete="off" placeholder="Version of the admitted passage">
+                        </label>
+                        <label for="legal-provenance-fact-id">Fact identifier
+                            <input id="legal-provenance-fact-id" type="text" autocomplete="off" value="fact-wages">
+                        </label>
+                        <label for="legal-provenance-fact-text">Factual assertion offered as support
+                            <textarea id="legal-provenance-fact-text" placeholder="A fact can support a requirement. It does not rewrite the law."></textarea>
+                        </label>
+                    </div>
+                    <p id="legal-provenance-status" role="status" data-status="empty">No requirement provenance has been loaded.</p>
+                    <div class="legal-provenance-labels" aria-label="Separate legal labels">
+                        <p id="legal-provenance-admission" data-label="source-admission" data-admitted-law="false">Source admission: nothing on this view is admitted until a reviewed passage is current.</p>
+                        <p id="legal-provenance-suggestion" data-label="ai-suggestion" data-admitted-law="false" data-present="false">AI suggestion: none is recorded. A suggestion is not admitted law.</p>
+                        <p id="legal-provenance-sufficiency" data-label="legal-sufficiency" data-legal-sufficiency="false">Legal sufficiency: not established. A requirement is not a proof.</p>
+                    </div>
+                    <div class="legal-provenance-graphs">
+                        <section id="legal-dependency-graph" class="legal-provenance-graph" data-graph-kind="legal-dependency" data-visual="legal" aria-labelledby="legal-dependency-graph-title">
+                            <h3 id="legal-dependency-graph-title">Legal dependency graph</h3>
+                            <p>Requirements come from admitted law. This graph does not record what the person asserted.</p>
+                            <ol id="legal-provenance-requirements" aria-label="Legal requirements"></ol>
+                            <ul id="legal-provenance-contradictions" aria-label="Contradictions"></ul>
+                            <ul id="legal-provenance-missing" aria-label="Missing inputs"></ul>
+                        </section>
+                        <section id="factual-provenance-graph" class="legal-provenance-graph" data-graph-kind="factual" data-visual="factual" aria-labelledby="factual-provenance-graph-title">
+                            <h3 id="factual-provenance-graph-title">Factual graph</h3>
+                            <p>Assertions and evidence spans come from the factual projection. They are not legal rules.</p>
+                            <ol id="legal-provenance-assertions" aria-label="Factual assertions"></ol>
+                            <ol id="legal-provenance-evidence" aria-label="Evidence spans"></ol>
+                        </section>
+                    </div>
+                    <article id="legal-provenance-trail" aria-labelledby="legal-provenance-trail-title">
+                        <h3 id="legal-provenance-trail-title">Provenance trail</h3>
+                        <ol>
+                            <li><button type="button" id="legal-provenance-step-requirement" data-step="requirement" data-filled="false" disabled>Requirement</button></li>
+                            <li><button type="button" id="legal-provenance-step-passage" data-step="law-passage" data-filled="false" disabled>Law passage</button></li>
+                            <li><button type="button" id="legal-provenance-step-assertion" data-step="factual-assertion" data-filled="false" disabled>Factual assertion</button></li>
+                            <li><button type="button" id="legal-provenance-step-evidence" data-step="evidence-span" data-filled="false" disabled>Evidence span</button></li>
+                        </ol>
+                        <p id="legal-provenance-support" data-label="support" data-support-state="unknown">Support has not been read.</p>
+                        <p id="legal-provenance-passage" data-role="law-passage-text"></p>
+                    </article>
+                    <div id="legal-provenance-empty" class="legal-provenance-state">No current requirement is loaded. Derive one from an admitted passage, or refresh after one is stored.</div>
+                    <div id="legal-provenance-error" class="legal-provenance-state" hidden>Requirement provenance could not be read. Nothing was marked admitted or sufficient.</div>
+                    <div id="legal-provenance-locked" class="legal-provenance-state" hidden>The case key is locked. Requirement text stays hidden.</div>
                 </section>
 
                 <section id="legal-effective-context" data-task="CIMP-GUI-24">
