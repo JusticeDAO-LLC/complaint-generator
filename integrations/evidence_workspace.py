@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,7 @@ from integrations.private_storage import (
 )
 
 TASK_ID = "CIMP-UX-13"
+CLASSIFICATION_TASK_ID = "CIMP-UX-19"
 INGESTION_STATUSES = (
     "received",
     "extracted",
@@ -39,6 +41,19 @@ INGESTION_STATUSES = (
     "unavailable",
 )
 LEGAL_QUALITIES = ("authenticity", "relevance", "admissibility", "claim_support")
+# These names are ordinary retaliation/HR assumptions. They are never added
+# as a menu. A case may offer them only when that exact id is a current gap
+# or an admitted requirement in the supplied context, and the offer still
+# does not establish support.
+_FIXED_ASSUMPTION_IDS = frozenset({
+    "protected_activity",
+    "employer_knowledge",
+    "causation",
+    "hr",
+    "human_resources",
+})
+_CLASSIFICATION_ORIGINS = frozenset({"user_label", "ai_suggested", "reviewed_acceptance"})
+_ID_TEXT = r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}"
 _KIND_CATALOG = "evidence-catalog"
 _KIND_ARTIFACT = "evidence-artifact"
 _MAX_BYTES = 256 * 1024
@@ -54,6 +69,153 @@ def legal_qualities() -> dict[str, str]:
     """Receipt and ingestion never establish these legal qualities."""
 
     return {name: "not_established" for name in LEGAL_QUALITIES}
+
+
+def _choice_id(value: Any) -> str:
+    if not isinstance(value, str) or not re.fullmatch(_ID_TEXT, value):
+        return ""
+    return value
+
+
+def _context_text(value: Any, limit: int = 180) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if text != value or any(char in text for char in ("\x00", "\n", "\r")) or len(text) > limit:
+        return ""
+    return text
+
+
+def classification_choices_from_context(context: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Offer gap and admitted-requirement ids present in this context.
+
+    Missing or incomplete legal lineage stays unknown. Nothing in this menu
+    is verified support, governing law, or a hardcoded claim element.
+    """
+
+    source = context if isinstance(context, Mapping) else {}
+    status = source.get("legal_context_status")
+    if status not in {"unknown", "admitted", "unresolved"}:
+        status = "unknown"
+    graph_revision = _context_text(source.get("factual_graph_revision"), 120)
+    source_version = _context_text(source.get("source_version"), 120)
+    jurisdiction = _context_text(source.get("jurisdiction"), 120)
+    authority_version = _context_text(source.get("authority_version"), 120)
+    refused: list[str] = []
+    gaps: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    raw_gaps = source.get("factual_gaps")
+    if isinstance(raw_gaps, list):
+        for item in raw_gaps:
+            if not isinstance(item, Mapping):
+                continue
+            gap_id = _choice_id(item.get("gap_id") if item.get("gap_id") is not None else item.get("id"))
+            if gap_id == "":
+                continue
+            if gap_id.casefold() in _FIXED_ASSUMPTION_IDS:
+                refused.append(gap_id)
+                continue
+            if gap_id in seen:
+                continue
+            seen.add(gap_id)
+            label = _context_text(item.get("label")) or gap_id
+            gaps.append({
+                "choice_id": gap_id,
+                "target_kind": "factual_gap",
+                "label": label,
+                "admitted_law": False,
+                "legal_requirement": False,
+                "establishes_legal_support": False,
+            })
+    lineage_complete = bool(source_version and jurisdiction and authority_version)
+    requirements: list[dict[str, Any]] = []
+    if status == "admitted" and lineage_complete:
+        raw_requirements = source.get("admitted_requirements")
+        if isinstance(raw_requirements, list):
+            for item in raw_requirements:
+                if not isinstance(item, Mapping) or item.get("admitted_law") is not True:
+                    continue
+                requirement_id = _choice_id(
+                    item.get("requirement_id") if item.get("requirement_id") is not None else item.get("passage_id")
+                )
+                if requirement_id == "":
+                    continue
+                if requirement_id.casefold() in _FIXED_ASSUMPTION_IDS:
+                    refused.append(requirement_id)
+                    continue
+                item_source = _context_text(item.get("source_version"), 120)
+                item_jurisdiction = _context_text(item.get("jurisdiction"), 120)
+                item_authority = _context_text(item.get("authority_version"), 120)
+                passage_id = _choice_id(item.get("passage_id"))
+                if (item_source != source_version or item_jurisdiction != jurisdiction
+                        or item_authority != authority_version or passage_id == ""):
+                    continue
+                if requirement_id in seen:
+                    continue
+                seen.add(requirement_id)
+                label = _context_text(item.get("label") or item.get("name")) or requirement_id
+                requirements.append({
+                    "choice_id": requirement_id,
+                    "target_kind": "legal_requirement",
+                    "label": label,
+                    "passage_id": passage_id,
+                    "source_version": item_source,
+                    "authority_version": item_authority,
+                    "jurisdiction": item_jurisdiction,
+                    "admitted_law": True,
+                    "legal_requirement": True,
+                    "admission_verified_by_evidence_workspace": False,
+                    "establishes_legal_support": False,
+                })
+    if status == "admitted" and lineage_complete and requirements:
+        legal_status = "admitted"
+    elif status == "unresolved":
+        legal_status = "unresolved"
+    else:
+        legal_status = "unknown"
+    choices = list(gaps)
+    if legal_status == "admitted":
+        choices.extend(requirements)
+    else:
+        choices.append({
+            "choice_id": "unknown_legal_context",
+            "target_kind": "unknown_legal_context",
+            "label": "Legal context is unknown." if legal_status == "unknown" else "Admitted legal requirements are unresolved.",
+            "admitted_law": False,
+            "legal_requirement": False,
+            "establishes_legal_support": False,
+        })
+    fingerprint_payload = {
+        "legal_context_status": legal_status,
+        "factual_graph_revision": graph_revision,
+        "source_version": source_version if legal_status == "admitted" else "",
+        "jurisdiction": jurisdiction if legal_status == "admitted" else "",
+        "authority_version": authority_version if legal_status == "admitted" else "",
+        "factual_gap_ids": [item["choice_id"] for item in gaps],
+        "admitted_requirement_ids": [item["choice_id"] for item in requirements] if legal_status == "admitted" else [],
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        "task_id": CLASSIFICATION_TASK_ID,
+        "legal_context_status": legal_status,
+        "choices": choices,
+        "factual_gap_ids": fingerprint_payload["factual_gap_ids"],
+        "admitted_requirement_ids": fingerprint_payload["admitted_requirement_ids"],
+        "fixed_assumptions_offered": False,
+        "refused_fixed_assumptions": refused,
+        "hardcoded_elements_used": False,
+        "context_fingerprint": fingerprint,
+        "factual_graph_revision": graph_revision,
+        "source_version": fingerprint_payload["source_version"],
+        "jurisdiction": fingerprint_payload["jurisdiction"],
+        "authority_version": fingerprint_payload["authority_version"],
+        "context_owner": _context_text(source.get("context_owner"), 40) or "request",
+        "admission_verified_by_evidence_workspace": False,
+        "establishes_legal_support": False,
+        "governing_law": False,
+    }
 
 
 def _label(value: Any, code: str) -> str:
@@ -228,6 +390,87 @@ class EvidenceWorkspace:
             self._verify_scope(scope)
             return self._project(item, verified=item["ingestion_status"] != "unavailable")
 
+    def offer_classifiers(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Return current choices and retire stored choices whose source changed."""
+
+        identity = self._identity(actor, body, content=False, idempotency=False)
+        evidence_id = _label(body.get("evidence_id"), "evidence_id")
+        version = body.get("artifact_version")
+        if type(version) is not int or isinstance(version, bool):
+            raise EvidenceWorkspaceError("artifact_version")
+        offered = classification_choices_from_context(body.get("case_context") if isinstance(body.get("case_context"), Mapping) else {})
+        with self._lock:
+            scope = self._open(identity, verify_request=verify_request)
+            case, key_id, data_key = scope.case, scope.key_id, scope.data_key
+            document = self._load(identity, case, key_id, data_key, scope)
+            item = document["items"].get(evidence_id)
+            if item is None or item.get("actor_principal_id") != identity["actor_principal_id"]:
+                raise EvidenceWorkspaceError("missing_evidence")
+            known = {entry.get("version") for entry in item.get("artifact_versions") or []}
+            if version not in known:
+                raise EvidenceWorkspaceError("artifact_version_mismatch")
+            retired = self._retire_classifiers(document, evidence_id, item, offered)
+            if retired:
+                self._save(identity, case, key_id, data_key, document, scope)
+            self._verify_scope(scope)
+            return self._classification_view(document, evidence_id, item, offered, retired=retired)
+
+    def record_classifier(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Store one attributed classifier without turning it into legal support."""
+
+        identity = self._identity(actor, body, content=False)
+        evidence_id = _label(body.get("evidence_id"), "evidence_id")
+        version = body.get("artifact_version")
+        if type(version) is not int or isinstance(version, bool):
+            raise EvidenceWorkspaceError("artifact_version")
+        origin = body.get("origin")
+        if origin not in _CLASSIFICATION_ORIGINS:
+            raise EvidenceWorkspaceError("classifier_rejected")
+        if any(name in body for name in LEGAL_QUALITIES) or body.get("claim_element") not in {None, ""}:
+            raise EvidenceWorkspaceError("legal_quality_rejected")
+        if body.get("establishes_legal_support") not in {None, False} or body.get("accepted") not in {None, True, False}:
+            raise EvidenceWorkspaceError("classifier_rejected")
+        offered = classification_choices_from_context(body.get("case_context") if isinstance(body.get("case_context"), Mapping) else {})
+        with self._lock:
+            scope = self._open(identity, verify_request=verify_request)
+            case, key_id, data_key = scope.case, scope.key_id, scope.data_key
+            document = self._load(identity, case, key_id, data_key, scope)
+            item = document["items"].get(evidence_id)
+            if item is None or item.get("actor_principal_id") != identity["actor_principal_id"]:
+                raise EvidenceWorkspaceError("missing_evidence")
+            known = {entry.get("version") for entry in item.get("artifact_versions") or []}
+            if version not in known:
+                raise EvidenceWorkspaceError("artifact_version_mismatch")
+            if version != item.get("current_version"):
+                raise EvidenceWorkspaceError("artifact_version_mismatch")
+            retired = self._retire_classifiers(document, evidence_id, item, offered)
+            bucket = document.setdefault("classification_idempotency", {})
+            prior_id = bucket.get(identity["idempotency_key"])
+            records = document.setdefault("classifiers", [])
+            if prior_id is not None:
+                prior = next((row for row in records if row.get("classifier_id") == prior_id), None)
+                if prior is None or not self._same_classifier_request(prior, body, offered):
+                    raise EvidenceWorkspaceError("replay_mismatch")
+                if retired:
+                    self._save(identity, case, key_id, data_key, document, scope)
+                self._verify_scope(scope)
+                view = self._public_classifier(prior)
+                view["idempotent_replay"] = True
+                view["choices"] = offered["choices"]
+                view["legal_context_status"] = offered["legal_context_status"]
+                return view
+            record = self._new_classifier(identity, evidence_id, version, origin, body, offered, records)
+            records.append(record)
+            bucket[identity["idempotency_key"]] = record["classifier_id"]
+            self._save(identity, case, key_id, data_key, document, scope)
+            self._verify_scope(scope)
+            view = self._public_classifier(record)
+            view["idempotent_replay"] = False
+            view["choices"] = offered["choices"]
+            view["legal_context_status"] = offered["legal_context_status"]
+            view["context_fingerprint"] = offered["context_fingerprint"]
+            return view
+
     def list_catalog(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
         identity = self._identity(actor, body, content=False, idempotency=False)
         with self._lock:
@@ -264,6 +507,200 @@ class EvidenceWorkspace:
                 "legal": legal_qualities(),
                 "receipt_establishes_legal_quality": False,
             }
+
+    def _classifier_rows(self, document: Mapping[str, Any], evidence_id: str) -> list[dict[str, Any]]:
+        rows = document.get("classifiers")
+        if not isinstance(rows, list):
+            return []
+        return [row for row in rows if isinstance(row, dict) and row.get("evidence_id") == evidence_id]
+
+    def _retire_classifiers(self, document: dict[str, Any], evidence_id: str, item: Mapping[str, Any], offered: Mapping[str, Any]) -> bool:
+        changed = False
+        current_version = item.get("current_version")
+        fingerprint = offered.get("context_fingerprint")
+        source_version = offered.get("source_version") or ""
+        graph_revision = offered.get("factual_graph_revision") or ""
+        for row in self._classifier_rows(document, evidence_id):
+            if row.get("status") != "current":
+                continue
+            reason = ""
+            if row.get("origin") == "user_label":
+                if row.get("artifact_version") != current_version:
+                    reason = "artifact_version_changed"
+            else:
+                if row.get("context_fingerprint") != fingerprint:
+                    reason = "source_or_context_changed"
+                elif row.get("artifact_version") != current_version:
+                    reason = "artifact_version_changed"
+                elif (row.get("source_version") or "") != source_version or (row.get("factual_graph_revision") or "") != graph_revision:
+                    reason = "source_version_changed"
+            if reason == "":
+                continue
+            row["status"] = "retired"
+            row["retired_reason"] = reason
+            row["establishes_legal_support"] = False
+            changed = True
+        return changed
+
+    def _choice_map(self, offered: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+        return {
+            str(item.get("choice_id")): item
+            for item in offered.get("choices") or []
+            if isinstance(item, Mapping) and item.get("choice_id")
+        }
+
+    def _new_classifier(self, identity, evidence_id, version, origin, body, offered, records) -> dict[str, Any]:
+        choices = self._choice_map(offered)
+        label = ""
+        target_kind = ""
+        target_id = ""
+        prior_id = ""
+        model_id = ""
+        invocation_id = ""
+        if origin == "user_label":
+            supplied_target = body.get("target_id")
+            if supplied_target not in {None, ""}:
+                target_id = _choice_id(supplied_target)
+                choice = choices.get(target_id)
+                if choice is None or target_id.casefold() in _FIXED_ASSUMPTION_IDS:
+                    raise EvidenceWorkspaceError("classifier_rejected")
+                target_kind = str(choice.get("target_kind") or "")
+                label = _context_text(body.get("label")) or str(choice.get("label") or target_id)
+                if label == "":
+                    raise EvidenceWorkspaceError("classifier_rejected")
+            else:
+                label = _label(body.get("label"), "classifier_rejected")
+                target_kind = "user_label"
+        else:
+            target_id = _choice_id(body.get("target_id"))
+            choice = choices.get(target_id)
+            if choice is None or target_id.casefold() in _FIXED_ASSUMPTION_IDS:
+                raise EvidenceWorkspaceError("classifier_rejected")
+            target_kind = str(choice.get("target_kind") or "")
+            label = str(choice.get("label") or target_id)
+            if origin == "ai_suggested":
+                model_id = _label(body.get("model_id"), "classifier_rejected")
+                invocation_id = _label(body.get("invocation_id"), "classifier_rejected")
+                if target_kind == "user_label":
+                    raise EvidenceWorkspaceError("classifier_rejected")
+            else:
+                prior_id = _choice_id(body.get("prior_classifier_id"))
+                if body.get("accept") is not True:
+                    raise EvidenceWorkspaceError("classifier_rejected")
+                prior = next((row for row in records if row.get("classifier_id") == prior_id), None)
+                if (prior is None or prior.get("evidence_id") != evidence_id or prior.get("status") != "current"
+                        or prior.get("origin") != "ai_suggested" or prior.get("target_id") != target_id
+                        or prior.get("context_fingerprint") != offered.get("context_fingerprint")):
+                    raise EvidenceWorkspaceError("classifier_rejected")
+        if target_kind == "legal_requirement" and offered.get("legal_context_status") != "admitted":
+            raise EvidenceWorkspaceError("classifier_rejected")
+        return {
+            "classifier_id": "cl-" + hashlib.sha256(os.urandom(32)).hexdigest()[:24],
+            "evidence_id": evidence_id,
+            "artifact_version": version,
+            "origin": origin,
+            "target_kind": target_kind,
+            "target_id": target_id,
+            "label": label,
+            "actor_principal_id": identity["actor_principal_id"],
+            "status": "current",
+            "retired_reason": "",
+            "context_fingerprint": offered.get("context_fingerprint") or "",
+            "source_version": offered.get("source_version") or "",
+            "factual_graph_revision": offered.get("factual_graph_revision") or "",
+            "legal_context_status": offered.get("legal_context_status") or "unknown",
+            "model_id": model_id,
+            "invocation_id": invocation_id,
+            "prior_classifier_id": prior_id,
+            "reviewed": origin == "reviewed_acceptance",
+            "accepted": origin == "reviewed_acceptance",
+            "request_fingerprint": self._request_fingerprint(body, offered),
+            "establishes_legal_support": False,
+            "establishes_claim_element": False,
+            "governing_law": False,
+        }
+
+    def _request_fingerprint(self, body: Mapping[str, Any], offered: Mapping[str, Any]) -> str:
+        payload = {
+            "origin": body.get("origin"),
+            "label": body.get("label") or "",
+            "target_id": body.get("target_id") or "",
+            "model_id": body.get("model_id") or "",
+            "invocation_id": body.get("invocation_id") or "",
+            "prior_classifier_id": body.get("prior_classifier_id") or "",
+            "accept": body.get("accept") is True,
+            "context_fingerprint": offered.get("context_fingerprint") or "",
+            "artifact_version": body.get("artifact_version"),
+            "evidence_id": body.get("evidence_id"),
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    def _same_classifier_request(self, prior: Mapping[str, Any], body: Mapping[str, Any], offered: Mapping[str, Any]) -> bool:
+        return prior.get("request_fingerprint") == self._request_fingerprint(body, offered)
+
+    def _public_classifier(self, row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "task_id": CLASSIFICATION_TASK_ID,
+            "classifier_id": row.get("classifier_id") or "",
+            "evidence_id": row.get("evidence_id") or "",
+            "artifact_version": row.get("artifact_version"),
+            "origin": row.get("origin") or "",
+            "target_kind": row.get("target_kind") or "",
+            "target_id": row.get("target_id") or "",
+            "label": row.get("label") or "",
+            "actor_principal_id": row.get("actor_principal_id") or "",
+            "status": row.get("status") or "",
+            "retired_reason": row.get("retired_reason") or "",
+            "context_fingerprint": row.get("context_fingerprint") or "",
+            "source_version": row.get("source_version") or "",
+            "factual_graph_revision": row.get("factual_graph_revision") or "",
+            "legal_context_status": row.get("legal_context_status") or "unknown",
+            "model_id": row.get("model_id") or "",
+            "invocation_id": row.get("invocation_id") or "",
+            "prior_classifier_id": row.get("prior_classifier_id") or "",
+            "reviewed": row.get("reviewed") is True,
+            "accepted": row.get("accepted") is True,
+            "suggestion_attribution": {
+                "model_id": row.get("model_id") or "",
+                "invocation_id": row.get("invocation_id") or "",
+                "actor_principal_id": row.get("actor_principal_id") or "",
+            },
+            "establishes_legal_support": False,
+            "establishes_claim_element": False,
+            "governing_law": False,
+            "hardcoded_elements_used": False,
+        }
+
+    def _classification_view(self, document, evidence_id, item, offered, *, retired: bool) -> dict[str, Any]:
+        rows = [self._public_classifier(row) for row in self._classifier_rows(document, evidence_id)]
+        current = [row for row in rows if row["status"] == "current"]
+        stale = [row for row in rows if row["status"] == "retired"]
+        return {
+            "task_id": CLASSIFICATION_TASK_ID,
+            "evidence_id": evidence_id,
+            "artifact_version": item.get("current_version"),
+            "legal_context_status": offered["legal_context_status"],
+            "choices": offered["choices"],
+            "factual_gap_ids": offered["factual_gap_ids"],
+            "admitted_requirement_ids": offered["admitted_requirement_ids"],
+            "fixed_assumptions_offered": False,
+            "refused_fixed_assumptions": offered["refused_fixed_assumptions"],
+            "hardcoded_elements_used": False,
+            "context_fingerprint": offered["context_fingerprint"],
+            "source_version": offered["source_version"],
+            "factual_graph_revision": offered["factual_graph_revision"],
+            "context_owner": offered["context_owner"],
+            "admission_verified_by_evidence_workspace": False,
+            "current": current,
+            "retired": stale,
+            "user_labels": [row for row in current if row["origin"] == "user_label"],
+            "ai_suggestions": [row for row in current if row["origin"] == "ai_suggested"],
+            "reviewed_acceptances": [row for row in current if row["origin"] == "reviewed_acceptance"],
+            "retired_count": len(stale),
+            "retirement_persisted": retired,
+            "establishes_legal_support": False,
+            "governing_law": False,
+        }
 
     def _extract(self, identity, case, key_id, data_key, item, body, scope) -> None:
         encoded = body.get("extracted_content_base64")

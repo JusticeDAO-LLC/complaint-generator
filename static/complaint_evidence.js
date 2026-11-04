@@ -736,6 +736,7 @@
             text("evidence-detail-notes", "");
             text("evidence-detail-classification", "");
             text("evidence-detail-links", "");
+            document.dispatchEvent(new CustomEvent("evidence-library-selected", {detail: {evidenceId: "", artifactVersion: ""}}));
             clearPreview();
             return;
         }
@@ -768,6 +769,12 @@
             var value = item[name] || (item.legal && item.legal[name]) || "not_recorded";
             return name + ": " + value;
         }).join("\n") + "\nClassification is not verified support or governing law.");
+        document.dispatchEvent(new CustomEvent("evidence-library-selected", {
+            detail: {
+                evidenceId: item.evidence_id || "",
+                artifactVersion: item.current_version || (version && version.version) || ""
+            }
+        }));
         var links = linksFor(item);
         text("evidence-detail-links", links.length ? links.join("\n") : "No current complaint link.");
         if (detail) detail.dataset.evidenceId = item.evidence_id || "";
@@ -1454,5 +1461,413 @@
     window.complaintEvidenceAnnotations = {open: open, close: close};
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
+}());
+
+/* Classification choices follow the current case context.
+   Fixed retaliation or HR claim elements are not a menu. A user label, an
+   AI suggestion, and a reviewed acceptance stay different records. Unknown
+   legal context stays unknown. */
+(function () {
+    var FIXED = {
+        protected_activity: true,
+        employer_knowledge: true,
+        causation: true,
+        hr: true,
+        human_resources: true
+    };
+    var shownId = "";
+    var generation = 0;
+
+    function caseContext() {
+        var client = window.workspaceClient;
+        return client && client.caseContext ? client.caseContext : null;
+    }
+
+    function headers() {
+        var client = window.workspaceClient;
+        var context = caseContext();
+        var result = {"Content-Type": "application/json", "Accept": "application/json"};
+        if (context) {
+            result["x-tenant-id"] = context.tenant_id;
+            result["x-case-id"] = context.case_id;
+            result["x-resource-id"] = context.resource_id;
+            if (context.expected_revision) result["x-expected-revision"] = String(context.expected_revision);
+        }
+        if (client && client.csrfToken) result["x-csrf-token"] = client.csrfToken;
+        return result;
+    }
+
+    function panel() {
+        var host = document.getElementById("evidence-detail-classification");
+        if (!host || !host.parentNode) return null;
+        var existing = document.getElementById("evidence-classification-panel");
+        if (existing) return existing;
+        var root = document.createElement("div");
+        root.id = "evidence-classification-panel";
+        root.dataset.state = "empty";
+        root.innerHTML = ""
+            + "<p id=\"evidence-classification-status\"></p>"
+            + "<div id=\"evidence-classification-choices\"></div>"
+            + "<label for=\"evidence-classification-label\">Your label</label>"
+            + "<input id=\"evidence-classification-label\" type=\"text\" maxlength=\"80\" autocomplete=\"off\">"
+            + "<button type=\"button\" id=\"evidence-classification-save-label\">Save label</button>"
+            + "<button type=\"button\" id=\"evidence-classification-save-choice\">Record selected choice as my label</button>"
+            + "<button type=\"button\" id=\"evidence-classification-accept\">Record reviewed acceptance</button>"
+            + "<p id=\"evidence-classification-user-labels\"></p>"
+            + "<p id=\"evidence-classification-suggestions\"></p>"
+            + "<p id=\"evidence-classification-reviewed\"></p>"
+            + "<p id=\"evidence-classification-retired\"></p>"
+            + "<p id=\"evidence-classification-error\"></p>";
+        host.parentNode.appendChild(root);
+        document.getElementById("evidence-classification-save-label").addEventListener("click", function () {
+            saveLabel().catch(function () { setState("error", "The label was not saved."); });
+        });
+        document.getElementById("evidence-classification-save-choice").addEventListener("click", function () {
+            saveChoice().catch(function () { setState("error", "The selected choice was not saved."); });
+        });
+        document.getElementById("evidence-classification-accept").addEventListener("click", function () {
+            acceptSuggestion().catch(function () { setState("error", "The acceptance was not saved."); });
+        });
+        return root;
+    }
+
+    function text(id, value) {
+        var node = document.getElementById(id);
+        if (node) node.textContent = value;
+    }
+
+    function setState(state, detail) {
+        var root = panel();
+        if (!root) return;
+        root.dataset.state = state;
+        text("evidence-classification-status", detail || "");
+        if (state === "error") text("evidence-classification-error", detail || "Classification choices could not be loaded.");
+        else text("evidence-classification-error", "");
+    }
+
+    function selectedChoice() {
+        var picked = document.querySelector("#evidence-classification-choices input[name='evidence-classification-choice']:checked");
+        if (!picked) return null;
+        return {
+            id: picked.value,
+            kind: picked.getAttribute("data-target-kind") || "",
+            label: picked.getAttribute("data-label") || picked.value
+        };
+    }
+
+    function selectedSuggestion() {
+        var picked = document.querySelector("#evidence-classification-suggestions input[name='evidence-classification-suggestion']:checked");
+        if (!picked) return null;
+        return {id: picked.value, targetId: picked.getAttribute("data-target-id") || ""};
+    }
+
+    async function readJson(url, options) {
+        var response = await fetch(url, options);
+        var body = {};
+        try { body = await response.json(); } catch (error) { body = {}; }
+        return {response: response, body: body};
+    }
+
+    async function caseContextSnapshot() {
+        var context = caseContext();
+        var snapshot = {
+            legal_context_status: "unknown",
+            context_owner: "request",
+            factual_graph_revision: "",
+            source_version: "",
+            jurisdiction: "",
+            authority_version: "",
+            factual_gaps: [],
+            admitted_requirements: []
+        };
+        if (!context || !context.case_id) return snapshot;
+        var factual;
+        var legal;
+        try {
+            factual = await readJson("/api/graphs/" + encodeURIComponent(context.case_id) + "/factual?case_id=" + encodeURIComponent(context.case_id), {
+                credentials: "same-origin",
+                headers: headers()
+            });
+        } catch (error) {
+            factual = null;
+        }
+        try {
+            legal = await readJson("/api/legal-analysis/" + encodeURIComponent(context.case_id) + "/dependency-requirements?case_id=" + encodeURIComponent(context.case_id), {
+                credentials: "same-origin",
+                headers: headers()
+            });
+        } catch (error) {
+            legal = null;
+        }
+        if (factual && factual.response && factual.response.ok && factual.body) {
+            snapshot.factual_graph_revision = String(factual.body.private_revision || factual.body.graph_revision || "");
+            (factual.body.unresolved || []).forEach(function (item) {
+                if (!item || typeof item !== "object") return;
+                var gapId = String(item.graph_entity_id || item.gap_id || "");
+                if (!gapId || FIXED[gapId.toLowerCase()]) return;
+                snapshot.factual_gaps.push({gap_id: gapId, label: String(item.label || item.reason || gapId)});
+            });
+        }
+        if (legal && legal.response && legal.response.ok && legal.body) {
+            var requirements = Array.isArray(legal.body.requirements) ? legal.body.requirements : [];
+            var admitted = legal.body.admitted_law === true && requirements.length > 0;
+            if (admitted) {
+                var first = requirements[0] || {};
+                snapshot.legal_context_status = "admitted";
+                snapshot.source_version = String(first.source_hash || first.authority_version || legal.body.private_revision || "");
+                snapshot.jurisdiction = String(first.jurisdiction || "");
+                snapshot.authority_version = String(first.authority_version || "");
+                requirements.forEach(function (item) {
+                    if (!item || item.admitted_law !== true) return;
+                    var requirementId = String(item.requirement_id || item.passage_id || "");
+                    if (!requirementId || FIXED[requirementId.toLowerCase()]) return;
+                    snapshot.admitted_requirements.push({
+                        requirement_id: requirementId,
+                        passage_id: String(item.passage_id || requirementId),
+                        label: String(item.name || item.citation || requirementId),
+                        source_version: snapshot.source_version,
+                        jurisdiction: snapshot.jurisdiction,
+                        authority_version: snapshot.authority_version,
+                        admitted_law: true
+                    });
+                });
+                if (!snapshot.source_version || !snapshot.jurisdiction || !snapshot.authority_version || !snapshot.admitted_requirements.length) {
+                    snapshot.legal_context_status = "unknown";
+                    snapshot.admitted_requirements = [];
+                }
+            } else if (legal.body.status === "unresolved_research") {
+                snapshot.legal_context_status = "unresolved";
+            }
+        }
+        return snapshot;
+    }
+
+    function paintOffer(body) {
+        var choices = document.getElementById("evidence-classification-choices");
+        if (!choices) return;
+        choices.textContent = "";
+        var offered = Array.isArray(body.choices) ? body.choices : [];
+        if (!offered.length) {
+            var empty = document.createElement("p");
+            empty.textContent = "No current factual gap or admitted legal requirement is available.";
+            choices.appendChild(empty);
+        }
+        offered.forEach(function (choice) {
+            if (!choice || FIXED[String(choice.choice_id || "").toLowerCase()]) return;
+            var row = document.createElement("label");
+            var input = document.createElement("input");
+            input.type = "radio";
+            input.name = "evidence-classification-choice";
+            input.value = String(choice.choice_id || "");
+            input.setAttribute("data-target-kind", String(choice.target_kind || ""));
+            input.setAttribute("data-label", String(choice.label || choice.choice_id || ""));
+            row.appendChild(input);
+            var kind = choice.target_kind === "factual_gap"
+                ? "Factual gap"
+                : choice.target_kind === "legal_requirement"
+                    ? "Admitted legal requirement"
+                    : "Unknown legal context";
+            row.appendChild(document.createTextNode(" " + kind + ": " + (choice.label || choice.choice_id)));
+            choices.appendChild(row);
+        });
+        text("evidence-classification-user-labels", (body.user_labels || []).concat(body.annotation_user_labels || []).map(function (item) {
+            return "User label by " + (item.actor_principal_id || "unattributed")
+                + ": " + (item.label || "")
+                + (item.target_id ? " target " + item.target_id : "");
+        }).join("\n") || "No user label is stored.");
+        text("evidence-classification-suggestions", (body.ai_suggestions || []).map(function (item) {
+            return "AI suggestion " + item.classifier_id + " by model " + (item.model_id || "unattributed")
+                + " invocation " + (item.invocation_id || "unattributed")
+                + " for " + (item.target_id || "")
+                + ". Accepted: " + (item.accepted === true ? "yes" : "no") + ".";
+        }).join("\n") || "No AI suggestion is stored.");
+        var suggestionHost = document.getElementById("evidence-classification-suggestions");
+        (body.ai_suggestions || []).forEach(function (item) {
+            if (!suggestionHost || item.status === "retired") return;
+            var row = document.createElement("label");
+            var input = document.createElement("input");
+            input.type = "radio";
+            input.name = "evidence-classification-suggestion";
+            input.value = String(item.classifier_id || "");
+            input.setAttribute("data-target-id", String(item.target_id || ""));
+            row.appendChild(input);
+            row.appendChild(document.createTextNode(" Select suggestion " + item.classifier_id));
+            suggestionHost.appendChild(row);
+        });
+        text("evidence-classification-reviewed", (body.reviewed_acceptances || []).map(function (item) {
+            return "Reviewed acceptance " + item.classifier_id + " by " + (item.actor_principal_id || "unattributed")
+                + " of " + (item.prior_classifier_id || "none")
+                + " target " + (item.target_id || "")
+                + ". Legal support established: no.";
+        }).join("\n") || "No reviewed acceptance is stored.");
+        text("evidence-classification-retired", (body.retired || []).map(function (item) {
+            return "Retired " + (item.origin || "choice") + " " + (item.classifier_id || "")
+                + " by " + (item.actor_principal_id || "unattributed")
+                + " target " + (item.target_id || item.label || "")
+                + " reason " + (item.retired_reason || "stale")
+                + (item.model_id ? " model " + item.model_id : "")
+                + (item.invocation_id ? " invocation " + item.invocation_id : "");
+        }).join("\n") || "No stale classification is retained.");
+        var legal = body.legal_context_status || "unknown";
+        setState("ready", legal === "admitted"
+            ? "Choices are the current factual gaps and admitted legal requirements. They are not verified support."
+            : legal === "unresolved"
+                ? "Legal requirements are unresolved. Unknown legal context is not a statute."
+                : "Legal context is unknown. Fixed claim elements are not offered.");
+    }
+
+    function scopeBody(extra) {
+        var context = caseContext();
+        var detail = document.getElementById("evidence-library-detail");
+        var version = detail ? Number(detail.getAttribute("data-artifact-version") || "") : NaN;
+        var body = {
+            tenant_id: context.tenant_id,
+            case_id: context.case_id,
+            resource_id: context.resource_id,
+            evidence_id: shownId,
+            artifact_version: version,
+            expected_case_revision: context.expected_revision || context.revision
+        };
+        Object.keys(extra || {}).forEach(function (key) { body[key] = extra[key]; });
+        return body;
+    }
+
+    async function refresh() {
+        var root = panel();
+        var context = caseContext();
+        var token = ++generation;
+        if (!root) return;
+        if (!context || !shownId) {
+            setState("locked", "Select an authorized case and an artifact before classifying it.");
+            return;
+        }
+        setState("pending", "Loading classification choices from the current case.");
+        var snapshot;
+        try {
+            snapshot = await caseContextSnapshot();
+        } catch (error) {
+            snapshot = {legal_context_status: "unknown", factual_gaps: [], admitted_requirements: [], context_owner: "request"};
+        }
+        if (token !== generation) return;
+        var result;
+        try {
+            result = await readJson("/api/cases/evidence/classifications/offer", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: headers(),
+                body: JSON.stringify(scopeBody({case_context: snapshot}))
+            });
+        } catch (error) {
+            setState("error", "Classification choices did not reach the server.");
+            return;
+        }
+        if (token !== generation) return;
+        if (!result.response.ok) {
+            var code = result.body && result.body.error;
+            if (code === "key_unavailable" || code === "unauthenticated") {
+                setState("locked", "Unlock the case before loading classification choices.");
+            } else {
+                setState("error", "Classification choices returned " + (code || result.response.status) + ".");
+            }
+            return;
+        }
+        root.dataset.legalContext = result.body.legal_context_status || "unknown";
+        root.dataset.fingerprint = result.body.context_fingerprint || "";
+        paintOffer(result.body);
+    }
+
+    async function saveLabel() {
+        var label = (document.getElementById("evidence-classification-label").value || "").trim();
+        if (!label) {
+            setState("error", "Enter a user label. A blank label is not a claim element.");
+            document.getElementById("evidence-classification-label").focus();
+            return;
+        }
+        setState("pending", "Saving the user label.");
+        var snapshot = await caseContextSnapshot();
+        var result = await readJson("/api/cases/evidence/classifications", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: headers(),
+            body: JSON.stringify(scopeBody({
+                origin: "user_label",
+                label: label,
+                case_context: snapshot,
+                idempotency_key: "ux19-label-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8)
+            }))
+        });
+        if (!result.response.ok) {
+            setState("error", "The user label was refused (" + (result.body.error || result.response.status) + ").");
+            return;
+        }
+        document.getElementById("evidence-classification-label").value = "";
+        await refresh();
+    }
+
+    async function saveChoice() {
+        var choice = selectedChoice();
+        if (!choice || !choice.id || FIXED[choice.id.toLowerCase()]) {
+            setState("error", "Select a current factual gap, admitted requirement, or unknown legal context.");
+            return;
+        }
+        setState("pending", "Saving your label for the selected choice. This is not an AI suggestion or a reviewed acceptance.");
+        var snapshot = await caseContextSnapshot();
+        var result = await readJson("/api/cases/evidence/classifications", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: headers(),
+            body: JSON.stringify(scopeBody({
+                origin: "user_label",
+                target_id: choice.id,
+                label: choice.label,
+                case_context: snapshot,
+                idempotency_key: "ux19-choice-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8)
+            }))
+        });
+        if (!result.response.ok) {
+            setState("error", "The selected choice was refused (" + (result.body.error || result.response.status) + ").");
+            return;
+        }
+        await refresh();
+    }
+
+    async function acceptSuggestion() {
+        var suggestion = selectedSuggestion();
+        if (!suggestion) {
+            setState("error", "Select an AI suggestion before recording reviewed acceptance.");
+            return;
+        }
+        setState("pending", "Recording reviewed acceptance. This does not establish legal support.");
+        var snapshot = await caseContextSnapshot();
+        var result = await readJson("/api/cases/evidence/classifications", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: headers(),
+            body: JSON.stringify(scopeBody({
+                origin: "reviewed_acceptance",
+                target_id: suggestion.targetId,
+                prior_classifier_id: suggestion.id,
+                accept: true,
+                case_context: snapshot,
+                idempotency_key: "ux19-accept-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8)
+            }))
+        });
+        if (!result.response.ok) {
+            setState("error", "Reviewed acceptance was refused (" + (result.body.error || result.response.status) + ").");
+            return;
+        }
+        await refresh();
+    }
+
+    function onSelected(event) {
+        var detail = event.detail || {};
+        shownId = detail.evidenceId || "";
+        var host = document.getElementById("evidence-library-detail");
+        if (host) host.setAttribute("data-artifact-version", detail.artifactVersion === undefined || detail.artifactVersion === null ? "" : String(detail.artifactVersion));
+        refresh().catch(function () { setState("error", "Classification choices could not be loaded."); });
+    }
+
+    document.addEventListener("evidence-library-selected", onSelected);
+    window.complaintEvidenceClassification = {refresh: refresh};
 }());
 

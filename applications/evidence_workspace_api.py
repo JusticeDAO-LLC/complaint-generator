@@ -36,6 +36,7 @@ from applications.case_directory import CaseDirectoryError
 from applications.evidence_annotation_store import ANNOTATION_TASK_ID, EvidenceAnnotationStore
 
 from integrations.evidence_workspace import (
+    CLASSIFICATION_TASK_ID,
     INGESTION_STATUSES,
     TASK_ID,
     EvidenceWorkspace,
@@ -82,7 +83,7 @@ def evidence_http_status(code: str) -> int:
         return 403
     if code in {"revision_conflict", "replay_mismatch", "lifecycle_conflict", "operation_revoked", "upload_stale", "artifact_version_mismatch"}:
         return 409
-    if code in {"request_body", "content_rejected", "action", "source_filename", "original_filename", "idempotency_key", "evidence_id", "failure_code", "complaint_link_id", "media_type", "actor", "media_rejected", "oversized", "upload_offset", "upload_id", "annotation_rejected", "artifact_version", "adoption_requires_explicit_action", "kind"}:
+    if code in {"request_body", "content_rejected", "action", "source_filename", "original_filename", "idempotency_key", "evidence_id", "failure_code", "complaint_link_id", "media_type", "actor", "media_rejected", "oversized", "upload_offset", "upload_id", "annotation_rejected", "artifact_version", "adoption_requires_explicit_action", "kind", "classifier_rejected"}:
         return 400
     if code == "missing_annotation":
         return 404
@@ -309,6 +310,41 @@ def mount_evidence_workspace(app: Any) -> None:
         except EvidenceWorkspaceError as exc:
             return _fail(exc)
         return JSONResponse(payload, status_code=200, headers=_NO_STORE_HEADERS)
+
+    @app.post("/api/cases/evidence/classifications/offer")
+    async def offer_evidence_classifiers(request: Request):
+        try:
+            verify = _verify(request)
+            verify()
+            service, actor, material = _service(request), _actor(request), _material(request)
+            verify_key = await run_in_threadpool(service.key_scope_verifier, actor, _annotation_scope_body(material))
+            verify()
+            payload = await run_in_threadpool(
+                _offer_classifiers, request, service, actor, material, verify_request=verify_key,
+            )
+            await run_in_threadpool(verify_key)
+            verify()
+        except EvidenceWorkspaceError as exc:
+            return _fail(exc)
+        return JSONResponse(payload, status_code=200, headers=_NO_STORE_HEADERS)
+
+    @app.post("/api/cases/evidence/classifications")
+    async def record_evidence_classifier(request: Request):
+        try:
+            verify = _verify(request)
+            verify()
+            service, actor, material = _service(request), _actor(request), _material(request)
+            verify_key = await run_in_threadpool(service.key_scope_verifier, actor, _annotation_scope_body(material))
+            verify()
+            payload = await run_in_threadpool(
+                _record_classifier, request, service, actor, material, verify_request=verify_key,
+            )
+            await run_in_threadpool(verify_key)
+            verify()
+        except EvidenceWorkspaceError as exc:
+            return _fail(exc)
+        status = 200 if payload.get("idempotent_replay") else 201
+        return JSONResponse(payload, status_code=status, headers=_NO_STORE_HEADERS)
 
     @app.get("/api/cases/evidence/preview")
     async def preview_evidence(request: Request):
@@ -1219,6 +1255,70 @@ def _adopt_annotation(request: Request, service: EvidenceWorkspace, actor: str, 
     payload["adopted_as_evidence"] = False
     payload["task_id"] = ANNOTATION_TASK_ID
     return payload
+
+
+def _classification_body(body: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(body, Mapping):
+        raise EvidenceWorkspaceError("request_body")
+    material = dict(body)
+    version = material.get("artifact_version")
+    if isinstance(version, str) and version.strip().isdigit():
+        material["artifact_version"] = int(version.strip())
+    context = material.get("case_context")
+    if context is None:
+        material["case_context"] = {"legal_context_status": "unknown", "context_owner": "request"}
+    elif isinstance(context, Mapping):
+        copied = dict(context)
+        copied.setdefault("context_owner", "request")
+        material["case_context"] = copied
+    else:
+        raise EvidenceWorkspaceError("classifier_rejected")
+    material["task_id"] = CLASSIFICATION_TASK_ID
+    return material
+
+
+def _offer_classifiers(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:
+    material = _classification_body(body)
+    payload = service.offer_classifiers(actor, material, verify_request=verify_request)
+    payload["annotation_user_labels"] = _annotation_user_labels(request, service, actor, material, verify_request)
+    payload["fixed_assumptions_offered"] = False
+    payload["establishes_legal_support"] = False
+    return payload
+
+
+def _record_classifier(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:
+    material = _classification_body(body)
+    payload = service.record_classifier(actor, material, verify_request=verify_request)
+    payload["annotation_user_labels"] = _annotation_user_labels(request, service, actor, material, verify_request)
+    payload["fixed_assumptions_offered"] = False
+    payload["establishes_legal_support"] = False
+    return payload
+
+
+def _annotation_user_labels(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], verify_request) -> list[dict[str, Any]]:
+    """Surface saved annotation labels beside classifiers. A label is not acceptance."""
+
+    try:
+        listed = _list_annotations(request, service, actor, body, verify_request=verify_request)
+    except EvidenceWorkspaceError:
+        return []
+    labels = []
+    for item in listed.get("items") or []:
+        if not isinstance(item, Mapping) or item.get("kind") != "label":
+            continue
+        labels.append({
+            "origin": "user_label",
+            "record_type": "annotation_label",
+            "annotation_id": item.get("annotation_id") or "",
+            "label": item.get("label") or "",
+            "actor_principal_id": item.get("actor_principal_id") or "",
+            "artifact_version": item.get("artifact_version"),
+            "reviewed": False,
+            "accepted": False,
+            "establishes_legal_support": False,
+            "legal_requirement": False,
+        })
+    return labels
 
 
 def _list_annotations(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:
