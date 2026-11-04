@@ -3927,6 +3927,11 @@
                         <p id="mediator-conversation-context">No case conversation is loaded.</p>
                         <ol id="mediator-conversation-log" class="mediator-conversation__log" role="log" aria-live="polite" aria-relevant="additions"></ol>
                         <p id="mediator-conversation-status" class="mediator-conversation__status" role="status">The conversation has not been loaded.</p>
+                        <section id="conversation-stopping" data-distinction="" data-legal-sufficiency="false" data-legal-gap="false" data-evidentiary-gap="false" data-inquiry-id="" data-revision="">
+                            <h3>Interview stopping</h3>
+                            <p id="conversation-stopping-summary">Stopping has not been read. No further questions, a filled form, and a completed software task are not legal sufficiency.</p>
+                            <p id="conversation-stopping-next"></p>
+                        </section>
                         <div class="mediator-conversation__controls">
                             <button type="button" id="mediator-conversation-refresh">Refresh conversation</button>
                             <button type="button" id="mediator-conversation-cancel" disabled>Cancel refresh</button>
@@ -3982,16 +3987,21 @@
                             </div>
                             <div class="status" id="adaptive-gap-status" data-gap-preserved="unknown">Unknown and deferred answers keep the graph gap open.</div>
                         </div>
-                        <section id="finite-interview-outcome" data-task="CIMP-GUI-19" data-stop="" data-legal-sufficiency="false" data-user-waiting-is-worker-stall="false" data-reasons-visible="true">
+                        <section id="finite-interview-outcome" data-task="CIMP-UX-11" data-stop="" data-distinction="" data-legal-sufficiency="false" data-legal-gap="false" data-evidentiary-gap="false" data-user-waiting-is-worker-stall="false" data-reasons-visible="true">
                             <h3>Finite interview outcome</h3>
-                            <p id="finite-interview-summary">The interview stops on saturation, a cap, a pause, cancellation, or an unavailable capability. Waiting for the user is not a development worker stall.</p>
+                            <p id="finite-interview-summary">The interview distinguishes no actionable question, a user pause, cancellation, a cap, saturation, and an unavailable source or provider. Waiting for the user is not a development worker stall.</p>
+                            <p id="finite-interview-next">Next action: answer the current question, or pause if you need to leave. A filled form is not legal sufficiency.</p>
+                            <p id="finite-interview-gaps" data-legal-gap="false" data-evidentiary-gap="false">Legal and evidence gaps stay visible until source-bound support exists.</p>
                             <ul id="finite-interview-reasons">
                                 <li data-code="interview_completion_is_not_legal_sufficiency">Interview completion is not legal sufficiency. Support requires source-bound factual or legal evidence.</li>
                             </ul>
-                            <p id="finite-interview-sufficiency">Interview completion is not legal sufficiency. A finished question list does not mark claim elements supported.</p>
+                            <p id="finite-interview-sufficiency">No further questions, a filled intake form, and a completed software task are not legal sufficiency. Support requires source-bound factual or legal evidence.</p>
                             <div class="button-row">
                                 <button class="secondary" id="finite-interview-pause" type="button">Pause interview</button>
                                 <button class="secondary" id="finite-interview-cancel" type="button">Cancel interview</button>
+                                <button class="secondary" id="finite-interview-cap" type="button">Record question cap</button>
+                                <button class="secondary" id="finite-interview-unavailable" type="button">Record unavailable source</button>
+                                <button class="secondary" id="finite-interview-saturate" type="button">Record saturation</button>
                             </div>
                         </section>
                         <section id="factual-correction" data-task="CIMP-GUI-18" data-status="">
@@ -15234,27 +15244,30 @@ function extractComplaintOutputSignals(result) {
             const sufficiency = document.getElementById('finite-interview-sufficiency');
             if (!panel || !summary || !reasons || !sufficiency) return;
             const outcome = (payload && payload.finite_interview_outcome) || {};
-            const stop = String(outcome.stop || 'unresolved');
             const rows = Array.isArray(outcome.unresolved_reasons) ? outcome.unresolved_reasons : [];
-            panel.dataset.stop = stop;
+            if (window.complaintConversation && typeof window.complaintConversation.paintStopping === 'function') {
+                window.complaintConversation.paintStopping(payload);
+            }
             panel.dataset.legalSufficiency = 'false';
             panel.dataset.userWaitingIsWorkerStall = 'false';
             panel.dataset.reasonsVisible = rows.length ? 'true' : 'false';
             panel.dataset.userWaiting = outcome.user_waiting ? 'true' : 'false';
             panel.dataset.workerStalled = 'false';
-            summary.textContent = `Interview stop: ${stop}. Waiting for the user is not a development worker stall. Unresolved reasons stay visible.`;
+            const serverStop = String(outcome.stop || '');
+            if (serverStop) panel.dataset.serverStop = serverStop;
             reasons.innerHTML = (rows.length ? rows : [{code: 'interview_completion_is_not_legal_sufficiency', detail: 'Interview completion is not legal sufficiency.'}]).map((item) => {
                 const code = String((item && item.code) || 'unresolved');
                 const detail = String((item && item.detail) || code);
                 return `<li data-code="${escapeHtml(code)}">${escapeHtml(detail)}</li>`;
             }).join('');
-            sufficiency.textContent = 'Interview completion is not legal sufficiency. Support requires source-bound factual or legal evidence.';
+            sufficiency.textContent = 'No further questions, a filled intake form, and a completed software task are not legal sufficiency. Support requires source-bound factual or legal evidence.';
         }
 
         async function controlFiniteInterview(action) {
             const capture = adaptiveRequestCapture();
             if (!adaptiveRequestCurrent(capture)) return;
-            setBusyStatus(action === 'pause' ? 'Pausing the interview…' : 'Cancelling the interview…');
+            const busy = {pause: 'Pausing the interview…', cancel: 'Cancelling the interview…', cap: 'Recording the question cap…', unavailable: 'Recording the unavailable source…', saturate: 'Recording interview saturation…'};
+            setBusyStatus(busy[action] || 'Recording the interview stop…');
             try {
                 const result = await client.runIntakeChatTurn(workspaceUserId, '', '', {interview_action: action});
                 if (!adaptiveRequestCurrent(capture)) return;
@@ -15386,6 +15399,7 @@ function extractComplaintOutputSignals(result) {
             panel.dataset.hooksReplayed = 'false';
             panel.dataset.messagesReplayed = 'false';
             panel.dataset.browserCacheUsed = 'false';
+            panel.dataset.legalSufficiency = 'false';
             statusNode.dataset.code = code;
             statusNode.dataset.restored = restored ? 'true' : 'false';
             statusNode.dataset.hooksReplayed = 'false';
@@ -15401,8 +15415,14 @@ function extractComplaintOutputSignals(result) {
             const gapNode = document.getElementById('encrypted-interview-resume-gaps');
             const correctionNode = document.getElementById('encrypted-interview-resume-corrections');
             if (inquiryNode) {
+                const head = (payload && payload.encrypted_head) || {};
                 inquiryNode.dataset.inquiryId = restored ? String(pending.inquiry_id || '') : '';
-                inquiryNode.textContent = restored ? String(pending.question || '') : '';
+                inquiryNode.dataset.revision = restored && pending.revision !== undefined && pending.revision !== null ? String(pending.revision) : '';
+                inquiryNode.dataset.privateRevision = restored && head.private_revision !== undefined && head.private_revision !== null ? String(head.private_revision) : '';
+                inquiryNode.dataset.legalSufficiency = 'false';
+                inquiryNode.textContent = restored
+                    ? `${String(pending.question || '')} Restored question state is not legal sufficiency.`
+                    : '';
             }
             if (caseNode) caseNode.textContent = restored ? String(session.case_id || '') : '';
             if (consentNode) consentNode.textContent = restored ? `consent generation ${consent.generation === undefined || consent.generation === null ? '' : consent.generation}` : '';
@@ -15448,6 +15468,7 @@ function extractComplaintOutputSignals(result) {
                 if (resume && (resume.resumed === true || resume.restored === true)) workspaceSession = result;
                 renderEncryptedInterviewResume(result);
                 if (resume && (resume.resumed === true || resume.restored === true)) renderAdaptiveInquiry(result, capture);
+                discardBrowserCaseCache();
                 setStatus((resume && (resume.resumed === true || resume.restored === true))
                     ? 'Encrypted interview resumed. The pending inquiry matches the saved revision.'
                     : 'Encrypted resume was refused. No case text was taken from this browser.');
@@ -15457,6 +15478,7 @@ function extractComplaintOutputSignals(result) {
                 renderEncryptedInterviewResume({encrypted_resume: {status: denied ? 'denied' : 'unavailable',
                     code: denied ? 'authorization_denied' : 'resume_unavailable', resumed: false,
                     reconstructed_from_browser_cache: false}});
+                discardBrowserCaseCache();
                 setStatus('Encrypted resume failed closed. The case was not rebuilt from this browser.');
             }
         }
@@ -16717,6 +16739,9 @@ function extractComplaintOutputSignals(result) {
         document.getElementById('adaptive-submit-answer').addEventListener('click', () => answerAdaptiveInquiry('answer'));
         document.getElementById('finite-interview-pause').addEventListener('click', () => controlFiniteInterview('pause'));
         document.getElementById('finite-interview-cancel').addEventListener('click', () => controlFiniteInterview('cancel'));
+        document.getElementById('finite-interview-cap').addEventListener('click', () => controlFiniteInterview('cap'));
+        document.getElementById('finite-interview-unavailable').addEventListener('click', () => controlFiniteInterview('unavailable'));
+        document.getElementById('finite-interview-saturate').addEventListener('click', () => controlFiniteInterview('saturate'));
         document.getElementById('factual-correction-submit').addEventListener('click', applyFactualCorrection);
         document.getElementById('encrypted-interview-resume-button').addEventListener('click', resumeEncryptedInterview);
         let factualGraphRequestEpoch = 0;

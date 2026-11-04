@@ -151,20 +151,157 @@
                 });
             });
         }
-        var outcome = payload.finite_interview_outcome && typeof payload.finite_interview_outcome === "object" ? payload.finite_interview_outcome : {};
-        var stop = text(outcome.stop);
-        var waiting = pending && text(pending.question);
         messages.push({
             type: "system-outcome",
             kind: "System outcome",
-            body: waiting
-                ? "The mediator is waiting for your answer. Answer the current question to continue."
-                : (stop && stop !== "unresolved"
-                    ? "The interview recorded this outcome: " + stop + ". That outcome is not legal sufficiency."
-                    : "No system outcome is recorded yet."),
-            why: "System text reports the interview state. It does not adopt an answer."
+            body: stoppingCopy(classifyStopping(payload)).summary,
+            why: "System text reports the interview state. It does not adopt an answer and it is not legal sufficiency."
         });
         return messages;
+    }
+
+    function reasonBlob(payload, outcome, policy) {
+        var reasons = [].concat(
+            Array.isArray(outcome.unresolved_reasons) ? outcome.unresolved_reasons : [],
+            Array.isArray(policy.remaining_issues) ? policy.remaining_issues : []
+        );
+        var parts = [text(policy.dependency_lane), text(policy.stopping_distinction), text(outcome.state)];
+        reasons.forEach(function (item) {
+            if (!item || typeof item !== "object") {
+                parts.push(text(item));
+                return;
+            }
+            parts.push(text(item.code), text(item.reason), text(item.detail), text(item.dependency_lane), text(item.lane), text(item.target_kind));
+        });
+        return parts.join(" ").toLowerCase();
+    }
+
+    function classifyStopping(payload) {
+        var source = payload && typeof payload === "object" ? payload : {};
+        var outcome = source.finite_interview_outcome && typeof source.finite_interview_outcome === "object" ? source.finite_interview_outcome : {};
+        var policy = source.stopping_policy && typeof source.stopping_policy === "object" ? source.stopping_policy : {};
+        var session = sessionOf(source);
+        var interview = session.shared_interview && typeof session.shared_interview === "object" ? session.shared_interview : {};
+        var pending = interview.pending_inquiry && typeof interview.pending_inquiry === "object" ? interview.pending_inquiry : null;
+        var hasQuestion = !!(pending && text(pending.question));
+        var stop = text(outcome.stop || policy.outcome).toLowerCase();
+        var blob = reasonBlob(source, outcome, policy);
+        var legalGap = /legal|source_research|authority|governing/.test(blob);
+        var evidentiaryGap = /evidence|proof|document|evidentiary/.test(blob);
+        var answers = session.intake_answers && typeof session.intake_answers === "object" ? session.intake_answers : {};
+        var filledForm = Object.keys(answers).some(function (key) { return text(answers[key]); });
+        var conversation = source.conversation_state && typeof source.conversation_state === "object" ? source.conversation_state : {};
+        var noMoreQuestions = !hasQuestion && (conversation.is_complete === true || /no further/.test(text(source.message).toLowerCase()) || stop === "saturated");
+        var completedTask = source.stored_as_answer === true || conversation.is_complete === true;
+        var distinction = "awaiting_answer";
+        if (stop === "paused" || stop === "user_pause") distinction = "user_pause";
+        else if (stop === "cancelled" || stop === "cancellation") distinction = "cancellation";
+        else if (stop === "capped" || stop === "cap" || stop === "limit_reached" || stop === "no_progress") distinction = "cap";
+        else if (stop === "unavailable" || stop === "blocked_provider" || stop === "provider_unavailable") distinction = "unavailable_source";
+        else if (stop === "saturated" || stop === "saturation" || stop === "complete") distinction = "saturation";
+        else if (!hasQuestion) distinction = "no_actionable_question";
+        var head = source.encrypted_head && typeof source.encrypted_head === "object" ? source.encrypted_head : {};
+        return {
+            distinction: distinction,
+            legalGap: legalGap,
+            evidentiaryGap: evidentiaryGap,
+            legalSufficiency: false,
+            noMoreQuestions: noMoreQuestions,
+            filledForm: filledForm,
+            completedTask: completedTask,
+            inquiryId: hasQuestion ? text(pending.inquiry_id) : "",
+            question: hasQuestion ? text(pending.question) : "",
+            revision: hasQuestion && pending.revision !== undefined && pending.revision !== null ? String(pending.revision) : "",
+            privateRevision: head.private_revision === undefined || head.private_revision === null ? "" : String(head.private_revision)
+        };
+    }
+
+    function stoppingCopy(view) {
+        var next = {
+            awaiting_answer: "Answer, mark unknown, or defer the current question. The saved question stays until you do.",
+            no_actionable_question: "There is no further actionable question. Review the open factual, evidence, and legal gaps. An empty question list is not legal sufficiency.",
+            user_pause: "You paused. Resume returns the same saved question. This wait is not a stalled worker and is not legal sufficiency.",
+            cancellation: "The interview was cancelled. Unresolved issues stay open. Cancellation is not legal sufficiency.",
+            cap: "A question, iteration, or budget cap stopped new questions. Review what is still unresolved. A cap is not legal sufficiency.",
+            saturation: "The interview is saturated. Open gaps remain. Saturation is not legal sufficiency or court readiness.",
+            unavailable_source: "A required source or provider is unavailable. Retry when it is available. Unavailability is not legal sufficiency."
+        };
+        var summary = {
+            awaiting_answer: "The mediator is waiting for your answer. Answer the current question to continue.",
+            no_actionable_question: "No actionable question is waiting. That is an interview outcome, not legal sufficiency.",
+            user_pause: "You paused the interview. The saved question is unchanged.",
+            cancellation: "The interview was cancelled. Unresolved reasons stay visible.",
+            cap: "A cap stopped the interview. Unresolved reasons stay visible.",
+            saturation: "The interview is saturated. Unresolved reasons stay visible.",
+            unavailable_source: "A source or provider is unavailable. Unresolved reasons stay visible."
+        };
+        var extra = "";
+        if (view.legalGap) extra += " A legal or source gap is still open. Acquire or admit the source before treating that point as supported.";
+        if (view.evidentiaryGap) extra += " An evidence gap is still open. A filled form is not source-bound evidence.";
+        if (view.filledForm) extra += " Filled intake fields are not legal sufficiency.";
+        if (view.completedTask || view.noMoreQuestions) extra += " A completed software task and a finished question list are not legal sufficiency.";
+        return {
+            summary: summary[view.distinction] || summary.no_actionable_question,
+            next: (next[view.distinction] || next.no_actionable_question) + extra
+        };
+    }
+
+    function paintStopping(payload) {
+        if (!payload) {
+            ["conversation-stopping", "finite-interview-outcome"].forEach(function (id) {
+                var panel = $(id);
+                if (!panel) return;
+                panel.dataset.distinction = "";
+                panel.dataset.legalSufficiency = "false";
+                panel.dataset.inquiryId = "";
+                panel.dataset.revision = "";
+            });
+            var idleSummary = $("conversation-stopping-summary");
+            if (idleSummary) idleSummary.textContent = "Stopping has not been read. No further questions, a filled form, and a completed software task are not legal sufficiency.";
+            var idleNext = $("conversation-stopping-next");
+            if (idleNext) idleNext.textContent = "";
+            return null;
+        }
+        var view = classifyStopping(payload);
+        var copy = stoppingCopy(view);
+        var nodes = [
+            { panel: "conversation-stopping", summary: "conversation-stopping-summary", next: "conversation-stopping-next" },
+            { panel: "finite-interview-outcome", summary: "finite-interview-summary", next: "finite-interview-next" }
+        ];
+        nodes.forEach(function (ids) {
+            var panel = $(ids.panel);
+            if (!panel) return;
+            var serverStop = text((payload && payload.finite_interview_outcome && payload.finite_interview_outcome.stop) || "");
+            panel.dataset.distinction = view.distinction;
+            if (serverStop) panel.dataset.stop = serverStop;
+            else if (!panel.dataset.stop) panel.dataset.stop = view.distinction;
+            panel.dataset.legalSufficiency = "false";
+            panel.dataset.legalGap = view.legalGap ? "true" : "false";
+            panel.dataset.evidentiaryGap = view.evidentiaryGap ? "true" : "false";
+            panel.dataset.noMoreQuestions = view.noMoreQuestions ? "true" : "false";
+            panel.dataset.filledForm = view.filledForm ? "true" : "false";
+            panel.dataset.completedTask = view.completedTask ? "true" : "false";
+            panel.dataset.inquiryId = view.inquiryId;
+            panel.dataset.revision = view.revision;
+            panel.dataset.privateRevision = view.privateRevision;
+            var summary = $(ids.summary);
+            var next = $(ids.next);
+            if (summary) summary.textContent = copy.summary;
+            if (next) next.textContent = copy.next;
+        });
+        var sufficiency = $("finite-interview-sufficiency");
+        if (sufficiency) {
+            sufficiency.textContent = "No further questions, a filled intake form, and a completed software task are not legal sufficiency. Support requires source-bound factual or legal evidence.";
+        }
+        var gaps = $("finite-interview-gaps");
+        if (gaps) {
+            var gapText = [];
+            if (view.legalGap) gapText.push("Legal or source gap: still unresolved.");
+            if (view.evidentiaryGap) gapText.push("Evidence gap: still unresolved.");
+            if (!gapText.length) gapText.push("No separate legal or evidence gap is marked on this stop.");
+            gaps.textContent = gapText.join(" ");
+        }
+        return view;
     }
 
     function paintControls() {
@@ -238,6 +375,7 @@
         }
         paintControls();
         renderInquiryCard(payload);
+        paintStopping(payload);
     }
 
     function placeInquiryWorkbench() {
@@ -434,6 +572,7 @@
         var status = $("mediator-conversation-status");
         if (status) status.textContent = "Conversation text was cleared because this case is no longer open.";
         renderInquiryCard(null);
+        paintStopping(null);
     }
 
     function headOf(payload) {
@@ -817,7 +956,9 @@
         cancel: cancel,
         retry: retry,
         submitAnswer: submitAnswer,
-        submitCorrection: submitCorrection
+        submitCorrection: submitCorrection,
+        classifyStopping: classifyStopping,
+        paintStopping: paintStopping
     };
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
