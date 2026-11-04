@@ -175,6 +175,8 @@
         showTask("overview");
         applyPresentation();
         applyViewport();
+        ensureLive();
+        qualifyDialogs();
         return host;
     }
 
@@ -190,6 +192,116 @@
         if (more && mode !== "mobile") more.open = false;
         Array.prototype.forEach.call(document.querySelectorAll(".case-shell__task[data-tier='secondary']"), function (button) {
             button.hidden = !showSecondary;
+        });
+        disarmHiddenDuplicates();
+    }
+
+    function ensureLive() {
+        var live = document.getElementById("complaint-a11y-live");
+        if (live) return live;
+        live = document.createElement("div");
+        live.id = "complaint-a11y-live";
+        live.className = "case-a11y-live";
+        live.setAttribute("role", "status");
+        live.setAttribute("aria-live", "polite");
+        live.setAttribute("aria-atomic", "true");
+        (document.body || document.documentElement).appendChild(live);
+        return live;
+    }
+
+    function announce(message) {
+        var live = ensureLive();
+        var next = text(message);
+        if (!next || live.textContent === next) {
+            live.textContent = "";
+        }
+        live.textContent = next;
+    }
+
+    function dialogFocusables(dialog) {
+        return Array.prototype.filter.call(dialog.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]"), function (node) {
+            if (node.closest("[hidden]")) return false;
+            if (node.getAttribute("aria-hidden") === "true") return false;
+            if (node.tabIndex < 0 && node.getAttribute("tabindex") !== "0") return false;
+            return node.tabIndex >= 0;
+        });
+    }
+
+    function qualifyDialog(dialog) {
+        if (!dialog || dialog.dataset.a11yDialog === "true") return;
+        dialog.dataset.a11yDialog = "true";
+        if (!dialog.getAttribute("aria-labelledby") && !dialog.getAttribute("aria-label")) {
+            var heading = dialog.querySelector("h1, h2, h3");
+            if (heading) {
+                if (!heading.id) heading.id = dialog.id + "-title";
+                dialog.setAttribute("aria-labelledby", heading.id);
+            }
+        }
+        dialog.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                var cancel = dialog.querySelector("[data-a11y-cancel]");
+                if (cancel) cancel.click();
+                if (dialog.open) dialog.close();
+                return;
+            }
+            if (event.key !== "Tab") return;
+            var items = dialogFocusables(dialog);
+            if (!items.length) {
+                event.preventDefault();
+                return;
+            }
+            var first = items[0];
+            var last = items[items.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+        dialog.addEventListener("close", function () {
+            var backId = dialog.dataset.a11yReturn || "";
+            dialog.removeAttribute("aria-modal");
+            announce("Closed " + (dialog.querySelector("h1, h2, h3") ? dialog.querySelector("h1, h2, h3").textContent : "dialog"));
+            var back = backId ? document.getElementById(backId) : null;
+            if (back && typeof back.focus === "function") back.focus();
+        });
+    }
+
+    function openQualifiedDialog(id, opener) {
+        var dialog = typeof id === "string" ? document.getElementById(id) : id;
+        if (!dialog || typeof dialog.showModal !== "function") return false;
+        qualifyDialog(dialog);
+        var source = opener && opener.nodeType === 1 ? opener : document.activeElement;
+        if (source && source.id) dialog.dataset.a11yReturn = source.id;
+        else dialog.dataset.a11yReturn = "";
+        if (!dialog.open) dialog.showModal();
+        dialog.setAttribute("aria-modal", "true");
+        var items = dialogFocusables(dialog);
+        if (items[0]) items[0].focus();
+        var title = dialog.querySelector("h1, h2, h3");
+        announce((title ? title.textContent.trim() : "Dialog") + " open");
+        return true;
+    }
+
+    function qualifyDialogs() {
+        Array.prototype.forEach.call(document.querySelectorAll("dialog"), qualifyDialog);
+    }
+
+    function disarmHiddenDuplicates() {
+        Array.prototype.forEach.call(document.querySelectorAll("button, a[href], input, select, textarea, summary"), function (node) {
+            var buried = node.hidden || node.getAttribute("aria-hidden") === "true" || !!(node.closest("[hidden]"));
+            if (node.closest("dialog")) buried = node.hidden || node.getAttribute("aria-hidden") === "true" || !!(node.closest("[hidden]"));
+            if (buried) {
+                if (node.dataset.a11yWasTab === undefined) node.dataset.a11yWasTab = node.hasAttribute("tabindex") ? node.getAttribute("tabindex") : "";
+                node.tabIndex = -1;
+            } else if (node.dataset.a11yWasTab !== undefined) {
+                if (node.dataset.a11yWasTab === "") node.removeAttribute("tabindex");
+                else node.setAttribute("tabindex", node.dataset.a11yWasTab);
+                delete node.dataset.a11yWasTab;
+            }
         });
     }
 
@@ -301,6 +413,7 @@
             panel.hidden = panel.getAttribute("data-case-panel") !== name;
         });
         fillPanel(name);
+        disarmHiddenDuplicates();
         var tab = {mediator: "intake", evidence: "evidence", draft: "draft", legal: "review", facts: "review"}[name];
         if (tab) {
             var existing = document.querySelector('.tab-button[data-tab-target="' + tab + '"]');
@@ -1162,6 +1275,7 @@
 
     function classifyFailure(status, body) {
         var code = text(body && (body.error || body.code || body.detail)).toLowerCase();
+        if (code === "locked" || code === "keys_locked" || code === "case_locked") return "locked";
         if (code === "unlock_needed" || code === "key_unavailable" || code === "key_owner_required" || code === "missing_key") return "key";
         if (status === 409 || code.indexOf("conflict") !== -1 || code === "replay_mismatch" || code === "stale_revision") return "conflict";
         if (status === 401 || status === 403 || code.indexOf("denied") !== -1 || code.indexOf("not_permitted") !== -1 || code === "missing_case") return "access";
@@ -1229,6 +1343,8 @@
         checkKey.hidden = kind !== "key" && kind !== "locked";
         if (failed) denySuccessPaint();
         host.dataset.technicalHidden = "true";
+        announce(document.getElementById("complaint-state-title").textContent + ". " + detail);
+        disarmHiddenDuplicates();
     }
 
     function noteFailure(model) {
@@ -1361,6 +1477,9 @@
     ensureStateSurface();
     wireStateSurface(document.getElementById("complaint-state-surface"));
     watchSuccessWords();
+    ensureLive();
+    qualifyDialogs();
+    disarmHiddenDuplicates();
     mount();
     applyAudience();
     window.complaintCaseShell = {
@@ -1368,6 +1487,8 @@
         invalidate: invalidate,
         scheduleRefresh: scheduleRefresh,
         showTask: showTask,
+        openQualifiedDialog: openQualifiedDialog,
+        announce: announce,
         noteReadiness: noteReadinessShell,
         applyViewport: applyViewport,
         setPresentationMode: setPresentationMode,

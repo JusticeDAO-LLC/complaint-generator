@@ -4355,7 +4355,7 @@
                                     <p id="evidence-detail-status">Select an artifact.</p>
                                 </section>
                                 <section>
-                                    <h4>Source</h4>
+                                    <h4 id="evidence-source-review-title">Source review</h4>
                                     <p id="evidence-detail-source"></p>
                                 </section>
                                 <section>
@@ -5217,7 +5217,7 @@
                             <span>The complaint still matches the selected claim type, the caption and relief are concrete, and export is backed by a visible release-gate verdict rather than optimism alone.</span>
                         </div>
                     </div>
-                    <h2>Draft and Edit</h2>
+                    <h2 id="draft-heading">Draft and Edit</h2>
                     <p class="muted">Generate the complaint from the workspace state, then make final edits without leaving the same flow.</p>
                     <section id="complaint-outline" data-state="empty" data-legal-sufficiency="false" data-proof="false" aria-label="Complaint outline beside facts and evidence">
                         <h3>Complaint outline</h3>
@@ -6540,7 +6540,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
     <script src="/static/complaint_mcp_sdk.js"></script>
     <script src="/static/complaint_case_shell.js"></script>
     <script src="/static/complaint_graph_view.js"></script>
-    <dialog id="evidence-annotation-editor" aria-labelledby="evidence-annotation-editor-title" style="width:min(36rem, calc(100vw - 1.5rem)); max-height:calc(100vh - 1.5rem); overflow:auto;">
+    <dialog id="evidence-annotation-editor" aria-labelledby="evidence-annotation-editor-title" aria-modal="true" style="width:min(36rem, calc(100vw - 1.5rem)); max-height:calc(100vh - 1.5rem); overflow:auto;">
         <form id="evidence-annotation-form" data-expected-revision="">
             <h2 id="evidence-annotation-editor-title">Add label</h2>
             <p id="evidence-annotation-editor-kind-note"></p>
@@ -6587,7 +6587,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             <ul id="evidence-annotation-saved"></ul>
             <div class="button-row">
                 <button id="evidence-annotation-save" type="submit">Save</button>
-                <button id="evidence-annotation-close" type="button">Close</button>
+                <button id="evidence-annotation-close" type="button" data-a11y-cancel>Close</button>
             </div>
         </form>
     </dialog>

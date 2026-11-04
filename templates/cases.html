@@ -101,33 +101,33 @@
                 <option value="30" selected>30 days</option>
                 <option value="90">90 days</option>
             </select>
-            <button type="submit">Review invitation</button>
+            <button id="review-invitation" type="submit">Review invitation</button>
         </form>
         <ul id="assignment-list"></ul>
         <p id="assignment-content"></p>
-        <dialog id="invitation-dialog" aria-labelledby="invitation-dialog-title">
+        <dialog id="invitation-dialog" aria-labelledby="invitation-dialog-title" aria-modal="true">
             <h2 id="invitation-dialog-title">Invite a participant</h2>
             <p id="invitation-dialog-summary"></p>
             <p>The server issues the membership version. This page cannot set ownership, a key grant, or a version.</p>
             <p id="invitation-dialog-error" role="alert"></p>
-            <button id="invitation-dialog-cancel" type="button">Cancel</button>
+            <button id="invitation-dialog-cancel" type="button" data-a11y-cancel>Cancel</button>
             <button id="invitation-dialog-confirm" type="button">Send invitation</button>
         </dialog>
-        <dialog id="acceptance-dialog" aria-labelledby="acceptance-dialog-title">
+        <dialog id="acceptance-dialog" aria-labelledby="acceptance-dialog-title" aria-modal="true">
             <h2 id="acceptance-dialog-title">Accept this scope</h2>
             <p id="acceptance-dialog-summary"></p>
             <p id="acceptance-dialog-version"></p>
             <p id="acceptance-dialog-key">A key grant is separate. Accepting this scope does not open complaint text.</p>
             <label for="acceptance-dialog-confirm-scope"><input id="acceptance-dialog-confirm-scope" type="checkbox"> I accept this exact case and scope</label>
             <p id="acceptance-dialog-error" role="alert"></p>
-            <button id="acceptance-dialog-cancel" type="button">Cancel</button>
+            <button id="acceptance-dialog-cancel" type="button" data-a11y-cancel>Cancel</button>
             <button id="acceptance-dialog-accept" type="button">Accept scope</button>
         </dialog>
-        <dialog id="revocation-dialog" aria-labelledby="revocation-dialog-title">
+        <dialog id="revocation-dialog" aria-labelledby="revocation-dialog-title" aria-modal="true">
             <h2 id="revocation-dialog-title">Revoke access</h2>
             <p id="revocation-dialog-summary"></p>
             <p id="revocation-dialog-error" role="alert"></p>
-            <button id="revocation-dialog-cancel" type="button">Cancel</button>
+            <button id="revocation-dialog-cancel" type="button" data-a11y-cancel>Cancel</button>
             <button id="revocation-dialog-confirm" type="button">Revoke access</button>
         </dialog>
     </section>
@@ -745,7 +745,7 @@
         document.getElementById("invitation-dialog-summary").textContent =
             "Invite a lawyer participant to " + caseLabel + " for " + scopeSentence(scope)
             + " for " + days + " days. The server will issue the version after you confirm.";
-        document.getElementById("invitation-dialog").showModal();
+        window.complaintCaseShell.openQualifiedDialog("invitation-dialog", document.activeElement);
     });
 
     document.getElementById("invitation-dialog-cancel").addEventListener("click", function () {
@@ -803,7 +803,7 @@
             pendingDecision = issued;
             document.getElementById("acceptance-dialog-summary").textContent = issued.acceptance_prompt || "";
             document.getElementById("acceptance-dialog-version").textContent = "Server version " + issued.server_version + ".";
-            document.getElementById("acceptance-dialog").showModal();
+            window.complaintCaseShell.openQualifiedDialog("acceptance-dialog", document.activeElement);
         } catch (error) {
             if (ownGeneration === generation) showError(error.message);
         }
@@ -841,7 +841,7 @@
             }
             pendingDecision = issued;
             document.getElementById("revocation-dialog-summary").textContent = issued.revocation_prompt || "";
-            document.getElementById("revocation-dialog").showModal();
+            window.complaintCaseShell.openQualifiedDialog("revocation-dialog", document.activeElement);
         } catch (error) {
             if (ownGeneration === generation) showError(error.message);
         }

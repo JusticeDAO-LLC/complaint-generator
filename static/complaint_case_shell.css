@@ -261,8 +261,81 @@ body[data-case-task-flow="ordinary"] [data-case-shell-diagnostic="true"] {
 
 @media (prefers-reduced-motion: reduce) {
     .case-state,
-    .case-state * {
+    .case-state *,
+    .case-shell,
+    .case-shell *,
+    dialog,
+    dialog * {
         transition: none;
+        animation: none;
         scroll-behavior: auto;
+    }
+}
+
+.case-a11y-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+dialog {
+    color: #1c1915;
+    background: #f4efe6;
+    border: 2px solid #1c1915;
+    max-width: min(36rem, calc(100vw - 1.5rem));
+}
+
+dialog button {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    padding: 8px 12px;
+    background: #1c1915;
+    color: #f4efe6;
+    border: 2px solid #1c1915;
+}
+
+dialog :focus-visible,
+.case-catalog-page :focus-visible,
+.correspondence :focus-visible {
+    outline: 3px solid #0b3a82;
+    outline-offset: 2px;
+}
+
+@media (prefers-contrast: more) {
+    .case-shell,
+    .case-state,
+    dialog,
+    .case-shell__task,
+    #complaint-case-shell-next,
+    .case-state button,
+    dialog button {
+        border-width: 3px;
+        border-color: #000;
+    }
+
+    .case-shell,
+    .case-state,
+    dialog {
+        background: #fff;
+        color: #000;
+    }
+
+    #complaint-case-shell-next,
+    .case-state button,
+    dialog button {
+        background: #000;
+        color: #fff;
+    }
+
+    .case-shell :focus-visible,
+    dialog :focus-visible,
+    .case-state button:focus-visible {
+        outline: 4px solid #000;
     }
 }
