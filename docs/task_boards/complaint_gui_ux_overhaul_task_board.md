@@ -1339,7 +1339,7 @@ Implementation instructions:
 
 ## CIMP-UX-44 Unify loading, error, empty, locked, and recovery components
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
