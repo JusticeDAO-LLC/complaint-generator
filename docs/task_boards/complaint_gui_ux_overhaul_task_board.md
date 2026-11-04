@@ -936,7 +936,7 @@ Implementation instructions:
 
 ## CIMP-UX-31 Add a versioned editor with safe saves and revision review
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
