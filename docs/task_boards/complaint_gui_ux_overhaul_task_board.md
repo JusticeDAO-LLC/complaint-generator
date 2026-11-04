@@ -1246,7 +1246,7 @@ Implementation instructions:
 
 ## CIMP-UX-41 Simplify invitations, recipient acceptance, scopes, and revocation
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
