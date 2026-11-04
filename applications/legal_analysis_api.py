@@ -856,18 +856,202 @@ def project_current_case_proof_traces(analysis: Mapping[str, Any], *, source_tex
             "Client engine/status claims and old cached display rows are not proof provenance."]}
 
 
+_SUPPORT_CONTEXT_FIELDS = (
+    "authority_version", "effective_date", "as_of_date", "jurisdiction",
+    "consent_generation", "evidence_version",
+)
+
+
+def _support_text(value: Any) -> str:
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _support_date(value: Any) -> str:
+    if isinstance(value, dict):
+        return _support_text(value.get("precise_date") or value.get("raw_text"))
+    return _support_text(value)
+
+
+def _explicit_support_context(case_file: Mapping[str, Any]) -> Dict[str, Any]:
+    explicit = case_file.get("support_context")
+    return dict(explicit) if isinstance(explicit, dict) else {}
+
+
+def _consent_generation(case_file: Mapping[str, Any]) -> str:
+    explicit = _explicit_support_context(case_file)
+    if _support_text(explicit.get("consent_generation")):
+        return _support_text(explicit.get("consent_generation"))
+    for key in ("operation_consent", "processing_consent"):
+        consent = case_file.get(key)
+        if isinstance(consent, dict) and consent.get("generation") is not None:
+            return _support_text(consent.get("generation"))
+    return ""
+
+
+def _evidence_version(case_file: Mapping[str, Any]) -> str:
+    explicit = _explicit_support_context(case_file)
+    if _support_text(explicit.get("evidence_version")):
+        return _support_text(explicit.get("evidence_version"))
+    direct = case_file.get("evidence_version")
+    if _support_text(direct):
+        return _support_text(direct)
+    rows = case_file.get("evidence_revisions")
+    if not isinstance(rows, list):
+        return ""
+    parts = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        parts.append("|".join((
+            _support_text(item.get("graph_entity_id") or item.get("assertion_id")),
+            _support_text(item.get("revision") or item.get("version")),
+            _support_text(item.get("text")),
+        )))
+    return "\n".join(part for part in parts if part.strip("|"))
+
+
+def _current_authority_version(case_file: Mapping[str, Any]) -> str:
+    explicit = _explicit_support_context(case_file)
+    if _support_text(explicit.get("authority_version")):
+        return _support_text(explicit.get("authority_version"))
+    rows = case_file.get("legal_authority_admissions")
+    if not isinstance(rows, list):
+        return ""
+    for item in reversed(rows):
+        if not isinstance(item, dict):
+            continue
+        if item.get("admitted_law") is True or item.get("status") == "admitted":
+            return _support_text(item.get("version") or item.get("authority_version"))
+    return ""
+
+
+def current_support_context(case_file: Mapping[str, Any]) -> Dict[str, str]:
+    """Context that can retire support. Missing values do not count as a change."""
+    context = case_file.get("legal_context") if isinstance(case_file.get("legal_context"), dict) else {}
+    explicit = _explicit_support_context(case_file)
+    jurisdiction = _support_text(explicit.get("jurisdiction") or context.get("jurisdiction"))
+    effective = _support_text(explicit.get("effective_date")) or _support_date(context.get("applicable_law_date"))
+    as_of = _support_text(explicit.get("as_of_date")) or _support_date(context.get("event_date"))
+    return {
+        "authority_version": _current_authority_version(case_file),
+        "effective_date": effective,
+        "as_of_date": as_of,
+        "jurisdiction": jurisdiction,
+        "consent_generation": _consent_generation(case_file),
+        "evidence_version": _evidence_version(case_file),
+    }
+
+
+def bound_support_context(stored: Mapping[str, Any]) -> Dict[str, str]:
+    coordinates = stored.get("coordinates") if isinstance(stored.get("coordinates"), dict) else {}
+    binding = stored.get("support_binding") if isinstance(stored.get("support_binding"), dict) else {}
+    requirements = stored.get("requirements") if isinstance(stored.get("requirements"), list) else []
+    first = next((item for item in requirements if isinstance(item, dict)), {})
+    authority = _support_text(binding.get("authority_version") or coordinates.get("authority_version")
+        or first.get("authority_version"))
+    return {
+        "authority_version": authority,
+        "effective_date": _support_text(binding.get("effective_date") or coordinates.get("effective_date")
+            or first.get("effective_date")),
+        "as_of_date": _support_text(binding.get("as_of_date") or coordinates.get("as_of_date")
+            or first.get("applicable_date")),
+        "jurisdiction": _support_text(binding.get("jurisdiction") or coordinates.get("jurisdiction")
+            or first.get("jurisdiction")),
+        "consent_generation": _support_text(binding.get("consent_generation") or coordinates.get("consent_generation")),
+        "evidence_version": _support_text(binding.get("evidence_version") or coordinates.get("evidence_version")),
+    }
+
+
+def changed_support_context(bound: Mapping[str, str], current: Mapping[str, str]) -> list[str]:
+    changed = []
+    for field in _SUPPORT_CONTEXT_FIELDS:
+        previous = _support_text(bound.get(field))
+        live = _support_text(current.get(field))
+        if previous and live and previous != live:
+            changed.append(field)
+    return changed
+
+
+def _retired_requirement(requirement: Mapping[str, Any], changed: list[str]) -> Dict[str, Any]:
+    row = deepcopy(dict(requirement))
+    row["support_state"] = "retired"
+    row["current"] = False
+    row["conclusion_current"] = False
+    row["support_eligible"] = False
+    row["legal_sufficiency"] = False
+    row["satisfied"] = False
+    row["proof"] = False
+    row["governing_legal_authority"] = False
+    row["retirement_reason"] = "support_context_changed"
+    row["changed_context"] = list(changed)
+    return row
+
+
 def project_dependency_requirements(case_file: Mapping[str, Any]) -> Dict[str, Any]:
-    """Read the stored derivation. An empty case is unresolved, not a template."""
+    """Read the stored derivation. A changed bound context retires support.
+
+    The case file is not written. Previous requirements stay in the audit
+    history and are not returned as the current conclusion.
+    """
     stored = case_file.get("derived_dependency_requirements") if isinstance(case_file, Mapping) else None
     if not isinstance(stored, dict):
         return {"task_id": DEPENDENCY_REQUIREMENT_TASK_ID, "status": "empty", "requirements": [],
-            "unresolved_research": [], "admitted_law": False, "proof": False, "legal_sufficiency": False,
-            "hardcoded_elements_used": False}
+            "unresolved_research": [], "audit_history": [], "admitted_law": False, "proof": False,
+            "legal_sufficiency": False, "hardcoded_elements_used": False, "support_retired": False,
+            "support_current": False, "changed_context": []}
     payload = deepcopy(stored)
     payload["task_id"] = DEPENDENCY_REQUIREMENT_TASK_ID
     payload["proof"] = False
     payload["legal_sufficiency"] = False
     payload["hardcoded_elements_used"] = False
+    bound = bound_support_context(stored)
+    current = current_support_context(case_file)
+    changed = changed_support_context(bound, current)
+    payload["bound_context"] = bound
+    payload["observed_context"] = current
+    payload["changed_context"] = changed
+    history = [item for item in payload.get("audit_history") or [] if isinstance(item, dict)]
+    requirements = [item for item in payload.get("requirements") or [] if isinstance(item, dict)]
+    if not changed or not requirements:
+        payload["audit_history"] = history
+        payload["support_retired"] = False
+        payload["support_current"] = bool(requirements) and payload.get("status") != "empty"
+        payload["refresh_review"] = {"bounded": True, "required": False}
+        return payload
+    retired = [_retired_requirement(item, changed) for item in requirements]
+    version = _support_text(payload.get("request_id")) or "previous"
+    history.append({
+        "version": version,
+        "current": False,
+        "conclusion_current": False,
+        "support_state": "retired",
+        "changed_context": list(changed),
+        "bound_context": dict(bound),
+        "requirements": retired,
+    })
+    payload["audit_history"] = history
+    payload["requirements"] = []
+    payload["current_conclusions"] = []
+    payload["status"] = "stale_support"
+    payload["support_retired"] = True
+    payload["support_current"] = False
+    payload["admitted_law"] = False
+    payload["refresh_review"] = {
+        "bounded": True,
+        "required": True,
+        "authorized_action": "derive_dependency_requirements",
+        "prompt": (
+            "Support tied to the previous authority, date, jurisdiction, consent, or evidence "
+            "version is retired. An authorized review can refresh it from the current admitted passage. "
+            "The previous conclusion stays in the audit history and is not current."
+        ),
+    }
     return payload
 
 
