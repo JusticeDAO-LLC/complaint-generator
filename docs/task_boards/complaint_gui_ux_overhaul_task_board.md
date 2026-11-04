@@ -1587,7 +1587,7 @@ Implementation instructions:
 
 ## CIMP-UX-52 Ground private evidence storage, state, and analysis hooks
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
