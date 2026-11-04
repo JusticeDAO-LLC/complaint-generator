@@ -1510,6 +1510,212 @@ def _annotate_review_links(payload: Dict[str, Any], *, mediator: Any, user_id: O
     )
 
 
+OUTLINE_TASK_ID = "CIMP-UX-30"
+_LABEL_KEYS = ("evidence_label", "label", "exhibit_label", "support_label")
+_PROSE_KEYS = ("model_prose", "model_text", "generated_prose", "ai_suggestion")
+
+
+def _outline_text(value: Any, limit: int = 500) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:limit]
+
+
+def _outline_span(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, dict):
+        return None
+    start = value.get("start", value.get("span_start"))
+    end = value.get("end", value.get("span_end"))
+    if type(start) is not int or type(end) is not int or start < 0 or end <= start:
+        return None
+    return {
+        "start": start,
+        "end": end,
+        "text": _outline_text(value.get("text"), 400),
+        "unit": _outline_text(value.get("unit"), 40) or "utf-8-bytes",
+    }
+
+
+def _current_draft(case_file: Dict[str, Any]) -> Dict[str, Any]:
+    store = case_file.get("draft_workflow") if isinstance(case_file.get("draft_workflow"), dict) else {}
+    versions = [item for item in store.get("versions") or [] if isinstance(item, dict)]
+    if not versions:
+        return {"present": False, "draft_id": "", "revision": 0, "text": "", "text_digest": ""}
+    current = max(versions, key=lambda item: (int(item.get("revision") or 0), str(item.get("draft_id") or "")))
+    return {
+        "present": True,
+        "draft_id": _outline_text(current.get("draft_id"), 80),
+        "revision": int(current.get("revision") or 0),
+        "text": _outline_text(current.get("text"), 4000),
+        "text_digest": _outline_text(current.get("text_digest"), 80),
+    }
+
+
+def _facts(case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
+    domains = case_file.get("workflow_domains") if isinstance(case_file.get("workflow_domains"), dict) else {}
+    factual = domains.get("factual") if isinstance(domains.get("factual"), dict) else {}
+    rows = []
+    for item in factual.get("assertions") or []:
+        if not isinstance(item, dict):
+            continue
+        fact_id = _outline_text(item.get("id") or item.get("fact_id"), 80)
+        if not fact_id:
+            continue
+        rows.append({
+            "fact_id": fact_id,
+            "text": _outline_text(item.get("text"), 500),
+            "bound": item.get("bound") is True,
+            "revision": int(item.get("revision") or 0) if type(item.get("revision")) is int else 0,
+        })
+    return rows
+
+
+def _exhibits(case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
+    domains = case_file.get("workflow_domains") if isinstance(case_file.get("workflow_domains"), dict) else {}
+    evidence = domains.get("evidence") if isinstance(domains.get("evidence"), dict) else {}
+    rows = []
+    for item in evidence.get("exhibits") or []:
+        if not isinstance(item, dict):
+            continue
+        span = _outline_span(item.get("span") if isinstance(item.get("span"), dict) else item)
+        label = ""
+        for key in _LABEL_KEYS:
+            label = label or _outline_text(item.get(key), 160)
+        rows.append({
+            "exhibit_id": _outline_text(item.get("id") or item.get("exhibit_id"), 80),
+            "artifact_id": _outline_text(item.get("artifact_id"), 120),
+            "fact_id": _outline_text(item.get("fact_id"), 80),
+            "requirement_id": _outline_text(item.get("requirement_id") or item.get("passage_id"), 120),
+            "span": span,
+            "label_only": bool(label) and span is None,
+            "label": label,
+        })
+    return rows
+
+
+def _gap(reason: str, **extra: Any) -> Dict[str, Any]:
+    payload = {"reason": reason, "visible": True}
+    payload.update(extra)
+    return payload
+
+
+def project_complaint_outline(case_file: Any) -> Dict[str, Any]:
+    """Project the current draft beside facts, spans, and admitted authority.
+
+    A model paragraph or an evidence label never completes a requirement.
+    Legal sufficiency and proof stay false on this surface.
+    """
+
+    source = case_file if isinstance(case_file, dict) else {}
+    draft = _current_draft(source)
+    facts = _facts(source)
+    exhibits = _exhibits(source)
+    stored = source.get("derived_dependency_requirements") if isinstance(source.get("derived_dependency_requirements"), dict) else {}
+    requirements_in = [item for item in stored.get("requirements") or [] if isinstance(item, dict)]
+    unresolved = [item for item in stored.get("unresolved_research") or [] if isinstance(item, dict)]
+    fact_ids = {item["fact_id"] for item in facts}
+    sections = []
+    gaps = []
+    if not draft["present"] or not draft["text"]:
+        gaps.append(_gap("missing_draft_text"))
+    for item in unresolved:
+        gaps.append(_gap(str(item.get("reason") or "unresolved_research"), passage_id=_outline_text(item.get("passage_id"), 120)))
+    if not requirements_in and not unresolved:
+        gaps.append(_gap("no_requirements"))
+    for index, item in enumerate(requirements_in):
+        passage_id = _outline_text(item.get("passage_id"), 120)
+        span = _outline_span(item.get("source_span"))
+        admitted = item.get("admitted_law") is True and bool(passage_id) and span is not None
+        prose = ""
+        for key in _PROSE_KEYS:
+            prose = prose or _outline_text(item.get(key), 500)
+        label = ""
+        for key in _LABEL_KEYS:
+            label = label or _outline_text(item.get(key), 160)
+        linked_fact_ids = []
+        for support in item.get("fact_support") or []:
+            if isinstance(support, dict):
+                fact_id = _outline_text(support.get("fact_id"), 80)
+                if fact_id and fact_id in fact_ids and fact_id not in linked_fact_ids:
+                    linked_fact_ids.append(fact_id)
+        requirement_id = _outline_text(item.get("requirement_id"), 80) or passage_id or f"requirement-{index + 1}"
+        linked_exhibits = []
+        for exhibit in exhibits:
+            matches = exhibit["requirement_id"] in {requirement_id, passage_id} or exhibit["fact_id"] in linked_fact_ids
+            if matches and exhibit["artifact_id"] and exhibit["span"] is not None:
+                linked_exhibits.append(exhibit)
+        section_gaps = []
+        if prose:
+            section_gaps.append(_gap("model_prose_is_not_support"))
+        if label:
+            section_gaps.append(_gap("evidence_label_is_not_support"))
+        if not admitted:
+            section_gaps.append(_gap("missing_admitted_authority"))
+        if not linked_fact_ids:
+            section_gaps.append(_gap("missing_fact"))
+        elif any(not next(fact["text"] for fact in facts if fact["fact_id"] == fact_id) for fact_id in linked_fact_ids):
+            section_gaps.append(_gap("missing_fact_text"))
+        if not linked_exhibits:
+            section_gaps.append(_gap("missing_evidence_span"))
+        cited = admitted and bool(linked_fact_ids) and bool(linked_exhibits) and not any(
+            gap["reason"] == "missing_fact_text" for gap in section_gaps
+        )
+        citation = _outline_text(item.get("citation") or item.get("name"), 160)
+        authority = None
+        if admitted:
+            authority = {
+                "passage_id": passage_id,
+                "citation": citation,
+                "authority_id": _outline_text(item.get("authority_id"), 120),
+                "source_span": span,
+                "admitted_law": True,
+                "href": "#admitted-authority-" + passage_id,
+            }
+        section = {
+            "section_id": requirement_id,
+            "heading": citation or "Untitled requirement",
+            "draft_text": draft["text"],
+            "support_cited": cited,
+            "legal_sufficiency": False,
+            "proof": False,
+            "model_prose": prose,
+            "evidence_label": label,
+            "caller_satisfied_ignored": item.get("satisfied") is True or item.get("complete") is True,
+            "authority": authority,
+            "facts": [fact for fact in facts if fact["fact_id"] in linked_fact_ids],
+            "evidence": [{
+                "artifact_id": exhibit["artifact_id"],
+                "exhibit_id": exhibit["exhibit_id"],
+                "span": exhibit["span"],
+                "fact_id": exhibit["fact_id"],
+            } for exhibit in linked_exhibits],
+            "gaps": section_gaps,
+            "requirement_completed": False,
+        }
+        sections.append(section)
+        gaps.extend(dict(gap, section_id=requirement_id) for gap in section_gaps)
+    for exhibit in exhibits:
+        if exhibit["label_only"]:
+            gaps.append(_gap("evidence_label_is_not_support", exhibit_id=exhibit["exhibit_id"]))
+    status = "empty" if not sections and not draft["present"] else "gaps" if gaps else "cited"
+    return {
+        "task_id": OUTLINE_TASK_ID,
+        "status": status,
+        "legal_sufficiency": False,
+        "proof": False,
+        "governing_law": False,
+        "draft": draft,
+        "facts": facts,
+        "sections": sections,
+        "gaps": gaps,
+        "unresolved_research": [{
+            "reason": str(item.get("reason") or "unresolved_research"),
+            "visible": True,
+            "passage_id": _outline_text(item.get("passage_id"), 120),
+        } for item in unresolved],
+    }
+
+
 async def require_composed_document_authorizer(request: Request) -> None:
     """When production composition is active, document and download handlers require its decision."""
 
@@ -1635,6 +1841,11 @@ def create_document_router(mediator: Any) -> APIRouter:
             "draft_field", "draft_bounds", "stage_not_ready", "review_required", "draft_revision_required", "review_field", "review_bounds",
         } else 503
         return HTTPException(status_code=status, detail=code)
+
+    @router.get("/api/documents/{case_id}/complaint-outline")
+    async def read_complaint_outline(case_id: str, request: Request) -> Dict[str, Any]:
+        _workflow_scope(case_id, request)
+        return project_complaint_outline(_workflow_case_file())
 
     @router.get("/api/documents/{case_id}/workflow-stage")
     async def read_workflow_stage(case_id: str, request: Request) -> Dict[str, Any]:
