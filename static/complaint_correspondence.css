@@ -1,0 +1,242 @@
+/* Case conversation composer. Colour and type come from the experience tokens.
+   Attribution is also written as text; colour is not the only signal. */
+
+.correspondence-page {
+    margin: 0;
+    background: var(--cx-color-canvas, #f6f3ee);
+    color: var(--cx-color-ink, #1c1917);
+    font-family: var(--cx-font-sans, "Public Sans", "Segoe UI", sans-serif);
+    font-size: var(--cx-font-body, 1.0625rem);
+    line-height: var(--cx-leading-body, 1.5);
+}
+
+.correspondence-skip {
+    position: absolute;
+    left: var(--cx-space-4, 16px);
+    top: var(--cx-space-4, 16px);
+    transform: translateY(-150%);
+    background: var(--cx-color-panel, #fffcf8);
+    color: var(--cx-color-ink, #1c1917);
+    padding: var(--cx-space-2, 8px) var(--cx-space-3, 12px);
+}
+
+.correspondence-skip:focus {
+    transform: none;
+    z-index: 2;
+}
+
+.correspondence {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: var(--cx-space-5, 24px) var(--cx-space-4, 16px) var(--cx-space-7, 48px);
+}
+
+.correspondence h1,
+.correspondence h2 {
+    margin: 0 0 var(--cx-space-3, 12px);
+    line-height: var(--cx-leading-tight, 1.25);
+}
+
+.correspondence h1 {
+    font-size: var(--cx-font-title, 1.5rem);
+}
+
+.correspondence h2 {
+    font-size: 1.15rem;
+}
+
+.correspondence__panel {
+    background: var(--cx-color-panel, #fffcf8);
+    border: 1px solid var(--cx-color-line, #d6d3d1);
+    border-radius: var(--cx-radius-panel, 16px);
+    padding: var(--cx-space-4, 16px);
+    margin: 0 0 var(--cx-space-4, 16px);
+}
+
+.correspondence__fields,
+.correspondence__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cx-space-3, 12px);
+    align-items: end;
+    margin-bottom: var(--cx-space-3, 12px);
+}
+
+.correspondence label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cx-space-1, 4px);
+    font-size: var(--cx-font-small, 0.875rem);
+    min-width: 12rem;
+    flex: 1 1 12rem;
+}
+
+.correspondence input,
+.correspondence select,
+.correspondence textarea,
+.correspondence button {
+    font: inherit;
+    color: inherit;
+}
+
+.correspondence input,
+.correspondence select,
+.correspondence textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--cx-color-line, #d6d3d1);
+    border-radius: var(--cx-radius-control, 10px);
+    background: var(--cx-color-canvas-deep, #fbf8f4);
+    padding: var(--cx-space-2, 8px) var(--cx-space-3, 12px);
+}
+
+.correspondence textarea {
+    min-height: 6.5rem;
+    resize: vertical;
+}
+
+.correspondence button {
+    border: 1px solid var(--cx-color-accent, #7c2d12);
+    border-radius: var(--cx-radius-control, 10px);
+    background: var(--cx-color-accent, #7c2d12);
+    color: #fff;
+    padding: var(--cx-space-2, 8px) var(--cx-space-4, 16px);
+    min-height: 2.75rem;
+}
+
+.correspondence button[disabled] {
+    opacity: 0.65;
+}
+
+.correspondence :focus-visible {
+    outline: var(--cx-focus-width, 3px) solid var(--cx-color-focus, #082f49);
+    outline-offset: var(--cx-focus-offset, 3px);
+}
+
+.correspondence__notice,
+.correspondence__meta,
+.correspondence__empty {
+    margin: 0 0 var(--cx-space-3, 12px);
+    color: var(--cx-color-muted, #44403c);
+    font-size: var(--cx-font-small, 0.875rem);
+}
+
+.correspondence__threads {
+    list-style: none;
+    margin: 0 0 var(--cx-space-3, 12px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cx-space-2, 8px);
+}
+
+.correspondence__log {
+    max-height: 32rem;
+    overflow: auto;
+    border: 1px solid var(--cx-color-line, #d6d3d1);
+    border-radius: var(--cx-radius-control, 10px);
+    background: var(--cx-color-canvas-deep, #fbf8f4);
+    padding: var(--cx-space-3, 12px);
+}
+
+.correspondence__log ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cx-space-3, 12px);
+}
+
+.correspondence__message {
+    margin: 0;
+    padding: var(--cx-space-3, 12px);
+    border: 1px solid var(--cx-color-line, #d6d3d1);
+    border-left-width: 6px;
+    border-radius: var(--cx-radius-control, 10px);
+    background: var(--cx-color-panel, #fffcf8);
+    overflow-wrap: anywhere;
+}
+
+.correspondence__message[data-attribution="human"] {
+    border-left-color: var(--cx-color-accent, #7c2d12);
+    background: var(--cx-color-accent-soft, #ffedd5);
+}
+
+.correspondence__message[data-attribution="ai"] {
+    border-left-color: var(--cx-color-focus, #082f49);
+    background: var(--cx-color-panel-strong, #fffaf5);
+}
+
+.correspondence__message[data-attribution="review"] {
+    border-left-color: var(--cx-color-good, #14532d);
+    background: var(--cx-color-good-bg, #f0fdf4);
+}
+
+.correspondence__message[data-attribution="action"] {
+    border-left-color: var(--cx-color-warn, #9a3412);
+    background: var(--cx-color-locked-bg, #fffbeb);
+}
+
+.correspondence__message[data-state="pending"],
+.correspondence__message[data-state="retrying"] {
+    border-left-color: var(--cx-color-warn, #9a3412);
+}
+
+.correspondence__message[data-state="error"] {
+    border-color: var(--cx-color-error-border, #991b1b);
+    background: var(--cx-color-error-bg, #fef2f2);
+}
+
+.correspondence__kind,
+.correspondence__lineage {
+    margin: 0 0 var(--cx-space-1, 4px);
+    font-size: var(--cx-font-small, 0.875rem);
+}
+
+.correspondence__kind {
+    font-weight: var(--cx-weight-strong, 700);
+}
+
+.correspondence__body {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.correspondence__composer[data-state="pending"],
+.correspondence__composer[data-state="retrying"] {
+    box-shadow: inset 0 0 0 2px var(--cx-color-warn, #9a3412);
+}
+
+.correspondence__composer[data-state="error"] {
+    box-shadow: inset 0 0 0 2px var(--cx-color-error-border, #991b1b);
+}
+
+#inbox-error:not(:empty) {
+    color: var(--cx-color-error-ink, #7f1d1d);
+    background: var(--cx-color-error-bg, #fef2f2);
+    border: 1px solid var(--cx-color-error-border, #991b1b);
+    border-radius: var(--cx-radius-control, 10px);
+    padding: var(--cx-space-3, 12px);
+}
+
+[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 390px) {
+    .correspondence {
+        padding: var(--cx-space-3, 12px);
+    }
+
+    .correspondence label,
+    .correspondence button {
+        flex-basis: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .correspondence-skip {
+        transition: none;
+    }
+}

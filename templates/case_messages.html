@@ -3,66 +3,67 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Case messages</title>
-    <style>
-        body { font-family: sans-serif; margin: 0; background: #f4f1ea; color: #1c2430; }
-        main { max-width: 46rem; margin: 0 auto; padding: 1.5rem; }
-        form, section { background: #fff; border: 1px solid #d5d0c6; padding: 1rem; margin-bottom: 1rem; }
-        label, button { font: inherit; }
-        textarea { width: 100%; min-height: 5rem; }
-        .notice, .meta { font-size: 0.95rem; }
-        .unread { font-weight: 700; }
-        [hidden] { display: none !important; }
-    </style>
+    <title>Case conversation</title>
+    <link rel="stylesheet" href="/static/complaint_experience_tokens.css">
+    <link rel="stylesheet" href="/static/complaint_correspondence.css">
 </head>
-<body data-message-transport="http-polling" data-websocket="unsupported" data-sse="unsupported">
-<main>
-    <h1>Case messages</h1>
-    <p id="transport-notice" class="notice">Updates use qualified HTTP polling. WebSocket and server-sent events are not used. Message text stays in the server response for this view and is not written to browser storage. Signing in again is required after a reload because the CSRF token is kept in memory only.</p>
-    <form id="inbox-login">
+<body class="cx-app correspondence-page" data-message-transport="http-polling" data-websocket="unsupported" data-sse="unsupported">
+<a class="correspondence-skip" href="#message-text">Skip to message composer</a>
+<main class="correspondence">
+    <header class="correspondence__header">
+        <h1>Case conversation</h1>
+        <p id="transport-notice" class="correspondence__notice">Updates use qualified HTTP polling. WebSocket and server-sent events are not used. Message text stays in the server response for this view and is not written to browser storage. Signing in again is required after a reload because the CSRF token is kept in memory only.</p>
+    </header>
+    <form id="inbox-login" class="correspondence__panel">
+        <h2>Sign in</h2>
         <label for="inbox-credential">Credential</label>
         <input id="inbox-credential" type="password" autocomplete="current-password" required>
         <button type="submit">Sign in</button>
         <span id="inbox-auth-status" role="status">Sign in required</span>
     </form>
-    <section>
-        <h2>Conversation</h2>
-        <label for="case-select">Your cases</label>
-        <select id="case-select"></select>
-        <label for="case-id">Case id</label>
-        <input id="case-id" autocomplete="off">
-        <label for="membership-grant-id">Membership grant id</label>
-        <input id="membership-grant-id" autocomplete="off">
-        <label for="membership-version">Expected membership version</label>
-        <input id="membership-version" inputmode="numeric" autocomplete="off">
-        <button id="load-threads" type="button">Load threads</button>
-        <button id="create-thread" type="button">Create thread</button>
-        <ul id="thread-list"></ul>
-        <label for="thread-id">Thread id</label>
-        <input id="thread-id" autocomplete="off">
-        <label for="page-limit">Page size</label>
-        <input id="page-limit" inputmode="numeric" value="10" autocomplete="off">
-        <label for="poll-ms">Poll interval (milliseconds)</label>
-        <input id="poll-ms" inputmode="numeric" value="4000" autocomplete="off">
-        <button id="open-thread" type="button">Open thread</button>
-        <button id="next-page" type="button">Next messages</button>
-        <button id="refresh-messages" type="button">Check for messages</button>
-        <button id="mark-read" type="button">Mark visible messages read</button>
-        <p id="unread-count" class="meta" role="status">Unread 0</p>
-        <p id="page-meta" class="meta"></p>
-        <div id="message-log" aria-live="polite">
-            <ol id="message-list"></ol>
+    <section class="correspondence__panel" aria-labelledby="conversation-heading">
+        <h2 id="conversation-heading">Conversation</h2>
+        <div class="correspondence__fields">
+            <label for="case-select">Your cases</label>
+            <select id="case-select"></select>
+            <label for="case-id">Case id</label>
+            <input id="case-id" autocomplete="off" spellcheck="false">
+            <label for="membership-grant-id">Membership grant id</label>
+            <input id="membership-grant-id" autocomplete="off" spellcheck="false">
+            <label for="membership-version">Expected membership version</label>
+            <input id="membership-version" inputmode="numeric" autocomplete="off">
+            <label for="poll-ms">Poll interval (milliseconds)</label>
+            <input id="poll-ms" inputmode="numeric" value="4000" autocomplete="off">
         </div>
+        <div class="correspondence__actions">
+            <button id="load-threads" type="button">Load threads</button>
+            <button id="create-thread" type="button">Create thread</button>
+            <button id="refresh-messages" type="button">Check for messages</button>
+        </div>
+        <ul id="thread-list" class="correspondence__threads" aria-label="Threads"></ul>
+        <label for="thread-id">Thread id</label>
+        <input id="thread-id" autocomplete="off" spellcheck="false">
+        <p id="source-status" class="correspondence__meta" role="status"></p>
+        <p id="empty-conversation" class="correspondence__empty" hidden>No messages in this case yet.</p>
+        <div id="message-log" class="correspondence__log" tabindex="0" aria-labelledby="conversation-heading">
+            <ol id="message-list" aria-live="polite"></ol>
+        </div>
+        <p id="inbox-limitations" class="correspondence__notice"></p>
     </section>
-    <form id="send-message">
+    <form id="send-message" class="correspondence__panel correspondence__composer" data-state="idle" aria-describedby="composer-help composer-state">
+        <h2>Composer</h2>
+        <p id="composer-help" class="correspondence__meta">Human messages stay conversation until a separate adoption. Press Control+Enter to send. A failed send keeps this draft and retries with the same idempotency key.</p>
         <label for="message-text">Message</label>
-        <textarea id="message-text" maxlength="4000" required></textarea>
-        <button type="submit">Send message</button>
+        <textarea id="message-text" maxlength="4000" required aria-keyshortcuts="Control+Enter Meta+Enter"></textarea>
+        <div class="correspondence__actions">
+            <button id="send-button" type="submit">Send message</button>
+            <button id="retry-send" type="button" hidden>Retry send</button>
+        </div>
+        <p id="composer-state" role="status">Ready</p>
     </form>
-    <p id="inbox-limitations" class="notice"></p>
     <p id="inbox-status" role="status"></p>
-    <p id="inbox-error" role="alert"></p>
+    <p id="inbox-error" role="alert" tabindex="-1"></p>
 </main>
-<script src="/static/complaint_case_messages.js"></script>
+<script src="/static/complaint_correspondence.js"></script>
 </body>
 </html>
