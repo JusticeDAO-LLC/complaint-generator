@@ -5192,6 +5192,10 @@
                     </div>
                     <h2>Draft and Edit</h2>
                     <p class="muted">Generate the complaint from the workspace state, then make final edits without leaving the same flow.</p>
+                    <section id="complaint-outline" data-state="empty" data-legal-sufficiency="false" data-proof="false" aria-label="Complaint outline beside facts and evidence">
+                        <h3>Complaint outline</h3>
+                        <p data-role="outline-status">The current draft is not loaded. Missing support stays visible.</p>
+                    </section>
                     <div class="section-intro">
                         <strong>What to do here</strong>
                         <span>Generate a first draft once the timeline, protected activity, adverse action, and harm feel stable. Then refine clarity, tone, and requested relief before treating it as final.</span>
@@ -6564,6 +6568,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
     <script src="/static/complaint_conversation.js"></script>
     <script src="/static/complaint_facts.js"></script>
     <script src="/static/complaint_legal.js"></script>
+    <script src="/static/complaint_draft.js"></script>
     <script>
         const { ComplaintMcpClient } = window.ComplaintMcpSdk;
         const operationSurfaceAttempts = {graph: 0, research: 0, collaboration: 0};
