@@ -626,7 +626,7 @@ Implementation instructions:
 
 ## CIMP-UX-21 Preserve evidence revisions, duplicate detection, and conflict history
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
