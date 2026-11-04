@@ -27,6 +27,14 @@ PROOF_TRACE_TASK_ID = "CIMP-GUI-31"
 PROOF_TRACE_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/proof-traces"
 DEPENDENCY_REQUIREMENT_TASK_ID = "CIMP-UX-26"
 DEPENDENCY_REQUIREMENT_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/dependency-requirements"
+REVIEW_WORKSPACE_TASK_ID = "CIMP-UX-40"
+REVIEW_WORKSPACE_ROUTE = LEGAL_ANALYSIS_PREFIX + "/{case_id}/lawyer-review-workspace"
+_REVIEW_SCOPE_LABELS = (
+    ("case.read", "Read"),
+    ("case.review", "Review"),
+    ("case.download", "Download"),
+    ("case.message.send", "Message"),
+)
 _TRACE_STATUSES = ("executed", "degraded", "not_executed", "missing_prover", "timeout", "source_drift")
 _UNAVAILABLE_TRACE_STATUSES = ("missing_prover", "timeout", "source_drift")
 
@@ -882,6 +890,186 @@ def derive_case_dependency_requirements(case_file: Mapping[str, Any], body: Mapp
     return payload
 
 
+def cleared_review_workspace(code: str) -> Dict[str, Any]:
+    """Denial payload. Opened complaint text is not copied into the response."""
+    return {
+        "task_id": REVIEW_WORKSPACE_TASK_ID,
+        "error": code,
+        "status": "denied",
+        "layout": ["evidence", "facts", "law", "draft"],
+        "evidence": [],
+        "facts": [],
+        "law": [],
+        "draft": {"text": "", "status": "cleared", "revision": None, "empty_label": "Review plaintext was cleared."},
+        "scope_labels": [],
+        "owner_wallet_required": False,
+        "plaintext_cleared": True,
+        "proof": False,
+        "governing_legal_authority": False,
+        "legal_sufficiency": False,
+        "admitted_law": False,
+    }
+
+
+def review_workspace_http_status(code: str) -> int:
+    if code in {"stale_revision", "stale_approval", "review_source_changed", "revision_conflict", "replay_mismatch"}:
+        return 409
+    if code in {"lawyer_review_field", "lawyer_review_bounds", "review_field", "review_bounds"}:
+        return 422
+    if code in {"review_unavailable", "review_key_locked", "review_source_unbound", "unlock_needed",
+                "recipient_review_grant_required", "review_key_grant_required"}:
+        return 503
+    return 403
+
+
+def confirm_review_workspace_publication(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Last point before the late grant check. Tests can revoke here; callers still re-check."""
+    return payload
+
+
+def _review_text(value: Any, limit: int = 1000) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text:
+        return ""
+    return text[:limit]
+
+
+def _scope_labels(actions: Any) -> list[str]:
+    granted = set(actions) if isinstance(actions, (set, frozenset, list, tuple)) else set()
+    return [label for name, label in _REVIEW_SCOPE_LABELS if name in granted]
+
+
+def project_review_workspace_layout(source: Mapping[str, Any], actions: Any, *, case_id: str) -> Dict[str, Any]:
+    """Split the shared review source into evidence, facts, law, and draft.
+
+    Adopted evidence, asserted facts, admitted law, and draft text stay separate.
+    None of them is proof or governing law.
+    """
+    shared = source.get("shared_interview") if isinstance(source, Mapping) else None
+    if not isinstance(shared, dict):
+        raise LegalAnalysisError("review_integrity")
+    case_file = shared.get("intake_case_file") if isinstance(shared.get("intake_case_file"), dict) else {}
+    evidence: list[Dict[str, Any]] = []
+    facts: list[Dict[str, Any]] = []
+    graph = shared.get("knowledge_graph") if isinstance(shared.get("knowledge_graph"), dict) else {}
+    try:
+        from complaint_phases.knowledge_graph import project_current_factual_graph
+        projected = project_current_factual_graph(graph, case_id=case_id)
+    except Exception:
+        projected = {}
+    seen = set()
+    for item in projected.get("adopted_evidence") or []:
+        if not isinstance(item, dict):
+            continue
+        provenance = item.get("source_provenance") if isinstance(item.get("source_provenance"), dict) else {}
+        span = provenance.get("source_span") if isinstance(provenance.get("source_span"), dict) else {}
+        text = _review_text(span.get("text") or item.get("text") or item.get("label"))
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        evidence.append({"text": text, "adopted": True, "kind": "evidence"})
+    narrative = _review_text(case_file.get("source_complaint_text"), limit=2000)
+    if narrative:
+        facts.append({"text": narrative, "kind": "asserted_narrative", "adopted_evidence": False})
+        seen.add(narrative)
+    for item in projected.get("user_statements") or []:
+        if not isinstance(item, dict):
+            continue
+        text = _review_text(item.get("text") or item.get("statement") or item.get("label"))
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        facts.append({"text": text, "kind": "user_assertion", "adopted_evidence": False})
+    law: list[Dict[str, Any]] = []
+    stored = case_file.get("derived_dependency_requirements")
+    requirements = stored.get("requirements") if isinstance(stored, dict) else []
+    for item in requirements or []:
+        if not isinstance(item, dict):
+            continue
+        text = _review_text(item.get("statement") or item.get("text") or item.get("requirement"))
+        if not text:
+            continue
+        law.append({
+            "text": text,
+            "admitted": item.get("admitted") is not False,
+            "governing_legal_authority": False,
+            "proof": False,
+        })
+    versions = []
+    draft_store = case_file.get("draft_workflow")
+    if isinstance(draft_store, dict):
+        versions = [item for item in draft_store.get("versions") or [] if isinstance(item, dict)]
+    current = versions[-1] if versions else None
+    draft_text = _review_text(current.get("text"), limit=4000) if isinstance(current, dict) else ""
+    if draft_text:
+        draft = {
+            "text": draft_text,
+            "status": "shared_revision",
+            "revision": current.get("revision") if isinstance(current, dict) else None,
+            "empty_label": "",
+            "adopted": False,
+        }
+    else:
+        draft = {
+            "text": "",
+            "status": "empty",
+            "revision": None,
+            "empty_label": "No draft revision is shared with this review.",
+            "adopted": False,
+        }
+    return {
+        "task_id": REVIEW_WORKSPACE_TASK_ID,
+        "status": "ready",
+        "case_id": case_id,
+        "layout": ["evidence", "facts", "law", "draft"],
+        "evidence": evidence,
+        "facts": facts,
+        "law": law,
+        "draft": draft,
+        "evidence_empty_label": "" if evidence else "No adopted evidence is in this review.",
+        "facts_empty_label": "" if facts else "No asserted facts are in this review.",
+        "law_empty_label": "" if law else "No admitted law is bound to this review.",
+        "scope_labels": _scope_labels(actions),
+        "owner_wallet_required": False,
+        "plaintext_cleared": False,
+        "proof": False,
+        "governing_legal_authority": False,
+        "legal_sufficiency": False,
+        "admitted_law": False,
+    }
+
+
+def compose_recipient_review_workspace(service: Any, actor: str, case_id: str, authority: Any) -> Dict[str, Any]:
+    """Open the shared source with the recipient key grant, then refuse late mismatches.
+
+    The owner wallet is not consulted. A revoked or mismatched grant raises
+    before the composed plaintext is returned.
+    """
+    from applications.case_review_store import CaseReviewStoreError
+
+    bound, case, decision = service._access(actor, case_id, authority, "case.read")
+    if decision.membership != "assigned-lawyer" or decision.case_id != case_id or decision.action != "case.read":
+        raise CaseReviewStoreError("lawyer_review_ungranted")
+    source, envelope, source_receipt, source_args, credentials, session = service._source(actor, bound, case)
+    member = service.memberships.load(credentials["membership_id"])
+    if (member.case_id != case_id or member.member_principal_id != actor or member.status != "accepted"
+            or "case.read" not in member.actions or member.version != credentials["membership_version"]):
+        raise CaseReviewStoreError("review_membership_required")
+    payload = project_review_workspace_layout(source, member.actions, case_id=case_id)
+    with service._locked():
+        _ledger, review_envelope, review_receipt, review_args = service._ledger(
+            actor, bound, case, credentials, session)
+    payload = dict(confirm_review_workspace_publication(payload))
+    service._late(
+        actor, case_id, authority, "case.read",
+        source_receipt, envelope, source_args, review_receipt, review_envelope, review_args)
+    if payload.get("case_id") != case_id or payload.get("plaintext_cleared") is True:
+        raise CaseReviewStoreError("lawyer_review_ungranted")
+    return payload
+
+
 def mount_legal_analysis_routes(app: Any) -> None:
     """Serve only the current encrypted owner, under the issued case capability."""
     from fastapi.responses import JSONResponse
@@ -1080,3 +1268,33 @@ def mount_legal_analysis_routes(app: Any) -> None:
         # No server-issued producer/job capability is configured. Client rows
         # cannot turn a display status into a current executed proof.
         return proof_fail("proof_producer_unavailable")
+
+    def review_workspace_fail(code):
+        safe = code if isinstance(code, str) and code else "lawyer_review_ungranted"
+        return JSONResponse(cleared_review_workspace(safe), status_code=review_workspace_http_status(safe))
+
+    def open_review_workspace(service, actor, case_id, authority):
+        return compose_recipient_review_workspace(service, actor, case_id, authority)
+
+    @app.get(REVIEW_WORKSPACE_ROUTE)
+    async def read_lawyer_review_workspace(case_id: str, request: Request):
+        from applications.case_review_store import CaseReviewService, CaseReviewStoreError
+        from applications.workspace_case_authority import WorkspaceCaseAuthorityError, current_workspace_case_authority
+        try:
+            service = getattr(request.app.state, "case_reviews", None)
+            decision = getattr(request.state, "case_authorization", None)
+            authority = current_workspace_case_authority()
+            principal = getattr(request.state, "browser_principal", None)
+            actor = getattr(principal, "principal_id", None)
+            if type(service) is not CaseReviewService or not actor or decision is None or authority is None:
+                raise CaseReviewStoreError("review_unavailable" if type(service) is not CaseReviewService else "lawyer_review_ungranted")
+            if decision.case_id != case_id or decision.actor_principal_id != actor:
+                raise CaseReviewStoreError("lawyer_review_ungranted")
+            payload = await run_in_threadpool(open_review_workspace, service, actor, case_id, authority)
+        except CaseReviewStoreError as exc:
+            return review_workspace_fail(exc.code)
+        except WorkspaceCaseAuthorityError:
+            return review_workspace_fail("lawyer_review_ungranted")
+        except LegalAnalysisError as exc:
+            return review_workspace_fail(exc.code)
+        return JSONResponse(payload)
