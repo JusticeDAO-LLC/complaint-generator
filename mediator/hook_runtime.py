@@ -3871,3 +3871,18 @@ def reject_public_model_proposal(proposal: Any) -> dict[str, Any]:
         "next_action": "continue_pending_inquiry",
         "operation": decision.get("operation") or "acquire_legal_sources",
     }
+
+
+def qualify_private_evidence_hooks(**kwargs: Any) -> dict[str, Any]:
+    """Public workflow entry for scoped evidence storage, state, and analysis.
+
+    The effect is the Kit commit plus the dataset chunk metadata owner.
+    A caller flag cannot turn a missing Kit or a refused consent into success.
+    """
+
+    from mediator.evidence_hooks import qualify_scoped_private_evidence
+
+    receipt = qualify_scoped_private_evidence(**kwargs)
+    receipt["workflow"] = "qualify_private_evidence_hooks"
+    receipt["handler_enabled_by_caller"] = False
+    return receipt
