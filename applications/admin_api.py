@@ -33,8 +33,11 @@ from applications.principal_store import (
 
 TASK_ID = "CIMP-GUI-50"
 OPERATIONS_TASK_ID = "CIMP-GUI-51"
+UX_WORKSPACE_TASK_ID = "CIMP-UX-42"
 ADMIN_PAGE_PATH = "/admin"
+ADMIN_SCRIPT_PATH = "/static/complaint_admin.js"
 ADMIN_API_PREFIX = "/api/admin"
+WORKSPACE_PATH = ADMIN_API_PREFIX + "/workspace"
 OPERATIONS_PATH = ADMIN_API_PREFIX + "/operations"
 INCIDENT_PATH = OPERATIONS_PATH + "/incidents"
 ASSIGNMENT_STATUSES = ("pending", "accepted", "declined", "expired", "removed")
@@ -48,6 +51,18 @@ SUPPORT_DIAGNOSTIC_CODES = frozenset({
     "backend_unavailable",
 })
 INCIDENT_SCOPES = frozenset({"assignment", "storage", "worker", "support"})
+WORKSPACE_QUERY_FIELDS = frozenset({
+    "principal_id",
+    "account_kind",
+    "status",
+    "assignment",
+    "assignment_status",
+    "min_assigned_cases",
+    "audit_right",
+    "case_id",
+})
+ASSIGNMENT_FILTERS = frozenset({"", "any", "assigned", "unassigned"})
+AUDIT_RIGHT_FILTERS = frozenset({"", "any", "granted", "absent"})
 IMPERSONATION_FIELDS = frozenset({
     "act_as",
     "act_as_owner",
@@ -325,6 +340,73 @@ class OperationalAdminService:
             self._audit_readers.discard(subject_id)
         self._event(actor.principal_id, "audit_right", subject, detail="granted" if enabled else "revoked")
         return self._least(subject)
+
+    def analyze_workspace(
+        self,
+        actor_principal_id: str,
+        session_roles: Sequence[str],
+        query: Mapping[str, Any] | None = None,
+        *,
+        sources: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Filter accounts, roles, assignments, and sealed case counts.
+
+        Operational admin status is enough for this metadata. Narratives,
+        evidence, private messages, exports, and keys stay out of the payload.
+        Naming a case requires that actor's separate accepted membership, and
+        even then this surface still withholds case content.
+        """
+
+        actor = self._require_admin(actor_principal_id, session_roles)
+        payload = self._query(query or {})
+        self._reject_content_request(payload)
+        if any(name in payload for name in ("export", "exports", "private_message", "private_messages")):
+            raise OperationalAdminError("admin_case_content_denied")
+        filters = self._workspace_filters(payload)
+        resolved = self._sources(sources)
+        roster = self._assignment_roster(resolved.get("memberships"))
+        if filters["case_id"]:
+            if not self._independent_grant(actor.principal_id, filters["case_id"]):
+                raise OperationalAdminError("independent_case_grant_required")
+        needs_assignments = filters["assignment"] in {"assigned", "unassigned"} or bool(filters["assignment_status"])
+        if needs_assignments and not roster["observed"]:
+            accounts: list[dict[str, Any]] = []
+            state = "assignment_unobserved"
+        else:
+            accounts = []
+            for record in self._principals.recover():
+                row = self._workspace_row(record, roster)
+                if not self._row_matches(row, filters, roster):
+                    continue
+                accounts.append(row)
+            accounts.sort(key=lambda item: item["principal_id"])
+            state = "empty" if not accounts else "ready"
+        view = self._operations_view(resolved)
+        return {
+            "task_id": UX_WORKSPACE_TASK_ID,
+            "actor_principal_id": actor.principal_id,
+            "state": state,
+            "filters": filters,
+            "accounts": accounts,
+            "filtered_account_count": len(accounts),
+            "role_counts": _tally(accounts, "roles"),
+            "status_counts": _tally_status(accounts),
+            "case_counts": view["case_counts"],
+            "assignment_status": view["assignment_status"],
+            "content_review": {
+                "exposed": False,
+                "requires_explicit_case_grant": True,
+                "grant_present": bool(filters["case_id"]),
+                "narratives": [],
+                "evidence": [],
+                "private_messages": [],
+                "exports": [],
+                "keys": [],
+            },
+            "case_content": None,
+            "case_content_granted": False,
+            "limitations": list(ADMIN_LIMITATIONS),
+        }
 
     def inspect_operations(
         self,
@@ -755,6 +837,119 @@ class OperationalAdminService:
             raise OperationalAdminError("request_body")
         return query
 
+    def _workspace_filters(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        unknown = set(payload) - WORKSPACE_QUERY_FIELDS
+        if unknown:
+            raise OperationalAdminError("filter_rejected")
+        account_kind = payload.get("account_kind") or ""
+        status = payload.get("status") or ""
+        assignment = payload.get("assignment") or ""
+        assignment_status = payload.get("assignment_status") or ""
+        audit_right = payload.get("audit_right") or ""
+        principal_id = payload.get("principal_id") or ""
+        case_id = payload.get("case_id") or ""
+        if account_kind != "" and account_kind not in ACCOUNT_KINDS:
+            raise OperationalAdminError("filter_rejected")
+        if status != "" and status not in ACCOUNT_STATUSES:
+            raise OperationalAdminError("filter_rejected")
+        if assignment not in ASSIGNMENT_FILTERS or audit_right not in AUDIT_RIGHT_FILTERS:
+            raise OperationalAdminError("filter_rejected")
+        if assignment_status != "" and assignment_status not in ASSIGNMENT_STATUSES:
+            raise OperationalAdminError("filter_rejected")
+        if principal_id != "":
+            principal_id = _label(principal_id, "principal_id")
+        if case_id != "":
+            case_id = _label(case_id, "case_id")
+        minimum = payload.get("min_assigned_cases", "")
+        if minimum in ("", None):
+            min_assigned = None
+        elif isinstance(minimum, str) and minimum.isdigit():
+            min_assigned = int(minimum)
+        elif type(minimum) is int and minimum >= 0:
+            min_assigned = minimum
+        else:
+            raise OperationalAdminError("filter_rejected")
+        return {
+            "principal_id": principal_id,
+            "account_kind": account_kind,
+            "status": status,
+            "assignment": assignment or "any",
+            "assignment_status": assignment_status,
+            "min_assigned_cases": min_assigned,
+            "audit_right": audit_right or "any",
+            "case_id": case_id,
+        }
+
+    def _assignment_roster(self, memberships: Any) -> dict[str, Any]:
+        by_member: dict[str, dict[str, Any]] = {}
+        if memberships is None or not hasattr(memberships, "recover"):
+            return {"observed": False, "by_member": by_member}
+        try:
+            grants = memberships.recover()
+        except Exception as exc:
+            raise OperationalAdminError("assignment_status_unavailable") from exc
+        now = self._now()
+        for grant in grants:
+            member = getattr(grant, "member_principal_id", None)
+            case_id = getattr(grant, "case_id", None)
+            status = getattr(grant, "status", None)
+            expires_at = getattr(grant, "expires_at", None)
+            if not isinstance(member, str) or not member:
+                raise OperationalAdminError("assignment_status_unavailable")
+            if status == "pending" and type(expires_at) is int and now >= expires_at:
+                status = "expired"
+            if status not in ASSIGNMENT_STATUSES:
+                raise OperationalAdminError("assignment_status_unavailable")
+            bucket = by_member.setdefault(member, {"counts": {name: 0 for name in ASSIGNMENT_STATUSES}, "case_ids": set()})
+            bucket["counts"][status] += 1
+            if isinstance(case_id, str) and case_id:
+                bucket["case_ids"].add(case_id)
+        return {"observed": True, "by_member": by_member}
+
+    def _workspace_row(self, record: PrincipalRecord, roster: Mapping[str, Any]) -> dict[str, Any]:
+        row = self._least(record)
+        bucket = (roster.get("by_member") or {}).get(record.principal_id)
+        if not roster.get("observed"):
+            row["assigned_case_count"] = None
+            row["assignment_counts"] = {name: 0 for name in ASSIGNMENT_STATUSES}
+            row["assignment_observed"] = False
+            return row
+        counts = dict(bucket["counts"]) if bucket else {name: 0 for name in ASSIGNMENT_STATUSES}
+        case_ids = set(bucket["case_ids"]) if bucket else set()
+        row["assigned_case_count"] = len(case_ids)
+        row["assignment_counts"] = counts
+        row["assignment_observed"] = True
+        return row
+
+    def _row_matches(self, row: Mapping[str, Any], filters: Mapping[str, Any], roster: Mapping[str, Any]) -> bool:
+        if filters["principal_id"] and filters["principal_id"] not in row["principal_id"]:
+            return False
+        if filters["account_kind"] and filters["account_kind"] not in row["roles"]:
+            return False
+        if filters["status"] and row["status"] != filters["status"]:
+            return False
+        if filters["audit_right"] == "granted" and row["audit_right"] is not True:
+            return False
+        if filters["audit_right"] == "absent" and row["audit_right"] is not False:
+            return False
+        count = row.get("assigned_case_count")
+        if filters["assignment"] == "assigned" and not count:
+            return False
+        if filters["assignment"] == "unassigned" and count:
+            return False
+        wanted = filters["assignment_status"]
+        if wanted and int((row.get("assignment_counts") or {}).get(wanted) or 0) <= 0:
+            return False
+        minimum = filters["min_assigned_cases"]
+        if minimum is not None and (count is None or count < minimum):
+            return False
+        case_id = filters["case_id"]
+        if case_id:
+            bucket = (roster.get("by_member") or {}).get(row["principal_id"]) or {}
+            if case_id not in (bucket.get("case_ids") or ()):
+                return False
+        return True
+
     def _event(self, actor_id: str, action: str, subject: PrincipalRecord, *, detail: str) -> None:
         self._events.append({
             "at": self._now(),
@@ -807,6 +1002,25 @@ def _sealed_owner_indexes(cases: Any) -> int | None:
     return count
 
 
+def _tally(accounts: Sequence[Mapping[str, Any]], field: str) -> dict[str, int]:
+    counts = {name: 0 for name in ACCOUNT_KINDS}
+    for account in accounts:
+        roles = account.get(field) or []
+        for role in roles:
+            if role in counts:
+                counts[role] += 1
+    return counts
+
+
+def _tally_status(accounts: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    counts = {name: 0 for name in sorted(ACCOUNT_STATUSES)}
+    for account in accounts:
+        status = account.get("status")
+        if status in counts:
+            counts[status] += 1
+    return counts
+
+
 def _role_code(code: str) -> str:
     if code in {"actor_lacks_role_authority", "actor_cannot_drop_own_staff_role", "unknown_role", "revision_conflict", "missing_principal"}:
         return code
@@ -834,7 +1048,9 @@ def mount_operational_admin(app: Any) -> None:
     from starlette.concurrency import run_in_threadpool
     from applications.case_audit import CaseAuditError, audit_export_session_verifier
 
-    root_page = __import__("pathlib").Path(__file__).resolve().parent.parent / "templates" / "admin.html"
+    root = __import__("pathlib").Path(__file__).resolve().parent.parent
+    root_page = root / "templates" / "admin.html"
+    script_path = root / "static" / "complaint_admin.js"
 
     def _service(request: Any) -> OperationalAdminService:
         service = getattr(request.app.state, "operational_admin", None)
@@ -871,6 +1087,12 @@ def mount_operational_admin(app: Any) -> None:
     async def admin_page():
         html = root_page.read_text(encoding="utf-8")
         return HTMLResponse(html, headers={"cache-control": "no-store"})
+
+    @app.get(ADMIN_SCRIPT_PATH)
+    async def admin_script():
+        from fastapi.responses import Response
+        script = script_path.read_bytes()
+        return Response(script, media_type="text/javascript; charset=utf-8", headers={"cache-control": "no-store"})
 
     @app.get(ADMIN_API_PREFIX + "/accounts")
     async def admin_accounts(request: Request):
@@ -910,6 +1132,16 @@ def mount_operational_admin(app: Any) -> None:
         try:
             actor, roles = _actor(request)
             return JSONResponse(_service(request).set_audit_right(actor, roles, principal_id, _material(request)))
+        except OperationalAdminError as exc:
+            return _fail(exc)
+
+    @app.get(WORKSPACE_PATH)
+    async def admin_workspace(request: Request):
+        try:
+            actor, roles = _actor(request)
+            service = _service(request)
+            payload = service.analyze_workspace(actor, roles, _material(request), sources=_operations_sources(request, service))
+            return JSONResponse(payload)
         except OperationalAdminError as exc:
             return _fail(exc)
 
