@@ -32,6 +32,7 @@ from integrations.private_storage import (
 
 TASK_ID = "CIMP-UX-13"
 CLASSIFICATION_TASK_ID = "CIMP-UX-19"
+SUPPORT_LINK_TASK_ID = "CIMP-UX-20"
 INGESTION_STATUSES = (
     "received",
     "extracted",
@@ -53,6 +54,9 @@ _FIXED_ASSUMPTION_IDS = frozenset({
     "human_resources",
 })
 _CLASSIFICATION_ORIGINS = frozenset({"user_label", "ai_suggested", "reviewed_acceptance"})
+_SUPPORT_POSTURES = frozenset({"allegation", "hypothesis", "corroboration", "contradiction", "unavailable"})
+_SUPPORT_ORIGINS = frozenset({"human_statement", "human_acceptance", "ai_suggested"})
+_CHECKBOX_ORIGINS = frozenset({"client_checkbox", "classifier", "user_label", "reviewed_acceptance"})
 _ID_TEXT = r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}"
 _KIND_CATALOG = "evidence-catalog"
 _KIND_ARTIFACT = "evidence-artifact"
@@ -218,6 +222,82 @@ def classification_choices_from_context(context: Mapping[str, Any] | None) -> di
     }
 
 
+def support_targets_from_context(context: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Current factual assertions and sourced requirements that a span may cite.
+
+    The evidence workspace does not admit law. A requirement is offered only
+    when the same lineage used for classification is present, and an assertion
+    is offered only when this context says it is current at the graph revision.
+    """
+
+    classified = classification_choices_from_context(context)
+    source = context if isinstance(context, Mapping) else {}
+    graph_revision = classified["factual_graph_revision"]
+    assertions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    raw_assertions = source.get("factual_assertions")
+    if graph_revision and isinstance(raw_assertions, list):
+        for item in raw_assertions:
+            if not isinstance(item, Mapping):
+                continue
+            if item.get("status") != "current":
+                continue
+            assertion_id = _choice_id(item.get("assertion_id") if item.get("assertion_id") is not None else item.get("id"))
+            if assertion_id == "" or assertion_id.casefold() in _FIXED_ASSUMPTION_IDS or assertion_id in seen:
+                continue
+            if _context_text(item.get("graph_revision"), 120) != graph_revision:
+                continue
+            text = _context_text(item.get("text") or item.get("label"), 400)
+            if text == "":
+                continue
+            seen.add(assertion_id)
+            assertions.append({
+                "target_id": assertion_id,
+                "target_kind": "factual_assertion",
+                "label": text,
+                "graph_revision": graph_revision,
+                "status": "current",
+                "establishes_legal_support": False,
+            })
+    requirements = []
+    if classified["legal_context_status"] == "admitted":
+        for item in classified["choices"]:
+            if item.get("target_kind") != "legal_requirement":
+                continue
+            requirements.append({
+                "target_id": item["choice_id"],
+                "target_kind": "sourced_requirement",
+                "label": item.get("label") or item["choice_id"],
+                "passage_id": item.get("passage_id") or "",
+                "source_version": item.get("source_version") or "",
+                "authority_version": item.get("authority_version") or "",
+                "jurisdiction": item.get("jurisdiction") or "",
+                "admitted_law": True,
+                "admission_verified_by_evidence_workspace": False,
+                "establishes_legal_support": False,
+            })
+    return {
+        "task_id": SUPPORT_LINK_TASK_ID,
+        "legal_context_status": classified["legal_context_status"],
+        "factual_graph_revision": graph_revision,
+        "source_version": classified["source_version"],
+        "context_fingerprint": classified["context_fingerprint"],
+        "context_owner": classified["context_owner"],
+        "factual_assertions": assertions,
+        "sourced_requirements": requirements,
+        "admission_verified_by_evidence_workspace": False,
+        "establishes_legal_support": False,
+        "governing_law": False,
+    }
+
+
+class _SupportMediator:
+    """Log sink for the claim-support owner. It grants no workflow authority."""
+
+    def log(self, _event: str, **_kwargs: Any) -> None:
+        return None
+
+
 def _label(value: Any, code: str) -> str:
     if not isinstance(value, str) or value.strip() == "" or value != value.strip():
         raise EvidenceWorkspaceError(code)
@@ -300,6 +380,7 @@ class EvidenceWorkspace:
         self._root.mkdir(parents=True, exist_ok=True)
         os.chmod(self._root, 0o700)
         self._lock = threading.RLock()
+        self._claim_support = None
 
     def receive(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
         identity = self._identity(actor, body)
@@ -471,6 +552,190 @@ class EvidenceWorkspace:
             view["context_fingerprint"] = offered["context_fingerprint"]
             return view
 
+    @property
+    def claim_support(self):
+        """The case-local ClaimSupportHook that owns fact and support rows."""
+
+        with self._lock:
+            if self._claim_support is None:
+                from mediator.claim_support_hooks import ClaimSupportHook
+
+                self._claim_support = ClaimSupportHook(
+                    _SupportMediator(),
+                    db_path=str(self._root / "claim_support.duckdb"),
+                )
+            return self._claim_support
+
+    def offer_support_links(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """List current targets and retire links whose artifact or source moved."""
+
+        identity = self._identity(actor, body, content=False, idempotency=False)
+        evidence_id = _label(body.get("evidence_id"), "evidence_id")
+        version = body.get("artifact_version")
+        if type(version) is not int or isinstance(version, bool):
+            raise EvidenceWorkspaceError("artifact_version")
+        offered = support_targets_from_context(body.get("case_context") if isinstance(body.get("case_context"), Mapping) else {})
+        with self._lock:
+            scope = self._open(identity, verify_request=verify_request)
+            case, key_id, data_key = scope.case, scope.key_id, scope.data_key
+            document = self._load(identity, case, key_id, data_key, scope)
+            item = document["items"].get(evidence_id)
+            if item is None or item.get("actor_principal_id") != identity["actor_principal_id"]:
+                raise EvidenceWorkspaceError("missing_evidence")
+            known = {entry.get("version") for entry in item.get("artifact_versions") or []}
+            if version not in known:
+                raise EvidenceWorkspaceError("artifact_version_mismatch")
+            retired = self._retire_support_links(document, evidence_id, item, offered)
+            if retired:
+                self._save(identity, case, key_id, data_key, document, scope)
+            self._verify_scope(scope)
+            return self._support_view(document, evidence_id, item, offered, retired=retired)
+
+    def record_support_link(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Bind one exact span to a current assertion or sourced requirement.
+
+        Corroboration and contradiction require an explicit human acceptance.
+        A checkbox, classifier, or model suggestion cannot become verified
+        legal support, and a missing hook stays unavailable.
+        """
+
+        identity = self._identity(actor, body, content=False)
+        evidence_id = _label(body.get("evidence_id"), "evidence_id")
+        version = body.get("artifact_version")
+        if type(version) is not int or isinstance(version, bool):
+            raise EvidenceWorkspaceError("artifact_version")
+        posture = body.get("posture")
+        origin = body.get("origin")
+        if posture not in _SUPPORT_POSTURES or posture == "unavailable" or origin not in _SUPPORT_ORIGINS:
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if body.get("client_checkbox") is True or body.get("origin") in _CHECKBOX_ORIGINS:
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if any(name in body for name in LEGAL_QUALITIES):
+            raise EvidenceWorkspaceError("legal_quality_rejected")
+        if body.get("establishes_legal_support") not in {None, False} or body.get("verified_legal_support") not in {None, False}:
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if body.get("classifier_id") not in {None, ""} or body.get("from_classifier") is True:
+            raise EvidenceWorkspaceError("support_link_rejected")
+        page, span_start, span_end = self._span(body)
+        target_kind = body.get("target_kind")
+        target_id = _choice_id(body.get("target_id"))
+        if target_kind not in {"factual_assertion", "sourced_requirement"} or target_id == "":
+            raise EvidenceWorkspaceError("support_link_rejected")
+        explicit = body.get("accept") is True and origin == "human_acceptance"
+        if posture in {"corroboration", "contradiction"} and not explicit:
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if posture == "allegation" and origin != "human_statement":
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if posture == "hypothesis" and origin != "ai_suggested":
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if posture in {"corroboration", "contradiction"} and origin != "human_acceptance":
+            raise EvidenceWorkspaceError("support_link_rejected")
+        if origin == "ai_suggested":
+            model_id = _label(body.get("model_id"), "support_link_rejected")
+            invocation_id = _label(body.get("invocation_id"), "support_link_rejected")
+            if explicit:
+                raise EvidenceWorkspaceError("support_link_rejected")
+        else:
+            model_id = ""
+            invocation_id = ""
+        offered = support_targets_from_context(body.get("case_context") if isinstance(body.get("case_context"), Mapping) else {})
+        targets = offered["factual_assertions"] if target_kind == "factual_assertion" else offered["sourced_requirements"]
+        target = next((item for item in targets if item.get("target_id") == target_id), None)
+        with self._lock:
+            scope = self._open(identity, verify_request=verify_request)
+            case, key_id, data_key = scope.case, scope.key_id, scope.data_key
+            document = self._load(identity, case, key_id, data_key, scope)
+            item = document["items"].get(evidence_id)
+            if item is None or item.get("actor_principal_id") != identity["actor_principal_id"]:
+                raise EvidenceWorkspaceError("missing_evidence")
+            known = {entry.get("version") for entry in item.get("artifact_versions") or []}
+            if version not in known or version != item.get("current_version"):
+                raise EvidenceWorkspaceError("artifact_version_mismatch")
+            retired = self._retire_support_links(document, evidence_id, item, offered)
+            records = document.setdefault("support_links", [])
+            bucket = document.setdefault("support_link_idempotency", {})
+            prior_id = bucket.get(identity["idempotency_key"])
+            if prior_id is not None:
+                prior = next((row for row in records if row.get("support_link_id") == prior_id), None)
+                if prior is None or prior.get("request_fingerprint") != self._support_fingerprint(body, offered):
+                    raise EvidenceWorkspaceError("replay_mismatch")
+                if retired:
+                    self._save(identity, case, key_id, data_key, document, scope)
+                self._verify_scope(scope)
+                view = self._public_support_link(prior)
+                view["idempotent_replay"] = True
+                return view
+            if target is None:
+                if retired:
+                    self._save(identity, case, key_id, data_key, document, scope)
+                self._verify_scope(scope)
+                return self._unavailable_support(
+                    evidence_id, version, page, span_start, span_end, target_kind, target_id, "target_not_current",
+                )
+            hook_effect = self._commit_support_hook(
+                case.tenant_id, identity["actor_principal_id"], evidence_id, version,
+                page, span_start, span_end, posture, explicit, target,
+            )
+            if hook_effect.get("available") is not True or hook_effect.get("recorded") is not True:
+                if retired:
+                    self._save(identity, case, key_id, data_key, document, scope)
+                self._verify_scope(scope)
+                unavailable = self._unavailable_support(
+                    evidence_id, version, page, span_start, span_end, target_kind, target_id,
+                    str(hook_effect.get("error") or "claim_support_hook_unavailable"),
+                )
+                unavailable["hook"] = {
+                    "available": False,
+                    "recorded": False,
+                    "error": hook_effect.get("error") or "claim_support_hook_unavailable",
+                }
+                return unavailable
+            record = {
+                "support_link_id": "sl-" + hashlib.sha256(os.urandom(32)).hexdigest()[:24],
+                "evidence_id": evidence_id,
+                "artifact_version": version,
+                "page": page,
+                "span_start": span_start,
+                "span_end": span_end,
+                "span_ref": hook_effect["span_ref"],
+                "chunk_ref": hook_effect["chunk_ref"],
+                "target_kind": target_kind,
+                "target_id": target_id,
+                "target_label": target.get("label") or "",
+                "passage_id": target.get("passage_id") or "",
+                "posture": posture,
+                "origin": origin,
+                "actor_principal_id": identity["actor_principal_id"],
+                "canonical_owner_principal_id": case.tenant_id,
+                "status": "current",
+                "retired_reason": "",
+                "explicit_acceptance": explicit,
+                "accepted": explicit,
+                "reviewed": explicit,
+                "model_id": model_id,
+                "invocation_id": invocation_id,
+                "context_fingerprint": offered["context_fingerprint"],
+                "source_version": offered["source_version"],
+                "factual_graph_revision": offered["factual_graph_revision"],
+                "fact_id": hook_effect["fact_id"],
+                "hook_link_ids": hook_effect["hook_link_ids"],
+                "support_record_id": hook_effect["support_record_id"],
+                "request_fingerprint": self._support_fingerprint(body, offered),
+                "establishes_legal_support": False,
+                "verified_legal_support": False,
+                "governing_law": False,
+                "client_checkbox": False,
+                "classifier_minted": False,
+            }
+            records.append(record)
+            bucket[identity["idempotency_key"]] = record["support_link_id"]
+            self._save(identity, case, key_id, data_key, document, scope)
+            self._verify_scope(scope)
+            view = self._public_support_link(record)
+            view["idempotent_replay"] = False
+            view["hook_created"] = hook_effect.get("created") is True
+            return view
+
     def list_catalog(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
         identity = self._identity(actor, body, content=False, idempotency=False)
         with self._lock:
@@ -507,6 +772,271 @@ class EvidenceWorkspace:
                 "legal": legal_qualities(),
                 "receipt_establishes_legal_quality": False,
             }
+
+    def _span(self, body: Mapping[str, Any]) -> tuple[int, int, int]:
+        page = body.get("page")
+        start = body.get("span_start")
+        end = body.get("span_end")
+        if type(page) is not int or isinstance(page, bool) or page < 1 or page > 10000:
+            raise EvidenceWorkspaceError("support_span_rejected")
+        if type(start) is not int or isinstance(start, bool) or start < 0:
+            raise EvidenceWorkspaceError("support_span_rejected")
+        if type(end) is not int or isinstance(end, bool) or end <= start or end - start > 4000:
+            raise EvidenceWorkspaceError("support_span_rejected")
+        return page, start, end
+
+    def _support_rows(self, document: Mapping[str, Any], evidence_id: str) -> list[dict[str, Any]]:
+        rows = document.get("support_links")
+        if not isinstance(rows, list):
+            return []
+        return [row for row in rows if isinstance(row, dict) and row.get("evidence_id") == evidence_id]
+
+    def _retire_support_links(self, document: dict[str, Any], evidence_id: str, item: Mapping[str, Any], offered: Mapping[str, Any]) -> bool:
+        changed = False
+        current_version = item.get("current_version")
+        fingerprint = offered.get("context_fingerprint")
+        for row in self._support_rows(document, evidence_id):
+            if row.get("status") != "current":
+                continue
+            reason = ""
+            if row.get("artifact_version") != current_version:
+                reason = "artifact_version_changed"
+            elif row.get("context_fingerprint") != fingerprint:
+                reason = "source_or_context_changed"
+            if reason == "":
+                continue
+            row["status"] = "retired"
+            row["retired_reason"] = reason
+            row["establishes_legal_support"] = False
+            row["verified_legal_support"] = False
+            changed = True
+        return changed
+
+    def _support_fingerprint(self, body: Mapping[str, Any], offered: Mapping[str, Any]) -> str:
+        payload = {
+            "posture": body.get("posture"),
+            "origin": body.get("origin"),
+            "target_kind": body.get("target_kind"),
+            "target_id": body.get("target_id") or "",
+            "page": body.get("page"),
+            "span_start": body.get("span_start"),
+            "span_end": body.get("span_end"),
+            "accept": body.get("accept") is True,
+            "model_id": body.get("model_id") or "",
+            "invocation_id": body.get("invocation_id") or "",
+            "context_fingerprint": offered.get("context_fingerprint") or "",
+            "artifact_version": body.get("artifact_version"),
+            "evidence_id": body.get("evidence_id"),
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    def _commit_support_hook(self, owner_id, actor, evidence_id, version, page, start, end, posture, explicit, target) -> dict[str, Any]:
+        span_ref = f"page:{page}:{start}-{end}"
+        chunk_ref = f"artifact:{evidence_id}:version:{version}:{span_ref}"
+        proposition = str(target.get("label") or "")
+        validation = "unvalidated"
+        uncertainty = False
+        contradiction = False
+        if posture == "hypothesis":
+            validation = "uncertain"
+            uncertainty = True
+        elif posture == "contradiction":
+            validation = "contradicted"
+            contradiction = True
+        metadata = {
+            "support_posture": posture,
+            "explicit_acceptance": explicit,
+            "verified_legal_support": False,
+            "establishes_legal_support": False,
+            "actor_principal_id": actor,
+            "canonical_owner_principal_id": owner_id,
+            "evidence_id": evidence_id,
+            "artifact_version": version,
+            "page": page,
+            "span_start": start,
+            "span_end": end,
+            "target_kind": target.get("target_kind") or "",
+            "target_id": target.get("target_id") or "",
+            "passage_id": target.get("passage_id") or "",
+            "source_version": target.get("source_version") or "",
+            "client_checkbox": False,
+            "classifier_minted": False,
+        }
+        hook = self.claim_support
+        fact = hook.persist_fact_record(
+            owner_id,
+            "evidence_span_support",
+            claim_element_id=str(target.get("target_id") or ""),
+            claim_element_text=proposition,
+            proposition_text=proposition,
+            source_artifact_id=evidence_id,
+            source_authority_id=str(target.get("passage_id") or ""),
+            chunk_ref=chunk_ref,
+            span_ref=span_ref,
+            confidence=0.0,
+            validation_state=validation,
+            uncertainty_flag=uncertainty,
+            contradiction_flag=contradiction,
+            metadata=metadata,
+        )
+        if fact.get("available") is not True or not fact.get("fact_id"):
+            return {"available": False, "recorded": False, "error": fact.get("error") or "claim_support_hook_unavailable"}
+        fact_id = str(fact["fact_id"])
+        span_target = f"{chunk_ref}:{span_ref}"
+        chunk_link = hook.add_fact_link(
+            fact_id, "to_chunk", span_target, target_type="evidence_span", metadata=metadata,
+        )
+        if chunk_link.get("available") is not True:
+            return {"available": False, "recorded": False, "error": chunk_link.get("error") or "claim_support_hook_unavailable", "fact_id": fact_id}
+        link_ids = [chunk_link.get("link_id")]
+        if target.get("target_kind") == "sourced_requirement":
+            authority_link = hook.add_fact_link(
+                fact_id, "to_authority", str(target.get("target_id") or ""),
+                target_type="sourced_requirement", metadata=metadata,
+            )
+            if authority_link.get("available") is not True:
+                return {"available": False, "recorded": False, "error": authority_link.get("error") or "claim_support_hook_unavailable"}
+            link_ids.append(authority_link.get("link_id"))
+        else:
+            element_link = hook.add_fact_link(
+                fact_id, "to_element", str(target.get("target_id") or ""),
+                target_type="factual_assertion", metadata=metadata,
+            )
+            if element_link.get("available") is not True:
+                return {"available": False, "recorded": False, "error": element_link.get("error") or "claim_support_hook_unavailable"}
+            link_ids.append(element_link.get("link_id"))
+        try:
+            stored = hook.upsert_support_link(
+                user_id=owner_id,
+                claim_type="evidence_span_support",
+                claim_element_id=str(target.get("target_id") or ""),
+                claim_element_text=proposition,
+                support_kind=posture,
+                support_ref=span_target,
+                support_label=proposition,
+                source_table="evidence_workspace",
+                support_strength=0.0,
+                metadata=metadata,
+                complaint_id=owner_id,
+            )
+        except Exception as exc:
+            return {"available": False, "recorded": False, "error": "claim_support_hook_unavailable", "detail": str(exc), "fact_id": fact_id}
+        record_id = stored.get("record_id") if isinstance(stored, Mapping) else None
+        if not isinstance(record_id, int):
+            return {"available": False, "recorded": False, "error": "claim_support_hook_unavailable", "fact_id": fact_id}
+        created = fact.get("created") is True or fact.get("reused") is True
+        return {
+            "available": True,
+            "recorded": True,
+            "created": fact.get("created") is True,
+            "reused": fact.get("reused") is True,
+            "fact_id": fact_id,
+            "span_ref": span_ref,
+            "chunk_ref": chunk_ref,
+            "hook_link_ids": [item for item in link_ids if item],
+            "support_record_id": record_id,
+            "hook_effect": created,
+        }
+
+    def _unavailable_support(self, evidence_id, version, page, start, end, target_kind, target_id, reason) -> dict[str, Any]:
+        return {
+            "task_id": SUPPORT_LINK_TASK_ID,
+            "support_link_id": "",
+            "evidence_id": evidence_id,
+            "artifact_version": version,
+            "page": page,
+            "span_start": start,
+            "span_end": end,
+            "span_ref": f"page:{page}:{start}-{end}",
+            "target_kind": target_kind,
+            "target_id": target_id,
+            "posture": "unavailable",
+            "requested_posture_recorded": False,
+            "status": "unavailable",
+            "reason": reason,
+            "explicit_acceptance": False,
+            "accepted": False,
+            "recorded": False,
+            "operation_succeeded": False,
+            "establishes_legal_support": False,
+            "verified_legal_support": False,
+            "governing_law": False,
+            "client_checkbox_mints_support": False,
+            "classifier_mints_support": False,
+            "idempotent_replay": False,
+        }
+
+    def _public_support_link(self, row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "task_id": SUPPORT_LINK_TASK_ID,
+            "support_link_id": row.get("support_link_id") or "",
+            "evidence_id": row.get("evidence_id") or "",
+            "artifact_version": row.get("artifact_version"),
+            "page": row.get("page"),
+            "span_start": row.get("span_start"),
+            "span_end": row.get("span_end"),
+            "span_ref": row.get("span_ref") or "",
+            "chunk_ref": row.get("chunk_ref") or "",
+            "target_kind": row.get("target_kind") or "",
+            "target_id": row.get("target_id") or "",
+            "target_label": row.get("target_label") or "",
+            "passage_id": row.get("passage_id") or "",
+            "posture": row.get("posture") or "",
+            "origin": row.get("origin") or "",
+            "actor_principal_id": row.get("actor_principal_id") or "",
+            "canonical_owner_principal_id": row.get("canonical_owner_principal_id") or "",
+            "status": row.get("status") or "",
+            "retired_reason": row.get("retired_reason") or "",
+            "explicit_acceptance": row.get("explicit_acceptance") is True,
+            "accepted": row.get("accepted") is True,
+            "reviewed": row.get("reviewed") is True,
+            "model_id": row.get("model_id") or "",
+            "invocation_id": row.get("invocation_id") or "",
+            "context_fingerprint": row.get("context_fingerprint") or "",
+            "source_version": row.get("source_version") or "",
+            "factual_graph_revision": row.get("factual_graph_revision") or "",
+            "fact_id": row.get("fact_id") or "",
+            "hook_link_ids": list(row.get("hook_link_ids") or []),
+            "support_record_id": row.get("support_record_id"),
+            "recorded": row.get("status") == "current",
+            "operation_succeeded": row.get("status") == "current",
+            "establishes_legal_support": False,
+            "verified_legal_support": False,
+            "governing_law": False,
+            "client_checkbox_mints_support": False,
+            "classifier_mints_support": False,
+        }
+
+    def _support_view(self, document, evidence_id, item, offered, *, retired: bool) -> dict[str, Any]:
+        rows = [self._public_support_link(row) for row in self._support_rows(document, evidence_id)]
+        current = [row for row in rows if row["status"] == "current"]
+        stale = [row for row in rows if row["status"] == "retired"]
+        return {
+            "task_id": SUPPORT_LINK_TASK_ID,
+            "evidence_id": evidence_id,
+            "artifact_version": item.get("current_version"),
+            "factual_assertions": offered["factual_assertions"],
+            "sourced_requirements": offered["sourced_requirements"],
+            "legal_context_status": offered["legal_context_status"],
+            "factual_graph_revision": offered["factual_graph_revision"],
+            "source_version": offered["source_version"],
+            "context_fingerprint": offered["context_fingerprint"],
+            "context_owner": offered["context_owner"],
+            "admission_verified_by_evidence_workspace": False,
+            "current": current,
+            "retired": stale,
+            "allegations": [row for row in current if row["posture"] == "allegation"],
+            "hypotheses": [row for row in current if row["posture"] == "hypothesis"],
+            "corroborations": [row for row in current if row["posture"] == "corroboration"],
+            "contradictions": [row for row in current if row["posture"] == "contradiction"],
+            "unavailable": [row for row in rows if row["posture"] == "unavailable"],
+            "retirement_persisted": retired,
+            "establishes_legal_support": False,
+            "verified_legal_support": False,
+            "governing_law": False,
+            "client_checkbox_mints_support": False,
+            "classifier_mints_support": False,
+        }
 
     def _classifier_rows(self, document: Mapping[str, Any], evidence_id: str) -> list[dict[str, Any]]:
         rows = document.get("classifiers")
