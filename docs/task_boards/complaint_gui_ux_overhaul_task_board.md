@@ -1308,7 +1308,7 @@ Implementation instructions:
 
 ## CIMP-UX-43 Expose content-access decisions and administrative audit trails
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
