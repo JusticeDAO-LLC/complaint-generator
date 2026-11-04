@@ -77,6 +77,10 @@
                 node("lawyer-queue-status").hidden = false;
                 node("lawyer-queue-status").textContent = item.state_label + ". " + item.display_label;
                 section.dataset.selectedState = item.state || "";
+                if (item.state === "pending" && window.complaintInvitations) {
+                    window.complaintInvitations.acceptForCase(item.case_id);
+                    return;
+                }
                 if (item.state === "authorized") openIssued(issuedReview, item.case_id);
                 else clearWorkspace(item.state_label, item.state || "locked");
             });
