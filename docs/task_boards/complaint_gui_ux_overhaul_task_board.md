@@ -1711,7 +1711,7 @@ Implementation instructions:
 
 ## CIMP-UX-56 Prove all thirteen hook outcomes across the complaint lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
