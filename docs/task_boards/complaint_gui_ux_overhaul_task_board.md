@@ -1060,7 +1060,7 @@ Implementation instructions:
 
 ## CIMP-UX-35 Create a typed correspondence and activity projection
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
