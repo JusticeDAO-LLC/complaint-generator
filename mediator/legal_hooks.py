@@ -632,3 +632,313 @@ Q2: [question]
                         })
         
         return questions
+
+    def finite_factual_inquiries(self, gaps: List[Dict[str, Any]], *, cap: int = 4) -> List[Dict[str, Any]]:
+        """Ask a bounded set of factual questions. The list does not grow itself.
+
+        Each gap is one inquiry. A legal-research gap stays a research question
+        and is not stored as an element of law. Past the cap, remaining gaps
+        are counted and not emitted.
+        """
+        limit = cap if type(cap) is int and cap > 0 else 4
+        if limit > 8:
+            limit = 8
+        inquiries: List[Dict[str, Any]] = []
+        for index, gap in enumerate(gaps):
+            if len(inquiries) >= limit:
+                break
+            if not isinstance(gap, dict):
+                continue
+            kind = str(gap.get("record_kind") or "factual_assertion")
+            target = str(gap.get("target_id") or f"gap-{index}")
+            inquiries.append({
+                "inquiry_id": f"inq-{index + 1}",
+                "sequence": index + 1,
+                "question": str(gap.get("question") or "").strip(),
+                "record_kind": kind,
+                "creates_law": False,
+                "target_id": target,
+                "disposition": "open",
+                "answer": None,
+                "finite": True,
+                "priority": "High" if kind == "factual_assertion" else "Medium",
+            })
+        return inquiries
+
+
+_GROUNDING_INQUIRY_CAP = 4
+
+
+def _freeze_payload(payload: Any) -> Dict[str, Any]:
+    import copy
+
+    if not isinstance(payload, dict):
+        raise TypeError("grounding input must be a dict")
+    return copy.deepcopy(payload)
+
+
+def _requirement_from_authority(authority: Dict[str, Any], claim_type: str) -> Optional[Dict[str, Any]]:
+    from integrations.ipfs_datasets.logic import extract_source_bound_rule_candidates
+
+    if not isinstance(authority, dict):
+        return None
+    extracted = extract_source_bound_rule_candidates(authority)
+    promoted = extracted.get("promoted_requirements") or []
+    if not promoted:
+        return None
+    candidate = dict(promoted[0])
+    dates = candidate.get("applicable_date") if isinstance(candidate.get("applicable_date"), dict) else {}
+    record = dict(candidate)
+    record.update({
+        "claim_type": claim_type,
+        "name": str(candidate.get("authority_id") or candidate.get("citation") or "Sourced requirement"),
+        "description": str(candidate.get("rule_text") or ""),
+        "authority_locator": str(candidate.get("citation") or candidate.get("authority_id") or ""),
+        "source_locator": str(candidate.get("citation") or candidate.get("authority_id") or ""),
+        "jurisdiction": str(candidate.get("jurisdiction") or authority.get("jurisdiction") or ""),
+        "effective_date": str(dates.get("effective_date") or authority.get("effective_date") or ""),
+        "authority_version": str(candidate.get("authority_version") or ""),
+        "source_record": dict(authority),
+        "origin": "admitted_authority",
+    })
+    return record
+
+
+def qualify_grounded_legal_hooks(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Public workflow for the four legal hooks against canonical tools.
+
+    Classification is a suggestion. Statute lookup uses
+    ``lookup_bounded_legal_corpus`` and stays discovery. Requirements enter the
+    dependency graph only when the current admitted authority promotes a
+    source-bound rule. Model text and default claim taxonomies do not create
+    law. The caller's mapping is not modified.
+    """
+    import copy
+
+    from integrations.ipfs_datasets.legal import (
+        CORPUS_FAMILY_STATE_STATUTE,
+        CORPUS_FAMILY_US_CODE,
+        UNKNOWN_LEGAL_CONTEXT,
+        lookup_bounded_legal_corpus,
+        resolve_explicit_jurisdiction,
+    )
+    from integrations.ipfs_datasets.logic import legacy_unverified_requirement_templates
+    from complaint_phases.dependency_graph import DependencyGraphBuilder
+
+    if not isinstance(payload, dict):
+        return {
+            "status": "refused",
+            "code": "malformed_input",
+            "workflow": "qualify_grounded_legal_hooks",
+            "creates_law": False,
+            "provider_invoked": False,
+        }
+    before = copy.deepcopy(payload)
+    working = _freeze_payload(payload)
+    jurisdiction = resolve_explicit_jurisdiction(working.get("jurisdiction"))
+    applicable = str(working.get("applicable_law_date") or "").strip()
+    context_known = jurisdiction != UNKNOWN_LEGAL_CONTEXT and bool(applicable)
+    claim_candidates = [
+        str(item).strip()
+        for item in (working.get("claim_candidates") or [])
+        if str(item).strip()
+    ]
+    model_text = str(working.get("model_text") or "").strip()
+    taxonomy = legacy_unverified_requirement_templates([*claim_candidates, "employment_discrimination"])
+    taxonomy_names = [str(item.get("name") or "") for item in taxonomy]
+
+    classification = {
+        "owner": "LegalClassificationHook",
+        "record_kind": "classifier_suggestion",
+        "creates_law": False,
+        "claim_types": claim_candidates,
+        "jurisdiction": jurisdiction if jurisdiction != UNKNOWN_LEGAL_CONTEXT else "unknown",
+        "jurisdiction_explicit": jurisdiction != UNKNOWN_LEGAL_CONTEXT,
+        "legal_areas": [],
+        "key_facts": [],
+        "model_text": model_text,
+        "model_text_creates_law": False,
+        "default_taxonomy_creates_law": False,
+    }
+    factual = {
+        "record_kind": "factual_assertion",
+        "text": str(working.get("narrative") or ""),
+        "creates_law": False,
+        "about_complainant": True,
+    }
+
+    tool_calls = 0
+    corpus: Dict[str, Any]
+    if not context_known:
+        corpus = {
+            "status": "not_called",
+            "code": "unknown_legal_context",
+            "results": [],
+            "creates_law": False,
+        }
+    else:
+        family = CORPUS_FAMILY_US_CODE if jurisdiction == "federal" else CORPUS_FAMILY_STATE_STATUTE
+        state = None if jurisdiction == "federal" else jurisdiction
+        tool_calls += 1
+        try:
+            corpus = lookup_bounded_legal_corpus(
+                source_family=family,
+                query=str(working.get("corpus_query") or claim_candidates[0] if claim_candidates else "statute"),
+                retrieval_mode="cache",
+                jurisdiction=jurisdiction,
+                state=state,
+                max_results=3,
+                timeout_seconds=2.0,
+                offline_cache=working.get("offline_cache") if isinstance(working.get("offline_cache"), dict) else {},
+                contains_private_facts=False,
+                privacy_policy_accepted=False,
+            )
+        except Exception as exc:
+            corpus = {
+                "status": "unavailable",
+                "error_code": "missing_capability",
+                "error_message": str(exc),
+                "results": [],
+            }
+        if not isinstance(corpus, dict):
+            corpus = {"status": "unavailable", "error_code": "missing_capability", "results": []}
+        corpus = dict(corpus)
+        corpus["creates_law"] = False
+        corpus["discovery_only"] = True
+        corpus["owner"] = "StatuteRetrievalHook"
+        corpus["tool"] = "lookup_bounded_legal_corpus"
+
+    if corpus.get("status") == "unavailable" or corpus.get("error_code") == "missing_capability":
+        if payload != before:
+            raise RuntimeError("grounding input was mutated")
+        return {
+            "status": "unavailable",
+            "code": str(corpus.get("error_code") or "missing_capability"),
+            "workflow": "qualify_grounded_legal_hooks",
+            "classification": classification,
+            "factual_assertion": factual,
+            "statutes": [],
+            "statute_discovery": corpus,
+            "requirements": {},
+            "inquiries": [],
+            "legal_element_count": 0,
+            "creates_law": False,
+            "provider_invoked": False,
+            "tool_calls": tool_calls,
+            "input_mutated": False,
+            "handler_enabled_by_caller": False,
+        }
+
+    claim_type = claim_candidates[0] if claim_candidates else "unknown"
+    requirements: Dict[str, List[Any]] = {claim_type: []}
+    for authority in working.get("admitted_authorities") or []:
+        record = _requirement_from_authority(authority, claim_type)
+        if record is not None:
+            requirements[claim_type].append(record)
+    for text in working.get("model_requirements") or []:
+        requirements[claim_type].append(str(text))
+    if model_text:
+        requirements[claim_type].append(model_text)
+    for name in taxonomy_names:
+        requirements[claim_type].append({
+            "name": name,
+            "description": name,
+            "legacy_template": True,
+            "template_kind": "claim_keyword_template",
+            "claim_type": claim_type,
+            "origin": "default_taxonomy",
+        })
+
+    graph = DependencyGraphBuilder().build_grounded_hook_graph(
+        [{
+            "name": claim_type,
+            "type": claim_type,
+            "description": str(working.get("narrative") or ""),
+        }],
+        requirements,
+        model_text=model_text,
+        taxonomy_names=taxonomy_names,
+        legal_context={
+            "jurisdiction": jurisdiction,
+            "applicable_law_date": applicable,
+            "context_revision": working.get("context_revision", 0),
+        } if context_known else None,
+    )
+    legal_elements = [
+        node for node in graph.nodes.values()
+        if node.node_type.value == "legal_element"
+        and (node.attributes or {}).get("record_kind") == "legal_requirement"
+    ]
+    unresolved = list(graph.metadata.get("unresolved_legal_requirements") or [])
+
+    gaps: List[Dict[str, Any]] = []
+    if not context_known:
+        gaps.append({
+            "record_kind": "unknown_legal_context",
+            "target_id": "unknown-legal-context",
+            "question": "Which jurisdiction and applicable-law date should be used? They were not stated.",
+        })
+    else:
+        for node in graph.metadata.get("factual_nodes") or []:
+            if node.get("node_type") != "fact":
+                continue
+            gaps.append({
+                "record_kind": "factual_assertion",
+                "target_id": str(node.get("id") or ""),
+                "question": f"What fact supplies {node.get('name')}?",
+            })
+        if unresolved and not legal_elements:
+            gaps.append({
+                "record_kind": "legal_research",
+                "target_id": "unresolved-authority",
+                "question": "Which admitted authority applies? Model text was not treated as law.",
+            })
+    cap = working.get("inquiry_cap", _GROUNDING_INQUIRY_CAP)
+    inquiries = QuestionGenerationHook(mediator=None).finite_factual_inquiries(gaps, cap=cap if type(cap) is int else _GROUNDING_INQUIRY_CAP)
+    truncated = len(inquiries) < len([gap for gap in gaps if isinstance(gap, dict)])
+    if payload != before:
+        raise RuntimeError("grounding input was mutated")
+    return {
+        "status": "qualified",
+        "code": "unknown_legal_context" if not context_known else "grounded",
+        "workflow": "qualify_grounded_legal_hooks",
+        "classification": classification,
+        "factual_assertion": factual,
+        "statute_discovery": {
+            "status": corpus.get("status"),
+            "tool": "lookup_bounded_legal_corpus",
+            "owner": "StatuteRetrievalHook",
+            "result_count": len(corpus.get("results") or []),
+            "creates_law": False,
+            "discovery_only": True,
+            "citations": [
+                str(item.get("citation") or "")
+                for item in (corpus.get("results") or [])
+                if isinstance(item, dict)
+            ],
+        },
+        "requirements_owner": "SummaryJudgmentHook",
+        "legal_element_count": len(legal_elements),
+        "legal_element_names": [node.name for node in legal_elements],
+        "unresolved_count": len(unresolved),
+        "unresolved_reasons": [item.get("reason") for item in unresolved],
+        "taxonomy_names": taxonomy_names,
+        "taxonomy_names_in_legal_elements": [
+            node.name for node in legal_elements if node.name in taxonomy_names or node.name == model_text
+        ],
+        "model_text_created_law": False,
+        "default_taxonomy_created_law": False,
+        "factual_nodes": graph.metadata.get("factual_nodes") or [],
+        "legal_nodes": graph.metadata.get("legal_nodes") or [],
+        "factual_legal_separated": True,
+        "inquiries": inquiries,
+        "inquiry_cap": cap if type(cap) is int else _GROUNDING_INQUIRY_CAP,
+        "inquiry_truncated": truncated,
+        "inquiry_semantics": "capped" if truncated else ("open" if inquiries else "none"),
+        "creates_law": False,
+        "provider_invoked": False,
+        "tool_calls": tool_calls,
+        "input_mutated": False,
+        "handler_enabled_by_caller": False,
+        "graph_owner": "DependencyGraphBuilder.build_grounded_hook_graph",
+    }
