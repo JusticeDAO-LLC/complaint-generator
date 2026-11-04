@@ -12,6 +12,8 @@
     var sendState = null;
     var pollAbort = null;
     var sendAbort = null;
+    var openContextId = "";
+    var adoptionKeys = {};
     var MAX_SEND_ATTEMPTS = 2;
 
     var ATTRIBUTION = {
@@ -77,6 +79,9 @@
     }
 
     function clearConversation() {
+        openContextId = "";
+        var panel = $("workflow-context");
+        if (panel) panel.remove();
         $("message-list").replaceChildren();
         $("empty-conversation").hidden = true;
         $("source-status").textContent = "";
@@ -168,9 +173,10 @@
             headers["content-type"] = "application/json";
             headers["x-csrf-token"] = value ? value.csrf : csrf;
         }
+        if (options && options.lane) lane = options.lane;
         var controller = new AbortController();
         if (lane === "send") sendAbort = controller;
-        else pollAbort = controller;
+        else if (lane === "poll") pollAbort = controller;
         var timer = window.setTimeout(function () { controller.abort(); }, 15000);
         try {
             var response = await fetch(path, {
@@ -261,6 +267,10 @@
                 ? " Invocation " + entry.invocation_id + "."
                 : "";
             var disposition = entry.disposition ? " Disposition " + entry.disposition + "." : "";
+            var workflow = entry.workflow || {};
+            item.setAttribute("data-adopted", workflow.adopted === true ? "true" : "false");
+            item.setAttribute("data-eligible", workflow.eligible === true ? "true" : "false");
+            if (entry.disposition) item.setAttribute("data-disposition", entry.disposition);
             lineage.textContent = "Actor " + actorText + ". Encrypted owner " + ownerText + "."
                 + (entry.actor_is_encrypted_owner ? " Actor is the encrypted owner." : " Actor is not the encrypted owner.")
                 + extra + disposition
@@ -272,10 +282,156 @@
             item.appendChild(title);
             item.appendChild(lineage);
             item.appendChild(body);
+            if (workflow.exact === true && workflow.context_kind) {
+                var open = document.createElement("button");
+                open.type = "button";
+                open.className = "correspondence__context-open";
+                open.setAttribute("data-source-id", String(entry.source_id || ""));
+                open.textContent = "Open " + workflow.context_kind + " context";
+                open.addEventListener("click", function () {
+                    openContextId = String(entry.source_id || "");
+                    showContext(entry, value);
+                });
+                item.appendChild(open);
+            }
+            if (workflow.eligible === true && workflow.adopted !== true && entry.record_type === "human_message") {
+                var adopt = document.createElement("button");
+                adopt.type = "button";
+                adopt.className = "correspondence__adopt";
+                adopt.setAttribute("data-source-id", String(entry.source_id || ""));
+                adopt.textContent = "Adopt eligible material";
+                adopt.addEventListener("click", function () {
+                    adoptMaterial(entry, value);
+                });
+                item.appendChild(adopt);
+            }
             list.appendChild(item);
         });
         if (sendState && current(value)) appendPending(sendState);
         $("empty-conversation").hidden = list.childElementCount !== 0;
+        if (openContextId) {
+            var opened = visible.filter(function (entry) { return String(entry.source_id || "") === openContextId; })[0];
+            if (opened) showContext(opened, value);
+        }
+    }
+
+    function contextPanel() {
+        var panel = $("workflow-context");
+        if (panel) return panel;
+        panel = document.createElement("section");
+        panel.id = "workflow-context";
+        panel.tabIndex = -1;
+        panel.setAttribute("aria-label", "Workflow context");
+        $("message-log").appendChild(panel);
+        return panel;
+    }
+
+    function showContext(entry, value) {
+        var workflow = entry.workflow || {};
+        var navigation = workflow.navigation || {};
+        var panel = contextPanel();
+        panel.replaceChildren();
+        panel.setAttribute("data-source-id", String(entry.source_id || ""));
+        panel.setAttribute("data-context-kind", String(workflow.context_kind || ""));
+        panel.setAttribute("data-context-id", String(workflow.context_id || ""));
+        panel.setAttribute("data-context-revision", String(workflow.context_revision == null ? "" : workflow.context_revision));
+        panel.setAttribute("data-attribution", String(workflow.attribution || ""));
+        panel.setAttribute("data-adopted", workflow.adopted === true ? "true" : "false");
+        panel.setAttribute("data-eligible", workflow.eligible === true ? "true" : "false");
+        panel.setAttribute("data-case-id", value && value.caseId ? value.caseId : "");
+        if (navigation.span) panel.setAttribute("data-span", String(navigation.span));
+        else panel.removeAttribute("data-span");
+        if (navigation.section_id) panel.setAttribute("data-section-id", String(navigation.section_id));
+        else panel.removeAttribute("data-section-id");
+        var heading = document.createElement("h3");
+        heading.textContent = workflow.exact === true
+            ? "Exact " + workflow.context_kind + " context"
+            : "No workflow context";
+        var detail = document.createElement("p");
+        detail.className = "workflow-context__identity";
+        if (workflow.exact === true) {
+            detail.textContent = "Case " + (navigation.case_id || "")
+                + ". " + workflow.context_kind + " " + workflow.context_id
+                + ". Revision " + workflow.context_revision
+                + (navigation.span ? ". Span " + navigation.span : "")
+                + (navigation.section_id ? ". Section " + navigation.section_id : "")
+                + ".";
+        } else {
+            detail.textContent = "This record has no exact evidence, draft, or inquiry context.";
+        }
+        var boundary = document.createElement("p");
+        boundary.className = "workflow-context__boundary";
+        boundary.textContent = workflow.adopted === true
+            ? "Adopted by an explicit authorized action. Display did not adopt it."
+            : "Opening this context does not adopt it. Displayed text is not evidence or an accepted fact.";
+        if (entry.record_type === "ai_mediator_turn") {
+            boundary.textContent += " AI text stays AI text and is not a human message.";
+        }
+        if (entry.record_type === "human_message") {
+            boundary.textContent += " The human message stays conversation.";
+        }
+        panel.appendChild(heading);
+        panel.appendChild(detail);
+        panel.appendChild(boundary);
+        panel.hidden = false;
+        if (document.activeElement && document.activeElement.classList
+            && (document.activeElement.classList.contains("correspondence__context-open")
+                || document.activeElement.id === "workflow-context")) {
+            panel.focus();
+        }
+    }
+
+    function adoptMaterial(entry, value) {
+        var workflow = entry.workflow || {};
+        if (!workflow.eligible || entry.record_type !== "human_message" || !value.threadId) return;
+        var sourceId = String(entry.source_id || "");
+        if (!adoptionKeys[sourceId]) adoptionKeys[sourceId] = newKey("adopt-");
+        openContextId = sourceId;
+        enqueue(async function () {
+            if (!current(value)) return;
+            setError("");
+            setStatus("Adopting linked material");
+            var payload = await api(
+                "/api/cases/messages/threads/" + encodeURIComponent(value.threadId) + "/messages/" + encodeURIComponent(sourceId) + "/workflow-adoption",
+                {
+                    method: "POST",
+                    lane: "adopt",
+                    body: Object.assign({
+                        case_id: value.caseId,
+                        idempotency_key: adoptionKeys[sourceId],
+                        context_kind: workflow.context_kind,
+                        context_id: workflow.context_id,
+                        context_revision: workflow.context_revision,
+                        section_id: workflow.section_id,
+                        span: workflow.span,
+                        expected_message_version: entry.revision
+                    }, membershipFields(value))
+                },
+                value
+            );
+            if (!current(value)) return;
+            if (payload.adopted !== true || payload.explicit !== true || payload.accepted_by_display !== false) {
+                throw new Error("adoption_rejected");
+            }
+            if (payload.disposition !== "conversation" || payload.attribution !== "human") {
+                throw new Error("adoption_rejected");
+            }
+            if (payload.context.context_id !== workflow.context_id || payload.context.context_revision !== workflow.context_revision) {
+                throw new Error("workflow_context_mismatch");
+            }
+            await loadProjection(value);
+            if (!current(value)) return;
+            setStatus("Adopted linked material");
+            setError("");
+        }).catch(function (error) {
+            if (!current(value)) return;
+            if (error && (error.message === "action_not_permitted" || error.message === "workflow_context_required" || error.message === "material_not_eligible" || error.message === "display_is_not_adoption")) {
+                setStatus("Adoption was not authorized");
+                setError(error.message);
+                return;
+            }
+            failed(value, error);
+        });
     }
 
     function appendPending(state) {
