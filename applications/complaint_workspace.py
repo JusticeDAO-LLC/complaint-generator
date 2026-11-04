@@ -16999,6 +16999,195 @@ class ComplaintWorkspaceService:
         journal = state.get("mediator_operation_journal")
         return [dict(item) for item in journal] if isinstance(journal, list) else []
 
+    def bind_lifecycle_case(self, user_id: Optional[str], *, source: bytes, source_id: str, session_id: str, session_revision: int) -> Dict[str, Any]:
+        """Persist the source, consent generation, and graph revision a lifecycle call must match."""
+
+        import hashlib
+
+        from mediator.hook_runtime import LIFECYCLE_HOOKS, hook_runtime_identity
+
+        resolved = str(user_id or DEFAULT_USER_ID)
+        if not isinstance(source, (bytes, bytearray)) or not source:
+            raise WorkspacePersistenceError("Lifecycle source is empty.", code="source_binding_mismatch", public_status="recoverable")
+        if type(source_id) is not str or not source_id.strip():
+            raise WorkspacePersistenceError("Lifecycle source id is missing.", code="malformed_binding", public_status="recoverable")
+        if type(session_id) is not str or not session_id.strip():
+            raise WorkspacePersistenceError("Lifecycle session is missing.", code="malformed_binding", public_status="recoverable")
+        if type(session_revision) is not int or isinstance(session_revision, bool) or session_revision < 0:
+            raise WorkspacePersistenceError("Lifecycle session revision is missing.", code="malformed_binding", public_status="recoverable")
+        state = self._load_state(resolved)
+        revision = state.get("mediator_graph_revision")
+        if type(revision) is not str or not revision:
+            raise WorkspacePersistenceError("Lifecycle graph revision is missing.", code="stale_revision", public_status="recoverable")
+        prior = state.get("lifecycle_hook_consent") if isinstance(state.get("lifecycle_hook_consent"), dict) else {}
+        raw_generation = prior.get("generation")
+        generation = raw_generation + 1 if type(raw_generation) is int and not isinstance(raw_generation, bool) and raw_generation >= 0 else 1
+        digest = hashlib.sha256(bytes(source)).hexdigest()
+        state["lifecycle_source"] = {"source_id": source_id.strip(), "content_hash": digest, "byte_length": len(source)}
+        state["lifecycle_hook_consent"] = {
+            "contract": "lifecycle_hook_consent_v1",
+            "user_id": resolved,
+            "case_id": _state_case_id(state, resolved),
+            "generation": generation,
+            "revoked": False,
+            "hooks": [row["hook"] for row in LIFECYCLE_HOOKS],
+        }
+        state["lifecycle_session"] = {"session_id": session_id.strip(), "session_revision": session_revision}
+        self._save_state(state)
+        slot = self._mediator_host_slot(resolved)
+        slot["lifecycle_source"] = bytes(source)
+        return {
+            "source_id": source_id.strip(),
+            "content_hash": digest,
+            "runtime_id": hook_runtime_identity(),
+            "owner_id": resolved,
+            "case_id": _state_case_id(state, resolved),
+            "consent_generation": generation,
+            "revision": revision,
+            "session_id": session_id.strip(),
+            "session_revision": session_revision,
+        }
+
+    def revoke_lifecycle_hook_consent(self, user_id: Optional[str]) -> Dict[str, Any]:
+        resolved = str(user_id or DEFAULT_USER_ID)
+        state = self._load_state(resolved)
+        consent = dict(state.get("lifecycle_hook_consent") or {})
+        consent["revoked"] = True
+        state["lifecycle_hook_consent"] = consent
+        self._save_state(state)
+        return {"revoked": True, "generation": consent.get("generation")}
+
+    def _lifecycle_gate(self, user_id: str, hook: str, bindings: Mapping[str, Any], payload: Any) -> Optional[str]:
+        from mediator.hook_runtime import LEGAL_EVIDENCE_OPERATIONS, UNSUPPORTED_OPTIONAL_HOOKS, _lifecycle_binding_code
+
+        code = _lifecycle_binding_code(bindings)
+        if code:
+            return code
+        if bindings["owner_id"] != user_id:
+            return "wrong_owner"
+        state = self._load_state(user_id)
+        case_id = _state_case_id(state, user_id)
+        if bindings["case_id"] != case_id:
+            return "wrong_case"
+        if bindings["revision"] != state.get("mediator_graph_revision"):
+            return "stale_revision"
+        session = state.get("lifecycle_session") if isinstance(state.get("lifecycle_session"), dict) else {}
+        if bindings["session_id"] != session.get("session_id") or bindings["session_revision"] != session.get("session_revision"):
+            return "stale_revision"
+        stored = state.get("lifecycle_source") if isinstance(state.get("lifecycle_source"), dict) else {}
+        slot = self._mediator_host_slot(user_id)
+        source = slot.get("lifecycle_source")
+        if not isinstance(source, (bytes, bytearray)) or stored.get("content_hash") != bindings["content_hash"] or stored.get("source_id") != bindings["source_id"]:
+            return "source_binding_mismatch"
+        if hashlib.sha256(bytes(source)).hexdigest() != bindings["content_hash"]:
+            return "source_binding_mismatch"
+        if any(row["hook"] == hook for row in UNSUPPORTED_OPTIONAL_HOOKS):
+            return None
+        consent = state.get("lifecycle_hook_consent") if isinstance(state.get("lifecycle_hook_consent"), dict) else {}
+        if hook in LEGAL_EVIDENCE_OPERATIONS:
+            operation_consent = state.get("mediator_operation_consent") if isinstance(state.get("mediator_operation_consent"), dict) else None
+            if operation_consent is None:
+                return None
+            if operation_consent.get("revoked") is True:
+                return None
+            if bindings["consent_generation"] != consent.get("generation"):
+                return "consent_missing"
+        else:
+            if not consent or consent.get("revoked") is True:
+                return "consent_revoked" if consent.get("revoked") is True else "consent_missing"
+            if bindings["consent_generation"] != consent.get("generation"):
+                return "consent_missing"
+            if hook not in set(consent.get("hooks") or []):
+                return "consent_missing"
+        if isinstance(payload, Mapping):
+            if payload.get("actor_id") not in (None, user_id) or payload.get("user_id") not in (None, user_id):
+                return "wrong_owner"
+            if payload.get("case_id") not in (None, case_id) or payload.get("complaint_id") not in (None, case_id):
+                return "wrong_case"
+            narrative = payload.get("narrative")
+            if type(narrative) is str and narrative.encode("utf-8") != bytes(source):
+                return "source_binding_mismatch"
+            raw_source = payload.get("source")
+            if isinstance(raw_source, (bytes, bytearray)) and bytes(raw_source) != bytes(source):
+                return "source_binding_mismatch"
+            if type(payload.get("source_sha256")) is str and payload.get("source_sha256") != bindings["content_hash"]:
+                return "source_binding_mismatch"
+            passages = payload.get("admitted_passages")
+            if isinstance(passages, list) and passages:
+                texts = [item.get("text") for item in passages if isinstance(item, Mapping)]
+                if bytes(source).decode("utf-8") not in texts:
+                    return "source_binding_mismatch"
+            asset_root = payload.get("asset_root")
+            asset_name = payload.get("offline_asset")
+            if type(asset_root) is str and type(asset_name) is str and asset_name:
+                asset_path = Path(asset_root) / asset_name
+                if asset_path.is_file() and asset_path.read_bytes() != bytes(source):
+                    return "source_binding_mismatch"
+            source_refs = payload.get("source_refs")
+            if isinstance(source_refs, list) and source_refs:
+                hashes = [item.get("content_hash") for item in source_refs if isinstance(item, Mapping)]
+                if bindings["content_hash"] not in hashes:
+                    return "source_binding_mismatch"
+        return None
+
+    def exercise_lifecycle_hook(
+        self,
+        user_id: Optional[str],
+        hook: str,
+        *,
+        bindings: Mapping[str, Any],
+        payload: Any,
+        now: Any = None,
+        legal_context: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Exercise one real hook or registered operation under saved lifecycle bindings.
+
+        Caller booleans, receipts, and handler flags are not arguments. A missing
+        required capability stays an unavailable dependency failure.
+        """
+
+        from mediator.hook_runtime import (
+            LEGAL_EVIDENCE_OPERATIONS,
+            _lifecycle_base,
+            prove_lifecycle_hook_outcome,
+        )
+
+        resolved = str(user_id or DEFAULT_USER_ID)
+        gate = self._lifecycle_gate(resolved, hook if type(hook) is str else "", bindings, payload)
+        if gate:
+            refused = _lifecycle_base(hook if type(hook) is str else "", bindings if isinstance(bindings, Mapping) else None, status="refused", code=gate)
+            refused["dependency_failure"] = False
+            refused["workflow_invoked"] = False
+            return refused
+        if hook in LEGAL_EVIDENCE_OPERATIONS:
+            if not isinstance(payload, Mapping) or not isinstance(legal_context, Mapping) or now is None:
+                refused = _lifecycle_base(hook, bindings, status="refused", code="malformed_binding", workflow="dispatch_public_mediator_operation")
+                refused["dependency_failure"] = False
+                return refused
+            result = self.dispatch_public_mediator_operation(
+                resolved,
+                payload,
+                session_id=str(bindings["session_id"]),
+                session_revision=int(bindings["session_revision"]),
+                now=now,
+                source_bindings=[{"source_id": bindings["source_id"], "content_hash": bindings["content_hash"]}],
+                legal_context=legal_context,
+                purpose=hook,
+            )
+            outcome = _lifecycle_base(hook, bindings, status=str(result.get("status") or "refused"), code=str(result.get("code") or "refused"), workflow="dispatch_public_mediator_operation")
+            outcome["workflow_invoked"] = True
+            outcome["writes"] = result.get("writes") if type(result.get("writes")) is int else 0
+            outcome["effect_dispatched"] = result.get("effect_dispatched") is True
+            outcome["storage_invoked"] = result.get("storage_invoked") is True
+            outcome["provider_invoked"] = result.get("provider_invoked") is True
+            outcome["late"] = result.get("late") is True
+            outcome["proof"] = False
+            outcome["effect"] = outcome["status"] == "successful" and outcome["writes"] >= 1 and outcome["effect_dispatched"] is True and outcome["provider_invoked"] is False
+            outcome["activated"] = outcome["effect"] is True
+            outcome["dependency_failure"] = outcome["status"] == "unavailable"
+            return outcome
+        return prove_lifecycle_hook_outcome(hook, payload, bindings)
+
     def dispatch_public_mediator_operation(
         self,
         user_id: Optional[str],

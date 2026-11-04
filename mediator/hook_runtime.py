@@ -4089,6 +4089,310 @@ def ground_formal_neurosymbolic_analysis(payload: Mapping[str, Any]) -> dict[str
     }
 
 
+def hook_runtime_identity() -> str:
+    """Stable runtime binding. A caller label is not this identity."""
+
+    return "complaint-hook-runtime:" + HOOK_CONTEXT_SCHEMA
+
+
+LIFECYCLE_BINDING_FIELDS = (
+    "source_id",
+    "content_hash",
+    "runtime_id",
+    "owner_id",
+    "case_id",
+    "consent_generation",
+    "revision",
+    "session_id",
+    "session_revision",
+)
+
+# The thirteen constructor hooks and the workflow that actually performs each one.
+LIFECYCLE_HOOKS = (
+    {"hook": "LegalClassificationHook", "workflow": "qualify_grounded_legal_hooks", "required": True},
+    {"hook": "StatuteRetrievalHook", "workflow": "qualify_grounded_legal_hooks", "required": True},
+    {"hook": "SummaryJudgmentHook", "workflow": "qualify_grounded_legal_hooks", "required": True},
+    {"hook": "QuestionGenerationHook", "workflow": "qualify_grounded_legal_hooks", "required": True},
+    {"hook": "EvidenceStorageHook", "workflow": "qualify_private_evidence_hooks", "required": True},
+    {"hook": "EvidenceStateHook", "workflow": "qualify_private_evidence_hooks", "required": True},
+    {"hook": "EvidenceAnalysisHook", "workflow": "qualify_private_evidence_hooks", "required": True},
+    {"hook": "ClaimSupportHook", "workflow": "qualify_claim_support_and_legal_authority", "required": True},
+    {"hook": "LegalAuthoritySearchHook", "workflow": "qualify_claim_support_and_legal_authority", "required": True},
+    {"hook": "LegalAuthorityStorageHook", "workflow": "qualify_claim_support_and_legal_authority", "required": True},
+    {"hook": "LegalAuthorityAnalysisHook", "workflow": "qualify_claim_support_and_legal_authority", "required": True},
+    {"hook": "WebEvidenceSearchHook", "workflow": "qualify_web_evidence_hooks", "required": True},
+    {"hook": "WebEvidenceIntegrationHook", "workflow": "qualify_web_evidence_hooks", "required": True},
+)
+
+UNSUPPORTED_OPTIONAL_HOOKS = (
+    {
+        "hook": "KnowledgeGraphExtractor.extract_enhanced_knowledge_graph",
+        "qualification": "unsupported",
+        "reason": "Present on the pinned datasets checkout and left unqualified. Calling it is not activation.",
+    },
+)
+
+_LIFECYCLE_BY_HOOK = {row["hook"]: row for row in LIFECYCLE_HOOKS}
+
+
+def _lifecycle_binding_code(bindings: Any) -> Optional[str]:
+    if not isinstance(bindings, Mapping) or isinstance(bindings, (str, bytes)):
+        return "malformed_binding"
+    if set(bindings) != set(LIFECYCLE_BINDING_FIELDS):
+        return "malformed_binding"
+    source_id = bindings.get("source_id")
+    content_hash = bindings.get("content_hash")
+    runtime_id = bindings.get("runtime_id")
+    owner_id = bindings.get("owner_id")
+    case_id = bindings.get("case_id")
+    generation = bindings.get("consent_generation")
+    revision = bindings.get("revision")
+    session_id = bindings.get("session_id")
+    session_revision = bindings.get("session_revision")
+    if type(source_id) is not str or not source_id.strip() or len(source_id) > 128:
+        return "malformed_binding"
+    if type(content_hash) is not str or len(content_hash) != 64 or any(char not in "0123456789abcdef" for char in content_hash):
+        return "malformed_binding"
+    if runtime_id != hook_runtime_identity():
+        return "runtime_mismatch"
+    if type(owner_id) is not str or not owner_id.strip() or type(case_id) is not str or not case_id.strip():
+        return "malformed_binding"
+    if type(generation) is not int or isinstance(generation, bool) or generation < 0:
+        return "malformed_binding"
+    if type(revision) is not str or not revision.strip() or len(revision) > 160:
+        return "malformed_binding"
+    if type(session_id) is not str or not session_id.strip() or len(session_id) > 128:
+        return "malformed_binding"
+    if type(session_revision) is not int or isinstance(session_revision, bool) or session_revision < 0:
+        return "malformed_binding"
+    return None
+
+
+def _lifecycle_public_bindings(bindings: Mapping[str, Any]) -> dict[str, Any]:
+    return {field: bindings[field] for field in LIFECYCLE_BINDING_FIELDS}
+
+
+def _lifecycle_base(hook: str, bindings: Mapping[str, Any] | None, *, status: str, code: str, workflow: str = "") -> dict[str, Any]:
+    return {
+        "hook": hook,
+        "workflow": workflow,
+        "status": status,
+        "code": code,
+        "effect": False,
+        "activated": False,
+        "workflow_invoked": False,
+        "provider_invoked": False,
+        "handler_enabled_by_caller": False,
+        "writes": 0,
+        "proof": False,
+        "legal_sufficiency": False,
+        "bindings": _lifecycle_public_bindings(bindings) if isinstance(bindings, Mapping) and _lifecycle_binding_code(bindings) is None else {},
+    }
+
+
+def _lifecycle_effect_fields(hook: str, receipt: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the hook's own effect. Registry presence is not an effect."""
+
+    fields: dict[str, Any] = {"effect": False, "activated": False, "writes": 0}
+    if hook == "LegalClassificationHook":
+        classification = receipt.get("classification") if isinstance(receipt.get("classification"), Mapping) else {}
+        fields.update({
+            "record_kind": classification.get("record_kind"),
+            "jurisdiction": classification.get("jurisdiction"),
+            "creates_law": classification.get("creates_law") is True,
+            "effect": classification.get("record_kind") == "classifier_suggestion" and classification.get("creates_law") is False and bool(classification.get("jurisdiction")),
+            "activated": receipt.get("status") == "qualified",
+        })
+    elif hook == "StatuteRetrievalHook":
+        discovery = receipt.get("statute_discovery") if isinstance(receipt.get("statute_discovery"), Mapping) else {}
+        citations = list(discovery.get("citations") or [])
+        fields.update({
+            "citations": citations,
+            "discovery_only": discovery.get("discovery_only") is True,
+            "tool": discovery.get("tool"),
+            "effect": discovery.get("discovery_only") is True and discovery.get("creates_law") is False and bool(citations),
+            "activated": receipt.get("status") == "qualified" and discovery.get("status") != "not_called",
+        })
+    elif hook == "SummaryJudgmentHook":
+        count = receipt.get("legal_element_count") if type(receipt.get("legal_element_count")) is int else 0
+        fields.update({
+            "legal_element_count": count,
+            "model_text_created_law": receipt.get("model_text_created_law") is True,
+            "effect": count >= 1 and receipt.get("model_text_created_law") is False and receipt.get("default_taxonomy_created_law") is False,
+            "activated": receipt.get("status") == "qualified" and count >= 1,
+        })
+    elif hook == "QuestionGenerationHook":
+        inquiries = receipt.get("inquiries") if isinstance(receipt.get("inquiries"), list) else []
+        finite = bool(inquiries) and all(isinstance(item, Mapping) and item.get("finite") is True and item.get("creates_law") is False for item in inquiries)
+        fields.update({
+            "inquiry_count": len(inquiries),
+            "inquiry_record_kinds": [item.get("record_kind") for item in inquiries if isinstance(item, Mapping)],
+            "legal_element_count": receipt.get("legal_element_count") if type(receipt.get("legal_element_count")) is int else 0,
+            "effect": finite and receipt.get("status") == "qualified",
+            "activated": finite,
+        })
+    elif hook == "EvidenceStorageHook":
+        fields.update({
+            "storage_owner": receipt.get("storage_owner"),
+            "evidence_record_id": receipt.get("evidence_record_id"),
+            "plaintext_persisted": receipt.get("plaintext_persisted") is True,
+            "writes": receipt.get("writes") if type(receipt.get("writes")) is int else 0,
+            "effect": receipt.get("status") == "qualified" and receipt.get("storage_owner") == "EvidenceStorageHook" and receipt.get("plaintext_persisted") is False and bool(receipt.get("evidence_record_id")),
+            "activated": receipt.get("status") == "qualified",
+        })
+    elif hook == "EvidenceStateHook":
+        count = receipt.get("evidence_count") if type(receipt.get("evidence_count")) is int else 0
+        fields.update({
+            "state_owner": receipt.get("state_owner"),
+            "evidence_count": count,
+            "effect": receipt.get("state_owner") == "EvidenceStateHook" and count >= 1,
+            "activated": count >= 1,
+        })
+    elif hook == "EvidenceAnalysisHook":
+        evidence_ids = list(receipt.get("analysis_evidence_ids") or [])
+        fields.update({
+            "analysis_owner": receipt.get("analysis_owner"),
+            "analysis_evidence_ids": evidence_ids,
+            "annotation_converted_to_evidence": receipt.get("annotation_converted_to_evidence") is True,
+            "effect": receipt.get("analysis_owner") == "EvidenceAnalysisHook" and bool(evidence_ids) and receipt.get("annotation_converted_to_evidence") is False,
+            "activated": bool(evidence_ids),
+        })
+    elif hook == "ClaimSupportHook":
+        claim = receipt.get("claim_support") if isinstance(receipt.get("claim_support"), Mapping) else {}
+        links = claim.get("verified_links") if isinstance(claim.get("verified_links"), list) else []
+        link = links[0] if links and isinstance(links[0], Mapping) else {}
+        fields.update({
+            "lineage_id": link.get("lineage_id"),
+            "record_id": link.get("record_id"),
+            "verified_support": receipt.get("verified_support") is True,
+            "effect": receipt.get("verified_support") is True and bool(link.get("lineage_id")) and link.get("record_id") not in (None, -1),
+            "activated": receipt.get("verified_support") is True,
+        })
+    elif hook == "LegalAuthoritySearchHook":
+        materials = receipt.get("materials") if isinstance(receipt.get("materials"), Mapping) else {}
+        hits = materials.get("search_hits") if isinstance(materials.get("search_hits"), list) else []
+        stale = materials.get("stale_cache") if isinstance(materials.get("stale_cache"), list) else []
+        fields.update({
+            "search_owner": materials.get("owner"),
+            "search_hit_count": len(hits),
+            "stale_retired": any(isinstance(item, Mapping) and item.get("projection_status") == "retired" for item in stale),
+            "search_hit_governing": receipt.get("search_hit_governing") is True or materials.get("governing_authority") is True,
+            "effect": materials.get("owner") == "LegalAuthoritySearchHook" and bool(hits) and materials.get("governing_authority") is False and receipt.get("search_hit_governing") is False,
+            "activated": materials.get("owner") == "LegalAuthoritySearchHook" and receipt.get("status") == "qualified",
+        })
+    elif hook == "LegalAuthorityStorageHook":
+        storage = receipt.get("storage") if isinstance(receipt.get("storage"), Mapping) else {}
+        stored = storage.get("stored_passages") if isinstance(storage.get("stored_passages"), list) else []
+        row = stored[0] if stored and isinstance(stored[0], Mapping) else {}
+        fields.update({
+            "stored_record_id": row.get("record_id"),
+            "stored_status": row.get("status"),
+            "search_hits_stored": storage.get("search_hits_stored"),
+            "effect": row.get("status") == "stored" and row.get("record_id") not in (None, -1) and storage.get("search_hits_stored") == 0,
+            "activated": row.get("status") == "stored",
+        })
+    elif hook == "LegalAuthorityAnalysisHook":
+        count = receipt.get("governing_count") if type(receipt.get("governing_count")) is int else 0
+        fields.update({
+            "governing_count": count,
+            "legal_sufficiency": False,
+            "effect": count >= 1 and receipt.get("governing_authority") is True and receipt.get("legal_sufficiency") is False,
+            "activated": count >= 1,
+        })
+    elif hook == "WebEvidenceSearchHook":
+        acquisition = receipt.get("acquisition") if isinstance(receipt.get("acquisition"), Mapping) else {}
+        fields.update({
+            "custody_id": acquisition.get("custody_id"),
+            "content_sha256": acquisition.get("content_sha256"),
+            "network_invoked": receipt.get("network_invoked") is True,
+            "effect": acquisition.get("stage") == "acquisition" and acquisition.get("support_status") == "not_support" and bool(acquisition.get("custody_id")) and receipt.get("network_invoked") is False and receipt.get("fact_adopted") is False,
+            "activated": acquisition.get("stage") == "acquisition",
+        })
+    elif hook == "WebEvidenceIntegrationHook":
+        review = receipt.get("review") if isinstance(receipt.get("review"), Mapping) else {}
+        support = receipt.get("support") if isinstance(receipt.get("support"), Mapping) else {}
+        adopted = support.get("support_status") == "explicit_support" and support.get("fact_adopted") is False
+        adoption_refused = support.get("code") == "automatic_fact_adoption_refused"
+        fields.update({
+            "review_status": review.get("review_status"),
+            "support_status": support.get("support_status") or review.get("support_status"),
+            "support_code": support.get("code"),
+            "fact_adopted": receipt.get("fact_adopted") is True,
+            "effect": adopted and receipt.get("fact_adopted") is False and receipt.get("private_complaint_egress") is False and not adoption_refused,
+            "activated": adopted and not adoption_refused,
+        })
+    fields["effect"] = fields["effect"] is True and receipt.get("provider_invoked") is not True
+    if receipt.get("status") in {"refused", "unavailable"}:
+        fields["effect"] = False
+        fields["activated"] = False
+    return fields
+
+
+def prove_lifecycle_hook_outcome(hook: Any, payload: Any, bindings: Any) -> dict[str, Any]:
+    """Run one of the thirteen hooks through its real workflow.
+
+    The workspace entry point checks the saved owner, consent, source, and
+    revision before this call. A caller flag inside the payload is not a
+    substitute for that binding. Unsupported optional symbols stay unavailable.
+    """
+
+    hook_name = hook if type(hook) is str else ""
+    binding_code = _lifecycle_binding_code(bindings)
+    if binding_code:
+        refused = _lifecycle_base(hook_name, bindings if isinstance(bindings, Mapping) else None, status="refused", code=binding_code)
+        refused["dependency_failure"] = False
+        return refused
+    optional = next((row for row in UNSUPPORTED_OPTIONAL_HOOKS if row["hook"] == hook_name), None)
+    if optional is not None:
+        refused = _lifecycle_base(hook_name, bindings, status="unavailable", code="unsupported_optional", workflow="not_activated")
+        refused["qualification"] = "unsupported"
+        refused["dependency_failure"] = False
+        refused["reason"] = optional["reason"]
+        return refused
+    row = _LIFECYCLE_BY_HOOK.get(hook_name)
+    if row is None:
+        if hook_name in LEGAL_EVIDENCE_OPERATIONS:
+            refused = _lifecycle_base(hook_name, bindings, status="refused", code="workspace_entry_required", workflow="dispatch_public_mediator_operation")
+            refused["dependency_failure"] = False
+            return refused
+        refused = _lifecycle_base(hook_name, bindings, status="refused", code="unknown_hook")
+        refused["dependency_failure"] = False
+        return refused
+    workflow = str(row["workflow"])
+    if workflow == "qualify_grounded_legal_hooks":
+        receipt = qualify_grounded_legal_hooks(payload if isinstance(payload, Mapping) else {"malformed": True})
+    elif workflow == "qualify_private_evidence_hooks":
+        if not isinstance(payload, Mapping):
+            receipt = {"status": "refused", "code": "malformed_input", "provider_invoked": False, "writes": 0}
+        else:
+            receipt = qualify_private_evidence_hooks(**dict(payload))
+    elif workflow == "qualify_claim_support_and_legal_authority":
+        receipt = qualify_claim_support_and_legal_authority(payload if isinstance(payload, Mapping) else payload)
+    else:
+        receipt = qualify_web_evidence_hooks(payload if isinstance(payload, Mapping) else payload)
+    if not isinstance(receipt, Mapping):
+        failed = _lifecycle_base(hook_name, bindings, status="unavailable", code="missing_capability", workflow=workflow)
+        failed["workflow_invoked"] = True
+        failed["dependency_failure"] = True
+        return failed
+    outcome = _lifecycle_base(
+        hook_name,
+        bindings,
+        status=str(receipt.get("status") or "unavailable"),
+        code=str(receipt.get("code") or "missing_capability"),
+        workflow=workflow,
+    )
+    outcome["workflow_invoked"] = True
+    outcome["provider_invoked"] = receipt.get("provider_invoked") is True
+    outcome["writes"] = receipt.get("writes") if type(receipt.get("writes")) is int else 0
+    outcome["dependency_failure"] = outcome["status"] == "unavailable"
+    projected = _lifecycle_effect_fields(hook_name, receipt)
+    outcome.update(projected)
+    outcome["receipt_status"] = receipt.get("status")
+    outcome["receipt_code"] = receipt.get("code")
+    return outcome
+
+
 def qualify_web_evidence_hooks(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Public workflow for bounded web acquisition, review, and explicit adoption.
 
