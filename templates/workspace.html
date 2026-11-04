@@ -3423,6 +3423,7 @@
         #complaint-case-shell { position: static; }
     </style>
     <link id="complaint-evidence-style" rel="stylesheet" href="/static/complaint_evidence.css">
+    <link id="complaint-facts-style" rel="stylesheet" href="/static/complaint_facts.css">
     <link id="complaint-conversation-style" rel="stylesheet" href="/static/complaint_conversation.css">
     <style id="complaint-presentation-style">
         html[data-workspace-presentation="chat-only"] [data-tab-panel="intake"],
@@ -4972,6 +4973,67 @@
                 </section>
 
                 <section class="tab-panel" data-tab-panel="review">
+                    <section id="complaint-facts" class="complaint-facts" data-task="CIMP-UX-24" data-mode="list" data-state="empty" data-graph-count="0" data-graph-writes="0" data-graph-id-changed="false" data-corroboration-fabricated="false" data-unanswered-count="0" aria-labelledby="complaint-facts-title">
+                        <h2 id="complaint-facts-title">Facts and timeline</h2>
+                        <p>List and timeline read the current interview projection. Graph view is the same projection, not a second graph. A recorded fact is not corroborated unless this case explicitly adopted an evidence span.</p>
+                        <div class="complaint-facts-modes" role="radiogroup" aria-label="Facts display">
+                            <button type="button" id="complaint-facts-mode-list" data-facts-mode="list" aria-pressed="true">List</button>
+                            <button type="button" id="complaint-facts-mode-timeline" data-facts-mode="timeline" aria-pressed="false" tabindex="-1">Timeline</button>
+                            <button type="button" id="complaint-facts-mode-graph" data-facts-mode="graph" aria-pressed="false" tabindex="-1">Graph</button>
+                        </div>
+                        <div class="complaint-facts-actions">
+                            <button type="button" class="secondary" id="complaint-facts-refresh">Refresh facts</button>
+                        </div>
+                        <p id="complaint-facts-status" role="status">Facts have not been loaded.</p>
+                        <h3>Unanswered questions</h3>
+                        <ul id="complaint-facts-questions" class="complaint-facts-questions" aria-label="Unanswered questions"></ul>
+                        <div class="complaint-facts-state" id="complaint-facts-empty">
+                            <p>No recorded facts are loaded for this case.</p>
+                        </div>
+                        <div class="complaint-facts-state" id="complaint-facts-error" hidden>
+                            <p>The factual projection could not be read. Refresh after the case is available. Nothing here was marked corroborated.</p>
+                        </div>
+                        <div class="complaint-facts-state" id="complaint-facts-locked" hidden>
+                            <p>The case key is locked. Facts stay hidden until an authorized unlock.</p>
+                        </div>
+                        <ol id="complaint-facts-list" class="complaint-facts-list" aria-label="Facts list"></ol>
+                        <ol id="complaint-facts-timeline" class="complaint-facts-timeline" aria-label="Facts timeline" hidden></ol>
+                        <div id="complaint-facts-graph" class="complaint-facts-graph" data-role="facts-graph" data-graph-id="" hidden>
+                            <ol id="complaint-facts-graph-nodes" aria-label="Facts graph"></ol>
+                            <ul id="complaint-facts-graph-links" class="complaint-facts-graph-links" aria-label="Contradictions"></ul>
+                        </div>
+                        <article id="complaint-facts-provenance" class="complaint-facts-provenance" tabindex="-1" hidden aria-labelledby="complaint-facts-provenance-title">
+                            <h3 id="complaint-facts-provenance-title">Fact</h3>
+                            <dl>
+                                <dt>Source</dt>
+                                <dd id="complaint-facts-source"></dd>
+                                <dt>Version</dt>
+                                <dd id="complaint-facts-version"></dd>
+                                <dt>Span</dt>
+                                <dd id="complaint-facts-span"></dd>
+                                <dt>Uncertainty</dt>
+                                <dd id="complaint-facts-uncertainty"></dd>
+                                <dt>Corroboration</dt>
+                                <dd id="complaint-facts-corroboration"></dd>
+                            </dl>
+                            <p id="complaint-facts-target"></p>
+                            <label for="complaint-facts-replacement">Replacement fact
+                                <textarea id="complaint-facts-replacement"></textarea>
+                            </label>
+                            <label for="complaint-facts-graph-revision">Expected graph revision
+                                <input id="complaint-facts-graph-revision" type="text" autocomplete="off">
+                            </label>
+                            <label for="complaint-facts-session-revision">Expected session revision
+                                <input id="complaint-facts-session-revision" type="text" inputmode="numeric" autocomplete="off">
+                            </label>
+                            <div class="complaint-facts-actions">
+                                <button type="button" id="complaint-facts-correct">Apply correction through the interview</button>
+                                <button type="button" id="complaint-facts-unknown">I don't know</button>
+                                <button type="button" class="secondary" id="complaint-facts-close">Close fact detail</button>
+                            </div>
+                            <p id="complaint-facts-edit-status" role="status" data-status="" data-graph-id-changed="false" data-corroboration-fabricated="false" data-gap-preserved="false"></p>
+                        </article>
+                    </section>
                     <div class="stage-banner">
                         <div class="stage-banner-copy">
                             <strong>Stage 3: Review decides whether the draft is merely generated or actually supported.</strong>
@@ -6388,6 +6450,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
     </dialog>
     <script src="/static/complaint_evidence.js"></script>
     <script src="/static/complaint_conversation.js"></script>
+    <script src="/static/complaint_facts.js"></script>
     <script>
         const { ComplaintMcpClient } = window.ComplaintMcpSdk;
         const operationSurfaceAttempts = {graph: 0, research: 0, collaboration: 0};
