@@ -564,7 +564,7 @@ Implementation instructions:
 
 ## CIMP-UX-19 Derive classification choices from current case context
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
