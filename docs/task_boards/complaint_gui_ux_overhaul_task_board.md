@@ -595,7 +595,7 @@ Implementation instructions:
 
 ## CIMP-UX-20 Create explicit evidence-to-fact and requirement links
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
