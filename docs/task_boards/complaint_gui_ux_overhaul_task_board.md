@@ -1835,7 +1835,7 @@ Implementation instructions:
 
 ## CIMP-UX-60 Qualify recipient-bound collaboration key lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
