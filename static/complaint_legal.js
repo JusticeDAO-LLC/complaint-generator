@@ -160,7 +160,7 @@
         bindProvenance();
     }
 
-    var provenance = {requirements: [], links: [], facts: [], evidence: [], suggestions: [], contradictions: [], selected: '', submittedFacts: []};
+    var provenance = {requirements: [], links: [], facts: [], evidence: [], suggestions: [], contradictions: [], selected: '', submittedFacts: [], binding: null};
 
     function text(value) {
         return value === undefined || value === null ? '' : String(value);
@@ -411,12 +411,17 @@
             button.dataset.passageId = text(requirement.passage_id);
             button.dataset.admittedLaw = requirement.admitted_law === true ? 'true' : 'false';
             button.dataset.supportState = text(requirement.support_state || 'unknown');
+            button.dataset.current = 'true';
+            button.dataset.conclusionCurrent = 'true';
             button.dataset.legalSufficiency = requirement.legal_sufficiency === true ? 'true' : 'false';
             button.setAttribute('aria-pressed', provenance.selected === requirement.id ? 'true' : 'false');
             var title = document.createElement('strong');
-            title.textContent = requirement.name || requirement.rule_text || 'Requirement';
+            var span = requirement.source_span && typeof requirement.source_span === 'object' ? requirement.source_span : {};
+            title.textContent = text(requirement.rule_text || requirement.description || span.text || requirement.name) || 'Requirement';
             var meta = document.createElement('span');
-            meta.textContent = ' Support ' + text(requirement.support_state || 'unknown') + '. Sufficiency ' + (requirement.legal_sufficiency === true ? 'true' : 'false') + '.';
+            var citation = text(requirement.citation || requirement.name);
+            meta.textContent = (citation && citation !== title.textContent ? ' ' + citation + '.' : '')
+                + ' Support ' + text(requirement.support_state || 'unknown') + '. Sufficiency ' + (requirement.legal_sufficiency === true ? 'true' : 'false') + '.';
             button.appendChild(title);
             button.appendChild(document.createTextNode(' '));
             button.appendChild(meta);
@@ -458,6 +463,179 @@
 
     function requirementId(item, index) {
         return text(item.requirement_id || item.passage_id || item.authority_id || ('requirement-' + index));
+    }
+
+    function ensureRetirement() {
+        var host = provenanceRoot();
+        if (!host || document.getElementById('legal-support-retirement')) return;
+        var section = document.createElement('section');
+        section.id = 'legal-support-retirement';
+        section.dataset.task = 'CIMP-UX-28';
+        section.dataset.state = 'current';
+        section.hidden = true;
+        var prompt = document.createElement('p');
+        prompt.id = 'legal-support-retirement-prompt';
+        prompt.dataset.bounded = 'true';
+        prompt.dataset.required = 'false';
+        var changed = document.createElement('p');
+        changed.id = 'legal-support-changed-context';
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.id = 'legal-support-refresh-review';
+        button.textContent = 'Review and refresh support';
+        var audit = document.createElement('ol');
+        audit.id = 'legal-support-audit';
+        audit.setAttribute('aria-label', 'Previous support versions');
+        section.appendChild(prompt);
+        section.appendChild(changed);
+        section.appendChild(button);
+        section.appendChild(audit);
+        host.appendChild(section);
+        button.addEventListener('click', function () { deriveProvenance({authorizedRefresh: true}); });
+    }
+
+    function evidenceFingerprint(factual) {
+        var rows = [].concat(
+            Array.isArray(factual && factual.adopted_evidence) ? factual.adopted_evidence : [],
+            Array.isArray(factual && factual.evidence_revisions) ? factual.evidence_revisions : []
+        );
+        return rows.map(function (item) {
+            var span = spanOf(item);
+            return [text(item.graph_entity_id || item.assertion_id), text(item.revision || item.version), span.text || text(item.text)].join(':');
+        }).filter(function (item) { return item !== '::'; }).join('|');
+    }
+
+    function fieldValue(id) {
+        var node = document.getElementById(id);
+        return node ? text(node.value).trim() : '';
+    }
+
+    function observedSupportContext(payload, factual, consentGeneration) {
+        var bound = payload && payload.bound_context && typeof payload.bound_context === 'object' ? payload.bound_context : {};
+        var observed = payload && payload.observed_context && typeof payload.observed_context === 'object' ? payload.observed_context : {};
+        var requirement = (payload && payload.requirements && payload.requirements[0]) || {};
+        return {
+            authority_version: fieldValue('legal-provenance-authority-version')
+                || text(observed.authority_version || requirement.authority_version || bound.authority_version),
+            passage_id: reviewedPassageId || text(requirement.passage_id),
+            effective_date: fieldValue('legal-context-applicable-law-date')
+                || text(observed.effective_date || bound.effective_date || requirement.effective_date),
+            as_of_date: fieldValue('legal-context-event-date')
+                || text(observed.as_of_date || bound.as_of_date || requirement.applicable_date),
+            jurisdiction: fieldValue('legal-context-jurisdiction')
+                || text(observed.jurisdiction || bound.jurisdiction || requirement.jurisdiction),
+            consent_generation: text(consentGeneration),
+            evidence_version: evidenceFingerprint(factual) || text(observed.evidence_version)
+        };
+    }
+
+    function contextDrift(previous, observed) {
+        if (!previous) return [];
+        return ['authority_version', 'passage_id', 'effective_date', 'as_of_date', 'jurisdiction', 'consent_generation', 'evidence_version'].filter(function (field) {
+            return previous[field] && observed[field] && previous[field] !== observed[field];
+        });
+    }
+
+    function retirePayload(payload, changed) {
+        var copy = Object.assign({}, payload);
+        var requirements = Array.isArray(payload.requirements) ? payload.requirements : [];
+        var history = Array.isArray(payload.audit_history) ? payload.audit_history.slice() : [];
+        if (requirements.length) {
+            history.push({
+                version: text(payload.request_id || 'previous'),
+                current: false,
+                conclusion_current: false,
+                support_state: 'retired',
+                changed_context: changed,
+                requirements: requirements.map(function (item) {
+                    var row = Object.assign({}, item);
+                    row.support_state = 'retired';
+                    row.current = false;
+                    row.conclusion_current = false;
+                    row.legal_sufficiency = false;
+                    row.proof = false;
+                    return row;
+                })
+            });
+        }
+        copy.requirements = [];
+        copy.audit_history = history;
+        copy.support_retired = true;
+        copy.support_current = false;
+        copy.admitted_law = false;
+        copy.status = 'stale_support';
+        copy.changed_context = changed;
+        copy.refresh_review = payload.refresh_review && payload.refresh_review.prompt ? payload.refresh_review : {
+            bounded: true,
+            required: true,
+            prompt: 'Support tied to the previous context is retired. An authorized review can refresh it. The previous conclusion stays in the audit history.'
+        };
+        return copy;
+    }
+
+    function renderAudit(history) {
+        ensureRetirement();
+        var list = document.getElementById('legal-support-audit');
+        if (!list) return;
+        (Array.isArray(history) ? history : []).forEach(function (entry) {
+            (Array.isArray(entry.requirements) ? entry.requirements : []).forEach(function (requirement) {
+                var version = text(entry.version || requirement.passage_id || 'previous');
+                var span = requirement.source_span && typeof requirement.source_span === 'object' ? requirement.source_span : {};
+                var conclusion = text(requirement.rule_text || requirement.description || span.text || requirement.name);
+                var key = version + '|' + conclusion;
+                var duplicate = Array.prototype.some.call(list.children, function (child) { return child.dataset.auditKey === key; });
+                if (duplicate) return;
+                var item = document.createElement('li');
+                item.dataset.role = 'support-audit';
+                item.dataset.current = 'false';
+                item.dataset.conclusionCurrent = 'false';
+                item.dataset.supportState = 'retired';
+                item.dataset.version = version;
+                item.dataset.auditKey = key;
+                item.textContent = 'Previous version ' + version + ': ' + conclusion;
+                list.appendChild(item);
+            });
+        });
+    }
+
+    function showRetirement(payload, observed) {
+        ensureRetirement();
+        var section = document.getElementById('legal-support-retirement');
+        var prompt = document.getElementById('legal-support-retirement-prompt');
+        var changed = document.getElementById('legal-support-changed-context');
+        var review = payload.refresh_review || {};
+        var fields = Array.isArray(payload.changed_context) ? payload.changed_context : [];
+        if (section) {
+            section.hidden = payload.support_retired !== true;
+            section.dataset.state = payload.support_retired === true ? 'stale' : 'current';
+            section.dataset.supportCurrent = payload.support_current === true ? 'true' : 'false';
+            section.dataset.consentGeneration = text(observed && observed.consent_generation);
+            section.dataset.evidenceVersion = text(observed && observed.evidence_version);
+            section.dataset.authorityVersion = text(observed && observed.authority_version);
+            section.dataset.jurisdiction = text(observed && observed.jurisdiction);
+        }
+        if (prompt) {
+            prompt.dataset.bounded = 'true';
+            prompt.dataset.required = payload.support_retired === true ? 'true' : 'false';
+            prompt.textContent = payload.support_retired === true
+                ? text(review.prompt || 'Support is retired. Review and refresh it from the current admitted passage.')
+                : '';
+        }
+        if (changed) {
+            changed.dataset.changedContext = fields.join(',');
+            changed.textContent = fields.length ? 'Changed context: ' + fields.join(', ') + '.' : '';
+        }
+        renderAudit(payload.audit_history);
+        var support = document.getElementById('legal-provenance-support');
+        if (support && payload.support_retired === true) {
+            support.dataset.supportState = 'retired';
+            support.dataset.current = 'false';
+            support.dataset.conclusionCurrent = 'false';
+            support.textContent = 'Support: retired. The previous conclusion is audit history, not the current conclusion.';
+        } else if (support && Array.isArray(payload.requirements) && payload.requirements.length) {
+            support.dataset.current = 'true';
+            support.dataset.conclusionCurrent = 'true';
+        }
     }
 
     function applyProvenance(payload, factual, lawGraph) {
@@ -523,6 +701,13 @@
         renderRequirements();
         renderGaps(payload, lawGraph);
         renderLabels(provenance.requirements[0] || null);
+        if (payload.support_retired === true) {
+            paintProvenanceState('stale', 'Support is retired. The previous conclusion remains in the audit history and is not current.');
+            selectRequirement('');
+            showRetirement(payload, payload.observed_support || null);
+            return;
+        }
+        showRetirement(payload, payload.observed_support || null);
         if (!provenance.requirements.length) {
             paintProvenanceState(payload.status === 'empty' ? 'empty' : 'ready', payload.status === 'empty'
                 ? 'No derived requirement is stored. Missing inputs stay visible.'
@@ -552,9 +737,10 @@
             paintProvenanceState('empty', 'Select a case before reading requirement provenance.');
             return;
         }
-        var factual = {status: 'unavailable', user_statements: [], adopted_evidence: []};
+        var factual = {status: 'unavailable', user_statements: [], adopted_evidence: [], evidence_revisions: []};
         var lawGraph = null;
         var payload = null;
+        var consentGeneration = '';
         try {
             payload = await readJson('/api/legal-analysis/' + encodeURIComponent(id) + '/dependency-requirements');
         } catch (error) {
@@ -574,11 +760,32 @@
         } catch (error) {
             lawGraph = {error: text(error && (error.code || error.message)), requirements: [], factual_links: [], rejected_narratives: []};
         }
+        try {
+            var consent = await readJson('/api/cases/' + encodeURIComponent(id) + '/processing-consent');
+            consentGeneration = text(consent && consent.generation);
+        } catch (error) {
+            consentGeneration = '';
+        }
         if (activeCaseId() !== id) return;
+        var observed = observedSupportContext(payload, factual, consentGeneration);
+        var derivation = text(payload.request_id || payload.private_revision);
+        var sameDerivation = !!(provenance.binding && provenance.binding.request_id === derivation);
+        var drift = sameDerivation ? contextDrift(provenance.binding, observed) : [];
+        var changed = (Array.isArray(payload.changed_context) ? payload.changed_context : []).slice();
+        drift.forEach(function (field) { if (changed.indexOf(field) < 0) changed.push(field); });
+        if (changed.length && payload.support_retired !== true && Array.isArray(payload.requirements) && payload.requirements.length) {
+            payload = retirePayload(payload, changed);
+        } else if (payload.support_retired === true && changed.length) {
+            payload.changed_context = changed;
+        }
+        payload.observed_support = observed;
+        if (payload.support_retired !== true) {
+            provenance.binding = Object.assign({request_id: derivation}, observed);
+        }
         applyProvenance(payload, factual, lawGraph);
     }
 
-    async function deriveProvenance() {
+    async function deriveProvenance(options) {
         var id = activeCaseId();
         if (!client || !id) {
             paintProvenanceState('empty', 'Select a case before deriving a requirement.');
@@ -599,7 +806,7 @@
         var factText = text((document.getElementById('legal-provenance-fact-text') || {}).value).trim();
         provenance.submittedFacts = factId && factText ? [{id: factId, text: factText}] : [];
         var body = {
-            request_id: 'ux27-' + Date.now(),
+            request_id: (options && options.authorizedRefresh ? 'ux28-refresh-' : 'ux27-') + Date.now(),
             query: text((document.getElementById('legal-source-flow-query') || {}).value).trim(),
             offline_cache: cacheBody(),
             review_passage_id: reviewedPassageId,
@@ -609,6 +816,7 @@
             expected_session_revision: sessionRevision,
             facts: factId && factText ? [{fact_id: factId, text: factText}] : []
         };
+        if (options && options.authorizedRefresh) body.authorized_support_refresh = true;
         try {
             var derived = await client._request('/api/legal-analysis/' + encodeURIComponent(id) + '/dependency-requirements', {
                 method: 'POST',
@@ -631,9 +839,11 @@
         } catch (error) {
             var code = text(error && (error.code || error.message));
             var conflict = code.indexOf('revision_conflict') >= 0 || code.indexOf('409') >= 0 || code === 'http_409';
+            var host = provenanceRoot();
+            if (host) host.dataset.headMutated = 'false';
             paintProvenanceState(conflict ? 'conflict' : 'unavailable', conflict
-                ? 'The case revision changed. The stored requirement was not replaced.'
-                : 'Derivation was refused. Nothing new was admitted.');
+                ? 'The refresh was refused. The encrypted case head was not changed, and the previous conclusion stays in the audit history.'
+                : 'Derivation was refused. Nothing new was admitted and the encrypted case head was not changed.');
         }
     }
 
@@ -643,6 +853,7 @@
         refresh.dataset.bound = 'true';
         refresh.addEventListener('click', function () { loadProvenance(); });
         document.getElementById('legal-provenance-derive').addEventListener('click', function () { deriveProvenance(); });
+        ensureRetirement();
         ['legal-provenance-step-requirement', 'legal-provenance-step-passage', 'legal-provenance-step-assertion', 'legal-provenance-step-evidence'].forEach(function (id) {
             var button = document.getElementById(id);
             if (!button) return;
