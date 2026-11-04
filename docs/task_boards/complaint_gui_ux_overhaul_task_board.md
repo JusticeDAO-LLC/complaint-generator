@@ -781,7 +781,7 @@ Implementation instructions:
 
 ## CIMP-UX-26 Derive dependency requirements from admitted legal authorities
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
