@@ -1091,7 +1091,7 @@ Implementation instructions:
 
 ## CIMP-UX-36 Build a clear case conversation and message composer
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
