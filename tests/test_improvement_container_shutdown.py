@@ -1465,6 +1465,46 @@ def test_budget_exhausted_terminal_stop_closes_without_rearming_or_completing(mi
     assert (fixture.state / 'complaint_intake_supervisor_status.json').read_bytes() == before
 
 
+def _control_plane_reload_heartbeat(heartbeat):
+    current = '0123456789abcdef0123456789abcdef01234567'
+    assert current != heartbeat['control_plane_source_revision']
+    return {**heartbeat, 'status': 'control_plane_reload_required', 'daemon_pid': None,
+        'daemon_pid_alive': False, 'active_worker_count': 0, 'active_worker_pids': [],
+        'last_recycle_reason': 'control_plane_source_changed', 'last_exit_code': 137,
+        'control_plane_update_pending': True, 'control_plane_reload_deferred': False,
+        'control_plane_reload_attempt_budget_consumed': False,
+        'control_plane_reload_provider_invocation_consumed': False,
+        'control_plane_current_source_revision': current,
+        'control_plane_current_source_id': 'baguqeerareloadcurrentsourceidmustdifferfromloadedrevision'}
+
+
+def test_control_plane_reload_exit_closes_without_rearming_or_completing(missing_marker_campaign, docker):
+    fixture = missing_marker_campaign
+    heartbeat = _control_plane_reload_heartbeat(fixture.heartbeat)
+    runner._atomic_json(fixture.state / 'complaint_intake_supervisor_status.json', heartbeat)
+    before = (fixture.state / 'complaint_intake_supervisor_status.json').read_bytes()
+    result = runner.stop(fixture.state)
+    proof = result['container_shutdown']['process_closure']
+    assert result['status'] == 'stopped' and result['signalled'] is False
+    assert proof['source'] == 'owned_control_plane_reload_and_double_complete_proc_inventory'
+    assert proof['attempt_refunded'] is False and proof['completion_authority'] is False
+    assert result['container_shutdown']['attempt_refunded'] is False
+    assert result['container_shutdown']['completion_authority'] is False
+    assert not docker[0].effects
+    assert (fixture.state / 'complaint_intake_supervisor_status.json').read_bytes() == before
+
+
+def test_control_plane_reload_without_a_source_change_stays_open(missing_marker_campaign, docker):
+    fixture = missing_marker_campaign
+    heartbeat = _control_plane_reload_heartbeat(fixture.heartbeat)
+    heartbeat['control_plane_current_source_revision'] = heartbeat['control_plane_source_revision']
+    heartbeat['control_plane_current_source_id'] = heartbeat['control_plane_source_id']
+    runner._atomic_json(fixture.state / 'complaint_intake_supervisor_status.json', heartbeat)
+    result = runner.stop(fixture.state)
+    assert result['status'] == 'stop_incomplete' and result['signalled'] is False
+    assert not docker[0].calls and not docker[0].effects
+
+
 def test_budget_exhausted_restart_authority_remains_unclosed(missing_marker_campaign, docker):
     fixture = missing_marker_campaign
     heartbeat = _budget_terminal_heartbeat(fixture.heartbeat)

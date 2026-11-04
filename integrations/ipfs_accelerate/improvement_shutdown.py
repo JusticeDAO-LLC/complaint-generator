@@ -869,6 +869,35 @@ def _owned_attempt_budget_terminal(heartbeat: Mapping[str, Any]) -> bool:
         and task.get('attempt_count') == 3 for task in tasks)
 
 
+def _control_plane_reload_exit(heartbeat: Mapping[str, Any]) -> bool:
+    """A dead supervisor that stopped to reload a changed source, with no daemon."""
+    if not isinstance(heartbeat, Mapping):
+        return False
+    loaded = heartbeat.get('control_plane_source_revision')
+    current = heartbeat.get('control_plane_current_source_revision')
+    return bool(
+        heartbeat.get('status') == 'control_plane_reload_required'
+        and heartbeat.get('last_recycle_reason') == 'control_plane_source_changed'
+        and heartbeat.get('daemon_pid') is None
+        and heartbeat.get('daemon_pid_alive') is False
+        and heartbeat.get('active_worker_count') in (0, None)
+        and heartbeat.get('active_worker_pids') in ([], None)
+        and heartbeat.get('control_plane_update_pending') is True
+        and heartbeat.get('control_plane_reload_deferred') is False
+        and heartbeat.get('control_plane_reload_attempt_budget_consumed') is False
+        and heartbeat.get('control_plane_reload_provider_invocation_consumed') is False
+        and isinstance(loaded, str) and isinstance(current, str)
+        and re.fullmatch(r'[0-9a-f]{40}', loaded) is not None
+        and re.fullmatch(r'[0-9a-f]{40}', current) is not None
+        and loaded != current
+        and isinstance(heartbeat.get('control_plane_source_id'), str)
+        and isinstance(heartbeat.get('control_plane_current_source_id'), str)
+        and _TASK_CID.fullmatch(heartbeat['control_plane_source_id']) is not None
+        and _TASK_CID.fullmatch(heartbeat['control_plane_current_source_id']) is not None
+        and heartbeat['control_plane_source_id'] != heartbeat['control_plane_current_source_id']
+    )
+
+
 def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
                                    context: Mapping[str, Any],
                                    retained_native_child_proof: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -913,6 +942,7 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
     heartbeat = json.loads(before[1])
     repo = Path(context['repo_root'])
     budget_terminal = _owned_attempt_budget_terminal(heartbeat)
+    reload_exit = _control_plane_reload_exit(heartbeat)
     preflight_without_daemon = _preflight_without_daemon(heartbeat, record, context, before[2])
     historical_identity = None
     if marker_snapshot is not None:
@@ -936,20 +966,23 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
         'state_prefix': runner.STATE_PREFIX, 'task_prefix': runner.TASK_PREFIX}
     source_revision = heartbeat.get('control_plane_source_revision')
     if (heartbeat.get('schema') != 'ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor'
-        or heartbeat.get('status') not in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed', 'task_attempt_budget_exhausted'}
+        or heartbeat.get('status') not in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed', 'task_attempt_budget_exhausted', 'control_plane_reload_required'}
         or (heartbeat.get('status') == 'task_attempt_budget_exhausted' and not budget_terminal)
+        or (heartbeat.get('status') == 'control_plane_reload_required' and not reload_exit)
         or heartbeat.get('supervisor_pid') != parent['pid']
-        or (budget_terminal and daemon is not None)
-        or (not preflight_without_daemon and not budget_terminal and (type(daemon) is not int or daemon <= 1 or daemon == parent['pid']))
+        or ((budget_terminal or reload_exit) and daemon is not None)
+        or (not preflight_without_daemon and not budget_terminal and not reload_exit and (type(daemon) is not int or daemon <= 1 or daemon == parent['pid']))
         or heartbeat.get('max_task_attempts') != 3
         or any(heartbeat.get(key) != value for key, value in expected_paths.items())
         or not context['started_at'] <= _timestamp(heartbeat.get('updated_at')) <= time.time()
         or heartbeat.get('control_plane_source_schema') != 'ipfs_accelerate_py.agent_supervisor.control_plane_source@1'
         or not isinstance(source_revision, str) or not re.fullmatch(r'[0-9a-f]{40}', source_revision)
-        or heartbeat.get('control_plane_current_source_revision') != source_revision
+        or (not reload_exit and heartbeat.get('control_plane_current_source_revision') != source_revision)
+        or (reload_exit and heartbeat.get('control_plane_current_source_revision') == source_revision)
         or not isinstance(heartbeat.get('control_plane_source_id'), str)
         or not _TASK_CID.fullmatch(heartbeat['control_plane_source_id'])
-        or heartbeat.get('control_plane_current_source_id') != heartbeat['control_plane_source_id']):
+        or (not reload_exit and heartbeat.get('control_plane_current_source_id') != heartbeat['control_plane_source_id'])
+        or (reload_exit and heartbeat.get('control_plane_current_source_id') == heartbeat['control_plane_source_id'])):
         raise ValueError('missing-marker heartbeat is not bound to the full launch scope')
     boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
     if boot != parent['boot_id']:
@@ -959,7 +992,7 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
         or not math.floor(context['started_at']) <= datetime.strptime(run_id, '%Y%m%dT%H%M%SZ').replace(tzinfo=timezone.utc).timestamp() <= _timestamp(heartbeat['updated_at'])
         or heartbeat.get('log_path') != str(state_dir / f'{runner.STATE_PREFIX}_managed_daemon_{run_id}.log')):
         raise ValueError('missing-marker heartbeat run paths differ')
-    old_ids = {parent['pid']} if preflight_without_daemon or budget_terminal else {parent['pid'], daemon}
+    old_ids = {parent['pid']} if preflight_without_daemon or budget_terminal or reload_exit else {parent['pid'], daemon}
     minimum_start_ticks = parent['start_ticks']
     if historical_identity is not None:
         old_ids.update((historical_identity['historical_daemon_pid'], historical_identity['historical_parent_pid']))
@@ -1015,7 +1048,8 @@ def _missing_marker_session_closed(state_dir: Path, record: Mapping[str, Any],
     if markers() != marker_snapshot or (historical_identity is not None and
             _historical_preflight_identity(marker_snapshot[0], record, context) != historical_identity):
         raise ValueError('historical native identity changed during second census')
-    return {'source': ('owned_attempt_budget_terminal_and_double_complete_proc_inventory' if budget_terminal
+    return {'source': ('owned_control_plane_reload_and_double_complete_proc_inventory' if reload_exit
+            else 'owned_attempt_budget_terminal_and_double_complete_proc_inventory' if budget_terminal
             else 'owned_completed_preflight_native_receipt_and_double_complete_proc_inventory'
             if preflight_without_daemon and before[2] is not None
             else 'owned_preflight_failure_and_double_complete_proc_inventory' if preflight_without_daemon
@@ -1268,7 +1302,7 @@ def _parent_closed(state_dir: Path, record: Mapping[str, Any], context: Mapping[
         return preheartbeat(state_dir, record, context)
     if heartbeat.get('status') == 'stopped' and (heartbeat.get('managed_daemon_cleanup') or {}).get('quiesced') is True:
         return
-    if heartbeat.get('status') in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed'} or _owned_attempt_budget_terminal(heartbeat):
+    if heartbeat.get('status') in {'running', 'termination_blocked', 'agentic_maintenance_failed', 'agentic_maintenance_completed', 'control_plane_reload_required'} or _owned_attempt_budget_terminal(heartbeat):
         pid_path = state_dir / f'{runner.STATE_PREFIX}_managed_daemon.pid'
         identity_path = pid_path.with_suffix('.identity.json')
         if not os.path.lexists(pid_path):
