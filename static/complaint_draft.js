@@ -696,6 +696,229 @@
         return payload;
     }
 
+    var readinessMemory = {outline: null, stage: null, session: null, caseId: ""};
+
+    function readinessHost() {
+        return document.getElementById("complaint-readiness");
+    }
+
+    function readinessItem(kind, title, detail, task, destination) {
+        return {
+            kind: kind,
+            title: title,
+            detail: detail,
+            task: task,
+            destination: destination
+        };
+    }
+
+    function pushUnique(items, item) {
+        var key = item.kind + "\n" + item.title;
+        if (items.some(function (existing) { return existing.kind + "\n" + existing.title === key; })) return;
+        items.push(item);
+    }
+
+    function sessionQuestions(session) {
+        var rows = [];
+        if (!session || typeof session !== "object") return rows;
+        var questions = Array.isArray(session.questions) ? session.questions : [];
+        questions.forEach(function (question) {
+            if (!question || question.is_answered === true) return;
+            var title = text(question.prompt || question.question || question.text || question.label || question.id);
+            if (!title) return;
+            rows.push(readinessItem("unanswered_question", title, "This factual question is still unanswered.", "mediator", "chat"));
+        });
+        var adaptive = session.adaptive_inquiry;
+        if (adaptive && adaptive.pending === true && text(adaptive.prompt || adaptive.inquiry_id)) {
+            rows.push(readinessItem("unanswered_question", text(adaptive.prompt || adaptive.inquiry_id), "The server still has an actionable mediator question.", "mediator", "chat"));
+        }
+        var shared = session.session && session.session.shared_interview;
+        var pending = shared && (shared.pending_inquiry || shared.pending);
+        if (pending && pending.pending !== false && text(pending.question || pending.prompt || pending.inquiry_id)) {
+            rows.push(readinessItem("unanswered_question", text(pending.question || pending.prompt || pending.inquiry_id), "The shared interview still has an actionable question.", "mediator", "chat"));
+        }
+        var next = session.next_question;
+        if (next && typeof next === "object" && text(next.prompt || next.question || next.text || next.id)) {
+            rows.push(readinessItem("unanswered_question", text(next.prompt || next.question || next.text || next.id), "The next factual question is still open.", "mediator", "chat"));
+        }
+        return rows;
+    }
+
+    function summarizeReadiness(outline, stage, session) {
+        var items = [];
+        sessionQuestions(session).forEach(function (item) { pushUnique(items, item); });
+        var facts = outline && Array.isArray(outline.facts) ? outline.facts : [];
+        facts.forEach(function (fact) {
+            if (!fact || fact.bound === true) return;
+            pushUnique(items, readinessItem(
+                "unanswered_question",
+                text(fact.text || fact.fact_id || "Unbound factual assertion"),
+                "This factual assertion is not bound, so the interview still has an open factual question.",
+                "mediator",
+                "chat"
+            ));
+        });
+        var gaps = outline && Array.isArray(outline.gaps) ? outline.gaps : [];
+        gaps.forEach(function (gap) {
+            var reason = text(gap && gap.reason);
+            if (reason === "missing_fact" || reason === "missing_fact_text") {
+                pushUnique(items, readinessItem("unanswered_question", "Missing fact" + (gap.section_id ? " for " + gap.section_id : ""), "A requirement still has no bound factual answer.", "mediator", "chat"));
+            } else if (reason === "missing_evidence_span" || reason === "evidence_label_is_not_support") {
+                pushUnique(items, readinessItem("missing_evidence", reason === "evidence_label_is_not_support" ? "Evidence label is not a span" : "Missing evidence span" + (gap.section_id ? " for " + gap.section_id : ""), "Receipt or a label is not support. Open the evidence workspace.", "evidence", "workspace"));
+            } else if (reason === "missing_admitted_authority" || reason === "unresolved_research") {
+                pushUnique(items, readinessItem("unreviewed_source", reason === "unresolved_research" ? "Unresolved legal research" : "Source is not admitted" + (gap.section_id ? " for " + gap.section_id : ""), "A source hit or an unreviewed authority is not governing law.", "legal", "workspace"));
+            } else if (reason === "missing_draft_text" || reason === "model_prose_is_not_support" || reason === "no_requirements") {
+                pushUnique(items, readinessItem("draft_blocker", reason.replace(/_/g, " "), "This blocks treating the draft as finished. It does not file the complaint.", "draft", "workspace"));
+            }
+        });
+        (outline && outline.unresolved_research || []).forEach(function (gap) {
+            pushUnique(items, readinessItem("unreviewed_source", "Unresolved research" + (gap.passage_id ? ": " + gap.passage_id : ""), "This source is not an admitted authority.", "legal", "workspace"));
+        });
+        var domains = stage && stage.domains || {};
+        if (domains.evidence && domains.evidence.settled === false) {
+            pushUnique(items, readinessItem("missing_evidence", "Evidence is not bound to the current facts", text(domains.evidence.reason || "evidence_not_bound"), "evidence", "workspace"));
+        }
+        if (domains.legal && domains.legal.settled === false) {
+            pushUnique(items, readinessItem("unreviewed_source", "Legal source is not admitted for the current facts", text(domains.legal.reason || "legal_not_admitted"), "legal", "workspace"));
+        }
+        if (domains.factual && domains.factual.settled === false && !items.some(function (item) { return item.kind === "unanswered_question"; })) {
+            pushUnique(items, readinessItem("unanswered_question", "Factual record is not current", text(domains.factual.reason || "factual_not_current"), "mediator", "chat"));
+        }
+        if (domains.proof && domains.proof.settled === false) {
+            pushUnique(items, readinessItem("draft_blocker", "Proof is not a filing clearance", text(domains.proof.reason || "proof_not_verified") + ". Machine proof is not legal sufficiency or a court filing.", "draft", "workspace"));
+        }
+        var reviews = stage && stage.draft_review_actions && stage.draft_review_actions.section_reviews;
+        (reviews || []).forEach(function (record) {
+            if (!record || record.decision !== "comment" || record.status !== "commented") return;
+            pushUnique(items, readinessItem("draft_blocker", "Open review comment on " + text(record.target_kind || "draft"), text(record.body || "A review comment is still open."), "draft", "workspace"));
+        });
+        if (stage && stage.readiness && stage.readiness.ready_for_versioned_export === true) {
+            pushUnique(items, readinessItem("draft_blocker", "Versioned export is not a court filing", "An exportable revision is still not legal sufficiency, court readiness, or a successful filing.", "draft", "workspace"));
+        }
+        return items;
+    }
+
+    function paintReadiness(stateName, summary, items, outcome) {
+        var host = readinessHost();
+        if (!host) return;
+        host.dataset.state = stateName;
+        host.dataset.legalSufficiency = "false";
+        host.dataset.courtReady = "false";
+        host.dataset.filingSucceeded = "false";
+        host.dataset.interviewOutcome = outcome || "empty";
+        var summaryNode = document.getElementById("complaint-readiness-summary");
+        var outcomeNode = document.getElementById("complaint-readiness-outcome");
+        var list = document.getElementById("complaint-readiness-actions");
+        if (summaryNode) summaryNode.textContent = summary;
+        if (outcomeNode) {
+            if (outcome === "no_actionable_question") {
+                outcomeNode.hidden = false;
+                outcomeNode.textContent = "No further actionable interview question is an interview outcome. It is not legal sufficiency, court readiness, or a successful filing.";
+            } else {
+                outcomeNode.hidden = true;
+                outcomeNode.textContent = "";
+            }
+        }
+        if (!list) return;
+        list.replaceChildren();
+        (items || []).forEach(function (item) {
+            var row = node("li", {"data-kind": item.kind});
+            row.appendChild(node("strong", {text: item.title}));
+            row.appendChild(node("p", {text: item.detail}));
+            var button = node("button", {
+                "type": "button",
+                "data-readiness-link": item.destination,
+                "data-destination": item.destination,
+                "data-task": item.task,
+                text: item.destination === "chat" ? "Open in chat" : "Open in workspace"
+            });
+            row.appendChild(button);
+            list.appendChild(row);
+        });
+    }
+
+    function noteShell(info) {
+        var host = readinessHost();
+        if (!host || !info) return;
+        var entry = text(info.entry);
+        var closed = entry === "denied" || entry === "missing-key" || entry === "unavailable";
+        if (info.session && typeof info.session === "object") readinessMemory.session = info.session;
+        if (host.dataset.source === "documents" && host.dataset.caseId) {
+            if (closed && info.caseId && info.caseId === host.dataset.caseId) {
+                /* A real lock or denial for this case retires the previous summary. */
+            } else {
+                if (readinessMemory.outline && info.caseId === host.dataset.caseId) {
+                    publishReadiness(readinessMemory.outline, readinessMemory.stage, readinessMemory.session);
+                }
+                return;
+            }
+        }
+        if (entry === "denied") {
+            host.dataset.source = "shell";
+            paintReadiness("denied", "This session cannot open case readiness. No replacement case is marked ready.", [], "denied");
+        } else if (entry === "missing-key") {
+            host.dataset.source = "shell";
+            paintReadiness("locked", "Private key access is locked. Readiness was not invented while the case is locked.", [], "locked");
+        } else if (entry === "unavailable") {
+            host.dataset.source = "shell";
+            paintReadiness("unavailable", "Case readiness is unavailable. Nothing was marked filed or court ready.", [], "unavailable");
+        }
+    }
+
+    function publishReadiness(outline, stage, session) {
+        var items = summarizeReadiness(outline, stage, session);
+        var unanswered = items.filter(function (item) { return item.kind === "unanswered_question"; }).length;
+        var outcome = unanswered ? "actionable_question" : "no_actionable_question";
+        var summary = unanswered
+            ? "Answer the open factual question in chat. Other gaps stay listed and do not become a filing."
+            : "The interview has no further actionable question. Missing evidence, unreviewed sources, and draft blockers stay open.";
+        if (!items.length) summary = "No listed gap was returned. That interview outcome is still not legal sufficiency, court readiness, or a successful filing.";
+        paintReadiness(items.length ? "gaps" : "interview-outcome", summary, items, outcome);
+    }
+
+    function failureDetail(payload) {
+        if (!payload || typeof payload !== "object") return "";
+        return text(payload.detail || payload.error || payload.code);
+    }
+
+    function failureName(response, payload) {
+        var detail = failureDetail(payload);
+        if (!response || response.status === 401 || response.status === 403) return "denied";
+        if (response.status === 409 && (detail === "key_locked" || detail === "key_unavailable" || detail === "unlock_needed")) return "locked";
+        if (response.status === 409) return "stale";
+        if (response.status === 503) return "unavailable";
+        return "error";
+    }
+
+    async function openReadinessLink(button) {
+        var destination = button.getAttribute("data-destination") === "chat" ? "chat" : "workspace";
+        var task = button.getAttribute("data-task") || (destination === "chat" ? "mediator" : "draft");
+        var mode = destination === "chat" ? "chat-only" : "full-workspace";
+        var shell = window.complaintCaseShell;
+        if (shell && typeof shell.setPresentationMode === "function") {
+            try { await shell.setPresentationMode(mode); } catch (error) { /* The task link still moves inside the loaded page. */ }
+        }
+        if (shell && typeof shell.showTask === "function") shell.showTask(task);
+        var focusId = destination === "chat" ? "adaptive-inquiry" : (task === "evidence" ? "evidence-title" : (task === "legal" ? "complaint-readiness-title" : "complaint-outline"));
+        var focus = document.getElementById(focusId);
+        if (focus && typeof focus.focus === "function") {
+            if (!focus.hasAttribute("tabindex")) focus.setAttribute("tabindex", "-1");
+            focus.focus();
+        }
+        var host = readinessHost();
+        if (host) {
+            host.dataset.lastDestination = destination;
+            host.dataset.lastTask = task;
+        }
+    }
+
+    document.addEventListener("click", function (event) {
+        var button = event.target && event.target.closest ? event.target.closest("[data-readiness-link]") : null;
+        if (!button) return;
+        event.preventDefault();
+        openReadinessLink(button);
+    });
+
     async function load(options) {
         var host = document.getElementById("complaint-outline");
         if (!host) return null;
@@ -705,6 +928,10 @@
         var headers = supplied.headers || discovered.headers;
         if (!caseId) {
             render(host, {status: "empty", draft: {present: false, text: ""}, sections: [], gaps: [{reason: "no_case", visible: true}], facts: []});
+            readinessMemory = {outline: null, stage: null, session: supplied.session || null, caseId: ""};
+            var emptyHost = readinessHost();
+            if (emptyHost) emptyHost.dataset.source = "documents";
+            paintReadiness("empty", "No case is selected, so readiness was not invented.", [], "empty");
             return null;
         }
         host.dataset.caseId = caseId;
@@ -714,7 +941,8 @@
             credentials: "same-origin",
             headers: headers
         });
-        var payload = await response.json();
+        var payload = null;
+        try { payload = await response.json(); } catch (error) { payload = null; }
         var stageResponse = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/workflow-stage", {
             credentials: "same-origin",
             headers: headers
@@ -740,14 +968,30 @@
                 code: editorPayload && (editorPayload.detail || editorPayload.code || editorPayload.error) || "editor_unavailable"
             };
         }
-        if (!response.ok) {
+        if (!response.ok || !stageResponse.ok) {
+            var failed = !response.ok ? response : stageResponse;
+            var failedPayload = !response.ok ? payload : stagePayload;
+            var failedState = failureName(failed, failedPayload);
             render(host, {
                 status: "error",
                 draft: {present: false, text: ""},
                 sections: [],
-                gaps: [{reason: text(payload.detail || payload.error || "outline_unavailable"), visible: true}],
+                gaps: [{reason: text((failedPayload && (failedPayload.detail || failedPayload.error)) || "outline_unavailable"), visible: true}],
                 facts: []
             }, editorPayload, actions);
+            var messages = {
+                denied: "Readiness was refused for this actor. The case was not marked ready to file.",
+                locked: "Private key access is locked. Cached readiness was not shown.",
+                stale: "The case revision is stale. Readiness from the previous revision was not reused.",
+                unavailable: "Readiness is unavailable. That is a failure, not a filing.",
+                error: "Readiness could not be read. Nothing was marked court ready."
+            };
+            var readyHost = readinessHost();
+            if (readyHost) {
+                readyHost.dataset.source = "documents";
+                readyHost.dataset.caseId = caseId;
+            }
+            paintReadiness(failedState, messages[failedState] || messages.error, [], failedState);
             return payload;
         }
         if (editorResponse.ok && editorPayload && editorPayload.durable === true) {
@@ -759,6 +1003,13 @@
         }
         host.dataset.currentRevision = text(editorPayload && editorPayload.current_revision || 0);
         render(host, payload, editorPayload, actions);
+        readinessMemory = {outline: payload, stage: stagePayload, session: supplied.session || readinessMemory.session, caseId: caseId};
+        var readyHost = readinessHost();
+        if (readyHost) {
+            readyHost.dataset.source = "documents";
+            readyHost.dataset.caseId = caseId;
+        }
+        publishReadiness(payload, stagePayload, readinessMemory.session);
         return payload;
     }
 
@@ -772,5 +1023,5 @@
     }
 
     document.addEventListener("click", onDraftTask);
-    window.ComplaintDraft = {render: render, load: load};
+    window.ComplaintDraft = {render: render, load: load, noteShell: noteShell, summarizeReadiness: summarizeReadiness};
 })();

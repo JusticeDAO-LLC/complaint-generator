@@ -316,7 +316,9 @@
         var panel = host && host.querySelector('[data-case-panel="' + name + '"] .case-shell__panel-body');
         if (!panel) return;
         if (name === "overview") {
-            panel.textContent = state.caseId ? "This case is " + (state.caseLabel || state.caseId) + ". Stage: " + state.stage + "." : "No case is selected for this actor.";
+            panel.textContent = state.caseId
+                ? "This case is " + (state.caseLabel || state.caseId) + ". Stage: " + state.stage + ". Open readiness and next actions for unanswered questions, missing evidence, unreviewed sources, and draft blockers."
+                : "No case is selected for this actor.";
         } else if (name === "mediator") {
             var pending = pendingInquiry();
             panel.textContent = pending ? "Current question: " + (inquiryText(pending) || "A server question is pending.") : "No actionable mediator question is loaded.";
@@ -627,9 +629,21 @@
         }
         renderCatalog(state.catalog, state.caseId);
         paintEntry();
+        noteReadinessShell();
         applyPresentation();
         var active = host.querySelector("[data-case-task][aria-current='page']");
         fillPanel(active ? active.getAttribute("data-case-task") : "overview");
+    }
+
+    function noteReadinessShell() {
+        if (!window.ComplaintDraft || typeof window.ComplaintDraft.noteShell !== "function") return;
+        window.ComplaintDraft.noteShell({
+            entry: entryKind(),
+            caseId: state.caseId,
+            relationship: state.relationship,
+            session: state.session,
+            authenticated: state.authenticated
+        });
     }
 
     function applyPresentation() {
@@ -1070,6 +1084,7 @@
         invalidate: invalidate,
         scheduleRefresh: scheduleRefresh,
         showTask: showTask,
+        noteReadiness: noteReadinessShell,
         applyViewport: applyViewport,
         setPresentationMode: setPresentationMode,
         binding: function () { return state.binding; },
