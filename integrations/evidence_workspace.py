@@ -61,6 +61,7 @@ _ID_TEXT = r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}"
 _KIND_CATALOG = "evidence-catalog"
 _KIND_ARTIFACT = "evidence-artifact"
 _MAX_BYTES = 256 * 1024
+_DUPLICATE_DECISIONS = frozenset({"retain_original", "record_revision", "separate_artifact"})
 
 
 class EvidenceWorkspaceError(Exception):
@@ -381,6 +382,8 @@ class EvidenceWorkspace:
         os.chmod(self._root, 0o700)
         self._lock = threading.RLock()
         self._claim_support = None
+        self._publications: dict[str, dict[str, Any]] = {}
+        self._annotation_store = None
 
     def receive(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
         identity = self._identity(actor, body)
@@ -400,35 +403,83 @@ class EvidenceWorkspace:
                     raise EvidenceWorkspaceError("replay_mismatch")
                 self._verify_scope(scope)
                 return self._project(item, verified=True)
+            digest = _digest(content)
+            candidate = self._lineage_candidate(document, identity["actor_principal_id"], digest, source, body.get("lineage_evidence_id"))
+            decision = body.get("duplicate_decision")
+            if candidate is not None and decision not in _DUPLICATE_DECISIONS:
+                self._verify_scope(scope)
+                return self._duplicate_offer(candidate, digest)
+            if candidate is not None and decision == "retain_original":
+                self._verify_scope(scope)
+                view = self._project(candidate, verified=True)
+                view.update(duplicate_decision_applied="retain_original", duplicate_decision_required=False,
+                            overwrote_artifact=False, support_links_copied=False, version_appended=False,
+                            identical_bytes_not_duplicated=digest == candidate.get("integrity_sha256"))
+                return view
+            if candidate is not None and decision == "record_revision":
+                if digest == candidate.get("integrity_sha256") or any(
+                    version.get("integrity_sha256") == digest for version in candidate.get("artifact_versions") or []
+                ):
+                    self._verify_scope(scope)
+                    view = self._project(candidate, verified=True)
+                    view.update(duplicate_decision_applied="retain_original", duplicate_decision_required=False,
+                                overwrote_artifact=False, support_links_copied=False, version_appended=False,
+                                identical_bytes_not_duplicated=True)
+                    return view
+                before_links = [row.get("support_link_id") for row in self._support_rows(document, candidate["evidence_id"])]
+                parent = int(candidate["current_version"])
+                version = self._seal_version(
+                    identity, case, key_id, data_key, candidate["evidence_id"], parent + 1, "revision", content, scope,
+                )
+                version["parent_version"] = parent
+                version["lineage_original_evidence_id"] = candidate.get("lineage_original_evidence_id") or candidate["evidence_id"]
+                candidate["artifact_versions"].append(version)
+                candidate["current_version"] = parent + 1
+                candidate["integrity_sha256"] = digest
+                candidate["source_filename"] = source
+                candidate["original_filename"] = original
+                candidate["media_type"] = media
+                candidate["support_links_copied"] = False
+                candidate["receipt"] = self._receipt(version)
+                document["idempotency"][identity["idempotency_key"]] = candidate["evidence_id"]
+                after_links = [row.get("support_link_id") for row in self._support_rows(document, candidate["evidence_id"])]
+                if after_links != before_links:
+                    raise EvidenceWorkspaceError("support_duplicated")
+                self._save(identity, case, key_id, data_key, document, scope)
+                self._verify_scope(scope)
+                view = self._project(candidate, verified=True)
+                view.update(duplicate_decision_applied="record_revision", duplicate_decision_required=False,
+                            overwrote_artifact=False, support_links_copied=False, version_appended=True,
+                            identical_bytes_not_duplicated=False)
+                return view
+            if candidate is not None and decision == "separate_artifact":
+                evidence_id = "ev-" + hashlib.sha256(os.urandom(32)).hexdigest()[:32]
+                version = self._seal_version(
+                    identity, case, key_id, data_key, evidence_id, 1, "source", content, scope,
+                )
+                version["parent_version"] = candidate.get("current_version")
+                version["lineage_original_evidence_id"] = candidate.get("lineage_original_evidence_id") or candidate["evidence_id"]
+                item = self._new_item(identity, case, data_key, evidence_id, source, original, media, version)
+                item["lineage_original_evidence_id"] = version["lineage_original_evidence_id"]
+                item["lineage_parent_evidence_id"] = candidate["evidence_id"]
+                item["lineage_parent_version"] = candidate.get("current_version")
+                item["support_links_copied"] = False
+                document["items"][evidence_id] = item
+                document["idempotency"][identity["idempotency_key"]] = evidence_id
+                if self._support_rows(document, evidence_id):
+                    raise EvidenceWorkspaceError("support_duplicated")
+                self._save(identity, case, key_id, data_key, document, scope)
+                self._verify_scope(scope)
+                view = self._project(item, verified=True)
+                view.update(duplicate_decision_applied="separate_artifact", duplicate_decision_required=False,
+                            overwrote_artifact=False, support_links_copied=False, version_appended=False)
+                return view
             evidence_id = "ev-" + hashlib.sha256(os.urandom(32)).hexdigest()[:32]
             version = self._seal_version(
                 identity, case, key_id, data_key, evidence_id, 1, "source", content, scope,
             )
-            item = {
-                "evidence_id": evidence_id,
-                "tenant_id": case.tenant_id,
-                "case_id": case.case_id,
-                "resource_id": identity["resource_id"],
-                "actor_principal_id": identity["actor_principal_id"],
-                "canonical_owner_principal_id": case.tenant_id,
-                "actor_is_canonical_owner": identity["actor_principal_id"] == case.tenant_id,
-                "source_filename": source,
-                "original_filename": original,
-                "media_type": media,
-                "ingestion_status": "received",
-                "prior_ingestion_status": "",
-                "artifact_versions": [version],
-                "current_version": 1,
-                "integrity_sha256": version["integrity_sha256"],
-                "scope_binding": _scope_binding(
-                    key=data_key, tenant_id=case.tenant_id, case_id=case.case_id,
-                    actor=identity["actor_principal_id"], evidence_id=evidence_id,
-                ),
-                "complaint_link_id": "",
-                "failure_code": "",
-                "legal": legal_qualities(),
-                "receipt": self._receipt(version),
-            }
+            item = self._new_item(identity, case, data_key, evidence_id, source, original, media, version)
+            item["lineage_original_evidence_id"] = evidence_id
             document["items"][evidence_id] = item
             document["idempotency"][identity["idempotency_key"]] = evidence_id
             self._save(identity, case, key_id, data_key, document, scope)
@@ -665,6 +716,33 @@ class EvidenceWorkspace:
                 view = self._public_support_link(prior)
                 view["idempotent_replay"] = True
                 return view
+            expected_support = body.get("expected_support_revision", None)
+            current_support = str(document.get("support_revision") or "")
+            expected_key = body.get("expected_key_id", None)
+            if isinstance(expected_key, str) and expected_key != key_id:
+                self._verify_scope(scope)
+                return {
+                    "task_id": SUPPORT_LINK_TASK_ID,
+                    "error": "key_rotated",
+                    "conflict": False,
+                    "published": False,
+                    "preview_allowed": False,
+                    "operation_succeeded": False,
+                    "history_retained": True,
+                    "support_links_copied": False,
+                    "support_revision": current_support,
+                    "evidence_id": evidence_id,
+                    "verified_legal_support": False,
+                    "establishes_legal_support": False,
+                }
+            if expected_support is not None:
+                if not isinstance(expected_support, str) or expected_support != current_support:
+                    conflict = self._support_conflict(
+                        document, evidence_id, item, current_support, expected_support if isinstance(expected_support, str) else "",
+                    )
+                    self._save(identity, case, key_id, data_key, document, scope)
+                    self._verify_scope(scope)
+                    return conflict
             if target is None:
                 if retired:
                     self._save(identity, case, key_id, data_key, document, scope)
@@ -729,11 +807,18 @@ class EvidenceWorkspace:
             }
             records.append(record)
             bucket[identity["idempotency_key"]] = record["support_link_id"]
+            current_support = str(document.get("support_revision") or "")
+            document["support_revision"] = hashlib.sha256(
+                (current_support + "\n" + record["support_link_id"]).encode("utf-8")
+            ).hexdigest()
             self._save(identity, case, key_id, data_key, document, scope)
             self._verify_scope(scope)
             view = self._public_support_link(record)
             view["idempotent_replay"] = False
             view["hook_created"] = hook_effect.get("created") is True
+            view["support_revision"] = document.get("support_revision") or ""
+            view["published"] = True
+            view["support_links_copied"] = False
             return view
 
     def list_catalog(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
@@ -1036,6 +1121,241 @@ class EvidenceWorkspace:
             "governing_law": False,
             "client_checkbox_mints_support": False,
             "classifier_mints_support": False,
+            "support_revision": str(document.get("support_revision") or ""),
+            "support_conflict_history": [
+                dict(entry) for entry in (document.get("support_conflict_history") or []) if isinstance(entry, dict)
+            ],
+        }
+
+    def _lineage_candidate(self, document, actor: str, digest: str, source: str, explicit: Any) -> dict[str, Any] | None:
+        items = [
+            item for item in document.get("items", {}).values()
+            if isinstance(item, dict) and item.get("actor_principal_id") == actor
+        ]
+        if isinstance(explicit, str) and explicit != "":
+            chosen = document.get("items", {}).get(explicit)
+            if not isinstance(chosen, dict) or chosen.get("actor_principal_id") != actor:
+                raise EvidenceWorkspaceError("missing_evidence")
+            return chosen
+        for item in items:
+            digests = {item.get("integrity_sha256")}
+            digests.update(version.get("integrity_sha256") for version in item.get("artifact_versions") or [])
+            if digest in digests:
+                return item
+        for item in items:
+            if item.get("source_filename") == source or item.get("original_filename") == source:
+                return item
+        return None
+
+    def _duplicate_offer(self, item: Mapping[str, Any], digest: str) -> dict[str, Any]:
+        view = self._project(item, verified=True)
+        repeated = digest == item.get("integrity_sha256") or any(
+            version.get("integrity_sha256") == digest for version in item.get("artifact_versions") or []
+        )
+        view.update(
+            duplicate_decision_required=True,
+            duplicate_decision_applied="",
+            operation_succeeded=False,
+            overwrote_artifact=False,
+            support_links_copied=False,
+            version_appended=False,
+            ingestion_status="decision_required",
+            decisions=["retain_original", "record_revision", "separate_artifact"],
+            repeated_bytes=repeated,
+            revised_content=not repeated,
+            lineage={
+                "original_evidence_id": item.get("lineage_original_evidence_id") or item.get("evidence_id"),
+                "evidence_id": item.get("evidence_id"),
+                "current_version": item.get("current_version"),
+                "artifact_versions": view.get("artifact_versions") or [],
+            },
+        )
+        return view
+
+    def _new_item(self, identity, case, data_key, evidence_id, source, original, media, version) -> dict[str, Any]:
+        return {
+            "evidence_id": evidence_id,
+            "tenant_id": case.tenant_id,
+            "case_id": case.case_id,
+            "resource_id": identity["resource_id"],
+            "actor_principal_id": identity["actor_principal_id"],
+            "canonical_owner_principal_id": case.tenant_id,
+            "actor_is_canonical_owner": identity["actor_principal_id"] == case.tenant_id,
+            "source_filename": source,
+            "original_filename": original,
+            "media_type": media,
+            "ingestion_status": "received",
+            "prior_ingestion_status": "",
+            "artifact_versions": [version],
+            "current_version": version["version"],
+            "integrity_sha256": version["integrity_sha256"],
+            "scope_binding": _scope_binding(
+                key=data_key, tenant_id=case.tenant_id, case_id=case.case_id,
+                actor=identity["actor_principal_id"], evidence_id=evidence_id,
+            ),
+            "complaint_link_id": "",
+            "failure_code": "",
+            "lineage_original_evidence_id": evidence_id,
+            "lineage_parent_evidence_id": "",
+            "lineage_parent_version": None,
+            "support_links_copied": False,
+            "legal": legal_qualities(),
+            "receipt": self._receipt(version),
+        }
+
+    def _support_conflict(self, document, evidence_id, item, current_support, expected_support) -> dict[str, Any]:
+        preserved = [
+            row.get("support_link_id") for row in self._support_rows(document, evidence_id)
+            if row.get("status") == "current"
+        ]
+        entry = {
+            "evidence_id": evidence_id,
+            "artifact_version": item.get("current_version"),
+            "expected_support_revision": expected_support,
+            "current_support_revision": current_support,
+            "preserved_support_link_ids": preserved,
+            "encrypted": True,
+        }
+        history = document.setdefault("support_conflict_history", [])
+        history.append(entry)
+        return {
+            "task_id": SUPPORT_LINK_TASK_ID,
+            "error": "revision_conflict",
+            "conflict": True,
+            "published": False,
+            "preview_allowed": False,
+            "operation_succeeded": False,
+            "history_retained": True,
+            "overwrote_history": False,
+            "support_links_copied": False,
+            "support_duplicated": False,
+            "verified_legal_support": False,
+            "establishes_legal_support": False,
+            "evidence_id": evidence_id,
+            "artifact_version": item.get("current_version"),
+            "expected_support_revision": expected_support,
+            "support_revision": current_support,
+            "preserved_support_link_ids": preserved,
+            "support_conflict_count": len(history),
+        }
+
+    def stage_publication(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Hold a revision until commit, bound to the key that staged it."""
+
+        identity = self._identity(actor, body)
+        content = self._content(body.get("content_base64"), "content_rejected")
+        with self._lock:
+            scope = self._open(identity, verify_request=verify_request)
+            publication_id = "pub-" + hashlib.sha256(os.urandom(32)).hexdigest()[:24]
+            self._publications[publication_id] = {
+                "actor": identity["actor_principal_id"],
+                "tenant_id": identity["tenant_id"],
+                "case_id": identity["case_id"],
+                "resource_id": identity["resource_id"],
+                "key_id": scope.key_id,
+                "epoch": scope.epoch,
+                "body": dict(body),
+                "content": content,
+            }
+            self._verify_scope(scope)
+            return {
+                "publication_id": publication_id,
+                "staged": True,
+                "published": False,
+                "preview_allowed": True,
+                "key_id": scope.key_id,
+                "operation_succeeded": False,
+            }
+
+    def commit_publication(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Finish a staged upload. Revocation or rotation drops it."""
+
+        publication_id = _label(body.get("publication_id"), "publication_id")
+        with self._lock:
+            staged = self._publications.get(publication_id)
+            if staged is None or staged.get("actor") != actor:
+                raise EvidenceWorkspaceError("missing_evidence")
+            session = self._sessions.get(actor)
+            if not isinstance(session, UserOwnedKeySession) or not session.unlocked or session.session_epoch != staged["epoch"]:
+                self._publications.pop(publication_id, None)
+                raise EvidenceWorkspaceError("operation_revoked")
+            identity = {
+                "actor_principal_id": actor,
+                "tenant_id": staged["tenant_id"],
+                "case_id": staged["case_id"],
+                "resource_id": staged["resource_id"],
+            }
+            scope = self._open(identity, verify_request=verify_request)
+            if scope.key_id != staged["key_id"] or scope.epoch != staged["epoch"]:
+                self._publications.pop(publication_id, None)
+                raise EvidenceWorkspaceError("key_rotated")
+            payload = dict(staged["body"])
+            payload["duplicate_decision"] = body.get("duplicate_decision") or payload.get("duplicate_decision")
+            self._publications.pop(publication_id, None)
+            return self.receive(actor, payload, verify_request=verify_request)
+
+    def preview_artifact(self, actor: str, body: Mapping[str, Any], *, verify_request: Callable[[], None] | None = None) -> dict[str, Any]:
+        """Open one sealed version. A locked or rotated key returns no bytes."""
+
+        session = self._sessions.get(actor)
+        if not isinstance(session, UserOwnedKeySession) or not session.unlocked:
+            raise EvidenceWorkspaceError("operation_revoked")
+        identity = self._identity(actor, body, content=False, idempotency=False)
+        evidence_id = _label(body.get("evidence_id"), "evidence_id")
+        requested = body.get("version")
+        with self._lock:
+            scope = self._open(identity, verify_request=verify_request)
+            case, key_id, data_key = scope.case, scope.key_id, scope.data_key
+            pointer_path = self._pointer(identity)
+            if pointer_path.exists():
+                pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+                sealed_key = pointer.get("key_id")
+                if isinstance(sealed_key, str) and sealed_key != key_id:
+                    raise EvidenceWorkspaceError("key_rotated")
+            document = self._load(identity, case, key_id, data_key, scope)
+            item = document["items"].get(evidence_id)
+            if item is None or item.get("actor_principal_id") != identity["actor_principal_id"]:
+                raise EvidenceWorkspaceError("missing_evidence")
+            versions = list(item.get("artifact_versions") or [])
+            if requested is None:
+                version = versions[-1]
+            else:
+                version = next((entry for entry in versions if entry.get("version") == requested), None)
+            if not isinstance(version, dict):
+                raise EvidenceWorkspaceError("missing_evidence")
+            if version.get("key_id") != key_id:
+                raise EvidenceWorkspaceError("key_rotated")
+            try:
+                opened = retrieve_private_artifact(
+                    version["ciphertext_cid"],
+                    access=_Access(trust="authenticated", principal_id=case.tenant_id, case_id=case.case_id),
+                    tenant_id=case.tenant_id,
+                    case_id=case.case_id,
+                    artifact_kind=_KIND_ARTIFACT,
+                    revision=f"{evidence_id}-v{version['version']}",
+                    principal_id=case.tenant_id,
+                    key=data_key,
+                    key_id=key_id,
+                    backend=self._backend,
+                    backend_name=self._backend_name,
+                )
+            except PrivateStorageError as exc:
+                raise EvidenceWorkspaceError("ciphertext_unavailable") from exc
+            self._verify_scope(scope)
+        payload = opened.get("data")
+        if not isinstance(payload, (bytes, bytearray)) or _digest(bytes(payload)) != version.get("integrity_sha256"):
+            raise EvidenceWorkspaceError("ciphertext_unavailable")
+        text = bytes(payload).decode("utf-8", errors="replace")
+        return {
+            "task_id": TASK_ID,
+            "evidence_id": evidence_id,
+            "version": version["version"],
+            "preview_allowed": True,
+            "preview_text": text,
+            "byte_length": len(payload),
+            "model_invoked": False,
+            "plaintext_cached": False,
+            "lineage_original_evidence_id": item.get("lineage_original_evidence_id") or evidence_id,
         }
 
     def _classifier_rows(self, document: Mapping[str, Any], evidence_id: str) -> list[dict[str, Any]]:
@@ -1344,6 +1664,8 @@ class EvidenceWorkspace:
                 "integrity_sha256": version["integrity_sha256"],
                 "byte_length": version["byte_length"],
                 "ciphertext_readback": version.get("ciphertext_readback") is True,
+                "parent_version": version.get("parent_version"),
+                "lineage_original_evidence_id": version.get("lineage_original_evidence_id") or "",
             })
         legal = legal_qualities()
         return {
@@ -1363,6 +1685,10 @@ class EvidenceWorkspace:
             "artifact_versions": versions,
             "current_version": item["current_version"],
             "integrity_sha256": item["integrity_sha256"],
+            "lineage_original_evidence_id": item.get("lineage_original_evidence_id") or item["evidence_id"],
+            "lineage_parent_evidence_id": item.get("lineage_parent_evidence_id") or "",
+            "lineage_parent_version": item.get("lineage_parent_version"),
+            "support_links_copied": item.get("support_links_copied") is True,
             "integrity_verified": verified,
             "scope_binding": item["scope_binding"],
             "complaint_link_id": item.get("complaint_link_id") or "",
@@ -1551,7 +1877,11 @@ class EvidenceWorkspace:
         self._verify_scope(scope)
         path = self._pointer(identity)
         temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps({"cid": stored["cid"], "revision": document["revision"]}), encoding="utf-8")
+        temporary.write_text(json.dumps({
+            "cid": stored["cid"],
+            "revision": document["revision"],
+            "key_id": key_id,
+        }), encoding="utf-8")
         os.chmod(temporary, 0o600)
         self._verify_scope(scope)
         os.replace(temporary, path)
