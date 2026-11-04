@@ -863,11 +863,282 @@ def project_workflow_stage(case_file: Mapping[str, Any]) -> Dict[str, Any]:
         "exportable_drafts": exportable,
         "draft_version_count": len(versions),
         "draft_review_count": len(reviews),
+        "draft_review_actions": project_draft_review_actions(case_file),
         "legal_sufficiency": False,
         "automatic_court_filing": False,
         "court_filed": False,
         "limitations": list(_WORKFLOW_LIMITATIONS),
     }
+
+
+_SUGGESTION_KINDS = ("human_reviews", "model_suggestions", "machine_proofs", "messages", "acceptances")
+_DRAFT_SUGGESTION_OPERATIONS = {
+    "propose_bounded_change": "human_reviews",
+    "record_draft_model_suggestion": "model_suggestions",
+    "record_draft_machine_proof": "machine_proofs",
+}
+
+
+def _suggestion_bucket(case_file: MutableMapping[str, Any]) -> Dict[str, Any]:
+    stored = case_file.get("draft_suggestion_records")
+    if not isinstance(stored, dict):
+        stored = {}
+        case_file["draft_suggestion_records"] = stored
+    for key in _SUGGESTION_KINDS:
+        if not isinstance(stored.get(key), list):
+            stored[key] = []
+    return stored
+
+
+def _draft_versions(case_file: Mapping[str, Any]) -> list:
+    store = case_file.get("draft_workflow") if isinstance(case_file.get("draft_workflow"), dict) else {}
+    return [item for item in store.get("versions") or [] if isinstance(item, dict)]
+
+
+def _target_version(case_file: Mapping[str, Any], draft_id: str) -> Dict[str, Any]:
+    matched = [item for item in _draft_versions(case_file) if item.get("draft_id") == draft_id]
+    if not matched:
+        return {"draft_id": draft_id, "revision": 0, "text_digest": "", "actor_principal_id": "", "text": ""}
+    current = max(matched, key=lambda item: int(item.get("revision") or 0))
+    return {
+        "draft_id": draft_id,
+        "revision": int(current.get("revision") or 0),
+        "text_digest": str(current.get("text_digest") or ""),
+        "actor_principal_id": str(current.get("actor_principal_id") or ""),
+        "text": str(current.get("text") or ""),
+    }
+
+
+def _public_suggestion(record: Mapping[str, Any], target: Mapping[str, Any]) -> Dict[str, Any]:
+    current = (
+        record.get("target_revision") == target.get("revision")
+        and record.get("target_text_digest") == target.get("text_digest")
+        and record.get("draft_id") == target.get("draft_id")
+    )
+    projected = dict(record)
+    projected["applies_to_current_revision"] = bool(current)
+    projected["stale"] = not current
+    projected["adopted_into_owner_draft"] = False
+    projected["changes_owner_draft"] = False
+    return projected
+
+
+def project_draft_review_actions(case_file: Mapping[str, Any], *, draft_id: str = "") -> Dict[str, Any]:
+    """Show human review, model suggestions, machine proof, and messages apart.
+
+    A suggestion projection never rewrites the owner's draft versions.
+    """
+
+    stored = case_file.get("draft_suggestion_records") if isinstance(case_file.get("draft_suggestion_records"), dict) else {}
+    versions = _draft_versions(case_file)
+    selected = draft_id or str((versions[-1].get("draft_id") if versions else "") or "")
+    target = _target_version(case_file, selected) if selected else {
+        "draft_id": "", "revision": 0, "text_digest": "", "actor_principal_id": "", "text": "",
+    }
+    grouped = {}
+    for key in _SUGGESTION_KINDS:
+        rows = stored.get(key) if isinstance(stored.get(key), list) else []
+        grouped[key] = [_public_suggestion(item, target) for item in rows if isinstance(item, dict)]
+    external_messages = case_file.get("case_messages") if isinstance(case_file.get("case_messages"), list) else []
+    messages = list(grouped["messages"])
+    for item in external_messages:
+        if isinstance(item, dict):
+            message = dict(item)
+            message["record_kind"] = "case_message"
+            message["provenance"] = "human_message"
+            message["changes_owner_draft"] = False
+            messages.append(message)
+    populated = any(grouped[key] for key in _SUGGESTION_KINDS) or bool(messages)
+    return {
+        "task_id": "CIMP-UX-32",
+        "operation": "project_draft_review_actions",
+        "status": "visible" if populated else "empty",
+        "draft_id": target["draft_id"],
+        "target_revision": target["revision"],
+        "target_text_digest": target["text_digest"],
+        "target_author": target["actor_principal_id"],
+        "human_reviews": grouped["human_reviews"],
+        "model_suggestions": grouped["model_suggestions"],
+        "machine_proofs": grouped["machine_proofs"],
+        "messages": messages,
+        "acceptances": grouped["acceptances"],
+        "records_are_separate": True,
+        "suggestions_change_owner_draft": False,
+        "owner_draft_revision_count": len(versions),
+        "limitations": [
+            "Human review, model suggestions, machine proof, and messages are separate records.",
+            "A proposal records the exact target revision, author, and provenance.",
+            "Only an explicit authorized owner acceptance may be followed by a draft save.",
+            "Recording a suggestion does not change the owner's draft.",
+        ],
+    }
+
+
+def submit_draft_suggestion(case_file: MutableMapping[str, Any], body: Mapping[str, Any], *, actor_principal_id: str,
+                            canonical_owner_principal_id: str, membership: str, action: str) -> Dict[str, Any]:
+    """Record one bounded suggestion. The owner's draft versions stay unchanged."""
+
+    if membership not in {"assigned-lawyer", "owner"} or action != "case.review":
+        raise CaseReviewError("actor_not_permitted")
+    if not isinstance(body, Mapping) or len(json.dumps(body, default=str)) > _BODY_CAP:
+        raise CaseReviewError("draft_bounds")
+    operation = _text(body.get("operation"), limit=64, required=True)
+    if operation not in _DRAFT_SUGGESTION_OPERATIONS:
+        raise CaseReviewError("draft_field")
+    if body.get("decision") in _DECISIONS or body.get("approved") is True or body.get("legal_sufficiency") is True:
+        raise CaseReviewError("draft_field")
+    before_versions = json.dumps(_draft_versions(case_file), sort_keys=True, default=str)
+    request_id = _text(body.get("request_id"), limit=80, required=True)
+    draft_id = _text(body.get("draft_id"), limit=80, required=True)
+    bucket = _suggestion_bucket(case_file)
+    for key in _SUGGESTION_KINDS:
+        for existing in bucket[key]:
+            if isinstance(existing, dict) and existing.get("request_id") == request_id:
+                if existing.get("operation") != operation:
+                    raise CaseReviewError("replay_mismatch")
+                projected = project_draft_review_actions(case_file, draft_id=draft_id)
+                projected["record"] = dict(existing)
+                projected["replayed"] = True
+                return projected
+    expected_revision = body.get("expected_revision")
+    if type(expected_revision) is not int or isinstance(expected_revision, bool) or expected_revision < 0:
+        raise CaseReviewError("draft_field")
+    target = _target_version(case_file, draft_id)
+    if expected_revision != target["revision"]:
+        raise CaseReviewError("stale_revision")
+    digest = _text(body.get("expected_text_digest"), limit=80, required=False)
+    if digest != target["text_digest"]:
+        raise CaseReviewError("stale_revision")
+    provenance = _text(body.get("provenance"), limit=32, required=True)
+    kind = _DRAFT_SUGGESTION_OPERATIONS[operation]
+    if operation == "propose_bounded_change":
+        if provenance != "human":
+            raise CaseReviewError("draft_field")
+        proposed = _text(body.get("proposed_text"), limit=2000, required=True)
+        author_kind = "human"
+        author = actor_principal_id
+    elif operation == "record_draft_model_suggestion":
+        if provenance != "model":
+            raise CaseReviewError("draft_field")
+        proposed = _text(body.get("proposed_text"), limit=2000, required=True)
+        author_kind = "model"
+        author = _text(body.get("model_id"), limit=80, required=True)
+    else:
+        if provenance != "machine":
+            raise CaseReviewError("draft_field")
+        if _text(body.get("proposed_text"), limit=2000, required=False):
+            raise CaseReviewError("draft_field")
+        proposed = ""
+        author_kind = "machine"
+        author = _text(body.get("engine_name"), limit=80, required=False) or "machine"
+    record = {
+        "task_id": "CIMP-UX-32",
+        "record_id": _digest("draft-suggestion", operation + "\n" + request_id + "\n" + actor_principal_id),
+        "request_id": request_id,
+        "operation": operation,
+        "record_kind": {"human_reviews": _HUMAN, "model_suggestions": _MODEL, "machine_proofs": _MACHINE}[kind],
+        "author_kind": author_kind,
+        "provenance": provenance,
+        "author": author,
+        "actor_principal_id": actor_principal_id,
+        "canonical_owner_principal_id": canonical_owner_principal_id,
+        "membership": membership,
+        "draft_id": draft_id,
+        "target_revision": target["revision"],
+        "target_text_digest": target["text_digest"],
+        "target_author": target["actor_principal_id"],
+        "proposed_text": proposed,
+        "status": "proposed" if proposed else "referenced",
+        "changes_owner_draft": False,
+        "adopted_into_owner_draft": False,
+        "proof_status": "not_executed" if kind == "machine_proofs" else "",
+        "legal_sufficiency": False,
+        "governing_legal_authority": False,
+    }
+    bucket[kind].append(record)
+    if json.dumps(_draft_versions(case_file), sort_keys=True, default=str) != before_versions:
+        raise CaseReviewError("review_state_mutated")
+    projected = project_draft_review_actions(case_file, draft_id=draft_id)
+    projected["record"] = dict(record)
+    projected["replayed"] = False
+    return projected
+
+
+def accept_draft_suggestion(case_file: MutableMapping[str, Any], body: Mapping[str, Any], *, actor_principal_id: str,
+                            canonical_owner_principal_id: str, membership: str, action: str) -> Dict[str, Any]:
+    """Mark one suggestion accepted. This does not itself rewrite draft versions."""
+
+    if membership != "owner" or action != "case.update":
+        raise CaseReviewError("actor_not_permitted")
+    if not isinstance(body, Mapping) or len(json.dumps(body, default=str)) > _BODY_CAP:
+        raise CaseReviewError("draft_bounds")
+    if _text(body.get("operation"), limit=64, required=True) != "accept_draft_suggestion":
+        raise CaseReviewError("draft_field")
+    before_versions = json.dumps(_draft_versions(case_file), sort_keys=True, default=str)
+    request_id = _text(body.get("request_id"), limit=80, required=True)
+    proposal_id = _text(body.get("proposal_id"), limit=80, required=True)
+    draft_id = _text(body.get("draft_id"), limit=80, required=True)
+    bucket = _suggestion_bucket(case_file)
+    for existing in bucket["acceptances"]:
+        if existing.get("request_id") == request_id:
+            if existing.get("proposal_id") != proposal_id:
+                raise CaseReviewError("replay_mismatch")
+            projected = project_draft_review_actions(case_file, draft_id=draft_id)
+            projected["record"] = dict(existing)
+            projected["replayed"] = True
+            projected["adopted_text"] = existing.get("adopted_text")
+            return projected
+    candidates = bucket["human_reviews"] + bucket["model_suggestions"]
+    proposal = next((item for item in candidates if item.get("record_id") == proposal_id), None)
+    if proposal is None:
+        if any(item.get("record_id") == proposal_id for item in bucket["machine_proofs"] + bucket["messages"]):
+            raise CaseReviewError("draft_field")
+        raise CaseReviewError("proposal_required")
+    if proposal.get("status") == "accepted_for_draft":
+        raise CaseReviewError("draft_field")
+    expected_revision = body.get("expected_revision")
+    if type(expected_revision) is not int or expected_revision != proposal.get("target_revision"):
+        raise CaseReviewError("stale_revision")
+    target = _target_version(case_file, draft_id)
+    if target["revision"] != proposal.get("target_revision") or target["text_digest"] != proposal.get("target_text_digest"):
+        raise CaseReviewError("stale_revision")
+    if _text(body.get("expected_text_digest"), limit=80, required=False) != proposal.get("target_text_digest"):
+        raise CaseReviewError("stale_revision")
+    adopted = _text(body.get("proposed_text"), limit=2000, required=True)
+    if adopted != str(proposal.get("proposed_text") or ""):
+        raise CaseReviewError("draft_field")
+    proposal["status"] = "accepted_for_draft"
+    proposal["accepted_by"] = actor_principal_id
+    record = {
+        "task_id": "CIMP-UX-32",
+        "record_id": _digest("draft-accept", request_id + "\n" + proposal_id),
+        "request_id": request_id,
+        "operation": "accept_draft_suggestion",
+        "record_kind": "owner_acceptance",
+        "proposal_id": proposal_id,
+        "provenance": proposal.get("provenance"),
+        "author": proposal.get("author"),
+        "actor_principal_id": actor_principal_id,
+        "canonical_owner_principal_id": canonical_owner_principal_id,
+        "membership": membership,
+        "draft_id": draft_id,
+        "target_revision": proposal.get("target_revision"),
+        "target_text_digest": proposal.get("target_text_digest"),
+        "target_author": proposal.get("target_author"),
+        "adopted_text": adopted,
+        "status": "accepted_for_draft",
+        "changes_owner_draft": False,
+        "requires_explicit_owner_save": True,
+        "legal_sufficiency": False,
+    }
+    bucket["acceptances"].append(record)
+    if json.dumps(_draft_versions(case_file), sort_keys=True, default=str) != before_versions:
+        raise CaseReviewError("review_state_mutated")
+    projected = project_draft_review_actions(case_file, draft_id=draft_id)
+    projected["record"] = dict(record)
+    projected["adopted_text"] = adopted
+    projected["replayed"] = False
+    return projected
 
 
 def _require_draft_body(body: Mapping[str, Any], operation: str) -> None:
@@ -897,6 +1168,12 @@ def version_draft(case_file: MutableMapping[str, Any], body: Mapping[str, Any], 
                   membership: str, action: str) -> Dict[str, Any]:
     """Store one owner draft revision bound to the current domain snapshot."""
 
+    if isinstance(body, Mapping) and body.get("operation") == "accept_draft_suggestion":
+        return accept_draft_suggestion(
+            case_file, body, actor_principal_id=actor_principal_id,
+            canonical_owner_principal_id=str(case_file.get("canonical_owner_principal_id") or actor_principal_id),
+            membership=membership, action=action,
+        )
     _require_draft_body(body, "version_draft")
     if membership != "owner" or action != "case.update":
         raise CaseReviewError("actor_not_permitted")
@@ -943,6 +1220,12 @@ def review_draft_version(case_file: MutableMapping[str, Any], body: Mapping[str,
                          membership: str, action: str) -> Dict[str, Any]:
     """Review one draft revision. Acceptance authorizes export only."""
 
+    if isinstance(body, Mapping) and body.get("operation") in _DRAFT_SUGGESTION_OPERATIONS:
+        return submit_draft_suggestion(
+            case_file, body, actor_principal_id=actor_principal_id,
+            canonical_owner_principal_id=str(case_file.get("canonical_owner_principal_id") or ""),
+            membership=membership, action=action,
+        )
     _require_draft_body(body, "review_draft")
     if membership not in {"owner", "assigned-lawyer"} or action != "case.review":
         raise CaseReviewError("actor_not_permitted")

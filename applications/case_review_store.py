@@ -31,6 +31,12 @@ from integrations.private_storage import (UserOwnedKeySession, PrivateArtifactBi
 SOURCE_KIND = 'case-review-source'
 REVIEW_KIND = 'case-review'
 REVIEW_ARTIFACT_REVISION = 'review-v1'
+_DRAFT_SUGGESTION_OPERATIONS = {'propose_bounded_change','record_draft_model_suggestion','record_draft_machine_proof'}
+_SUGGESTION_ERROR = {
+    'draft_field':'lawyer_review_field','draft_bounds':'lawyer_review_bounds',
+    'actor_not_permitted':'lawyer_assignment_required','draft_revision_required':'proposal_required',
+    'proposal_required':'proposal_required','stale_revision':'stale_revision','replay_mismatch':'replay_mismatch',
+}
 _LIMIT = 4 * 1024 * 1024
 _LOCKS = {}
 _LOCKS_GUARD = RLock()
@@ -48,6 +54,19 @@ def _json(value):
 
 def _sha(value):
     return hashlib.sha256(_json(value)).hexdigest()
+
+
+def _suggestion_rows(collaborative):
+    stored = collaborative.get('draft_suggestion_records') if isinstance(collaborative, dict) and isinstance(collaborative.get('draft_suggestion_records'), dict) else {}
+    rows = []
+    for key in ('human_reviews','model_suggestions','machine_proofs','messages','acceptances'):
+        rows.extend(row for row in stored.get(key) or [] if isinstance(row, dict))
+    return rows
+
+
+def _suggestion_error(exc):
+    code = _SUGGESTION_ERROR.get(getattr(exc, 'code', ''), 'lawyer_review_field')
+    raise CaseReviewStoreError(code) from exc
 
 
 def _read(path, *, absent=False):
@@ -417,7 +436,10 @@ class CaseReviewService:
         projection.update(case_id=case_id, review_revision=ledger['review_revision'],
             private_revision=live['private_revision'],session_revision=live['session_revision'],
             read_only=True, owner_keys_needed_for_recipient=False)
-        projection['collaborative_reviews']=project_collaborative_reviews(deepcopy(ledger.get('collaborative_case_file') or {}))
+        collaborative = deepcopy(ledger.get('collaborative_case_file') or {})
+        projection['collaborative_reviews']=project_collaborative_reviews(collaborative)
+        from applications.case_review import project_draft_review_actions
+        projection['draft_review_actions']=project_draft_review_actions(collaborative)
         return projection
 
     def _late(self, actor, case_id, authority, action, source_receipt, source_envelope, source_args,
@@ -476,6 +498,8 @@ class CaseReviewService:
         bound,_case,decision=self._access(actor,case_id,authority,'case.update')
         if decision.membership!='owner':
             raise CaseReviewStoreError('owner_share_required')
+        if isinstance(request, dict) and request.get('operation')=='accept_draft_suggestion':
+            return self._accept_draft_suggestion(actor, bound=bound, case=_case, request=request, authority=authority)
         allowed={'proposal_id','expected_review_revision','expected_private_revision','expected_session_revision','request_id'}
         if not isinstance(request,dict) or set(request)!=allowed:
             raise CaseReviewStoreError('lawyer_review_field')
@@ -550,6 +574,43 @@ class CaseReviewService:
             self._access(actor,case_id,authority,'case.update')
             return deepcopy(record)
 
+    def _accept_draft_suggestion(self, actor, *, bound, case, request, authority):
+        """Owner acceptance stays in the review ledger and does not rewrite draft bytes."""
+        allowed={'operation','proposal_id','request_id','draft_id','expected_revision','expected_text_digest','proposed_text','expected_review_revision'}
+        if not isinstance(request, dict) or set(request) != allowed or type(request.get('expected_revision')) is not int or type(request.get('expected_review_revision')) is not int:
+            raise CaseReviewStoreError('lawyer_review_field')
+        owner=self._session(actor)
+        with private_revision_source_scope(bound.workspace.joined_revision_repository(case.tenant_id, case.case_id)) as identity:
+            source=self._owner_snapshot(bound, case, owner, identity)
+            with self._locked():
+                ledger,_digest=self._owner_ledger(actor, bound, case, owner)
+                if ledger['review_revision'] != request['expected_review_revision']:
+                    raise CaseReviewStoreError('stale_revision')
+                collaborative=deepcopy(ledger.get('collaborative_case_file') or {})
+                from applications.case_review import CaseReviewError, accept_draft_suggestion
+                try:
+                    created=accept_draft_suggestion(collaborative, request, actor_principal_id=actor,
+                        canonical_owner_principal_id=case.tenant_id, membership='owner', action='case.update')
+                except CaseReviewError as exc:
+                    _suggestion_error(exc)
+                updated={'schema':'case-review-ledger@1','scope':self._scope(case),
+                    'review_revision':ledger['review_revision']+1,'rows':ledger.get('rows') or [],
+                    'collaborative_case_file':collaborative}
+                binding=PrivateArtifactBinding(tenant_id=case.tenant_id, case_id=case.case_id, principal_id=case.tenant_id,
+                    artifact_kind=REVIEW_KIND, revision=REVIEW_ARTIFACT_REVISION)
+                key_id, material=owner.provider().resolve(binding)
+                sealed=seal_private_artifact(_json(updated), binding=binding, key=material, key_id=key_id)
+                def late():
+                    self._owner_snapshot(bound, case, owner, identity)
+                    self._access(actor, case.case_id, authority, 'case.update')
+                _atomic(bound.directory/'head', _json({'revision':updated['review_revision'],
+                    'envelope':base64.b64encode(sealed).decode()}), late)
+                late()
+                created=dict(created)
+                created.update(case_id=case.case_id, review_revision=updated['review_revision'],
+                    private_revision=source['private_revision'], adopted_into_owner_draft=False)
+                return created
+
     def _write(self, actor, *, case_id, request, authority, kind):
         from applications.case_review import submit_review_record, submit_collaborative_record
         bound,case,decision = self._access(actor,case_id,authority,'case.review')
@@ -557,7 +618,8 @@ class CaseReviewService:
             raise CaseReviewStoreError('lawyer_assignment_required')
         allowed={'operation','request_id','expected_review_revision','expected_case_revision','expected_source_revision',
             'expected_fact_revision','expected_proof_revision','interpretation','source_citation','proposal_id','approval_id',
-            'decision','model_id','suggestion','engine_name','engine_version','governing_legal_authority','legal_sufficiency','admitted_law'}
+            'decision','model_id','suggestion','engine_name','engine_version','governing_legal_authority','legal_sufficiency','admitted_law',
+            'draft_id','expected_revision','expected_text_digest','provenance','proposed_text'}
         if kind=='items':
             allowed={'operation','request_id','expected_review_revision','expected_case_revision','expected_source_revision',
                 'expected_fact_revision','expected_proof_revision','body','title','target_kind','target_id','proposed_text','proposal_id'}
@@ -580,7 +642,7 @@ class CaseReviewService:
                 fingerprint = _sha(request)
                 collaborative=deepcopy(ledger.get('collaborative_case_file') or {})
                 rows=ledger['rows'] if kind=='lawyer' else collaborative.get('collaborative_review_items',[])
-                all_rows=ledger['rows']+collaborative.get('collaborative_review_items',[])
+                all_rows=ledger['rows']+collaborative.get('collaborative_review_items',[])+_suggestion_rows(collaborative)
                 old = next((row for row in all_rows if row.get('request_id')==request.get('request_id')),None)
                 if old is not None:
                     if old.get('request_fingerprint') != fingerprint or old.get('actor_principal_id') != actor:
@@ -594,6 +656,27 @@ class CaseReviewService:
                     return result
                 if request['expected_review_revision'] != ledger['review_revision']:
                     raise CaseReviewStoreError('stale_revision')
+                if kind=='lawyer' and request.get('operation') in _DRAFT_SUGGESTION_OPERATIONS:
+                    from applications.case_review import CaseReviewError, submit_draft_suggestion
+                    try:
+                        created=submit_draft_suggestion(collaborative, request, actor_principal_id=actor,
+                            canonical_owner_principal_id=case.tenant_id, membership=decision.membership, action='case.review')
+                    except CaseReviewError as exc:
+                        _suggestion_error(exc)
+                    row=created['record']; row['request_fingerprint']=fingerprint
+                    updated={'schema':'case-review-ledger@1','scope':self._scope(case),
+                        'review_revision':ledger['review_revision']+1,'rows':ledger['rows'],
+                        'collaborative_case_file':collaborative}
+                    sealed=self.grants.write_delegated(**rargs,plaintext=_json(updated),action='case.review')
+                    def late_suggestion():
+                        self._late(actor,case_id,authority,'case.review',sreceipt,envelope,sargs,sealed,sealed['envelope'],rargs)
+                    _atomic(bound.directory/'head',_json({'revision':updated['review_revision'],
+                        'envelope':base64.b64encode(sealed['envelope']).decode()}),late_suggestion)
+                    result=self._project(updated,live,case_id)
+                    late_suggestion()
+                    result.update(read_only=False,record=deepcopy(row),operation=request['operation'],
+                        draft_review_actions=created)
+                    return result
                 pure_file={'lawyer_review_ledger':deepcopy(ledger['rows'])}
                 if kind=='lawyer':
                     created=submit_review_record(pure_file,request,actor_principal_id=actor,
