@@ -1871,3 +1871,360 @@
     window.complaintEvidenceClassification = {refresh: refresh};
 }());
 
+/* Evidence span links cite a current fact or sourced requirement.
+   Allegation, hypothesis, corroboration, contradiction, and unavailable
+   stay distinct. A checkbox or classifier does not verify legal support. */
+(function () {
+    var shownId = "";
+    var generation = 0;
+    var latest = null;
+
+    function caseContext() {
+        var client = window.workspaceClient;
+        return client && client.caseContext ? client.caseContext : null;
+    }
+
+    function headers() {
+        var client = window.workspaceClient;
+        var context = caseContext();
+        var result = {"Content-Type": "application/json", "Accept": "application/json"};
+        if (context) {
+            result["x-tenant-id"] = context.tenant_id;
+            result["x-case-id"] = context.case_id;
+            result["x-resource-id"] = context.resource_id;
+            if (context.expected_revision) result["x-expected-revision"] = String(context.expected_revision);
+        }
+        if (client && client.csrfToken) result["x-csrf-token"] = client.csrfToken;
+        return result;
+    }
+
+    function text(id, value) {
+        var node = document.getElementById(id);
+        if (node) node.textContent = value || "";
+    }
+
+    function setState(state, detail) {
+        var root = document.getElementById("evidence-support-panel");
+        if (root) root.dataset.state = state;
+        text("evidence-support-status", detail || "");
+        if (state === "error") text("evidence-support-error", detail || "The support link was not recorded.");
+        else text("evidence-support-error", "");
+    }
+
+    function panel() {
+        var host = document.getElementById("evidence-detail-links");
+        if (!host || !host.parentNode) return null;
+        var existing = document.getElementById("evidence-support-panel");
+        if (existing) return existing;
+        var root = document.createElement("div");
+        root.id = "evidence-support-panel";
+        root.dataset.state = "empty";
+        root.innerHTML = ""
+            + "<p id=\"evidence-support-status\"></p>"
+            + "<label for=\"evidence-support-target\">Current fact or sourced requirement</label>"
+            + "<select id=\"evidence-support-target\"></select>"
+            + "<label for=\"evidence-support-page\">Page</label>"
+            + "<input id=\"evidence-support-page\" type=\"number\" min=\"1\" value=\"1\">"
+            + "<label for=\"evidence-support-span-start\">Span start</label>"
+            + "<input id=\"evidence-support-span-start\" type=\"number\" min=\"0\" value=\"0\">"
+            + "<label for=\"evidence-support-span-end\">Span end</label>"
+            + "<input id=\"evidence-support-span-end\" type=\"number\" min=\"1\" value=\"1\">"
+            + "<label for=\"evidence-support-checkbox\"><input id=\"evidence-support-checkbox\" type=\"checkbox\"> I checked this box</label>"
+            + "<button type=\"button\" id=\"evidence-support-checkbox-submit\">Submit the checkbox as support</button>"
+            + "<button type=\"button\" id=\"evidence-support-allegation\">Record allegation</button>"
+            + "<button type=\"button\" id=\"evidence-support-hypothesis\">Record hypothesis</button>"
+            + "<button type=\"button\" id=\"evidence-support-corroboration\">Accept corroboration</button>"
+            + "<button type=\"button\" id=\"evidence-support-contradiction\">Accept contradiction</button>"
+            + "<p id=\"evidence-support-allegations\"></p>"
+            + "<p id=\"evidence-support-hypotheses\"></p>"
+            + "<p id=\"evidence-support-corroborations\"></p>"
+            + "<p id=\"evidence-support-contradictions\"></p>"
+            + "<p id=\"evidence-support-unavailable\"></p>"
+            + "<p id=\"evidence-support-error\"></p>";
+        host.parentNode.appendChild(root);
+        document.getElementById("evidence-support-checkbox-submit").addEventListener("click", function () {
+            submitCheckedBox().catch(function () { setState("error", "The checkbox was not accepted as support."); });
+        });
+        document.getElementById("evidence-support-allegation").addEventListener("click", function () {
+            save("allegation", "human_statement", false).catch(function () { setState("error", "The allegation was not recorded."); });
+        });
+        document.getElementById("evidence-support-hypothesis").addEventListener("click", function () {
+            save("hypothesis", "ai_suggested", false).catch(function () { setState("error", "The hypothesis was not recorded."); });
+        });
+        document.getElementById("evidence-support-corroboration").addEventListener("click", function () {
+            save("corroboration", "human_acceptance", true).catch(function () { setState("error", "Corroboration was not accepted."); });
+        });
+        document.getElementById("evidence-support-contradiction").addEventListener("click", function () {
+            save("contradiction", "human_acceptance", true).catch(function () { setState("error", "Contradiction was not accepted."); });
+        });
+        return root;
+    }
+
+    async function readJson(url, options) {
+        var response = await fetch(url, options);
+        var body = {};
+        try { body = await response.json(); } catch (error) { body = {}; }
+        return {response: response, body: body};
+    }
+
+    function numberValue(id) {
+        var node = document.getElementById(id);
+        var value = node ? Number(node.value) : NaN;
+        return Number.isInteger(value) ? value : NaN;
+    }
+
+    function selectedTarget() {
+        var node = document.getElementById("evidence-support-target");
+        if (!node || !node.value) return null;
+        var option = node.options[node.selectedIndex];
+        return {id: node.value, kind: option ? option.getAttribute("data-kind") : "", label: option ? option.textContent : ""};
+    }
+
+    async function snapshot() {
+        var context = caseContext();
+        var result = {
+            legal_context_status: "unknown",
+            context_owner: "request",
+            factual_graph_revision: "",
+            source_version: "",
+            jurisdiction: "",
+            authority_version: "",
+            factual_gaps: [],
+            admitted_requirements: [],
+            factual_assertions: []
+        };
+        if (!context || !context.case_id) return result;
+        var factual = null;
+        var legal = null;
+        try {
+            factual = await readJson("/api/graphs/" + encodeURIComponent(context.case_id) + "/factual?case_id=" + encodeURIComponent(context.case_id), {
+                credentials: "same-origin", headers: headers()
+            });
+        } catch (error) { factual = null; }
+        try {
+            legal = await readJson("/api/legal-analysis/" + encodeURIComponent(context.case_id) + "/dependency-requirements?case_id=" + encodeURIComponent(context.case_id), {
+                credentials: "same-origin", headers: headers()
+            });
+        } catch (error) { legal = null; }
+        if (factual && factual.response && factual.response.ok && factual.body) {
+            result.factual_graph_revision = String(factual.body.private_revision || factual.body.graph_revision || factual.body.graph_version || "");
+            (factual.body.user_statements || []).forEach(function (item) {
+                if (!item || item.activity_status !== "active" || item.authority_is_user_fact !== true) return;
+                var assertionId = String(item.assertion_id || "");
+                if (!assertionId || !result.factual_graph_revision) return;
+                result.factual_assertions.push({
+                    assertion_id: assertionId,
+                    text: String(item.text || assertionId),
+                    status: "current",
+                    graph_revision: result.factual_graph_revision
+                });
+            });
+        }
+        if (legal && legal.response && legal.response.ok && legal.body && legal.body.admitted_law === true) {
+            var requirements = Array.isArray(legal.body.requirements) ? legal.body.requirements : [];
+            if (requirements.length) {
+                var first = requirements[0] || {};
+                result.legal_context_status = "admitted";
+                result.source_version = String(first.source_hash || first.authority_version || "");
+                result.jurisdiction = String(first.jurisdiction || "");
+                result.authority_version = String(first.authority_version || "");
+                requirements.forEach(function (item) {
+                    if (!item || item.admitted_law !== true) return;
+                    result.admitted_requirements.push({
+                        requirement_id: String(item.requirement_id || item.passage_id || ""),
+                        passage_id: String(item.passage_id || item.requirement_id || ""),
+                        label: String(item.name || item.citation || item.requirement || item.requirement_id || ""),
+                        source_version: result.source_version,
+                        jurisdiction: result.jurisdiction,
+                        authority_version: result.authority_version,
+                        admitted_law: true
+                    });
+                });
+            }
+        }
+        return result;
+    }
+
+    function scopeBody(extra) {
+        var context = caseContext();
+        var detail = document.getElementById("evidence-library-detail");
+        var version = detail ? Number(detail.getAttribute("data-artifact-version") || "") : NaN;
+        var body = {
+            tenant_id: context.tenant_id,
+            case_id: context.case_id,
+            resource_id: context.resource_id,
+            evidence_id: shownId,
+            artifact_version: version,
+            expected_case_revision: context.expected_revision || context.revision,
+            page: numberValue("evidence-support-page"),
+            span_start: numberValue("evidence-support-span-start"),
+            span_end: numberValue("evidence-support-span-end")
+        };
+        Object.keys(extra || {}).forEach(function (key) { body[key] = extra[key]; });
+        return body;
+    }
+
+    function paint(body) {
+        latest = body;
+        var select = document.getElementById("evidence-support-target");
+        if (select) {
+            var previous = select.value;
+            select.innerHTML = "";
+            var targets = (body.factual_assertions || []).map(function (item) {
+                return {id: item.target_id, kind: "factual_assertion", label: "Fact: " + (item.label || item.target_id)};
+            }).concat((body.sourced_requirements || []).map(function (item) {
+                return {id: item.target_id, kind: "sourced_requirement", label: "Requirement: " + (item.label || item.target_id)};
+            }));
+            if (!targets.length) {
+                var empty = document.createElement("option");
+                empty.value = "";
+                empty.textContent = "No current fact or sourced requirement";
+                select.appendChild(empty);
+            }
+            targets.forEach(function (item) {
+                var option = document.createElement("option");
+                option.value = item.id;
+                option.setAttribute("data-kind", item.kind);
+                option.textContent = item.label;
+                select.appendChild(option);
+            });
+            if (previous) select.value = previous;
+        }
+        function line(item) {
+            return (item.posture || "link") + " " + (item.span_ref || "")
+                + " version " + String(item.artifact_version || "")
+                + " target " + (item.target_id || "")
+                + " by " + (item.actor_principal_id || "unattributed")
+                + " owner " + (item.canonical_owner_principal_id || "")
+                + " fact " + (item.fact_id || "")
+                + " accepted " + (item.explicit_acceptance ? "yes" : "no")
+                + " verified legal support no";
+        }
+        text("evidence-support-allegations", (body.allegations || []).map(line).join("\n") || "No allegation is linked.");
+        text("evidence-support-hypotheses", (body.hypotheses || []).map(line).join("\n") || "No hypothesis is linked.");
+        text("evidence-support-corroborations", (body.corroborations || []).map(line).join("\n") || "No corroboration is accepted.");
+        text("evidence-support-contradictions", (body.contradictions || []).map(line).join("\n") || "No contradiction is accepted.");
+        text("evidence-support-unavailable", (body.unavailable || []).length
+            ? (body.unavailable || []).map(line).join("\n")
+            : "Unavailable support is not stored as a successful link.");
+        var count = (body.factual_assertions || []).length + (body.sourced_requirements || []).length;
+        setState("ready", count
+            ? "Choose an exact page and span. Acceptance does not verify legal support."
+            : "No current factual assertion or sourced requirement is available. Support stays unavailable.");
+    }
+
+    async function refresh() {
+        var root = panel();
+        var context = caseContext();
+        var token = ++generation;
+        if (!root) return;
+        if (!context || !shownId) {
+            setState("locked", "Select an authorized case and an artifact before linking support.");
+            return;
+        }
+        setState("pending", "Loading current facts and sourced requirements.");
+        var contextSnapshot = await snapshot();
+        if (token !== generation) return;
+        var result;
+        try {
+            result = await readJson("/api/cases/evidence/support-links/offer", {
+                method: "POST", credentials: "same-origin", headers: headers(),
+                body: JSON.stringify(scopeBody({case_context: contextSnapshot}))
+            });
+        } catch (error) {
+            setState("error", "Support targets did not reach the server.");
+            return;
+        }
+        if (token !== generation) return;
+        if (!result.response.ok) {
+            var code = result.body && result.body.error;
+            if (code === "key_unavailable" || code === "unauthenticated") setState("locked", "Unlock the case before linking support.");
+            else setState("error", "Support targets returned " + (code || result.response.status) + ".");
+            return;
+        }
+        paint(result.body);
+    }
+
+    async function save(posture, origin, accept) {
+        var target = selectedTarget();
+        if (!target) {
+            setState("unavailable", "No current factual assertion or sourced requirement is available.");
+            text("evidence-support-unavailable", "Support is unavailable until a current fact or sourced requirement exists.");
+            return;
+        }
+        var page = numberValue("evidence-support-page");
+        var start = numberValue("evidence-support-span-start");
+        var end = numberValue("evidence-support-span-end");
+        if (!Number.isInteger(page) || !Number.isInteger(start) || !Number.isInteger(end) || end <= start) {
+            setState("error", "Enter an exact page and span. A checkbox is not a span.");
+            return;
+        }
+        setState("pending", "Recording " + posture + " against the exact span.");
+        var contextSnapshot = await snapshot();
+        var extra = {
+            posture: posture,
+            origin: origin,
+            accept: accept,
+            target_kind: target.kind,
+            target_id: target.id,
+            client_checkbox: false,
+            verified_legal_support: false,
+            establishes_legal_support: false,
+            case_context: contextSnapshot,
+            idempotency_key: "ux20-" + posture + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8)
+        };
+        if (origin === "ai_suggested") {
+            extra.model_id = "workspace-ui";
+            extra.invocation_id = "ui-" + Date.now().toString(36);
+        }
+        var result = await readJson("/api/cases/evidence/support-links", {
+            method: "POST", credentials: "same-origin", headers: headers(),
+            body: JSON.stringify(scopeBody(extra))
+        });
+        if (!result.response.ok) {
+            setState("error", "The support link was refused (" + ((result.body && result.body.error) || result.response.status) + "). A checkbox or classifier does not verify legal support.");
+            return;
+        }
+        if (result.body.posture === "unavailable" || result.body.operation_succeeded === false) {
+            setState("unavailable", "Support is unavailable (" + (result.body.reason || "unavailable") + "). Nothing was verified.");
+            text("evidence-support-unavailable", "Unavailable: " + (result.body.reason || "support was not recorded") + ". Verified legal support: no.");
+            return;
+        }
+        await refresh();
+    }
+
+    async function submitCheckedBox() {
+        setState("pending", "Sending the checkbox. It cannot verify legal support.");
+        var contextSnapshot = await snapshot();
+        var target = selectedTarget();
+        var result = await readJson("/api/cases/evidence/support-links", {
+            method: "POST", credentials: "same-origin", headers: headers(),
+            body: JSON.stringify(scopeBody({
+                posture: "corroboration",
+                origin: "human_acceptance",
+                accept: true,
+                client_checkbox: true,
+                verified_legal_support: true,
+                target_kind: target ? target.kind : "factual_assertion",
+                target_id: target ? target.id : "checkbox-target",
+                case_context: contextSnapshot,
+                idempotency_key: "ux20-checkbox-" + Date.now().toString(36)
+            }))
+        });
+        if (result.response.ok && result.body && result.body.verified_legal_support === true) {
+            setState("error", "The checkbox was incorrectly treated as verified support.");
+            return;
+        }
+        setState("error", "A client checkbox does not mint verified legal support (" + ((result.body && result.body.error) || result.body.reason || result.response.status) + ").");
+    }
+
+    function onSelected(event) {
+        var detail = event.detail || {};
+        shownId = detail.evidenceId || "";
+        refresh().catch(function () { setState("error", "Support targets could not be loaded."); });
+    }
+
+    document.addEventListener("evidence-library-selected", onSelected);
+    window.complaintEvidenceSupport = {refresh: refresh};
+}());
+

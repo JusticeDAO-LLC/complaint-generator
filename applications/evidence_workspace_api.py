@@ -38,6 +38,7 @@ from applications.evidence_annotation_store import ANNOTATION_TASK_ID, EvidenceA
 from integrations.evidence_workspace import (
     CLASSIFICATION_TASK_ID,
     INGESTION_STATUSES,
+    SUPPORT_LINK_TASK_ID,
     TASK_ID,
     EvidenceWorkspace,
     EvidenceWorkspaceError,
@@ -83,7 +84,7 @@ def evidence_http_status(code: str) -> int:
         return 403
     if code in {"revision_conflict", "replay_mismatch", "lifecycle_conflict", "operation_revoked", "upload_stale", "artifact_version_mismatch"}:
         return 409
-    if code in {"request_body", "content_rejected", "action", "source_filename", "original_filename", "idempotency_key", "evidence_id", "failure_code", "complaint_link_id", "media_type", "actor", "media_rejected", "oversized", "upload_offset", "upload_id", "annotation_rejected", "artifact_version", "adoption_requires_explicit_action", "kind", "classifier_rejected"}:
+    if code in {"request_body", "content_rejected", "action", "source_filename", "original_filename", "idempotency_key", "evidence_id", "failure_code", "complaint_link_id", "media_type", "actor", "media_rejected", "oversized", "upload_offset", "upload_id", "annotation_rejected", "artifact_version", "adoption_requires_explicit_action", "kind", "classifier_rejected", "support_link_rejected", "support_span_rejected"}:
         return 400
     if code == "missing_annotation":
         return 404
@@ -344,6 +345,44 @@ def mount_evidence_workspace(app: Any) -> None:
         except EvidenceWorkspaceError as exc:
             return _fail(exc)
         status = 200 if payload.get("idempotent_replay") else 201
+        return JSONResponse(payload, status_code=status, headers=_NO_STORE_HEADERS)
+
+    @app.post("/api/cases/evidence/support-links/offer")
+    async def offer_evidence_support_links(request: Request):
+        try:
+            verify = _verify(request)
+            verify()
+            service, actor, material = _service(request), _actor(request), _material(request)
+            verify_key = await run_in_threadpool(service.key_scope_verifier, actor, _annotation_scope_body(material))
+            verify()
+            payload = await run_in_threadpool(
+                _offer_support_links, request, service, actor, material, verify_request=verify_key,
+            )
+            await run_in_threadpool(verify_key)
+            verify()
+        except EvidenceWorkspaceError as exc:
+            return _fail(exc)
+        return JSONResponse(payload, status_code=200, headers=_NO_STORE_HEADERS)
+
+    @app.post("/api/cases/evidence/support-links")
+    async def record_evidence_support_link(request: Request):
+        try:
+            verify = _verify(request)
+            verify()
+            service, actor, material = _service(request), _actor(request), _material(request)
+            verify_key = await run_in_threadpool(service.key_scope_verifier, actor, _annotation_scope_body(material))
+            verify()
+            payload = await run_in_threadpool(
+                _record_support_link, request, service, actor, material, verify_request=verify_key,
+            )
+            await run_in_threadpool(verify_key)
+            verify()
+        except EvidenceWorkspaceError as exc:
+            return _fail(exc)
+        if payload.get("posture") == "unavailable" or payload.get("operation_succeeded") is False:
+            status = 200
+        else:
+            status = 200 if payload.get("idempotent_replay") else 201
         return JSONResponse(payload, status_code=status, headers=_NO_STORE_HEADERS)
 
     @app.get("/api/cases/evidence/preview")
@@ -1283,6 +1322,37 @@ def _offer_classifiers(request: Request, service: EvidenceWorkspace, actor: str,
     payload["annotation_user_labels"] = _annotation_user_labels(request, service, actor, material, verify_request)
     payload["fixed_assumptions_offered"] = False
     payload["establishes_legal_support"] = False
+    return payload
+
+
+def _support_body(body: Mapping[str, Any]) -> dict[str, Any]:
+    material = _classification_body(body)
+    for name in ("page", "span_start", "span_end"):
+        value = material.get(name)
+        if isinstance(value, str) and value.strip().isdigit():
+            material[name] = int(value.strip())
+    material["task_id"] = SUPPORT_LINK_TASK_ID
+    if material.get("client_checkbox") is True or material.get("verified_legal_support") is True:
+        material["client_checkbox"] = True
+    return material
+
+
+def _offer_support_links(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:
+    del request
+    payload = service.offer_support_links(actor, _support_body(body), verify_request=verify_request)
+    payload["client_checkbox_mints_support"] = False
+    payload["classifier_mints_support"] = False
+    payload["establishes_legal_support"] = False
+    return payload
+
+
+def _record_support_link(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:
+    del request
+    payload = service.record_support_link(actor, _support_body(body), verify_request=verify_request)
+    payload["client_checkbox_mints_support"] = False
+    payload["classifier_mints_support"] = False
+    payload["establishes_legal_support"] = False
+    payload["verified_legal_support"] = False
     return payload
 
 
