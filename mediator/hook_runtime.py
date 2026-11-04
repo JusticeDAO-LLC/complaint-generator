@@ -4018,3 +4018,72 @@ def qualify_claim_support_and_legal_authority(payload: Mapping[str, Any]) -> dic
         "legal_sufficiency": False,
         "input_mutated": False,
     }
+
+
+def ground_formal_neurosymbolic_analysis(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Public workflow for formal IR and neurosymbolic analysis.
+
+    The effect is the live formal-producer result bound to the current source,
+    definition, and premise identities. A parsed formula, structural graph
+    check, classifier score, training metric, or fake producer packet stays
+    outside executed proof and legal sufficiency. A missing producer is
+    unavailable and unexecuted. The caller's mapping is not modified.
+    """
+
+    from complaint_phases.neurosymbolic_matcher import NeurosymbolicMatcher
+    from integrations.ipfs_datasets.logic import ground_bound_formal_analysis
+
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "refused",
+            "code": "malformed_input",
+            "workflow": "ground_formal_neurosymbolic_analysis",
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "provider_invoked": False,
+            "handler_enabled_by_caller": False,
+        }
+    before = dict(payload)
+    formal = ground_bound_formal_analysis(payload)
+    structural = NeurosymbolicMatcher().assess_structural_graph(payload)
+    if dict(payload) != before:
+        raise RuntimeError("formal analysis input was mutated")
+    executed_proof = formal.get("executed_proof") is True and structural.get("executed_proof") is not True
+    if structural.get("executed_proof") is True:
+        executed_proof = False
+    return {
+        "status": formal.get("status"),
+        "code": formal.get("code"),
+        "workflow": "ground_formal_neurosymbolic_analysis",
+        "owners": [
+            "integrations.ipfs_datasets.logic.compile_canonical_legal_ir",
+            "integrations.ipfs_datasets.logic.generate_bound_legal_ir_proof_obligations",
+            "integrations.ipfs_datasets.logic.route_bound_legal_ir_proof",
+            "complaint_phases.neurosymbolic_matcher.NeurosymbolicMatcher",
+        ],
+        "execution": formal.get("execution"),
+        "executed_proof": executed_proof,
+        "legal_sufficiency": False,
+        "producer_invoked": formal.get("producer_invoked") is True,
+        "provider_invoked": False,
+        "handler_enabled_by_caller": False,
+        "caller_flags_applied": False,
+        "source_version": formal.get("source_version"),
+        "definition_identity": formal.get("definition_identity"),
+        "requirement_id": formal.get("requirement_id"),
+        "source_hash": formal.get("source_hash"),
+        "fol": formal.get("fol"),
+        "neurosymbolic": formal.get("neurosymbolic"),
+        "canonical": formal.get("canonical"),
+        "obligations": formal.get("obligations"),
+        "route": formal.get("route"),
+        "structural": structural,
+        "nonproof": formal.get("nonproof"),
+        "parsed_formula_is_proof": False,
+        "structural_graph_is_proof": False,
+        "classifier_score_is_proof": False,
+        "training_metric_is_proof": False,
+        "fake_producer_is_proof": False,
+        "input_mutated": False,
+    }

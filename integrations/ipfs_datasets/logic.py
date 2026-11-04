@@ -8269,6 +8269,375 @@ def gate_qualified_model_candidate(
     }
 
 
+def _binding_token(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    token = value.strip()
+    if not token or len(token) > 256 or any(ord(char) < 32 for char in token):
+        return ""
+    return token
+
+
+def _current_binding_drift(payload: Mapping[str, Any], source_text: str) -> str:
+    """Return a drift code when the request is not the current binding."""
+
+    source_hash = payload.get("source_hash")
+    if source_hash is not None and source_hash != sha256_utf8(source_text):
+        return "source_drift"
+    for supplied_key, current_key in (
+        ("source_version", "current_source_version"),
+        ("definition_identity", "current_definition_identity"),
+    ):
+        if current_key in payload and payload.get(supplied_key) != payload.get(current_key):
+            return "stale_binding"
+        if current_key in payload and not _binding_token(payload.get(current_key)):
+            return "stale_binding"
+    current_premises = payload.get("current_premises")
+    premises = payload.get("premises")
+    if current_premises is None and premises is None:
+        return ""
+    if not isinstance(premises, list) or (current_premises is not None and not isinstance(current_premises, list)):
+        return "premise_malformed"
+    current_by_id = {}
+    for item in current_premises or []:
+        if not isinstance(item, Mapping):
+            return "premise_malformed"
+        premise_id = _binding_token(item.get("premise_id"))
+        revision = _binding_token(str(item.get("revision") or "")) if item.get("revision") is not None else ""
+        digest = item.get("text_sha256")
+        if not premise_id or (digest is not None and (not isinstance(digest, str) or len(digest) != 64)):
+            return "premise_malformed"
+        current_by_id[premise_id] = {"revision": str(item.get("revision") or ""), "text_sha256": digest}
+    seen = set()
+    for item in premises:
+        if not isinstance(item, Mapping):
+            return "premise_malformed"
+        premise_id = _binding_token(item.get("premise_id"))
+        text = item.get("text")
+        if not premise_id or not isinstance(text, str) or not text.strip() or premise_id in seen:
+            return "premise_malformed"
+        seen.add(premise_id)
+        digest = sha256_utf8(text)
+        if item.get("text_sha256") not in (None, digest):
+            return "premise_drift"
+        current = current_by_id.get(premise_id) if current_premises is not None else None
+        if current_premises is not None and current is None:
+            return "premise_drift"
+        if current is not None:
+            if str(item.get("revision") or "") != current["revision"]:
+                return "premise_drift"
+            if current["text_sha256"] not in (None, digest):
+                return "premise_drift"
+    if current_premises is not None and set(current_by_id) != seen:
+        return "premise_drift"
+    return ""
+
+
+def _nonproof_observations(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Record caller artifacts that cannot mint proof or legal sufficiency."""
+
+    formula = payload.get("parsed_formula")
+    graph = payload.get("structural_graph")
+    classifier = payload.get("classifier_score")
+    training = payload.get("training_metric")
+    packet = payload.get("fake_producer")
+    return {
+        "parsed_formula": {
+            "present": formula not in (None, "", {}, []),
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        },
+        "structural_graph_packet": {
+            "present": isinstance(graph, Mapping),
+            "caller_status": graph.get("status") if isinstance(graph, Mapping) else None,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        },
+        "classifier_score": {
+            "present": classifier is not None,
+            "value_ignored": True,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        },
+        "training_metric": {
+            "present": training is not None,
+            "value_ignored": True,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        },
+        "fake_producer": {
+            "present": isinstance(packet, Mapping),
+            "caller_outcome": packet.get("outcome") if isinstance(packet, Mapping) else None,
+            "rejected": isinstance(packet, Mapping),
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        },
+    }
+
+
+def _neurosymbolic_parse_surface(formula: str) -> Dict[str, Any]:
+    """Call the pinned neurosymbolic parser. A parse is not an executed proof."""
+
+    try:
+        from ipfs_datasets_py.logic.integration.symbolic.neurosymbolic_api import (
+            NeurosymbolicReasoner,
+        )
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "execution": "unexecuted",
+            "reason": type(exc).__name__,
+            "producer": "ipfs_datasets_py.logic.integration.symbolic.neurosymbolic_api.NeurosymbolicReasoner",
+            "parsed": False,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        }
+    try:
+        reasoner = NeurosymbolicReasoner(use_cec=False, use_modal=False, use_nl=False)
+        parsed = reasoner.parse(formula, format="tdfol") if formula else None
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "execution": "unexecuted",
+            "reason": type(exc).__name__,
+            "producer": "NeurosymbolicReasoner.parse",
+            "parsed": False,
+            "executed_proof": False,
+            "legal_sufficiency": False,
+        }
+    return {
+        "status": "parsed" if parsed is not None else "unparsed",
+        "execution": "parsed_not_proved",
+        "reason": "",
+        "producer": "NeurosymbolicReasoner.parse",
+        "parsed": parsed is not None,
+        "formula_type": type(parsed).__name__ if parsed is not None else "",
+        "executed_proof": False,
+        "legal_sufficiency": False,
+    }
+
+
+def _proof_from_live_route(routed: Mapping[str, Any]) -> bool:
+    receipt_id = str(routed.get("routing_receipt_id") or "")
+    origin = _BOUND_ROUTING_RECEIPT_ORIGINS.get(receipt_id)
+    if not isinstance(origin, Mapping):
+        return False
+    return (
+        origin.get("outcome") == "proved"
+        and origin.get("substantive_trust_satisfied") is True
+        and routed.get("outcome") == "proved"
+        and routed.get("substantive_trust_satisfied") is True
+    )
+
+
+def ground_bound_formal_analysis(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Run current-bound formal producers and keep non-proof artifacts non-proof.
+
+    Canonical compilation, obligation generation, and ``route_bound_legal_ir_proof``
+    are the proof producers. FOL conversion and neurosymbolic parsing are recorded
+    as parsed IR. A caller formula, graph packet, classifier score, training
+    metric, or fabricated producer packet cannot become executed proof or legal
+    sufficiency. A missing producer stays unavailable and unexecuted.
+    """
+
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "refused",
+            "code": "malformed_input",
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "producer_invoked": False,
+        }
+    source_text = payload.get("source_text")
+    if not isinstance(source_text, str) or not source_text.strip():
+        return {
+            "status": "refused",
+            "code": "missing_source_text",
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "producer_invoked": False,
+            "nonproof": _nonproof_observations(payload),
+        }
+    source_text = source_text.strip()
+    source_version = _binding_token(payload.get("source_version")) or _binding_token(payload.get("current_source_version"))
+    definition_identity = _binding_token(payload.get("definition_identity")) or _binding_token(payload.get("current_definition_identity"))
+    if not source_version or not definition_identity:
+        return {
+            "status": "refused",
+            "code": "missing_binding",
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "producer_invoked": False,
+            "nonproof": _nonproof_observations(payload),
+        }
+    drift = _current_binding_drift(payload, source_text)
+    if drift:
+        return {
+            "status": "unexecuted",
+            "code": drift,
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "producer_invoked": False,
+            "source_version": source_version,
+            "definition_identity": definition_identity,
+            "nonproof": _nonproof_observations(payload),
+        }
+
+    requirement_id = _binding_token(payload.get("requirement_id")) or "requirement-unspecified"
+    citation = _binding_token(payload.get("citation")) or "synthetic-authority"
+    premises = [dict(item) for item in payload.get("premises") or [] if isinstance(item, Mapping)]
+    for premise in premises:
+        premise["text_sha256"] = sha256_utf8(str(premise.get("text") or ""))
+    vocabulary = payload.get("vocabulary") if isinstance(payload.get("vocabulary"), Mapping) else {}
+    vocabulary = {
+        "actors": tuple(vocabulary.get("actors") or ("Employer", "Employee")),
+        "actions": tuple(vocabulary.get("actions") or ("retaliate", "oppose")),
+        "objects": tuple(vocabulary.get("objects") or ("practice",)),
+        "qualifiers": tuple(vocabulary.get("qualifiers") or ()),
+    }
+    nonproof = _nonproof_observations(payload)
+    formula_text = payload.get("parsed_formula")
+    if not isinstance(formula_text, str) or not formula_text.strip():
+        formula_text = "forall x. Employer(x) -> Obligation(x)"
+    neurosymbolic = _neurosymbolic_parse_surface(formula_text.strip())
+    fol = text_to_fol(source_text)
+    fol_view = {
+        "status": fol.get("status"),
+        "converter": fol.get("converter"),
+        "predicate_count": len(fol.get("predicates") or []),
+        "logic_path": (fol.get("metadata") or {}).get("logic_path") if isinstance(fol.get("metadata"), Mapping) else fol.get("logic_path"),
+        "executed_proof": False,
+        "legal_sufficiency": False,
+        "producer": "text_to_fol",
+    }
+    identities = canonical_compiler_identities()
+    if identities is None:
+        return {
+            "status": "unavailable",
+            "code": "missing_producer",
+            "execution": "unexecuted",
+            "executed_proof": False,
+            "legal_sufficiency": False,
+            "producer_invoked": False,
+            "source_version": source_version,
+            "definition_identity": definition_identity,
+            "requirement_id": requirement_id,
+            "fol": fol_view,
+            "neurosymbolic": neurosymbolic,
+            "canonical": {"status": "unavailable", "executed_proof": False, "legal_sufficiency": False},
+            "obligations": {"status": "unexecuted", "executed_proof": False},
+            "route": {"outcome": "unavailable", "executed_proof": False, "producer_invoked": False},
+            "nonproof": nonproof,
+        }
+    compiled = compile_canonical_legal_ir(
+        source_text,
+        request_id=requirement_id,
+        vocabulary=vocabulary,
+        legal_context={"citation": citation, "authority_version": source_version},
+        factual_premises=premises,
+        admitted_law={
+            "source_text": source_text,
+            "source_sha256": sha256_utf8(source_text),
+            "authority_version": source_version,
+            "definition_identity": definition_identity,
+            "citation": citation,
+        },
+    )
+    canonical_view = {
+        "status": compiled.get("status"),
+        "reason": compiled.get("reason"),
+        "entails_claim": compiled.get("entails_claim") is True,
+        "entails_applicability": compiled.get("entails_applicability") is True,
+        "executed_proof": False,
+        "legal_sufficiency": False,
+        "producer": "compile_canonical_legal_ir",
+    }
+    obligations = generate_bound_legal_ir_proof_obligations(
+        None,
+        canonical_receipt=compiled if isinstance(compiled, Mapping) else None,
+        source_text=source_text,
+        asserted_facts=premises,
+        requirement_id=requirement_id,
+        definition_binding={
+            "requirement_id": requirement_id,
+            "definition_identity": definition_identity,
+            "source_version": source_version,
+        },
+        legal_context_version=source_version,
+        max_obligations=4,
+    )
+    obligation_view = {
+        "status": obligations.get("status"),
+        "support": obligations.get("support"),
+        "execution_identity": (obligations.get("versions") or {}).get("execution_identity") if isinstance(obligations.get("versions"), Mapping) else "",
+        "obligation_count": obligations.get("obligation_count") or 0,
+        "structural_validation_is_entailment": obligations.get("structural_validation_is_entailment") is True,
+        "executed_proof": False,
+        "legal_sufficiency": False,
+        "producer": "generate_bound_legal_ir_proof_obligations",
+    }
+    versions = obligations.get("versions") if isinstance(obligations.get("versions"), Mapping) else {}
+    routed = route_bound_legal_ir_proof(
+        goal_statement=source_text,
+        premise_inventory=obligations.get("premise_inventory") if isinstance(obligations.get("premise_inventory"), Mapping) else None,
+        execution_identity=str(versions.get("execution_identity") or ""),
+        expected_execution_identity=str(versions.get("execution_identity") or ""),
+        requirement_id=requirement_id,
+        expected_requirement_id=requirement_id,
+        definition_identity=str(versions.get("definition_identity") or definition_identity),
+        expected_definition_identity=str(versions.get("definition_identity") or definition_identity),
+        assumption_identity=str(versions.get("assumption_identity") or ""),
+        expected_assumption_identity=str(versions.get("assumption_identity") or ""),
+        adverse_treatment_identity=str(versions.get("adverse_treatment_identity") or ""),
+        expected_adverse_treatment_identity=str(versions.get("adverse_treatment_identity") or ""),
+        source_identity=str(versions.get("source_identity") or sha256_utf8(source_text)),
+        expected_source_identity=str(versions.get("source_identity") or sha256_utf8(source_text)),
+        premise_version=str((obligations.get("premise_inventory") or {}).get("digest") or "") if isinstance(obligations.get("premise_inventory"), Mapping) else "",
+        expected_premise_version=str((obligations.get("premise_inventory") or {}).get("digest") or "") if isinstance(obligations.get("premise_inventory"), Mapping) else "",
+        total_timeout_seconds=2.0,
+        similarity_score=payload.get("classifier_score"),
+        model_assertion=payload.get("fake_producer"),
+    )
+    executed_proof = _proof_from_live_route(routed)
+    route_view = {
+        "outcome": routed.get("outcome"),
+        "reason": routed.get("reason"),
+        "substantive_trust_satisfied": routed.get("substantive_trust_satisfied") is True,
+        "structural_proof_is_substantive": routed.get("structural_proof_is_substantive") is True,
+        "structural_route_proved": routed.get("structural_route_proved") is True,
+        "similarity_score_ignored": routed.get("similarity_score_ignored") is True,
+        "model_assertion_ignored": routed.get("model_assertion_ignored") is True,
+        "routing_receipt_id": routed.get("routing_receipt_id"),
+        "attempt_count": len(routed.get("attempts") or []),
+        "executed_proof": executed_proof,
+        "legal_sufficiency": False,
+        "producer": "route_bound_legal_ir_proof",
+        "producer_invoked": True,
+    }
+    return {
+        "status": "grounded",
+        "code": "producer_result",
+        "execution": str(routed.get("outcome") or "unknown"),
+        "executed_proof": executed_proof,
+        "legal_sufficiency": False,
+        "producer_invoked": True,
+        "source_version": source_version,
+        "definition_identity": definition_identity,
+        "requirement_id": requirement_id,
+        "source_hash": sha256_utf8(source_text),
+        "fol": fol_view,
+        "neurosymbolic": neurosymbolic,
+        "canonical": canonical_view,
+        "obligations": obligation_view,
+        "route": route_view,
+        "nonproof": nonproof,
+    }
+
+
 def legacy_procedural_template_attributes() -> Dict[str, Any]:
     return {
         "category": "civil_procedure",
@@ -8348,4 +8717,5 @@ __all__ = [
     "replay_satisfied_element_proof",
     "connect_definition_handoff_proof",
     "gate_qualified_model_candidate",
+    "ground_bound_formal_analysis",
 ]
