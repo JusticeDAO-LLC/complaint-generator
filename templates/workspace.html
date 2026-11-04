@@ -6261,12 +6261,50 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
                         </div>
                     </div>
                     <div class="status" id="legal-context-display" data-applicability="unknown" data-governing-law-defaulted="false">No legal context has been loaded. Applicability is unknown.</div>
+                    <ol id="legal-context-questions"></ol>
                     <div class="list" id="legal-context-proofs"></div>
                     <div class="list" id="legal-context-versions"></div>
                     <div class="list" id="legal-context-provenance"></div>
                     <div class="button-row">
                         <button type="button" id="legal-context-refresh">Show legal context</button>
                         <button type="button" id="legal-context-save">Save explicit legal context</button>
+                    </div>
+                </section>
+
+                <section id="legal-source-flow" data-task="CIMP-UX-25">
+                    <h2>Source acquisition and review</h2>
+                    <p id="legal-source-flow-notice">Discovery, custody, review, applicability, and governing law stay separate. A snippet or model text is not admitted authority. Search uses the Dataset legal-source cache and admits only a custodied passage identifier.</p>
+                    <div>
+                        <label for="legal-source-flow-query">Public source query</label>
+                        <input id="legal-source-flow-query" type="text" maxlength="256" autocomplete="off">
+                    </div>
+                    <div>
+                        <label for="legal-source-flow-cache">Local corpus cache</label>
+                        <textarea id="legal-source-flow-cache" placeholder="Cache-mode rows only. Leave empty when no local corpus is available."></textarea>
+                    </div>
+                    <p id="legal-source-flow-status" data-status="empty" data-governing-law-defaulted="false">Jurisdiction, forum, and relevant dates are still open. No source search has run.</p>
+                    <div id="legal-source-flow-discovery" data-decision="discovery"></div>
+                    <div id="legal-source-flow-custody" data-decision="custody"></div>
+                    <div id="legal-source-flow-review" data-decision="review_admission" data-admitted-law="false"></div>
+                    <div id="legal-source-flow-applicability" data-decision="applicability">
+                        <label for="legal-source-flow-applicability-choice">Applicability decision</label>
+                        <select id="legal-source-flow-applicability-choice">
+                            <option value="unknown">unknown</option>
+                            <option value="disputed">disputed</option>
+                            <option value="explicit">explicit</option>
+                        </select>
+                    </div>
+                    <div id="legal-source-flow-governing" data-decision="governing_law" data-admitted-authority="false" data-defaulted="false">
+                        <label for="legal-source-flow-governing-passage">Governing-law passage identifier</label>
+                        <input id="legal-source-flow-governing-passage" type="text" autocomplete="off">
+                        <label for="legal-source-flow-governing-text">Text offered as governing law</label>
+                        <input id="legal-source-flow-governing-text" type="text" autocomplete="off">
+                    </div>
+                    <div class="button-row">
+                        <button type="button" id="legal-source-flow-search">Search legal sources</button>
+                        <button type="button" id="legal-source-flow-review-admit">Review selected passage</button>
+                        <button type="button" id="legal-source-flow-applicability-save">Record applicability</button>
+                        <button type="button" id="legal-source-flow-governing-save">Record governing law</button>
                     </div>
                 </section>
 
@@ -6469,6 +6507,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
     <script src="/static/complaint_evidence.js"></script>
     <script src="/static/complaint_conversation.js"></script>
     <script src="/static/complaint_facts.js"></script>
+    <script src="/static/complaint_legal.js"></script>
     <script>
         const { ComplaintMcpClient } = window.ComplaintMcpSdk;
         const operationSurfaceAttempts = {graph: 0, research: 0, collaboration: 0};
@@ -6523,6 +6562,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
         window.publishWorkspaceOperationSurface = publishOperationSurface;
         const client = new ComplaintMcpClient();
         window.workspaceClient = client;
+        if (window.complaintLegal) window.complaintLegal.install(client);
         let workspaceUserId = new URLSearchParams(window.location.search).get('user_id') || null;
         let workspaceSession = null;
         let canonicalSessionScope = '';
@@ -6939,6 +6979,7 @@ Prefer calmer, trauma-informed language and remove friction that makes evidence 
             const facts = Array.isArray(payload.factual_provenance) ? payload.factual_provenance : [];
             document.getElementById('legal-context-provenance').textContent = facts.map(item =>
                 item.source_id || item.immutable_source_id || '').filter(Boolean).join(', ') || 'No factual provenance on this context.';
+            if (window.complaintLegal) window.complaintLegal.renderQuestions(payload.questions || []);
         }
 
         function legalContextUnavailable(capture, message) {

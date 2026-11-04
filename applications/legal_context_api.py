@@ -214,6 +214,232 @@ def select_explicit_legal_context(mediator: Any, updates: Optional[Mapping[str, 
     return selected["projection"]
 
 
+def open_context_questions(case_file: Mapping[str, Any]) -> list:
+    """Questions for jurisdiction, forum, and dates. Nothing is filled in."""
+    from integrations.ipfs_datasets.legal import questions_for_legal_context
+
+    context = _current_context(case_file)
+    questions = [dict(item) for item in questions_for_legal_context(context, selecting_rules=True)]
+    forum = case_file.get("legal_context_forum") if isinstance(case_file.get("legal_context_forum"), dict) else {}
+    if str(forum.get("applicability") or "unknown") != "explicit":
+        questions.insert(min(1, len(questions)), {
+            "question_id": "legal_context.forum",
+            "field": "forum",
+            "prompt": (
+                "Which court or tribunal is the forum? "
+                "Unresolved forum stays unknown; a federal court is not assumed."
+            ),
+            "reason": "unresolved_forum",
+        })
+    return questions
+
+
+def _source_kind(row: Mapping[str, Any]) -> str:
+    if row.get("model_text") or row.get("model_inference_used") is True or row.get("passage_status") == "model_text":
+        return "model_text"
+    passage = row.get("source_passage") if isinstance(row.get("source_passage"), str) else ""
+    snippet = row.get("snippet") if isinstance(row.get("snippet"), str) else ""
+    if row.get("passage_status") in {"snippet", "snippet_only"} or (snippet and not passage):
+        return "snippet"
+    if (
+        row.get("content_hash_scope") == "source_passage"
+        and passage.strip()
+        and isinstance(row.get("content_hash"), str)
+        and row.get("content_hash")
+    ):
+        return "full_text"
+    return "unusable"
+
+
+def conduct_legal_source_flow(case_file: Mapping[str, Any], body: Mapping[str, Any]) -> Dict[str, Any]:
+    """Search with Dataset corpus tools and keep each legal decision separate.
+
+    A missing jurisdiction, forum, or relevant date stops the search. Snippets
+    and model text stay discovery gaps. Only a custodied full passage identifier
+    can be reviewed as authority, and that review does not decide applicability
+    or governing law.
+    """
+    from integrations.ipfs_datasets.legal import lookup_bounded_legal_corpus
+
+    if not isinstance(case_file, Mapping) or not isinstance(body, Mapping):
+        raise LegalContextError("legal_context_field")
+    questions = open_context_questions(case_file)
+    blocking = [item for item in questions if item.get("field") in {
+        "jurisdiction", "forum", "event_date", "applicable_law_date", "filing_reference_date",
+    }]
+    empty_decisions = {
+        "discovery": [],
+        "custody": [],
+        "review_admission": {"decision": "review_admission", "admitted_law": False, "passage_id": "", "reason": "not_reviewed"},
+        "applicability": {"decision": "applicability", "value": "unknown", "admitted_law": False, "reason": "not_selected"},
+        "governing_law": {"decision": "governing_law", "value": "unknown", "admitted_authority": False, "passage_id": "", "reason": "not_selected"},
+    }
+    if blocking:
+        return {
+            "task_id": TASK_ID,
+            "status": "questions_open",
+            "tool": "not_called",
+            "questions": questions,
+            "decisions": empty_decisions,
+            "admitted_passage_ids": [],
+            "governing_law_defaulted": False,
+            "limitations": [
+                "Jurisdiction, forum, and relevant dates are asked and are not invented.",
+                "Snippets and model text are not admitted authority.",
+            ],
+        }
+    query = body.get("query", "")
+    if not isinstance(query, str) or not query.strip() or len(query) > 256 or query != query.strip():
+        raise LegalContextError("legal_context_field")
+    cache = body.get("offline_cache", {})
+    if not isinstance(cache, dict) or len(repr(cache)) > 65536:
+        raise LegalContextError("legal_context_field")
+    context = _current_context(case_file)
+    jurisdiction = str(context.get("jurisdiction") or "unknown")
+    envelope = lookup_bounded_legal_corpus(
+        source_family="us_code",
+        query=query,
+        retrieval_mode="cache",
+        jurisdiction=jurisdiction,
+        offline_cache=cache,
+        contains_private_facts=False,
+        privacy_policy_accepted=False,
+        max_results=5,
+        timeout_seconds=2.0,
+    )
+    discovery = []
+    custody = []
+    model_texts = set()
+    for rows in cache.values():
+        if not isinstance(rows, list):
+            continue
+        for item in rows:
+            if isinstance(item, dict) and item.get("model_text"):
+                model_value = str(item.get("model_text") or "")
+                model_texts.add(model_value)
+                discovery.append({
+                    "decision": "discovery",
+                    "kind": "model_text",
+                    "passage_id": "",
+                    "citation": "",
+                    "snippet": str(item.get("snippet") or ""),
+                    "model_text": model_value,
+                    "admitted_law": False,
+                    "tool": "lookup_bounded_legal_corpus",
+                })
+    seen_discovery = {("model_text", item["model_text"]) for item in discovery}
+    for row in envelope.get("results") or []:
+        if not isinstance(row, dict):
+            continue
+        kind = _source_kind(row)
+        snippet_value = str(row.get("snippet") or "")
+        model_value = str(row.get("model_text") or "")
+        # The corpus normalizer drops model_text and re-emits that sentence as a snippet.
+        if kind == "snippet" and snippet_value in model_texts:
+            continue
+        if kind == "model_text" and ("model_text", model_value) in seen_discovery:
+            continue
+        passage_id = str(row.get("content_hash") or "") if kind == "full_text" else ""
+        seen_discovery.add((kind, passage_id or snippet_value or model_value))
+        discovery.append({
+            "decision": "discovery",
+            "kind": kind,
+            "passage_id": passage_id,
+            "citation": str(row.get("citation") or ""),
+            "snippet": str(row.get("snippet") or ""),
+            "model_text": str(row.get("model_text") or ""),
+            "admitted_law": False,
+            "tool": "lookup_bounded_legal_corpus",
+        })
+        if kind == "full_text":
+            custody.append({
+                "decision": "custody",
+                "passage_id": passage_id,
+                "source_passage": row.get("source_passage"),
+                "admitted_law": False,
+            })
+    review = {"decision": "review_admission", "admitted_law": False, "passage_id": "", "reason": "not_reviewed"}
+    requested = body.get("review_passage_id", "")
+    if body.get("review_decision") not in {None, "", "admit", "reject"}:
+        raise LegalContextError("legal_context_field")
+    if body.get("review_decision") == "admit":
+        if not isinstance(requested, str):
+            raise LegalContextError("legal_context_field")
+        match = next((item for item in custody if item["passage_id"] == requested), None)
+        if match is None:
+            review = {
+                "decision": "review_admission",
+                "admitted_law": False,
+                "passage_id": "",
+                "reason": "snippet_or_model_text_not_authority",
+            }
+        else:
+            review = {
+                "decision": "review_admission",
+                "admitted_law": True,
+                "passage_id": match["passage_id"],
+                "reason": "exact_custodied_passage",
+            }
+    elif body.get("review_decision") == "reject":
+        review = {"decision": "review_admission", "admitted_law": False, "passage_id": "", "reason": "rejected"}
+    applicability_value = body.get("applicability_decision", "unknown")
+    if applicability_value not in {None, "", *APPLICABILITY_VALUES}:
+        raise LegalContextError("applicability_not_admitted")
+    applicability = {
+        "decision": "applicability",
+        "value": applicability_value or "unknown",
+        "admitted_law": False,
+        "reason": "separate_from_admission",
+    }
+    governing_passage = body.get("governing_law_passage_id", "")
+    governing_text = body.get("governing_law_text", "")
+    if not isinstance(governing_passage, str) or not isinstance(governing_text, str):
+        raise LegalContextError("legal_context_field")
+    snippet_text = {item.get("snippet") for item in discovery if item.get("snippet")}
+    model_text = {item.get("model_text") for item in discovery if item.get("model_text")}
+    governing = {
+        "decision": "governing_law",
+        "value": "unknown",
+        "admitted_authority": False,
+        "passage_id": "",
+        "reason": "not_selected",
+    }
+    if governing_text and (governing_text in snippet_text or governing_text in model_text):
+        governing["reason"] = "snippet_or_model_text_not_authority"
+    elif governing_passage:
+        if review.get("admitted_law") is True and governing_passage == review.get("passage_id"):
+            governing = {
+                "decision": "governing_law",
+                "value": "explicit",
+                "admitted_authority": True,
+                "passage_id": governing_passage,
+                "reason": "admitted_passage",
+            }
+        else:
+            governing["reason"] = "governing_law_requires_admitted_passage"
+    return {
+        "task_id": TASK_ID,
+        "status": str(envelope.get("status") or "unavailable"),
+        "tool": "lookup_bounded_legal_corpus",
+        "tool_error": envelope.get("error_code"),
+        "questions": questions,
+        "decisions": {
+            "discovery": discovery,
+            "custody": custody,
+            "review_admission": review,
+            "applicability": applicability,
+            "governing_law": governing,
+        },
+        "admitted_passage_ids": [review["passage_id"]] if review.get("admitted_law") is True else [],
+        "governing_law_defaulted": False,
+        "limitations": [
+            "Discovery, custody, review, applicability, and governing law are separate decisions.",
+            "Snippets and model text are not admitted authority.",
+            "A passage identifier is admitted only after review of a custodied full passage.",
+        ],
+    }
+
+
 def project_legal_context(case_file: Mapping[str, Any]) -> Dict[str, Any]:
     """Public read model. Governing law is not filled in for missing fields."""
     context = _current_context(case_file)
@@ -249,7 +475,7 @@ def project_legal_context(case_file: Mapping[str, Any]) -> Dict[str, Any]:
         "proof_state": context.get("proof_state") or "unknown",
         "changed_fields": list(context.get("changed_fields") or []),
         "context_revision": int(context.get("context_revision") or 0),
-        "questions": list(context.get("questions") or []),
+        "questions": open_context_questions(case_file),
         "dependent_proof": deepcopy(context.get("dependent_proof") or case_file.get("proof_leads") or []),
         "legal_dependencies": deepcopy(case_file.get("legal_dependencies") or []),
         "factual_provenance": deepcopy(case_file.get("factual_provenance") or []),
@@ -324,6 +550,29 @@ def mount_legal_context_routes(app: Any) -> None:
         code = "legal_context_revision_conflict" if exc.code == "revision_conflict" else (
             "unlock_needed" if exc.code == "unlock_needed" else "legal_context_unavailable")
         return _fail(LegalContextError(code))
+
+    def _source_flow(workspace, actor, case_id, body):
+        with workspace_access_scope(WorkspaceAccess.authenticated(actor, case_id)):
+            _authority, _resolved, state = workspace._case_legal_context_state(actor, case_id, action="case.update")
+            return conduct_legal_source_flow(state["shared_interview"]["intake_case_file"], body)
+
+    @app.post(LEGAL_CONTEXT_PREFIX + "/{case_id}/source-flow")
+    async def legal_source_flow(case_id: str, request: Request):
+        try:
+            workspace, authority, actor = _authorized(request, case_id)
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise LegalContextError("legal_context_field")
+            payload = await run_in_threadpool(_source_flow, workspace, actor, case_id, body)
+            authority.revalidate(actor_principal_id=actor, workspace=workspace, require_owner=True)
+        except (WorkspaceAuthorizationDenied, WorkspaceCaseAuthorityError):
+            return _fail(LegalContextError("legal_context_ungranted"))
+        except WorkspacePersistenceError as exc:
+            return _storage_failure(exc)
+        except LegalContextError as exc:
+            return _fail(exc)
+        payload["case_id"] = case_id
+        return JSONResponse(payload)
 
     @app.get(LEGAL_CONTEXT_PREFIX + "/{case_id}")
     async def read_legal_context(case_id: str, request: Request):
