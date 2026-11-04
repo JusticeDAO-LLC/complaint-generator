@@ -42,7 +42,9 @@ _REVIEW_CREATE = {
     "create_comment": "review_comment",
     "create_proposal": "review_proposal",
 }
-_REVIEW_TARGETS = {"fact", "answer", "legal_admission", "draft_revision"}
+_REVIEW_TARGETS = {"fact", "answer", "legal_admission", "draft_revision", "evidence_span", "qualified_evidence_span", "complaint_section"}
+_SECTION_REVIEW_OPERATIONS = {"comment_review_target", "accept_review_target", "reject_review_target"}
+_OWNER_KEY_FIELDS = {"owner_master_key", "master_key", "passphrase", "owner_key", "key_material", "private_key", "owner_key_session"}
 _REVIEW_STATE_KEYS = ("facts", "answers", "legal_admissions", "draft_revisions")
 _SOURCE_UNBOUND = "source-unbound"
 _FACTS_UNBOUND = "facts-unbound"
@@ -456,6 +458,8 @@ def project_collaborative_reviews(case_file: Mapping[str, Any]) -> Dict[str, Any
         "answers": _state_view(case_file)["answers"],
         "legal_admissions": _state_view(case_file)["legal_admissions"],
         "draft_revisions": _state_view(case_file)["draft_revisions"],
+        "section_reviews": [dict(item) for item in _section_review_rows(case_file)],
+        "bound_review_targets": bound_review_targets(case_file),
         "downstream_support": support,
         "comments_update_case_state": False,
         "tasks_update_case_state": False,
@@ -965,6 +969,8 @@ def project_draft_review_actions(case_file: Mapping[str, Any], *, draft_id: str 
         "records_are_separate": True,
         "suggestions_change_owner_draft": False,
         "owner_draft_revision_count": len(versions),
+        "bound_review_targets": bound_review_targets(case_file),
+        "section_reviews": [dict(item) for item in _section_review_rows(case_file)],
         "limitations": [
             "Human review, model suggestions, machine proof, and messages are separate records.",
             "A proposal records the exact target revision, author, and provenance.",
@@ -1216,10 +1222,302 @@ def version_draft(case_file: MutableMapping[str, Any], body: Mapping[str, Any], 
     return projected
 
 
+def _section_review_rows(case_file: Mapping[str, Any]) -> list:
+    stored = case_file.get("section_review_records")
+    return [item for item in stored if isinstance(item, dict)] if isinstance(stored, list) else []
+
+
+def _section_review_bucket(case_file: MutableMapping[str, Any]) -> list:
+    stored = case_file.get("section_review_records")
+    if not isinstance(stored, list):
+        stored = []
+        case_file["section_review_records"] = stored
+    return stored
+
+
+def _refuse_owner_key_material(body: Mapping[str, Any]) -> None:
+    for key, value in body.items():
+        if key in _OWNER_KEY_FIELDS and value not in (None, "", False):
+            raise CaseReviewError("actor_not_permitted")
+        if isinstance(value, Mapping) and any(name in value and value.get(name) not in (None, "", False) for name in _OWNER_KEY_FIELDS):
+            raise CaseReviewError("actor_not_permitted")
+
+
+def _catalog_int(value: Any) -> int:
+    return value if type(value) is int and not isinstance(value, bool) and value > 0 else 0
+
+
+def _span_pair(value: Mapping[str, Any]) -> tuple:
+    span = value.get("span") if isinstance(value.get("span"), Mapping) else value
+    start = span.get("start", span.get("span_start"))
+    end = span.get("end", span.get("span_end"))
+    if type(start) is int and type(end) is int and not isinstance(start, bool) and not isinstance(end, bool) and 0 <= start < end <= 1_000_000:
+        return start, end
+    return None
+
+
+def bound_review_targets(case_file: Mapping[str, Any]) -> list:
+    """Exact review anchors currently stored on the case. Qualified targets are not invented here."""
+
+    targets = []
+    domains = _workflow_domains(case_file)
+    for item in domains["factual"].get("assertions") or []:
+        if isinstance(item, dict) and str(item.get("id") or "").strip() and _catalog_int(item.get("revision")):
+            targets.append({
+                "target_kind": "fact", "qualification": "exact", "target_id": str(item.get("id")).strip(),
+                "target_revision": item.get("revision"),
+            })
+    legal = domains["legal"]
+    if str(legal.get("authority_id") or "").strip() and _catalog_int(legal.get("revision")):
+        targets.append({
+            "target_kind": "legal_admission", "qualification": "exact",
+            "target_id": str(legal.get("authority_id")).strip(), "target_revision": legal.get("revision"),
+        })
+    for item in domains["evidence"].get("exhibits") or []:
+        if not isinstance(item, dict):
+            continue
+        artifact_id = str(item.get("artifact_id") or "").strip()
+        version = _catalog_int(item.get("artifact_version", item.get("version")))
+        span = _span_pair(item)
+        if artifact_id and version and span is not None:
+            targets.append({
+                "target_kind": "evidence_span", "qualification": "exact", "artifact_id": artifact_id,
+                "artifact_version": version, "span_start": span[0], "span_end": span[1], "target_revision": version,
+                "target_id": artifact_id,
+            })
+    state = case_file.get("review_case_state") if isinstance(case_file.get("review_case_state"), dict) else {}
+    for kind, target_kind in (("answers", "answer"), ("facts", "fact"), ("legal_admissions", "legal_admission"), ("draft_revisions", "draft_revision")):
+        bucket = state.get(kind)
+        rows = bucket.values() if isinstance(bucket, dict) else bucket if isinstance(bucket, list) else []
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            target_id = str(item.get("id") or item.get("target_id") or "").strip()
+            revision = _catalog_int(item.get("revision"))
+            if target_id and revision:
+                targets.append({"target_kind": target_kind, "qualification": "exact", "target_id": target_id, "target_revision": revision})
+    versions = _draft_versions(case_file)
+    requirements = []
+    stored = case_file.get("derived_dependency_requirements")
+    if isinstance(stored, dict):
+        requirements = [item for item in stored.get("requirements") or [] if isinstance(item, dict)]
+    for version in versions:
+        draft_id = str(version.get("draft_id") or "").strip()
+        revision = _catalog_int(version.get("revision"))
+        if not draft_id or not revision:
+            continue
+        targets.append({
+            "target_kind": "draft_revision", "qualification": "exact", "target_id": draft_id,
+            "draft_id": draft_id, "target_revision": revision,
+        })
+        for item in requirements:
+            section_id = str(item.get("requirement_id") or item.get("passage_id") or "").strip()
+            if section_id:
+                targets.append({
+                    "target_kind": "complaint_section", "qualification": "exact", "section_id": section_id,
+                    "target_id": section_id, "draft_id": draft_id, "target_revision": revision,
+                })
+    unique = []
+    seen = set()
+    for target in targets:
+        key = json.dumps({name: target.get(name) for name in ("target_kind", "target_id", "artifact_id", "artifact_version", "span_start", "span_end", "section_id", "draft_id", "target_revision")}, sort_keys=True)
+        if key not in seen:
+            seen.add(key)
+            unique.append(target)
+    return unique
+
+
+def _target_identity(target: Mapping[str, Any]) -> str:
+    material = {name: target.get(name) for name in (
+        "target_kind", "qualification", "target_id", "artifact_id", "artifact_version",
+        "span_start", "span_end", "section_id", "draft_id", "target_revision", "qualification_reason",
+    )}
+    return _digest("review-target", json.dumps(material, sort_keys=True, default=str))
+
+
+def _normalize_review_target(case_file: Mapping[str, Any], body: Mapping[str, Any]) -> Dict[str, Any]:
+    kind = _text(body.get("target_kind"), limit=40, required=True)
+    if kind not in _REVIEW_TARGETS:
+        raise CaseReviewError("review_field")
+    expected = body.get("expected_target_revision", body.get("target_revision"))
+    if type(expected) is not int or isinstance(expected, bool) or expected < 1:
+        raise CaseReviewError("review_field")
+    catalog = bound_review_targets(case_file)
+    if kind == "qualified_evidence_span":
+        artifact_id = _text(body.get("artifact_id"), limit=120, required=True)
+        version = body.get("artifact_version")
+        if type(version) is not int or isinstance(version, bool) or version < 1 or version != expected:
+            raise CaseReviewError("stale_revision")
+        reason = _text(body.get("qualification_reason"), limit=200, required=True)
+        if _text(body.get("qualification"), limit=40, required=False) not in {"", "qualified"}:
+            raise CaseReviewError("review_field")
+        start = body.get("span_start")
+        end = body.get("span_end")
+        if start is not None or end is not None:
+            if type(start) is not int or type(end) is not int or isinstance(start, bool) or isinstance(end, bool) or not 0 <= start < end <= 1_000_000:
+                raise CaseReviewError("review_field")
+            exact = any(
+                item.get("target_kind") == "evidence_span" and item.get("artifact_id") == artifact_id
+                and item.get("artifact_version") == version and item.get("span_start") == start and item.get("span_end") == end
+                for item in catalog
+            )
+            if exact:
+                raise CaseReviewError("review_field")
+        else:
+            start = end = None
+        return {
+            "target_kind": kind, "qualification": "qualified", "qualification_reason": reason,
+            "artifact_id": artifact_id, "artifact_version": version, "span_start": start, "span_end": end,
+            "target_id": artifact_id, "target_revision": version, "exact_span": False,
+        }
+    if kind == "evidence_span":
+        artifact_id = _text(body.get("artifact_id") or body.get("target_id"), limit=120, required=True)
+        version = body.get("artifact_version", expected)
+        start = body.get("span_start")
+        end = body.get("span_end")
+        if type(version) is not int or isinstance(version, bool) or version != expected:
+            raise CaseReviewError("stale_revision")
+        if type(start) is not int or type(end) is not int or isinstance(start, bool) or isinstance(end, bool) or not 0 <= start < end <= 1_000_000:
+            raise CaseReviewError("review_field")
+        matched = next((
+            item for item in catalog
+            if item.get("target_kind") == "evidence_span" and item.get("artifact_id") == artifact_id
+            and item.get("artifact_version") == version and item.get("span_start") == start and item.get("span_end") == end
+        ), None)
+        if matched is None:
+            raise CaseReviewError("stale_revision")
+        return {
+            "target_kind": kind, "qualification": "exact", "artifact_id": artifact_id, "artifact_version": version,
+            "span_start": start, "span_end": end, "target_id": artifact_id, "target_revision": version, "exact_span": True,
+        }
+    if kind == "complaint_section":
+        section_id = _text(body.get("section_id") or body.get("target_id"), limit=80, required=True)
+        draft_id = _text(body.get("draft_id"), limit=80, required=True)
+        matched = next((
+            item for item in catalog
+            if item.get("target_kind") == "complaint_section" and item.get("section_id") == section_id
+            and item.get("draft_id") == draft_id and item.get("target_revision") == expected
+        ), None)
+        if matched is None:
+            raise CaseReviewError("stale_revision")
+        return {
+            "target_kind": kind, "qualification": "exact", "section_id": section_id, "draft_id": draft_id,
+            "target_id": section_id, "target_revision": expected, "exact_span": False,
+        }
+    target_id = _text(body.get("target_id"), limit=80, required=True)
+    matched = next((
+        item for item in catalog
+        if item.get("target_kind") == kind and item.get("target_id") == target_id and item.get("target_revision") == expected
+    ), None)
+    if matched is None:
+        raise CaseReviewError("stale_revision")
+    normalized = {"target_kind": kind, "qualification": "exact", "target_id": target_id, "target_revision": expected, "exact_span": False}
+    if kind == "draft_revision":
+        normalized["draft_id"] = target_id
+    return normalized
+
+
+def record_section_review(case_file: MutableMapping[str, Any], body: Mapping[str, Any], *, actor_principal_id: str,
+                          canonical_owner_principal_id: str, membership: str, action: str, case_id: str = "") -> Dict[str, Any]:
+    """Comment, accept, or reject a bound review target without using the owner master key."""
+
+    if not isinstance(body, Mapping) or len(json.dumps(body, default=str)) > _BODY_CAP:
+        raise CaseReviewError("review_bounds")
+    _refuse_owner_key_material(body)
+    if body.get("actor_principal_id") not in (None, "", actor_principal_id):
+        raise CaseReviewError("actor_not_permitted")
+    if membership not in {"owner", "assigned-lawyer"} or action != "case.review":
+        raise CaseReviewError("actor_not_permitted")
+    operation = _text(body.get("operation"), limit=40, required=True)
+    if operation not in _SECTION_REVIEW_OPERATIONS:
+        raise CaseReviewError("review_field")
+    decision = {"comment_review_target": "comment", "accept_review_target": "accept", "reject_review_target": "reject"}[operation]
+    request_id = _text(body.get("request_id"), limit=80, required=True)
+    rows = _section_review_bucket(case_file)
+    submitted_body = _text(body.get("body"), limit=2000, required=False)
+    if decision == "comment" and not submitted_body:
+        raise CaseReviewError("review_field")
+    for existing in rows:
+        if existing.get("request_id") == request_id:
+            if (existing.get("actor_principal_id") != actor_principal_id or existing.get("operation") != operation
+                    or existing.get("body") != submitted_body):
+                raise CaseReviewError("replay_mismatch")
+            projected = project_draft_review_actions(case_file)
+            projected["record"] = dict(existing)
+            projected["replayed"] = True
+            return projected
+    target = _normalize_review_target(case_file, body)
+    identity = _target_identity(target)
+    comment_id = _text(body.get("comment_id"), limit=80, required=decision != "comment")
+    parent = None
+    if decision != "comment":
+        parent = next((item for item in rows if item.get("record_id") == comment_id and item.get("decision") == "comment"), None)
+        if parent is None or parent.get("target_identity") != identity:
+            raise CaseReviewError("review_field")
+        if parent.get("status") in {"accepted", "rejected"}:
+            raise CaseReviewError("review_field")
+    else:
+        comment_id = ""
+    before_targets = json.dumps(bound_review_targets(case_file), sort_keys=True)
+    before_versions = json.dumps(_draft_versions(case_file), sort_keys=True, default=str)
+    lineage = [item.get("record_id") for item in rows if item.get("target_identity") == identity]
+    record = {
+        "task_id": "CIMP-UX-33",
+        "record_id": _digest("section-review", operation + "\n" + request_id + "\n" + actor_principal_id),
+        "request_id": request_id,
+        "operation": operation,
+        "decision": decision,
+        "item_type": "review_comment",
+        "actor_principal_id": actor_principal_id,
+        "canonical_owner_principal_id": canonical_owner_principal_id,
+        "actor_is_canonical_owner": actor_principal_id == canonical_owner_principal_id,
+        "membership": membership,
+        "action_scope": action,
+        "case_id": case_id,
+        "body": submitted_body,
+        "comment_id": comment_id or "",
+        "target_identity": identity,
+        "target": target,
+        "target_kind": target["target_kind"],
+        "target_id": target.get("target_id") or "",
+        "target_revision": target["target_revision"],
+        "qualification": target["qualification"],
+        "seen_review_revision": body.get("expected_review_revision") if type(body.get("expected_review_revision")) is int else None,
+        "lineage": lineage,
+        "previous_record_id": lineage[-1] if lineage else "",
+        "status": {"comment": "commented", "accept": "accepted", "reject": "rejected"}[decision],
+        "uses_owner_master_key": False,
+        "updates_case_state": False,
+        "changes_owner_draft": False,
+        "legal_sufficiency": False,
+        "governing_legal_authority": False,
+    }
+    record.update({key: target.get(key) for key in ("artifact_id", "artifact_version", "span_start", "span_end", "section_id", "draft_id", "qualification_reason", "exact_span") if key in target})
+    rows.append(record)
+    if decision != "comment" and parent is not None:
+        parent["status"] = record["status"]
+        parent["resolved_by"] = actor_principal_id
+        parent["resolved_record_id"] = record["record_id"]
+    if json.dumps(bound_review_targets(case_file), sort_keys=True) != before_targets:
+        raise CaseReviewError("review_state_mutated")
+    if json.dumps(_draft_versions(case_file), sort_keys=True, default=str) != before_versions:
+        raise CaseReviewError("review_state_mutated")
+    projected = project_draft_review_actions(case_file)
+    projected["record"] = dict(record)
+    projected["replayed"] = False
+    return projected
+
+
 def review_draft_version(case_file: MutableMapping[str, Any], body: Mapping[str, Any], *, actor_principal_id: str,
                          membership: str, action: str) -> Dict[str, Any]:
     """Review one draft revision. Acceptance authorizes export only."""
 
+    if isinstance(body, Mapping) and body.get("operation") in _SECTION_REVIEW_OPERATIONS:
+        return record_section_review(
+            case_file, body, actor_principal_id=actor_principal_id,
+            canonical_owner_principal_id=str(case_file.get("canonical_owner_principal_id") or ""),
+            membership=membership, action=action, case_id=str(case_file.get("case_id") or ""),
+        )
     if isinstance(body, Mapping) and body.get("operation") in _DRAFT_SUGGESTION_OPERATIONS:
         return submit_draft_suggestion(
             case_file, body, actor_principal_id=actor_principal_id,
@@ -1381,7 +1679,7 @@ def mount_lawyer_review_routes(app: Any) -> None:
             'review_target_capability_unavailable','proposal_already_accepted','unlock_needed'}
         if code not in allowed:
             code = 'lawyer_review_ungranted' if code in {'grant_revoked','key_grant_rejected','late_result_after_cutoff',
-                'membership_removed','membership_expired','workspace_authorization_denied'} else 'review_unavailable'
+                'membership_removed','membership_expired','workspace_authorization_denied','actor_not_permitted'} else 'review_unavailable'
         status = 409 if code in {'stale_revision','stale_approval','replay_mismatch','review_source_changed','revision_conflict','proposal_already_accepted'} else 422 if code in {
             'lawyer_review_field','lawyer_review_bounds','review_field','review_bounds'} else 503 if code in {'review_unavailable','review_key_locked',
             'review_source_unbound','proof_producer_unavailable','recipient_review_grant_required','review_transition_owner_unavailable',

@@ -355,6 +355,7 @@
             }));
         });
         panel.appendChild(messages);
+        mountBoundReviews(host, panel, actions);
         humanRows.forEach(function (record) {
             if (host.dataset.actorMembership !== "owner" || record.status !== "proposed") return;
             var card = panel.querySelector("[data-role='human-review'][data-record-id='" + text(record.record_id) + "']");
@@ -364,6 +365,165 @@
             card.appendChild(accept);
         });
         host.appendChild(panel);
+    }
+
+    function mountBoundReviews(host, panel, actions) {
+        host.querySelectorAll("[data-role='evidence-comment-form'], [data-role='section-comment-form']").forEach(function (form) {
+            form.remove();
+        });
+        var targets = actions.bound_review_targets || [];
+        host.querySelectorAll("[data-role='evidence-span']").forEach(function (row) {
+            var artifact = row.getAttribute("data-artifact-id") || "";
+            var start = Number(row.getAttribute("data-span-start"));
+            var end = Number(row.getAttribute("data-span-end"));
+            var match = targets.filter(function (target) {
+                return target.target_kind === "evidence_span" && target.artifact_id === artifact && target.span_start === start && target.span_end === end;
+            })[0];
+            var form = node("div", {"data-role": "evidence-comment-form"});
+            var box = node("textarea", {"data-role": "evidence-comment", "aria-label": "Comment on evidence span"});
+            var button = node("button", {
+                "type": "button",
+                "data-role": "comment-evidence",
+                "data-qualification": match ? "exact" : "qualified",
+                text: match ? "Comment on this evidence span" : "Comment with a qualified evidence target"
+            });
+            if (match) {
+                row.setAttribute("data-artifact-version", text(match.artifact_version));
+                row.setAttribute("data-target-qualification", "exact");
+            }
+            var version = node("input", {"data-role": "qualified-version", "aria-label": "Qualified artifact version"});
+            var reason = node("input", {
+                "data-role": "qualification-reason",
+                "aria-label": "Qualification reason",
+                value: "span_not_verified_against_artifact_bytes"
+            });
+            button.addEventListener("click", function () {
+                if (match) {
+                    postBoundReview(host, "comment_review_target", box.value, match);
+                    return;
+                }
+                postBoundReview(host, "comment_review_target", box.value, {
+                    target_kind: "qualified_evidence_span",
+                    qualification: "qualified",
+                    qualification_reason: reason.value,
+                    artifact_id: artifact,
+                    artifact_version: Number(version.value),
+                    span_start: start,
+                    span_end: end,
+                    target_revision: Number(version.value)
+                });
+            });
+            form.appendChild(box);
+            if (!match) {
+                form.appendChild(version);
+                form.appendChild(reason);
+            }
+            form.appendChild(button);
+            row.appendChild(form);
+        });
+        host.querySelectorAll("[data-role='outline-section']").forEach(function (section) {
+            var sectionId = section.getAttribute("data-section-id") || "";
+            var draft = host.querySelector("[data-role='draft-text']");
+            var draftId = draft ? draft.getAttribute("data-draft-id") || "" : "";
+            var revision = draft ? Number(draft.getAttribute("data-draft-revision") || "0") : 0;
+            var form = node("div", {"data-role": "section-comment-form"});
+            if (!sectionId || !draftId || !revision) {
+                form.appendChild(node("p", {
+                    "data-role": "section-comment-unavailable",
+                    text: "Save a draft revision before commenting on this section."
+                }));
+                section.appendChild(form);
+                return;
+            }
+            var box = node("textarea", {"data-role": "section-comment", "aria-label": "Comment on complaint section"});
+            var button = node("button", {"type": "button", "data-role": "comment-section", text: "Comment on this complaint section"});
+            button.addEventListener("click", function () {
+                postBoundReview(host, "comment_review_target", box.value, {
+                    target_kind: "complaint_section",
+                    qualification: "exact",
+                    section_id: sectionId,
+                    draft_id: draftId,
+                    target_id: sectionId,
+                    target_revision: revision
+                });
+            });
+            form.appendChild(box);
+            form.appendChild(button);
+            section.appendChild(form);
+        });
+        var bound = node("div", {"data-role": "bound-reviews"});
+        bound.appendChild(node("h5", {text: "Evidence and section review"}));
+        var rows = actions.section_reviews || [];
+        if (!rows.length) {
+            bound.appendChild(node("p", {"data-role": "bound-review-empty", text: "No review comment is tied to evidence or a complaint section."}));
+        }
+        rows.forEach(function (record) {
+            var card = node("article", {
+                "data-role": "bound-review",
+                "data-record-id": text(record.record_id),
+                "data-decision": text(record.decision),
+                "data-status": text(record.status),
+                "data-target-kind": text(record.target_kind),
+                "data-actor": text(record.actor_principal_id),
+                "data-target-revision": text(record.target_revision),
+                "data-qualification": text(record.qualification),
+                "data-artifact-id": text(record.artifact_id),
+                "data-artifact-version": text(record.artifact_version),
+                "data-span-start": text(record.span_start),
+                "data-span-end": text(record.span_end),
+                "data-section-id": text(record.section_id)
+            });
+            card.appendChild(node("p", {
+                text: text(record.decision) + " by " + text(record.actor_principal_id) + " on " + text(record.target_kind) + " revision " + text(record.target_revision)
+            }));
+            if (record.body) card.appendChild(node("p", {"data-role": "bound-review-body", text: text(record.body)}));
+            if (record.decision === "comment" && record.status === "commented") {
+                var accept = node("button", {"type": "button", "data-role": "accept-bound-review", text: "Accept comment"});
+                var reject = node("button", {"type": "button", "data-role": "reject-bound-review", text: "Reject comment"});
+                accept.addEventListener("click", function () { postBoundReview(host, "accept_review_target", "", record, record.record_id); });
+                reject.addEventListener("click", function () { postBoundReview(host, "reject_review_target", "", record, record.record_id); });
+                card.appendChild(accept);
+                card.appendChild(reject);
+            }
+            bound.appendChild(card);
+        });
+        bound.appendChild(node("p", {"data-role": "bound-review-note", text: "A review comment does not change the owner's draft or borrow the owner key."}));
+        panel.appendChild(bound);
+    }
+
+    async function postBoundReview(host, operation, commentBody, target, commentId) {
+        var caseId = host.dataset.caseId || "";
+        var payload = {
+            operation: operation,
+            request_id: operation + "-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+            target_kind: target.target_kind,
+            qualification: target.qualification || "",
+            expected_target_revision: Number(target.target_revision)
+        };
+        if (commentBody) payload.body = commentBody;
+        ["artifact_id", "section_id", "draft_id", "target_id", "qualification_reason"].forEach(function (key) {
+            if (target[key]) payload[key] = target[key];
+        });
+        ["artifact_version", "span_start", "span_end"].forEach(function (key) {
+            if (target[key] !== undefined && target[key] !== null && target[key] !== "") payload[key] = Number(target[key]);
+        });
+        if (commentId) payload.comment_id = commentId;
+        var response = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/draft-reviews", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: jsonHeaders(host),
+            body: JSON.stringify(payload)
+        });
+        var result = null;
+        try { result = await response.json(); } catch (error) { result = null; }
+        var note = host.querySelector("[data-role='bound-review-note']");
+        if (!response.ok) {
+            if (note) note.textContent = "The review comment was not recorded. The owner's draft was not changed.";
+            return result;
+        }
+        if (note) note.textContent = "Recorded " + operation + ". The owner's draft was not changed.";
+        await refreshActions(host);
+        return result;
     }
 
     function reviewPayload(host, operation, provenance, proposed, modelId) {
