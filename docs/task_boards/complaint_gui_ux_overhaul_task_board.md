@@ -1122,7 +1122,7 @@ Implementation instructions:
 
 ## CIMP-UX-37 Link correspondence to explicit workflow adoption
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
