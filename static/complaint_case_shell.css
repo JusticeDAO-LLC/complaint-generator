@@ -202,3 +202,67 @@ body[data-case-task-flow="ordinary"] [data-case-shell-diagnostic="true"] {
         transition: none;
     }
 }
+
+.case-state {
+    margin: 12px 0;
+    padding: 12px 14px;
+    border: 2px solid #6b3a22;
+    background: #f4efe6;
+    color: #1c1915;
+    border-radius: 6px;
+}
+
+.case-state[data-kind="loading"] {
+    border-color: #3f4d3a;
+}
+
+.case-state[data-kind="empty"] {
+    border-color: #3d4a57;
+}
+
+.case-state h2 {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    line-height: 1.3;
+}
+
+.case-state p {
+    margin: 0 0 8px;
+    max-width: 68ch;
+}
+
+.case-state__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.case-state button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 12px;
+    background: #1c1915;
+    color: #f4efe6;
+    border: 2px solid #1c1915;
+    border-radius: 4px;
+}
+
+.case-state button:focus-visible,
+.case-state:focus-visible {
+    outline: 3px solid #0b3a82;
+    outline-offset: 2px;
+}
+
+@media (max-width: 320px) {
+    .case-state button {
+        flex: 1 1 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .case-state,
+    .case-state * {
+        transition: none;
+        scroll-behavior: auto;
+    }
+}

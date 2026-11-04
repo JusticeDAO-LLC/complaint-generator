@@ -5,11 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Case conversation</title>
     <link rel="stylesheet" href="/static/complaint_experience_tokens.css">
+    <link rel="stylesheet" href="/static/complaint_case_shell.css">
     <link rel="stylesheet" href="/static/complaint_correspondence.css">
 </head>
 <body class="cx-app correspondence-page" data-message-transport="http-polling" data-websocket="unsupported" data-sse="unsupported">
 <a class="correspondence-skip" href="#message-text">Skip to message composer</a>
 <main class="correspondence">
+    <section id="complaint-state-surface" class="case-state" data-kind="loading" data-outcome="pending" data-retry-permitted="false" data-cancel-permitted="true" data-ready="false" data-supported="false" data-verified="false" role="status" aria-live="polite" aria-labelledby="complaint-state-title">
+        <h2 id="complaint-state-title">Loading</h2>
+        <p id="complaint-state-detail">The case state is still being read. You can cancel this check.</p>
+        <p id="complaint-state-intent" hidden>Your unsent text is still in the composer.</p>
+        <div class="case-state__actions">
+            <button type="button" id="complaint-state-retry" hidden>Retry</button>
+            <button type="button" id="complaint-state-cancel">Cancel</button>
+            <button type="button" id="complaint-state-check-key" hidden>Check private key access</button>
+        </div>
+    </section>
     <header class="correspondence__header">
         <h1>Case conversation</h1>
         <p id="transport-notice" class="correspondence__notice">Updates use qualified HTTP polling. WebSocket and server-sent events are not used. Message text stays in the server response for this view and is not written to browser storage. Signing in again is required after a reload because the CSRF token is kept in memory only.</p>
@@ -64,6 +75,7 @@
     <p id="inbox-status" role="status"></p>
     <p id="inbox-error" role="alert" tabindex="-1"></p>
 </main>
+<script src="/static/complaint_case_shell.js"></script>
 <script src="/static/complaint_correspondence.js"></script>
 </body>
 </html>

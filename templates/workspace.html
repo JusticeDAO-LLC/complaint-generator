@@ -3471,6 +3471,16 @@
         <p><a id="workspace-begin-complaint" href="/cases#create-case">Begin a complaint</a></p>
         <p>If you already have a case, open <a href="/cases">My cases</a>, sign in, and choose that case. An authorized local key owner must unlock locked keys outside this page; checking private key access then resumes the saved question. Missing keys, denied sessions, and unavailable capabilities stay visible. Browser storage is not a complaint record, and this page grants no remote processing consent.</p>
     </section>
+    <section id="complaint-state-surface" class="case-state" data-kind="loading" data-outcome="pending" data-retry-permitted="false" data-cancel-permitted="true" data-ready="false" data-supported="false" data-verified="false" role="status" aria-live="polite" aria-labelledby="complaint-state-title">
+        <h2 id="complaint-state-title">Loading</h2>
+        <p id="complaint-state-detail">The case state is still being read. You can cancel this check.</p>
+        <p id="complaint-state-intent" hidden>Your unsent text is still in the composer.</p>
+        <div class="case-state__actions">
+            <button type="button" id="complaint-state-retry" hidden>Retry</button>
+            <button type="button" id="complaint-state-cancel">Cancel</button>
+            <button type="button" id="complaint-state-check-key" hidden>Check private key access</button>
+        </div>
+    </section>
     <section id="complaint-case-shell" data-state="loading"></section>
     <section id="complaint-readiness" data-task="CIMP-UX-34" data-state="empty" data-legal-sufficiency="false" data-court-ready="false" data-filing-succeeded="false" data-interview-outcome="empty" aria-labelledby="complaint-readiness-title">
         <h2 id="complaint-readiness-title">Readiness and next actions</h2>
