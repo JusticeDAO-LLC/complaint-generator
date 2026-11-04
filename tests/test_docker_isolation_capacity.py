@@ -76,6 +76,8 @@ def test_exact_image_miss_is_not_a_board_wide_hold(tmp_path):
     assert daemon._retained_provider_capacity_deferral() is record
     assert daemon._run_implementation(SimpleNamespace(task_id="CIMP-UX-20"), None)["attempted"] is True
     assert daemon._retained_provider_capacity_deferral() is record
+    assert daemon._run_implementation(SimpleNamespace(task_id="CIMP-UX-36"), None)["attempted"] is True
+    assert daemon._retained_provider_capacity_deferral() is record
     assert daemon._provider_capacity_failure_from_log(log)["exhausted"] is False
     assert daemon._provider_capacity_failure_from_log(log)["retained_callback_required"] is False
 
@@ -98,8 +100,15 @@ def test_real_capacity_record_still_stops_the_board(tmp_path):
         def _run_once(self):
             raise AssertionError("real capacity reached the scheduler")
 
+        def _run_implementation(self, task, state):
+            retained = self._retained_provider_capacity_deferral()
+            if retained is not None:
+                return retained
+            raise AssertionError("real capacity reached implementation")
+
     daemon = capacity_isolating_daemon(Native)()
     assert daemon.run_once()["implementation_result"] is record
+    assert daemon._run_implementation(SimpleNamespace(task_id="CIMP-UX-36"), None) is record
 
 
 @pytest.mark.parametrize("overrides", [

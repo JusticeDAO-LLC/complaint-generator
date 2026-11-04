@@ -128,8 +128,10 @@ def capacity_isolating_daemon(native_class):
 
         def _run_implementation(self, task, state):
             record = native_class._retained_provider_capacity_deferral(self)
-            if (record is not None and record_is_docker_isolation_miss(record)
-                    and str(record.get("task_id") or "") == str(getattr(task, "task_id", ""))):
+            # The same miss also blocks every later ready task. Native returns
+            # the retained record before dispatch unless it is hidden for this
+            # call only. The record, quarantine, and attempt stay in place.
+            if record is not None and record_is_docker_isolation_miss(record):
                 self._docker_isolation_miss_attempt_open = True
                 try:
                     return super()._run_implementation(task, state)
