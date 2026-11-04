@@ -8531,3 +8531,151 @@ def recover_private_bound_records(
         "plaintext_fallback": False,
         "queued_can_claim_committed": False,
     }
+
+
+_SCOPE_LEDGER = "scope-ledger.json"
+
+
+def _scope_ledger_path(root: Path) -> Path:
+    return root / _SCOPE_LEDGER
+
+
+def _load_scope_ledger(root: Path) -> dict[str, Any]:
+    path = _scope_ledger_path(root)
+    if not path.exists():
+        return {"revisions": {}}
+    raw = _read_private_bytes(path)
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise BoundPrivateRecordError("source_integrity") from exc
+    revisions = document.get("revisions") if isinstance(document, dict) else None
+    if not isinstance(revisions, dict):
+        raise BoundPrivateRecordError("source_integrity")
+    return {"revisions": revisions}
+
+
+def _store_scope_ledger(root: Path, document: Mapping[str, Any]) -> None:
+    _write_private_bytes(_scope_ledger_path(root), json.dumps(document, sort_keys=True).encode("utf-8"), protect_parent=True)
+
+
+def probe_kit_evidence_capability() -> dict[str, Any]:
+    """Ask the pinned Kit local owner and AES-GCM stack before any write."""
+
+    if not cryptography_available():
+        return {"available": False, "code": "missing_capability", "owner": "cryptography.hazmat.primitives.ciphers.aead.AESGCM"}
+    try:
+        _bound_kit_types()
+    except BoundPrivateRecordError:
+        return {"available": False, "code": "missing_capability", "owner": "ipfs_kit_py.assurance.local_durable.LiveLocalFilesystemAdapter"}
+    return {
+        "available": True,
+        "code": "available",
+        "owner": "ipfs_kit_py.assurance.local_durable.LiveLocalFilesystemAdapter",
+        "plaintext_fallback": False,
+    }
+
+
+def commit_scoped_kit_record(
+    root: str | Path,
+    *,
+    record_id: str,
+    kind: str,
+    plaintext: bytes,
+    binding: PrivateArtifactBinding,
+    key: bytes | None,
+    key_id: str,
+    source_sha256: str,
+    key_locked: bool = False,
+) -> dict[str, Any]:
+    """Seal one case-scoped record only after Kit and the source hash agree.
+
+    A locked key, a hash mismatch, or a revision that already names different
+    bytes refuses before a new envelope is published. The ledger stores hashes
+    and record ids, never plaintext.
+    """
+
+    directory = _bound_root(root)
+    if key_locked or key is None:
+        raise BoundPrivateRecordError("key_locked")
+    if not isinstance(plaintext, (bytes, bytearray)) or not plaintext:
+        raise BoundPrivateRecordError("source_integrity")
+    payload = bytes(plaintext)
+    digest = hashlib.sha256(payload).hexdigest()
+    if not isinstance(source_sha256, str) or source_sha256 != digest:
+        raise BoundPrivateRecordError("source_integrity")
+    capability = probe_kit_evidence_capability()
+    if capability["available"] is not True:
+        raise BoundPrivateRecordError("missing_capability")
+    record_id = _require_record_id(record_id)
+    _require_record_kind(kind, binding)
+    ledger = _load_scope_ledger(directory)
+    prior = ledger["revisions"].get(binding.revision)
+    if isinstance(prior, dict):
+        if prior.get("sha256") != digest or prior.get("record_id") != record_id or prior.get("kind") != kind:
+            raise BoundPrivateRecordError("conflicting_revision")
+        opened = open_private_bound_record(directory, record_id=record_id, binding=binding, key=key)
+        if hashlib.sha256(opened).hexdigest() != digest:
+            raise BoundPrivateRecordError("source_integrity")
+        return {
+            "status": "qualified",
+            "code": "replayed",
+            "record_id": record_id,
+            "kind": kind,
+            "revision": binding.revision,
+            "source_sha256": digest,
+            "local_durable": True,
+            "remote_durable": False,
+            "plaintext_fallback": False,
+            "plaintext_persisted": False,
+            "kit_owner": capability["owner"],
+        }
+    receipt = commit_private_bound_record(
+        directory,
+        record_id=record_id,
+        kind=kind,
+        plaintext=payload,
+        binding=binding,
+        key=key,
+        key_id=key_id,
+    )
+    if receipt.get("local_durable") is not True:
+        raise BoundPrivateRecordError(str(receipt.get("code") or "missing_capability"))
+    opened = open_private_bound_record(directory, record_id=record_id, binding=binding, key=key)
+    if opened != payload:
+        raise BoundPrivateRecordError("source_integrity")
+    ledger["revisions"][binding.revision] = {
+        "sha256": digest,
+        "record_id": record_id,
+        "kind": kind,
+        "case_id": binding.case_id,
+        "principal_id": binding.principal_id,
+    }
+    _store_scope_ledger(directory, ledger)
+    return {
+        "status": "qualified",
+        "code": "committed",
+        "record_id": record_id,
+        "kind": kind,
+        "revision": binding.revision,
+        "source_sha256": digest,
+        "local_durable": True,
+        "remote_durable": False,
+        "plaintext_fallback": False,
+        "plaintext_persisted": False,
+        "kit_owner": capability["owner"],
+        "content_address_is_encryption": False,
+    }
+
+
+def open_scoped_kit_record(
+    root: str | Path,
+    *,
+    record_id: str,
+    binding: PrivateArtifactBinding,
+    key: bytes | None,
+    key_locked: bool = False,
+) -> bytes:
+    if key_locked or key is None:
+        raise BoundPrivateRecordError("key_locked")
+    return open_private_bound_record(root, record_id=record_id, binding=binding, key=key)

@@ -3825,3 +3825,287 @@ Provide brief recommendations for:
                 error_type=type(exc).__name__,
             )
             return 'Evidence analysis available. Review submitted evidence and consider any gaps in documentation.'
+
+    def analyze_scoped_case(self, state: "EvidenceStateHook", *, case_id: str, actor_id: str, claim_type: str) -> Dict[str, Any]:
+        """Count admitted evidence chunks for this case and actor.
+
+        Annotation rows stay out of the evidence count. Model text is not consulted.
+        """
+
+        rows = [
+            row for row in _scoped_rows(state)
+            if row.get("case_id") == case_id and row.get("actor_id") == actor_id and row.get("claim_type") == claim_type
+        ]
+        evidence = [row for row in rows if row.get("kind") == "evidence" and row.get("annotation") is not True]
+        annotations = [row for row in rows if row.get("kind") == "annotation"]
+        return {
+            "claim_type": claim_type,
+            "case_id": case_id,
+            "actor_id": actor_id,
+            "evidence_count": len(evidence),
+            "annotation_count": len(annotations),
+            "chunk_count": sum(int(row.get("chunk_count") or 0) for row in evidence),
+            "evidence_ids": [str(row.get("record_id") or "") for row in evidence],
+            "annotation_ids": [str(row.get("record_id") or "") for row in annotations],
+            "annotation_converted_to_evidence": False,
+            "plaintext_fallback": False,
+            "model_consulted": False,
+        }
+
+
+_UNSAFE_MARKERS = (b"\x00", b"<script", b"javascript:", "\u202e".encode("utf-8"))
+_QUALIFY_OPERATION = "qualify_private_evidence"
+
+
+def _scoped_rows(state: "EvidenceStateHook") -> List[Dict[str, Any]]:
+    rows = getattr(state, "_scoped_owner_rows", None)
+    if rows is None:
+        state._scoped_owner_rows = []
+        rows = state._scoped_owner_rows
+    return rows
+
+
+def _qualification_refusal(code: str, status: str, **extra: Any) -> Dict[str, Any]:
+    receipt = {
+        "status": status,
+        "code": code,
+        "plaintext_fallback": False,
+        "plaintext_persisted": False,
+        "annotation_converted_to_evidence": False,
+        "local_durable": False,
+        "remote_durable": False,
+        "writes": 0,
+        "evidence_count": 0,
+        "annotation_count": 0,
+        "chunk_count": 0,
+    }
+    receipt.update(extra)
+    return receipt
+
+
+def _consent_allows(consent: Any, *, case_id: str, actor_id: str) -> bool:
+    if not isinstance(consent, dict):
+        return False
+    if consent.get("revoked") is True or consent.get("granted") is not True:
+        return False
+    if consent.get("case_id") != case_id or consent.get("actor_id") != actor_id:
+        return False
+    operations = consent.get("operations")
+    return isinstance(operations, list) and _QUALIFY_OPERATION in operations
+
+
+def _unsafe_source(payload: bytes) -> bool:
+    return any(marker in payload for marker in _UNSAFE_MARKERS)
+
+
+class _QualificationLog:
+    def log(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    def query_backend(self, _prompt: str) -> str:
+        raise EvidenceHookError("model text is not evidence")
+
+
+def qualify_scoped_private_evidence(
+    root: str,
+    *,
+    case_id: str,
+    actor_id: str,
+    tenant_id: str,
+    revision: str,
+    source: bytes,
+    source_sha256: str,
+    key: bytes | None,
+    key_id: str,
+    consent: Any,
+    annotation: bytes | None = None,
+    annotation_sha256: str | None = None,
+    claim_type: str = "synthetic-claim",
+    key_locked: bool = False,
+    capability_available: bool | None = None,
+    db_path: str | None = None,
+) -> Dict[str, Any]:
+    """Qualify storage, state, and analysis for one case and actor.
+
+    Ciphertext goes through the Kit local owner. Chunks and chunk metadata
+    come from the dataset text owner. Annotations stay annotations.
+    """
+
+    from integrations.ipfs_datasets.documents import parse_document_text
+    from integrations.private_storage import (
+        BoundPrivateRecordError,
+        PrivateArtifactBinding,
+        commit_scoped_kit_record,
+        open_scoped_kit_record,
+        probe_kit_evidence_capability,
+    )
+
+    scope = {"case_id": case_id, "actor_id": actor_id, "revision": revision}
+    if not _consent_allows(consent, case_id=case_id, actor_id=actor_id):
+        return _qualification_refusal("consent_refused", "refused", **scope)
+    if key_locked or key is None:
+        return _qualification_refusal("key_locked", "refused", **scope)
+    if not isinstance(source, (bytes, bytearray)) or _unsafe_source(bytes(source)):
+        return _qualification_refusal("unsafe_content", "refused", **scope)
+    if annotation is not None and _unsafe_source(bytes(annotation)):
+        return _qualification_refusal("unsafe_content", "refused", **scope)
+    probed = probe_kit_evidence_capability()
+    if capability_available is False or probed.get("available") is not True:
+        return _qualification_refusal("missing_capability", "unavailable", **scope, kit_owner=probed.get("owner", ""))
+    if not isinstance(source_sha256, str) or source_sha256 != hashlib.sha256(bytes(source)).hexdigest():
+        return _qualification_refusal("source_integrity", "refused", **scope)
+
+    try:
+        text = bytes(source).decode("utf-8")
+    except UnicodeError:
+        return _qualification_refusal("source_integrity", "refused", **scope)
+    parsed = parse_document_text(text, filename="evidence.txt", mime_type="text/plain", source="scoped-evidence")
+    chunks = list((parsed or {}).get("chunks") or [])
+    if not chunks:
+        return _qualification_refusal("source_integrity", "refused", **scope)
+    chunk_meta = []
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            return _qualification_refusal("missing_capability", "unavailable", **scope, kit_owner="dataset-chunk-owner")
+        chunk_text = str(chunk.get("text") or "")
+        metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+        chunk_meta.append({
+            "chunk_id": str(chunk.get("chunk_id") or ""),
+            "index": int(chunk.get("index") or 0),
+            "start": int(chunk.get("start") or 0),
+            "end": int(chunk.get("end") or 0),
+            "sha256": hashlib.sha256(chunk_text.encode("utf-8")).hexdigest(),
+            "extraction_method": str(metadata.get("extraction_method") or ""),
+            "owner": "integrations.ipfs_datasets.documents.parse_document_text",
+        })
+    metadata_bytes = json.dumps({"chunks": chunk_meta, "case_id": case_id, "actor_id": actor_id}, sort_keys=True).encode("utf-8")
+    evidence_binding = PrivateArtifactBinding(
+        tenant_id=tenant_id, case_id=case_id, artifact_kind="evidence",
+        revision=f"{revision}.evidence", principal_id=actor_id,
+    )
+    metadata_binding = PrivateArtifactBinding(
+        tenant_id=tenant_id, case_id=case_id, artifact_kind="classification_revision",
+        revision=f"{revision}.metadata", principal_id=actor_id,
+    )
+    try:
+        stored = commit_scoped_kit_record(
+            root, record_id=f"ev-{revision}", kind="evidence", plaintext=bytes(source),
+            binding=evidence_binding, key=key, key_id=key_id, source_sha256=source_sha256, key_locked=key_locked,
+        )
+        meta_stored = commit_scoped_kit_record(
+            root, record_id=f"md-{revision}", kind="classification_revision", plaintext=metadata_bytes,
+            binding=metadata_binding, key=key, key_id=key_id,
+            source_sha256=hashlib.sha256(metadata_bytes).hexdigest(), key_locked=key_locked,
+        )
+        annotation_stored = None
+        if annotation is not None:
+            if not isinstance(annotation_sha256, str):
+                return _qualification_refusal("source_integrity", "refused", **scope)
+            note_binding = PrivateArtifactBinding(
+                tenant_id=tenant_id, case_id=case_id, artifact_kind="annotation",
+                revision=f"{revision}.annotation", principal_id=actor_id,
+            )
+            annotation_stored = commit_scoped_kit_record(
+                root, record_id=f"an-{revision}", kind="annotation", plaintext=bytes(annotation),
+                binding=note_binding, key=key, key_id=key_id, source_sha256=annotation_sha256, key_locked=key_locked,
+            )
+        opened = open_scoped_kit_record(root, record_id=f"ev-{revision}", binding=evidence_binding, key=key)
+        opened_meta = open_scoped_kit_record(root, record_id=f"md-{revision}", binding=metadata_binding, key=key)
+    except BoundPrivateRecordError as exc:
+        code = exc.code if exc.code in {"key_locked", "conflicting_revision", "source_integrity", "missing_capability"} else "source_integrity"
+        status = "unavailable" if code == "missing_capability" else "refused"
+        return _qualification_refusal(code, status, **scope)
+    if opened != bytes(source) or opened_meta != metadata_bytes:
+        return _qualification_refusal("source_integrity", "refused", **scope)
+    admitted_meta = json.loads(opened_meta.decode("utf-8"))
+    if admitted_meta.get("chunks") != chunk_meta:
+        return _qualification_refusal("source_integrity", "refused", **scope)
+
+    mediator = _QualificationLog()
+    storage = EvidenceStorageHook(mediator)
+    state = EvidenceStateHook(mediator, db_path=db_path)
+    analysis = EvidenceAnalysisHook(mediator)
+    state_row = {
+        "case_id": case_id,
+        "actor_id": actor_id,
+        "kind": "evidence",
+        "record_id": stored["record_id"],
+        "revision": evidence_binding.revision,
+        "source_sha256": stored["source_sha256"],
+        "chunk_count": len(chunk_meta),
+        "claim_type": claim_type,
+        "annotation": False,
+        "metadata_record_id": meta_stored["record_id"],
+        "dataset_owner": "integrations.ipfs_datasets.documents.parse_document_text",
+        "kit_owner": stored["kit_owner"],
+    }
+    _scoped_rows(state).append(state_row)
+    if annotation_stored is not None:
+        _scoped_rows(state).append({
+            "case_id": case_id,
+            "actor_id": actor_id,
+            "kind": "annotation",
+            "record_id": annotation_stored["record_id"],
+            "revision": f"{revision}.annotation",
+            "annotation": True,
+            "claim_type": claim_type,
+            "chunk_count": 0,
+        })
+    report = analysis.analyze_scoped_case(state, case_id=case_id, actor_id=actor_id, claim_type=claim_type)
+    return {
+        "status": "qualified",
+        "code": "qualified",
+        "plaintext_fallback": False,
+        "plaintext_persisted": False,
+        "annotation_converted_to_evidence": False,
+        "local_durable": True,
+        "remote_durable": False,
+        "writes": 2 if annotation_stored is None else 3,
+        "case_id": case_id,
+        "actor_id": actor_id,
+        "revision": revision,
+        "evidence_count": report["evidence_count"],
+        "annotation_count": report["annotation_count"],
+        "chunk_count": report["chunk_count"],
+        "analysis_evidence_ids": report["evidence_ids"],
+        "analysis_annotation_ids": report["annotation_ids"],
+        "metadata_record_id": meta_stored["record_id"],
+        "evidence_record_id": stored["record_id"],
+        "dataset_owner": state_row["dataset_owner"],
+        "kit_owner": stored["kit_owner"],
+        "storage_owner": type(storage).__name__,
+        "state_owner": type(state).__name__,
+        "analysis_owner": type(analysis).__name__,
+        "source_sha256": stored["source_sha256"],
+    }
+
+
+def read_scoped_private_evidence(
+    root: str,
+    *,
+    case_id: str,
+    actor_id: str,
+    tenant_id: str,
+    revision: str,
+    key: bytes | None,
+    record: str = "evidence",
+    key_locked: bool = False,
+) -> bytes:
+    from integrations.private_storage import PrivateArtifactBinding, open_scoped_kit_record
+
+    kinds = {"evidence": "evidence", "metadata": "classification_revision", "annotation": "annotation"}
+    ids = {"evidence": f"ev-{revision}", "metadata": f"md-{revision}", "annotation": f"an-{revision}"}
+    if record not in kinds:
+        raise EvidenceRetrievalError("record rejected", code="source_integrity")
+    binding = PrivateArtifactBinding(
+        tenant_id=tenant_id,
+        case_id=case_id,
+        artifact_kind=kinds[record],
+        revision=f"{revision}.{record if record != 'metadata' else 'metadata'}",
+        principal_id=actor_id,
+    )
+    try:
+        return open_scoped_kit_record(root, record_id=ids[record], binding=binding, key=key, key_locked=key_locked)
+    except Exception as exc:
+        code = getattr(exc, "code", "source_integrity")
+        raise EvidenceRetrievalError("scoped evidence is unavailable", code=code) from exc
