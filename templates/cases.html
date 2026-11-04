@@ -162,6 +162,13 @@
         <p id="notification-notice" class="notice">Badges count assignment, message, and review events for you only. They do not include complaint or evidence text. This campaign does not send email, SMS, or external chat.</p>
         <ul id="notification-list"></ul>
     </section>
+    <section id="correspondence-attention" data-channel="in_app" data-external-delivery="false">
+        <h2>Correspondence attention <span id="correspondence-badge" data-channel="in_app" data-external-delivery="false">0</span></h2>
+        <p id="correspondence-attention-notice" class="notice">Unread, review-needed, and update counts are for your account only. Global badges and the operational log omit complaint content. This page does not send email or SMS.</p>
+        <p id="correspondence-attention-status" role="status"></p>
+        <ul id="correspondence-attention-list"></ul>
+        <ul id="correspondence-attention-log"></ul>
+    </section>
     <p id="case-error" role="alert"></p>
     <p id="case-asset-status" class="cg-state-error" role="status" hidden></p>
     <img id="case-external-asset" alt="" width="1" height="1">
@@ -179,6 +186,9 @@
     var inviteKeys = {};
     var pendingInvite = null;
     var pendingDecision = null;
+    var attentionTimer = 0;
+    var attentionAbort = null;
+    var attentionToken = 0;
     var scopeLabels = {
         "case.read": "Read",
         "case.review": "Review",
@@ -358,6 +368,8 @@
         document.getElementById("assignment-list").replaceChildren();
         document.getElementById("notification-list").replaceChildren();
         document.getElementById("notification-badge").textContent = "0";
+        stopCorrespondenceAttention();
+        renderCorrespondenceAttention(null);
         if (window.complaintReviewer) window.complaintReviewer.clear();
         document.getElementById("case-auth-status").textContent = "Sign in required";
         renderCases([]);
@@ -402,6 +414,8 @@
         document.getElementById("assignment-list").replaceChildren();
         document.getElementById("notification-list").replaceChildren();
         document.getElementById("notification-badge").textContent = "0";
+        stopCorrespondenceAttention();
+        renderCorrespondenceAttention(null);
         document.getElementById("assignment-content").textContent = "";
         document.getElementById("lawyer-select").replaceChildren();
         document.getElementById("case-auth-status").textContent = "Signing in";
@@ -426,6 +440,7 @@
             await loadSession(ownGeneration);
             await loadAssignments(ownGeneration);
             await loadNotifications(ownGeneration);
+            startCorrespondenceAttention(ownGeneration);
             if (window.complaintReviewer) await window.complaintReviewer.load({bare: true, generation: ownGeneration, current: function () { return generation; }});
             if (ownGeneration === generation) showError("");
             if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
@@ -576,6 +591,79 @@
         } catch (error) {
             if (ownGeneration === generation) showError(error.message);
         }
+    }
+
+    function stopCorrespondenceAttention() {
+        attentionToken += 1;
+        if (attentionTimer) window.clearInterval(attentionTimer);
+        attentionTimer = 0;
+        if (attentionAbort) attentionAbort.abort();
+        attentionAbort = null;
+    }
+
+    function renderCorrespondenceAttention(payload) {
+        var badge = document.getElementById("correspondence-badge");
+        var status = document.getElementById("correspondence-attention-status");
+        var list = document.getElementById("correspondence-attention-list");
+        var log = document.getElementById("correspondence-attention-log");
+        var counts = payload && payload.badge ? payload.badge : {};
+        var total = counts.total_count || 0;
+        badge.textContent = String(total);
+        badge.dataset.channel = "in_app";
+        badge.dataset.externalDelivery = "false";
+        badge.dataset.unread = String(counts.unread_count || 0);
+        badge.dataset.reviewNeeded = String(counts.review_needed_count || 0);
+        badge.dataset.updates = String(counts.update_count || 0);
+        status.textContent = payload
+            ? "Unread " + (counts.unread_count || 0) + ". Review needed " + (counts.review_needed_count || 0) + ". Updates " + (counts.update_count || 0) + ". In-app only."
+            : "";
+        list.replaceChildren();
+        ((payload && payload.items) || []).forEach(function (item) {
+            var row = document.createElement("li");
+            row.dataset.attention = item.attention || "";
+            row.dataset.sourceId = item.source_id || "";
+            row.dataset.caseId = item.case_id || "";
+            row.textContent = (item.attention || "update") + " " + (item.source_id || "");
+            list.appendChild(row);
+        });
+        log.replaceChildren();
+        ((payload && payload.operational_log) || []).forEach(function (item) {
+            var row = document.createElement("li");
+            row.dataset.action = item.action || "";
+            row.dataset.sourceId = item.source_id || "";
+            row.textContent = (item.action || "recorded") + " " + (item.source_id || "");
+            log.appendChild(row);
+        });
+    }
+
+    async function loadCorrespondenceAttention(ownGeneration, token) {
+        var controller = new AbortController();
+        if (attentionAbort) attentionAbort.abort();
+        attentionAbort = controller;
+        try {
+            var payload = await api("/api/cases/correspondence/attention", {signal: controller.signal});
+            if (token !== attentionToken || ownGeneration !== generation) return;
+            if (payload.external_delivery !== false || payload.email !== false || payload.sms !== false) {
+                renderCorrespondenceAttention(null);
+                return;
+            }
+            renderCorrespondenceAttention(payload);
+        } catch (error) {
+            if (error && (error.name === "AbortError" || error.message === "aborted")) return;
+            if (error && error.message === "correspondence_unavailable") return;
+            if (token === attentionToken && ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    function startCorrespondenceAttention(ownGeneration) {
+        stopCorrespondenceAttention();
+        var token = attentionToken;
+        function tick() {
+            if (token !== attentionToken || ownGeneration !== generation) return;
+            loadCorrespondenceAttention(ownGeneration, token);
+        }
+        tick();
+        attentionTimer = window.setInterval(tick, 4000);
     }
 
     function renderNotifications(payload) {

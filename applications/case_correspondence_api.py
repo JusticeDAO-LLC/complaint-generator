@@ -8,6 +8,7 @@ source record type and the canonical encrypted owner.
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Mapping
 
 from starlette.concurrency import run_in_threadpool
@@ -17,6 +18,29 @@ from applications.browser_sessions import SESSION_COOKIE, BrowserSessionError, B
 from applications.case_messages import CaseMessageError, message_http_status
 
 TASK_ID = "CIMP-UX-35"
+ATTENTION_TASK_ID = "CIMP-UX-38"
+_ATTENTION_BY_RECORD = {
+    "human_message": "unread",
+    "review_decision": "review_needed",
+    "ai_mediator_turn": "update",
+    "case_action": "update",
+}
+_ATTENTION_CONTENT = frozenset({
+    "text",
+    "body",
+    "evidence",
+    "complaint",
+    "narrative",
+    "proposed_text",
+    "message",
+    "email",
+    "sms",
+    "phone",
+    "chat",
+    "subject",
+    "plaintext",
+    "case_plaintext",
+})
 RECORD_TYPES = ("ai_mediator_turn", "human_message", "review_decision", "case_action")
 _RECORD_RANK = {name: index for index, name in enumerate(RECORD_TYPES)}
 _NO_STORE = {"Cache-Control": "no-store, max-age=0, private", "Pragma": "no-cache", "Expires": "0"}
@@ -30,6 +54,9 @@ LIMITATIONS = (
     "actor_remains_distinct_from_canonical_encrypted_owner",
     "missing_source_is_unavailable",
     "display_does_not_adopt_or_relabel",
+    "attention_badges_omit_complaint_content",
+    "acknowledgement_is_scoped_server_state",
+    "no_email_or_sms_delivery",
 )
 _WORKFLOW_TARGETS = {
     "evidence": "evidence",
@@ -91,7 +118,7 @@ def correspondence_http_status(code: str) -> int:
         return 409
     if code in {"correspondence_unavailable", "message_unavailable"}:
         return 503
-    if code in {"missing_case", "missing_thread", "missing_grant", "missing_principal"}:
+    if code in {"missing_case", "missing_thread", "missing_grant", "missing_principal", "missing_source"}:
         return 404
     return 403
 
@@ -242,10 +269,48 @@ def _activity_row(record: Mapping[str, Any], *, expected_type: str, case_id: str
     )
 
 
-class CaseCorrespondenceService:
-    """Project authorized records. This object stores nothing."""
+class CorrespondenceAttentionBook:
+    """Per-actor acknowledgement of a source revision. Stores no message text."""
 
-    def __init__(self, messages: Any, *, audit: Any = None, activity: Any = None) -> None:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._acks: dict[tuple[str, str, str], int | str] = {}
+        self._log: list[dict[str, Any]] = []
+
+    def acknowledged(self, actor: str, case_id: str, source_id: str, revision: int | str) -> bool:
+        with self._lock:
+            return self._acks.get((actor, case_id, source_id)) == revision
+
+    def acknowledge(self, *, actor: str, case_id: str, source_id: str, record_type: str, revision: int | str, state: str) -> bool:
+        key = (actor, case_id, source_id)
+        with self._lock:
+            replayed = self._acks.get(key) == revision
+            self._acks[key] = revision
+            if not replayed:
+                self._log.append({
+                    "action": "correspondence_acknowledged",
+                    "actor_principal_id": actor,
+                    "case_id": case_id,
+                    "source_id": source_id,
+                    "record_type": record_type,
+                    "attention": state,
+                    "revision": revision,
+                    "channel": "in_app",
+                    "external_delivery": False,
+                    "email": False,
+                    "sms": False,
+                })
+            return replayed
+
+    def log_for(self, actor: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(item) for item in self._log if item.get("actor_principal_id") == actor]
+
+
+class CaseCorrespondenceService:
+    """Project authorized records. Attention acknowledgements live in the shared book."""
+
+    def __init__(self, messages: Any, *, audit: Any = None, activity: Any = None, attention: CorrespondenceAttentionBook | None = None) -> None:
         from applications.case_message_api import CaseMessageService
 
         if not isinstance(messages, CaseMessageService):
@@ -253,6 +318,7 @@ class CaseCorrespondenceService:
         self._messages = messages
         self._audit = audit
         self._activity = activity
+        self._attention = attention if attention is not None else CorrespondenceAttentionBook()
 
     def project(self, actor_principal_id: str, body: Mapping[str, Any], *, verify_access=None) -> dict[str, Any]:
         if not isinstance(body, Mapping):
@@ -274,6 +340,8 @@ class CaseCorrespondenceService:
         entries.sort(key=_sort_key)
         if any(_sort_key(entries[index]) > _sort_key(entries[index + 1]) for index in range(len(entries) - 1)):
             raise CaseCorrespondenceError("order_mismatch")
+        actor = str(listed["actor_principal_id"])
+        entries = [self._with_attention(entry, actor, case_id) for entry in entries]
         message_status = "available" if messages else "empty"
         return {
             "task_id": TASK_ID,
@@ -297,7 +365,175 @@ class CaseCorrespondenceService:
             },
             "record_types": list(RECORD_TYPES),
             "limitations": list(LIMITATIONS),
+            "attention": _attention_counts(entries),
+            "external_delivery": False,
         }
+
+    def attention_summary(self, actor_principal_id: str, *, verify_access=None) -> dict[str, Any]:
+        """Counts and identifiers for the signed-in actor. No complaint or message text."""
+
+        actor = _label(actor_principal_id, "unauthenticated")
+        items: list[dict[str, Any]] = []
+        for scope in self._authorized_scopes(actor):
+            if verify_access is not None:
+                verify_access()
+            try:
+                projected = self.project(actor, scope, verify_access=verify_access)
+            except (CaseCorrespondenceError, CaseMessageError):
+                continue
+            if projected.get("actor_principal_id") != actor:
+                continue
+            for entry in projected.get("entries") or []:
+                attention = entry.get("attention") if isinstance(entry.get("attention"), Mapping) else {}
+                state = str(attention.get("state") or "none")
+                if state == "none" or attention.get("acknowledged") is True:
+                    continue
+                items.append({
+                    "case_id": projected.get("case_id"),
+                    "source_id": entry.get("source_id"),
+                    "record_type": entry.get("record_type"),
+                    "attention": state,
+                    "revision": entry.get("revision"),
+                    "channel": "in_app",
+                    "external_delivery": False,
+                })
+        counts = {
+            "unread_count": sum(1 for item in items if item["attention"] == "unread"),
+            "review_needed_count": sum(1 for item in items if item["attention"] == "review_needed"),
+            "update_count": sum(1 for item in items if item["attention"] == "update"),
+        }
+        counts["total_count"] = counts["unread_count"] + counts["review_needed_count"] + counts["update_count"]
+        counts["channel"] = "in_app"
+        counts["external_delivery"] = False
+        counts["email"] = False
+        counts["sms"] = False
+        return {
+            "task_id": ATTENTION_TASK_ID,
+            "operation": "correspondence_attention",
+            "actor_principal_id": actor,
+            "badge": counts,
+            "items": items,
+            "operational_log": self._attention.log_for(actor),
+            "external_delivery": False,
+            "email": False,
+            "sms": False,
+            "channels": ["in_app"],
+            "limitations": list(LIMITATIONS),
+        }
+
+    def acknowledge(self, actor_principal_id: str, body: Mapping[str, Any], *, verify_access=None) -> dict[str, Any]:
+        if not isinstance(body, Mapping):
+            raise CaseCorrespondenceError("request_body")
+        if any(name in body for name in _ATTENTION_CONTENT):
+            raise CaseCorrespondenceError("complaint_text_rejected")
+        if any(name in body for name in _MINT_FIELDS - {"record_type"}):
+            raise CaseCorrespondenceError("request_cannot_mint_authority")
+        case_id = _label(body.get("case_id"), "missing_case")
+        source_id = _label(body.get("source_id"), "missing_source")
+        record_type = _label(body.get("record_type"), "activity_record")
+        if record_type not in _ATTENTION_BY_RECORD:
+            raise CaseCorrespondenceError("activity_record")
+        revision = _revision(body.get("revision"))
+        scope: dict[str, Any] = {"case_id": case_id}
+        if body.get("membership_grant_id") not in (None, ""):
+            scope["membership_grant_id"] = body.get("membership_grant_id")
+            scope["expected_membership_version"] = body.get("expected_membership_version")
+        projected = self.project(actor_principal_id, scope, verify_access=verify_access)
+        match = None
+        for entry in projected.get("entries") or []:
+            if entry.get("source_id") == source_id and entry.get("record_type") == record_type:
+                match = entry
+                break
+        if match is None:
+            raise CaseCorrespondenceError("missing_source")
+        if match.get("revision") != revision:
+            raise CaseCorrespondenceError("revision_conflict")
+        attention = match.get("attention") if isinstance(match.get("attention"), Mapping) else {}
+        state = str(attention.get("state") or "none")
+        if state == "none":
+            raise CaseCorrespondenceError("attention_not_required")
+        actor = str(projected["actor_principal_id"])
+        replayed = self._attention.acknowledge(
+            actor=actor,
+            case_id=case_id,
+            source_id=source_id,
+            record_type=record_type,
+            revision=revision,
+            state=state,
+        )
+        refreshed = self.project(actor, scope, verify_access=verify_access)
+        return {
+            "task_id": ATTENTION_TASK_ID,
+            "operation": "acknowledge_correspondence",
+            "acknowledged": True,
+            "replayed": replayed,
+            "case_id": case_id,
+            "actor_principal_id": actor,
+            "source_id": source_id,
+            "record_type": record_type,
+            "attention": state,
+            "revision": revision,
+            "badge": refreshed.get("attention"),
+            "external_delivery": False,
+            "email": False,
+            "sms": False,
+            "channel": "in_app",
+        }
+
+    def _with_attention(self, entry: Mapping[str, Any], actor: str, case_id: str) -> dict[str, Any]:
+        row = dict(entry)
+        state = _ATTENTION_BY_RECORD.get(str(row.get("record_type") or ""), "none")
+        if state == "unread" and row.get("actor_principal_id") == actor:
+            state = "none"
+        revision = row.get("revision")
+        acknowledged = False
+        if state != "none" and revision is not None:
+            acknowledged = self._attention.acknowledged(actor, case_id, str(row.get("source_id") or ""), revision)
+        row["attention"] = {
+            "state": state,
+            "acknowledged": acknowledged,
+            "channel": "in_app",
+            "external_delivery": False,
+            "email": False,
+            "sms": False,
+        }
+        return row
+
+    def _authorized_scopes(self, actor: str) -> list[dict[str, Any]]:
+        scopes: dict[str, dict[str, Any]] = {}
+        store = getattr(self._messages, "store", None)
+        cases = getattr(store, "_cases", None)
+        list_cases = getattr(cases, "list_cases", None)
+        if callable(list_cases):
+            try:
+                records = list_cases(actor_principal_id=actor)
+            except Exception:
+                records = ()
+            for record in records:
+                if getattr(record, "owner_principal_id", None) != actor:
+                    continue
+                scopes[str(record.case_id)] = {"case_id": record.case_id}
+        memberships = getattr(store, "_memberships", None)
+        recover = getattr(memberships, "recover", None)
+        if callable(recover):
+            try:
+                grants = recover()
+            except Exception:
+                grants = ()
+            for grant in grants:
+                if getattr(grant, "status", None) != "accepted":
+                    continue
+                if actor not in {grant.owner_principal_id, grant.member_principal_id}:
+                    continue
+                case_id = str(grant.case_id)
+                if case_id in scopes and "membership_grant_id" not in scopes[case_id]:
+                    continue
+                scopes[case_id] = {
+                    "case_id": grant.case_id,
+                    "membership_grant_id": grant.grant_id,
+                    "expected_membership_version": grant.version,
+                }
+        return list(scopes.values())
 
     def _messages_for(self, actor: str, body: Mapping[str, Any], listed: Mapping[str, Any], *, verify_access) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -566,6 +802,31 @@ class CaseCorrespondenceService:
         return rows, "available" if rows else "empty"
 
 
+def _attention_counts(entries: list[Mapping[str, Any]]) -> dict[str, Any]:
+    def open_count(state: str) -> int:
+        return sum(
+            1
+            for entry in entries
+            if isinstance(entry.get("attention"), Mapping)
+            and entry["attention"].get("state") == state
+            and entry["attention"].get("acknowledged") is not True
+        )
+
+    unread = open_count("unread")
+    review_needed = open_count("review_needed")
+    update = open_count("update")
+    return {
+        "unread_count": unread,
+        "review_needed_count": review_needed,
+        "update_count": update,
+        "total_count": unread + review_needed + update,
+        "channel": "in_app",
+        "external_delivery": False,
+        "email": False,
+        "sms": False,
+    }
+
+
 def mount_case_correspondence(app: Any) -> None:
     """Mount the projection on the case catalog boundary. It only reads."""
 
@@ -575,8 +836,12 @@ def mount_case_correspondence(app: Any) -> None:
         messages = getattr(request.app.state, "case_messages", None)
         audit = getattr(request.app.state, "case_audit", None)
         activity = getattr(request.app.state, "case_handlers", None)
+        attention = getattr(request.app.state, "correspondence_attention", None)
+        if not isinstance(attention, CorrespondenceAttentionBook):
+            attention = CorrespondenceAttentionBook()
+            request.app.state.correspondence_attention = attention
         try:
-            return CaseCorrespondenceService(messages, audit=audit, activity=activity)
+            return CaseCorrespondenceService(messages, audit=audit, activity=activity, attention=attention)
         except CaseCorrespondenceError:
             raise
         except Exception as exc:
@@ -621,6 +886,68 @@ def mount_case_correspondence(app: Any) -> None:
 
             verify()
             result = await run_in_threadpool(service.project, _actor(request), _material(request), verify_access=verify)
+            verify()
+            return JSONResponse(result, status_code=200, headers=_NO_STORE)
+        except CaseMessageError as exc:
+            return JSONResponse({"error": exc.code}, status_code=message_http_status(exc.code), headers=_NO_STORE)
+        except CaseCorrespondenceError as exc:
+            return _fail(exc)
+
+    @app.get("/api/cases/correspondence/attention")
+    async def correspondence_attention(request: Request):
+        try:
+            service = _service(request)
+            sessions = getattr(request.app.state, "browser_sessions", None)
+            bound = getattr(request.state, "browser_principal", None)
+            token = request.cookies.get(SESSION_COOKIE)
+            if not isinstance(sessions, BrowserSessionService) or bound is None:
+                raise CaseCorrespondenceError("unauthenticated")
+
+            def verify():
+                try:
+                    current = sessions.authenticate_token(token)
+                except BrowserSessionError:
+                    raise CaseCorrespondenceError("unauthenticated") from None
+                if (current.principal_id, current.tenant_id, current.generation) != (
+                        bound.principal_id, bound.tenant_id, bound.generation):
+                    raise CaseCorrespondenceError("unauthenticated")
+                if getattr(request.app.state, "case_messages", None) is not service._messages:
+                    raise CaseCorrespondenceError("correspondence_unavailable")
+
+            verify()
+            result = await run_in_threadpool(service.attention_summary, _actor(request), verify_access=verify)
+            verify()
+            return JSONResponse(result, status_code=200, headers=_NO_STORE)
+        except CaseMessageError as exc:
+            return JSONResponse({"error": exc.code}, status_code=message_http_status(exc.code), headers=_NO_STORE)
+        except CaseCorrespondenceError as exc:
+            return _fail(exc)
+
+    @app.post("/api/cases/correspondence/acknowledgements")
+    async def acknowledge_correspondence(request: Request):
+        try:
+            service = _service(request)
+            sessions = getattr(request.app.state, "browser_sessions", None)
+            bound = getattr(request.state, "browser_principal", None)
+            token = request.cookies.get(SESSION_COOKIE)
+            if not isinstance(sessions, BrowserSessionService) or bound is None:
+                raise CaseCorrespondenceError("unauthenticated")
+
+            def verify():
+                try:
+                    current = sessions.authenticate_token(token)
+                except BrowserSessionError:
+                    raise CaseCorrespondenceError("unauthenticated") from None
+                if (current.principal_id, current.tenant_id, current.generation) != (
+                        bound.principal_id, bound.tenant_id, bound.generation):
+                    raise CaseCorrespondenceError("unauthenticated")
+                if getattr(request.app.state, "case_messages", None) is not service._messages:
+                    raise CaseCorrespondenceError("correspondence_unavailable")
+
+            verify()
+            result = await run_in_threadpool(
+                service.acknowledge, _actor(request), _material(request), verify_access=verify,
+            )
             verify()
             return JSONResponse(result, status_code=200, headers=_NO_STORE)
         except CaseMessageError as exc:

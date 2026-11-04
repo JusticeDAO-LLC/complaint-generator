@@ -86,6 +86,8 @@
         $("empty-conversation").hidden = true;
         $("source-status").textContent = "";
         $("inbox-limitations").textContent = "";
+        var attention = $("inbox-attention");
+        if (attention) attention.textContent = "";
     }
 
     function clearView(clearThreads) {
@@ -225,6 +227,33 @@
         $("inbox-limitations").textContent = Array.isArray(items) ? items.join(" ") : "";
     }
 
+    function attentionHost() {
+        var node = $("inbox-attention");
+        if (node) return node;
+        node = document.createElement("p");
+        node.id = "inbox-attention";
+        node.setAttribute("role", "status");
+        node.dataset.channel = "in_app";
+        node.dataset.externalDelivery = "false";
+        $("source-status").insertAdjacentElement("afterend", node);
+        return node;
+    }
+
+    function showAttention(payload) {
+        var attention = payload && payload.attention;
+        var node = attentionHost();
+        if (!attention) {
+            node.textContent = "";
+            return;
+        }
+        node.dataset.channel = "in_app";
+        node.dataset.externalDelivery = "false";
+        node.textContent = "Unread " + Number(attention.unread_count || 0)
+            + ". Review needed " + Number(attention.review_needed_count || 0)
+            + ". Updates " + Number(attention.update_count || 0)
+            + ". In-app only.";
+    }
+
     function showSources(payload) {
         var sources = payload && payload.sources;
         if (!sources) {
@@ -270,6 +299,11 @@
             var workflow = entry.workflow || {};
             item.setAttribute("data-adopted", workflow.adopted === true ? "true" : "false");
             item.setAttribute("data-eligible", workflow.eligible === true ? "true" : "false");
+            var attention = entry.attention || {};
+            var attentionState = attention.state || "none";
+            item.setAttribute("data-attention", attentionState);
+            item.setAttribute("data-acknowledged", attention.acknowledged === true ? "true" : "false");
+            item.setAttribute("data-external-delivery", "false");
             if (entry.disposition) item.setAttribute("data-disposition", entry.disposition);
             lineage.textContent = "Actor " + actorText + ". Encrypted owner " + ownerText + "."
                 + (entry.actor_is_encrypted_owner ? " Actor is the encrypted owner." : " Actor is not the encrypted owner.")
@@ -293,6 +327,19 @@
                     showContext(entry, value);
                 });
                 item.appendChild(open);
+            }
+            if (attentionState !== "none" && attention.acknowledged !== true) {
+                var acknowledge = document.createElement("button");
+                acknowledge.type = "button";
+                acknowledge.className = "correspondence__acknowledge";
+                acknowledge.setAttribute("data-source-id", String(entry.source_id || ""));
+                acknowledge.textContent = attentionState === "unread"
+                    ? "Acknowledge unread"
+                    : (attentionState === "review_needed" ? "Acknowledge review" : "Acknowledge update");
+                acknowledge.addEventListener("click", function () {
+                    acknowledgeEntry(entry, value);
+                });
+                item.appendChild(acknowledge);
             }
             if (workflow.eligible === true && workflow.adopted !== true && entry.record_type === "human_message") {
                 var adopt = document.createElement("button");
@@ -453,15 +500,52 @@
         $("empty-conversation").hidden = true;
     }
 
+    function acknowledgeEntry(entry, value) {
+        var attention = entry.attention || {};
+        if (!attention.state || attention.state === "none" || attention.acknowledged === true) return;
+        var sourceId = String(entry.source_id || "");
+        var generation = pollGeneration;
+        enqueue(async function () {
+            if (!current(value) || generation !== pollGeneration) return;
+            setError("");
+            setStatus("Acknowledging");
+            var payload = await api("/api/cases/correspondence/acknowledgements", {
+                method: "POST",
+                lane: "ack",
+                body: Object.assign({
+                    case_id: value.caseId,
+                    source_id: sourceId,
+                    record_type: entry.record_type,
+                    revision: entry.revision
+                }, membershipFields(value))
+            }, value);
+            if (!current(value) || generation !== pollGeneration) return;
+            if (payload.acknowledged !== true || payload.external_delivery !== false || payload.case_id !== value.caseId) {
+                throw new Error("acknowledgement_rejected");
+            }
+            if (payload.email !== false || payload.sms !== false) throw new Error("acknowledgement_rejected");
+            await loadProjection(value);
+            if (!current(value) || generation !== pollGeneration) return;
+            setStatus("Acknowledged");
+            setError("");
+        }).catch(function (error) {
+            if (!current(value) || generation !== pollGeneration) return;
+            failed(value, error);
+        });
+    }
+
     async function loadProjection(value) {
         value = value || capture();
+        var generation = pollGeneration;
         if (!current(value) || !value.caseId) return null;
         var payload = await api(query("/api/cases/correspondence", {}, value), undefined, value);
-        if (!current(value)) return null;
+        if (!current(value) || generation !== pollGeneration) return null;
         if (payload.case_id !== value.caseId || payload.actor_principal_id !== value.actor) throw new Error("view_changed");
         if (payload.projection_is_authority !== false) throw new Error("projection_rejected");
+        if (payload.external_delivery !== false) throw new Error("projection_rejected");
         showLimitations(payload);
         showSources(payload);
+        showAttention(payload);
         renderEntries(payload.entries || [], value);
         return payload;
     }
