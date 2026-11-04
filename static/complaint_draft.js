@@ -192,6 +192,155 @@
         layout.appendChild(draftColumn);
         layout.appendChild(supportColumn);
         host.appendChild(layout);
+        mountEditor(host, arguments[2] || null);
+    }
+
+    function ensureStyles() {
+        if (document.querySelector("link[data-complaint-draft-style]")) return;
+        var link = node("link", {rel: "stylesheet", href: "/static/complaint_draft.css", "data-complaint-draft-style": "true"});
+        document.head.appendChild(link);
+    }
+
+    function mountEditor(host, editor) {
+        ensureStyles();
+        var state = editor && typeof editor === "object" ? editor : {
+            save_state: "unavailable",
+            head_revision: 0,
+            current_text: "",
+            revisions: [],
+            difference: {changes: []},
+            code: "editor_unavailable"
+        };
+        host.dataset.headRevision = text(state.head_revision || 0);
+        host.dataset.draftId = text(state.draft_id || "complaint-draft");
+        var panel = node("section", {"class": "complaint-draft-editor", "data-role": "draft-editor", "aria-label": "Versioned draft editor"});
+        panel.appendChild(node("h4", {text: "Draft revisions"}));
+        var saveState = node("p", {
+            "data-role": "save-state",
+            "data-save-state": text(state.save_state || "idle"),
+            text: saveLabel(state)
+        });
+        panel.appendChild(saveState);
+        var field = node("textarea", {"data-role": "draft-input", "aria-label": "Complaint draft text"});
+        field.value = text(state.current_text);
+        panel.appendChild(field);
+        var save = node("button", {"type": "button", "data-role": "save-draft", text: "Save draft"});
+        save.addEventListener("click", function () { saveDraft(host, field, saveState); });
+        panel.appendChild(save);
+        var revisions = node("div", {"data-role": "revision-list"});
+        (state.revisions || []).forEach(function (revision) {
+            var button = node("button", {
+                "type": "button",
+                "data-role": "compare-revision",
+                "data-revision": text(revision.revision),
+                text: "Revision " + text(revision.revision)
+            });
+            button.addEventListener("click", function () { showRevision(host, revision.revision); });
+            revisions.appendChild(button);
+        });
+        panel.appendChild(revisions);
+        panel.appendChild(renderDifference(state.difference));
+        var stored = node("p", {
+            "data-role": "stored-draft",
+            "data-head-revision": text(state.head_revision || 0),
+            "data-text-digest": text(state.text_digest),
+            text: state.current_text ? text(state.current_text) : "No encrypted draft is stored yet."
+        });
+        panel.appendChild(stored);
+        host.appendChild(panel);
+    }
+
+    function saveLabel(state) {
+        var name = text(state.save_state || "idle");
+        if (name === "saving") return "Saving the encrypted draft.";
+        if (name === "saved") return "Saved to the case revision.";
+        if (name === "conflict") return "Save conflict. The encrypted draft was not overwritten.";
+        if (name === "unavailable") return "The draft editor cannot save because the case key or owner is unavailable.";
+        return "Edits stay in the case revision owner. Browser storage is not the draft.";
+    }
+
+    function renderDifference(difference) {
+        var block = node("div", {"data-role": "revision-diff"});
+        var changes = difference && Array.isArray(difference.changes) ? difference.changes : [];
+        if (!changes.length) {
+            block.appendChild(node("p", {"data-role": "diff-empty", text: "No revision difference is stored yet."}));
+            return block;
+        }
+        changes.forEach(function (change) {
+            block.appendChild(node("p", {"data-role": "diff-line", "data-op": text(change.op), text: text(change.text)}));
+        });
+        return block;
+    }
+
+    function editorUrl(caseId) {
+        return "/api/documents/" + encodeURIComponent(caseId) + "/draft-editor";
+    }
+
+    async function showRevision(host, revision) {
+        var caseId = host.dataset.caseId || "";
+        if (!caseId) return;
+        var current = host.dataset.currentRevision || revision;
+        var response = await fetch(editorUrl(caseId) + "?base_revision=" + encodeURIComponent(revision) + "&compare_revision=" + encodeURIComponent(current), {
+            credentials: "same-origin",
+            headers: jsonHeaders(host)
+        });
+        var payload = await response.json();
+        var existing = host.querySelector("[data-role='revision-diff']");
+        if (existing) existing.replaceWith(renderDifference(payload.difference));
+    }
+
+    function jsonHeaders(host) {
+        var headers = {};
+        try { headers = JSON.parse(host.dataset.requestHeaders || "{}"); } catch (error) { headers = {}; }
+        headers["content-type"] = "application/json";
+        return headers;
+    }
+
+    async function saveDraft(host, field, saveState) {
+        saveState.setAttribute("data-save-state", "saving");
+        saveState.textContent = saveLabel({save_state: "saving"});
+        var caseId = host.dataset.caseId || "";
+        var response = await fetch(editorUrl(caseId), {
+            method: "POST",
+            credentials: "same-origin",
+            headers: jsonHeaders(host),
+            body: JSON.stringify({
+                request_id: "draft-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+                draft_id: host.dataset.draftId || "complaint-draft",
+                text: field.value,
+                expected_head_revision: Number(host.dataset.headRevision || "0")
+            })
+        });
+        var payload = await response.json();
+        var editor = payload.editor && payload.editor.current_text !== undefined ? payload.editor : payload;
+        if (!response.ok) {
+            saveState.setAttribute("data-save-state", "conflict");
+            saveState.textContent = saveLabel({save_state: "conflict"});
+            var diff = host.querySelector("[data-role='revision-diff']");
+            if (diff && editor.difference) diff.replaceWith(renderDifference(editor.difference));
+            var stored = host.querySelector("[data-role='stored-draft']");
+            if (stored && editor.current_text !== undefined) {
+                stored.textContent = editor.current_text || "No encrypted draft is stored yet.";
+                stored.setAttribute("data-head-revision", text(editor.head_revision || 0));
+            }
+            if (editor.head_revision !== undefined) host.dataset.headRevision = text(editor.head_revision);
+            return payload;
+        }
+        saveState.setAttribute("data-save-state", "saved");
+        saveState.textContent = saveLabel({save_state: "saved"});
+        host.dataset.headRevision = text(editor.head_revision || 0);
+        host.dataset.currentRevision = text(editor.current_revision || 0);
+        var draftText = host.querySelector("[data-role='draft-text']");
+        if (draftText) draftText.textContent = editor.current_text || "";
+        var storedSaved = host.querySelector("[data-role='stored-draft']");
+        if (storedSaved) {
+            storedSaved.textContent = editor.current_text || "";
+            storedSaved.setAttribute("data-head-revision", text(editor.head_revision || 0));
+            storedSaved.setAttribute("data-text-digest", text(editor.text_digest));
+        }
+        var diffSaved = host.querySelector("[data-role='revision-diff']");
+        if (diffSaved) diffSaved.replaceWith(renderDifference(editor.difference));
+        return payload;
     }
 
     async function load(options) {
@@ -205,11 +354,29 @@
             render(host, {status: "empty", draft: {present: false, text: ""}, sections: [], gaps: [{reason: "no_case", visible: true}], facts: []});
             return null;
         }
+        host.dataset.caseId = caseId;
+        host.dataset.requestHeaders = JSON.stringify(headers);
         var response = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/complaint-outline", {
             credentials: "same-origin",
             headers: headers
         });
         var payload = await response.json();
+        var editorResponse = await fetch("/api/documents/" + encodeURIComponent(caseId) + "/draft-editor", {
+            credentials: "same-origin",
+            headers: headers
+        });
+        var editorPayload = null;
+        try { editorPayload = await editorResponse.json(); } catch (error) { editorPayload = null; }
+        if (!editorResponse.ok) {
+            editorPayload = {
+                save_state: "unavailable",
+                head_revision: 0,
+                current_text: "",
+                revisions: [],
+                difference: {changes: []},
+                code: editorPayload && (editorPayload.detail || editorPayload.code || editorPayload.error) || "editor_unavailable"
+            };
+        }
         if (!response.ok) {
             render(host, {
                 status: "error",
@@ -217,10 +384,18 @@
                 sections: [],
                 gaps: [{reason: text(payload.detail || payload.error || "outline_unavailable"), visible: true}],
                 facts: []
-            });
+            }, editorPayload);
             return payload;
         }
-        render(host, payload);
+        if (editorResponse.ok && editorPayload && editorPayload.durable === true) {
+            payload.draft = payload.draft || {};
+            payload.draft.present = true;
+            payload.draft.text = editorPayload.current_text || "";
+            payload.draft.revision = editorPayload.current_revision || 0;
+            payload.draft.draft_id = editorPayload.draft_id || payload.draft.draft_id;
+        }
+        host.dataset.currentRevision = text(editorPayload && editorPayload.current_revision || 0);
+        render(host, payload, editorPayload);
         return payload;
     }
 

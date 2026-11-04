@@ -1,0 +1,52 @@
+.complaint-draft-editor {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid #d6d3d1;
+    border-radius: 12px;
+    background: #fffaf3;
+    color: #1c1917;
+}
+
+.complaint-draft-editor h4,
+.complaint-draft-editor p {
+    margin: 0 0 0.75rem;
+}
+
+.complaint-draft-editor textarea {
+    width: 100%;
+    min-height: 8rem;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.complaint-draft-editor button {
+    min-height: 44px;
+    margin: 0 0.5rem 0.5rem 0;
+}
+
+.complaint-draft-editor [data-role="save-state"][data-save-state="saving"] {
+    color: #92400e;
+}
+
+.complaint-draft-editor [data-role="save-state"][data-save-state="saved"] {
+    color: #166534;
+}
+
+.complaint-draft-editor [data-role="save-state"][data-save-state="conflict"],
+.complaint-draft-editor [data-role="save-state"][data-save-state="unavailable"] {
+    color: #991b1b;
+}
+
+.complaint-draft-editor [data-op="insert"] {
+    background: #dcfce7;
+}
+
+.complaint-draft-editor [data-op="delete"] {
+    background: #fee2e2;
+    text-decoration: line-through;
+}
+
+.complaint-draft-editor [data-role="revision-diff"] {
+    display: grid;
+    gap: 0.25rem;
+}
