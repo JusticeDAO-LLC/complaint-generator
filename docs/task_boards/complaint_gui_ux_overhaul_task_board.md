@@ -1525,7 +1525,7 @@ Implementation instructions:
 
 ## CIMP-UX-50 Activate qualified host dispatch for mediator operations
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
