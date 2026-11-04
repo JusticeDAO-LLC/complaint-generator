@@ -1494,7 +1494,7 @@ Implementation instructions:
 
 ## CIMP-UX-49 Qualify Grok 4.7 application inference through the canonical router
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
