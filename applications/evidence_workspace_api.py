@@ -48,6 +48,8 @@ from integrations.private_storage import BoundPrivateRecordError, PrivateStorage
 
 UPLOAD_TASK_ID = "CIMP-UX-14"
 PREVIEW_TASK_ID = "CIMP-UX-16"
+SEARCH_TASK_ID = "CIMP-UX-22"
+_DATE_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}")
 _PREVIEW_TEXT = frozenset({"text/plain", "text/csv"})
 _PREVIEW_IMAGES = frozenset({"image/png", "image/jpeg", "image/webp"})
 _PREVIEW_REFUSED = frozenset({
@@ -84,7 +86,7 @@ def evidence_http_status(code: str) -> int:
         return 403
     if code in {"revision_conflict", "replay_mismatch", "lifecycle_conflict", "operation_revoked", "upload_stale", "artifact_version_mismatch"}:
         return 409
-    if code in {"request_body", "content_rejected", "action", "source_filename", "original_filename", "idempotency_key", "evidence_id", "failure_code", "complaint_link_id", "media_type", "actor", "media_rejected", "oversized", "upload_offset", "upload_id", "annotation_rejected", "artifact_version", "adoption_requires_explicit_action", "kind", "classifier_rejected", "support_link_rejected", "support_span_rejected"}:
+    if code in {"request_body", "content_rejected", "action", "source_filename", "original_filename", "idempotency_key", "evidence_id", "failure_code", "complaint_link_id", "media_type", "actor", "media_rejected", "oversized", "upload_offset", "upload_id", "annotation_rejected", "artifact_version", "adoption_requires_explicit_action", "kind", "classifier_rejected", "support_link_rejected", "support_span_rejected", "search_filter"}:
         return 400
     if code == "missing_annotation":
         return 404
@@ -383,6 +385,54 @@ def mount_evidence_workspace(app: Any) -> None:
             status = 200
         else:
             status = 200 if payload.get("idempotent_replay") else 201
+        return JSONResponse(payload, status_code=status, headers=_NO_STORE_HEADERS)
+
+    @app.post("/api/cases/evidence/search")
+    async def search_evidence(request: Request):
+        try:
+            verify = _verify(request)
+            verify()
+            service, actor, material = _service(request), _actor(request), _material(request)
+            verify_key = await run_in_threadpool(service.key_scope_verifier, actor, material)
+            verify()
+            payload = await run_in_threadpool(
+                _search_evidence, request, service, actor, material, verify_request=verify_key,
+            )
+            await run_in_threadpool(verify_key)
+            verify()
+        except EvidenceWorkspaceError as exc:
+            if exc.code not in {"key_unavailable", "operation_revoked", "ciphertext_unavailable", "evidence_unavailable", "not_owner", "unauthenticated"}:
+                return _fail(exc)
+            material = _material(request)
+            try:
+                dropped = _drop_stale_claims(
+                    material,
+                    live_ids=set(),
+                    case_id=str(material.get("case_id") or ""),
+                    tenant_id=str(material.get("tenant_id") or ""),
+                )
+            except EvidenceWorkspaceError:
+                return _fail(exc)
+            payload = {
+                "task_id": SEARCH_TASK_ID,
+                "derived_view": True,
+                "authority": False,
+                "plaintext_persisted": False,
+                "index_persisted": False,
+                "index_is_authority": False,
+                "index_epoch": "",
+                "items": [],
+                "chronology": [],
+                "dropped_stale": dropped,
+                "stale_index_exposed": False,
+                "error": exc.code,
+                "ingestion_status": "unavailable",
+                "legal": legal_qualities(),
+                "receipt_establishes_legal_quality": False,
+                "operation_succeeded": False,
+            }
+            return JSONResponse(payload, status_code=evidence_http_status(exc.code), headers=_NO_STORE_HEADERS)
+        status = 200 if payload.get("error") in {None, ""} else 503
         return JSONResponse(payload, status_code=status, headers=_NO_STORE_HEADERS)
 
     @app.get("/api/cases/evidence/preview")
@@ -1389,6 +1439,259 @@ def _annotation_user_labels(request: Request, service: EvidenceWorkspace, actor:
             "legal_requirement": False,
         })
     return labels
+
+
+def _search_clause(body: Mapping[str, Any], name: str) -> str:
+    value = body.get(name)
+    if value is None or value == "":
+        return ""
+    if not isinstance(value, str) or len(value) > 200:
+        raise EvidenceWorkspaceError("search_filter")
+    return value.strip()
+
+
+def _search_date(body: Mapping[str, Any], name: str) -> str:
+    value = _search_clause(body, name)
+    if value and _DATE_TEXT.fullmatch(value) is None:
+        raise EvidenceWorkspaceError("search_filter")
+    return value
+
+
+def _event_dates(*parts: Any) -> list[str]:
+    found: list[str] = []
+    for part in parts:
+        if not isinstance(part, str):
+            continue
+        for match in _DATE_TEXT.findall(part):
+            if match not in found:
+                found.append(match)
+    return found
+
+
+def _review_state(item: Mapping[str, Any]) -> str:
+    status = str(item.get("ingestion_status") or "")
+    if status == "needs-review":
+        return "needs_review"
+    if status == "linked":
+        return "linked"
+    if status in {"failed", "unavailable"}:
+        return status
+    return "unreviewed"
+
+
+def _drop_stale_claims(body: Mapping[str, Any], *, live_ids: set[str], case_id: str, tenant_id: str) -> list[dict[str, str]]:
+    """A supplied or cached index is not authority. Keep only the reason an id was refused."""
+
+    claimed = body.get("claimed_index")
+    if claimed is None:
+        claimed_rows: list[Any] = []
+    elif isinstance(claimed, list) and len(claimed) <= 50:
+        claimed_rows = list(claimed)
+    else:
+        raise EvidenceWorkspaceError("search_filter")
+    cache = globals().get("_SEARCH_PLAINTEXT_CACHE")
+    if isinstance(cache, Mapping):
+        for key in cache:
+            claimed_rows.append({"evidence_id": str(key), "case_id": case_id, "tenant_id": tenant_id, "cached": True})
+    dropped: list[dict[str, str]] = []
+    for entry in claimed_rows:
+        if not isinstance(entry, Mapping):
+            raise EvidenceWorkspaceError("search_filter")
+        evidence_id = entry.get("evidence_id") if isinstance(entry.get("evidence_id"), str) else ""
+        claimed_case = entry.get("case_id") if isinstance(entry.get("case_id"), str) else ""
+        claimed_tenant = entry.get("tenant_id") if isinstance(entry.get("tenant_id"), str) else ""
+        if (claimed_case and claimed_case != case_id) or (claimed_tenant and claimed_tenant != tenant_id):
+            reason = "foreign"
+        elif evidence_id not in live_ids:
+            reason = "revoked"
+        else:
+            reason = "stale_not_authority"
+        dropped.append({"evidence_id": evidence_id, "reason": reason})
+    return dropped
+
+
+def _search_evidence(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:
+    """Project authorized catalog rows into a filterable chronology.
+
+    The projection is rebuilt from the private catalog, annotations, and
+    current support links on every request. It is not stored, and it does
+    not accept a previous index as a source of bytes or permission.
+    """
+
+    source = _search_clause(body, "source").casefold()
+    date_from = _search_date(body, "date_from")
+    date_to = _search_date(body, "date_to")
+    media = _search_clause(body, "type").casefold()
+    label = _search_clause(body, "label").casefold()
+    link = _search_clause(body, "link").casefold()
+    review = _search_clause(body, "review_state").casefold().replace("-", "_")
+    try:
+        catalog = service.list_catalog(actor, body, verify_request=verify_request)
+    except EvidenceWorkspaceError as exc:
+        catalog = {"error": exc.code, "items": [], "ingestion_status": "unavailable"}
+    if catalog.get("error"):
+        dropped = _drop_stale_claims(body, live_ids=set(), case_id=str(body.get("case_id") or ""), tenant_id=str(body.get("tenant_id") or ""))
+        return {
+            "task_id": SEARCH_TASK_ID,
+            "derived_view": True,
+            "authority": False,
+            "plaintext_persisted": False,
+            "index_persisted": False,
+            "index_is_authority": False,
+            "index_epoch": "",
+            "items": [],
+            "chronology": [],
+            "dropped_stale": dropped,
+            "stale_index_exposed": False,
+            "error": catalog.get("error"),
+            "ingestion_status": catalog.get("ingestion_status") or "unavailable",
+            "legal": legal_qualities(),
+            "receipt_establishes_legal_quality": False,
+            "operation_succeeded": False,
+        }
+    identity = service._identity(actor, body, content=False, idempotency=False)
+    scope = service._open(identity, verify_request=verify_request)
+    document = service._load(identity, scope.case, scope.key_id, scope.data_key, scope)
+    store = _annotation_store(request, service)
+    cards = []
+    chronology = []
+    epoch_parts = []
+    for item in catalog.get("items") or []:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("case_id") != scope.case.case_id or item.get("tenant_id") != scope.case.tenant_id:
+            continue
+        if item.get("actor_principal_id") != actor:
+            continue
+        evidence_id = str(item.get("evidence_id") or "")
+        version = item.get("current_version")
+        if not evidence_id or type(version) is not int:
+            continue
+        annotations: list[Mapping[str, Any]] = []
+        annotation_revision = ""
+        try:
+            listed = store.list_attributed_annotations(
+                evidence_id=evidence_id,
+                artifact_version=version,
+                canonical_owner_principal_id=scope.case.tenant_id,
+                tenant_id=scope.case.tenant_id,
+                case_id=scope.case.case_id,
+                key=scope.data_key,
+            )
+            annotation_revision = str(listed.get("annotation_revision") or "")
+            annotations = [row for row in listed.get("items") or [] if isinstance(row, Mapping)]
+        except (EvidenceWorkspaceError, PrivateStorageError, OSError, ValueError):
+            annotations = []
+        labels = [str(row.get("label") or "") for row in annotations if str(row.get("label") or "").strip()]
+        claim_elements = [str(row.get("claim_element") or "") for row in annotations if str(row.get("claim_element") or "").strip()]
+        note_dates = []
+        for row in annotations:
+            note_dates.extend(_event_dates(str(row.get("note") or ""), str(row.get("label") or "")))
+        support_rows = []
+        for row in service._support_rows(document, evidence_id):
+            if row.get("status") != "current" or row.get("artifact_version") != version:
+                continue
+            support_rows.append(service._public_support_link(row))
+        link_ids = [str(item.get("complaint_link_id") or "")]
+        link_ids.extend(str(row.get("target_id") or "") for row in support_rows)
+        link_ids.extend(str(row.get("support_link_id") or "") for row in support_rows)
+        link_ids = [value for value in link_ids if value]
+        dates = _event_dates(str(item.get("source_filename") or ""), str(item.get("original_filename") or ""))
+        for value in note_dates:
+            if value not in dates:
+                dates.append(value)
+        review_state = _review_state(item)
+        complaint_sections = []
+        if item.get("complaint_link_id"):
+            complaint_sections.append(str(item.get("complaint_link_id")))
+        complaint_sections.extend(claim_elements)
+        complaint_sections.extend(str(row.get("target_id") or "") for row in support_rows if row.get("target_id"))
+        sections = []
+        for section in complaint_sections:
+            if section and section not in sections:
+                sections.append(section)
+        epoch_parts.append("|".join([
+            evidence_id,
+            str(version),
+            annotation_revision,
+            ",".join(sorted(str(row.get("support_link_id") or "") for row in support_rows)),
+            review_state,
+        ]))
+        if source and source not in str(item.get("source_filename") or "").casefold() and source not in str(item.get("original_filename") or "").casefold():
+            continue
+        if media and media != str(item.get("media_type") or "").casefold():
+            continue
+        if label and not any(label in value.casefold() for value in labels):
+            continue
+        if link and not any(link in value.casefold() for value in link_ids):
+            continue
+        if review and review != review_state:
+            continue
+        if date_from or date_to:
+            ranged = [value for value in dates if (not date_from or value >= date_from) and (not date_to or value <= date_to)]
+            if not ranged:
+                continue
+            dates = ranged
+        event_date = dates[0] if dates else ""
+        primary_section = sections[0] if sections else ""
+        span = support_rows[0] if support_rows else {}
+        card = {
+            "evidence_id": evidence_id,
+            "artifact_version": version,
+            "case_id": scope.case.case_id,
+            "tenant_id": scope.case.tenant_id,
+            "source_filename": item.get("source_filename") or "",
+            "original_filename": item.get("original_filename") or "",
+            "media_type": item.get("media_type") or "",
+            "event_dates": dates,
+            "labels": labels,
+            "links": link_ids,
+            "review_state": review_state,
+            "complaint_sections": sections,
+            "page": span.get("page"),
+            "span_start": span.get("span_start"),
+            "span_end": span.get("span_end"),
+            "authority": False,
+            "derived": True,
+            "plaintext_persisted": False,
+        }
+        cards.append(card)
+        chronology.append({
+            "evidence_id": evidence_id,
+            "artifact_version": version,
+            "page": span.get("page"),
+            "span_start": span.get("span_start"),
+            "span_end": span.get("span_end"),
+            "complaint_section": primary_section,
+            "event_date": event_date,
+            "source_filename": item.get("source_filename") or "",
+            "review_state": review_state,
+            "authority": False,
+            "derived": True,
+        })
+    chronology.sort(key=lambda row: (row.get("event_date") or "9999-99-99", row.get("evidence_id") or "", row.get("complaint_section") or ""))
+    live_ids = {str(item.get("evidence_id") or "") for item in catalog.get("items") or [] if isinstance(item, Mapping)}
+    dropped = _drop_stale_claims(body, live_ids=live_ids, case_id=scope.case.case_id, tenant_id=scope.case.tenant_id)
+    epoch = hashlib.sha256("\n".join(sorted(epoch_parts)).encode("utf-8")).hexdigest()
+    return {
+        "task_id": SEARCH_TASK_ID,
+        "derived_view": True,
+        "authority": False,
+        "plaintext_persisted": False,
+        "index_persisted": False,
+        "index_is_authority": False,
+        "index_epoch": epoch,
+        "case_id": scope.case.case_id,
+        "tenant_id": scope.case.tenant_id,
+        "actor_principal_id": actor,
+        "items": cards,
+        "chronology": chronology,
+        "dropped_stale": dropped,
+        "stale_index_exposed": False,
+        "legal": legal_qualities(),
+        "receipt_establishes_legal_quality": False,
+        "operation_succeeded": True,
+    }
 
 
 def _list_annotations(request: Request, service: EvidenceWorkspace, actor: str, body: Mapping[str, Any], *, verify_request=None) -> dict[str, Any]:

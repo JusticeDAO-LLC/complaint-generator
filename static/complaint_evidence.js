@@ -384,6 +384,10 @@
     var items = [];
     var itemsScope = null;
     var selectedId = "";
+    var selectedSection = "";
+    var matchedIds = null;
+    var chronology = [];
+    var searchToken = 0;
     var readAt = "";
     var previewBlobs = [];
     var previewController = null;
@@ -801,10 +805,208 @@
         var query = (document.getElementById("evidence-library-search").value || "").trim().toLowerCase();
         var status = document.getElementById("evidence-library-status-filter").value;
         return items.filter(function (item) {
+            if (matchedIds && matchedIds.indexOf(item.evidence_id) === -1) return false;
             if (status && item.ingestion_status !== status) return false;
             if (query && haystack(item).indexOf(query) === -1) return false;
             return true;
         });
+    }
+
+    function filterValue(id) {
+        var node = document.getElementById(id);
+        return node ? String(node.value || "").trim() : "";
+    }
+
+    function ensureSearchControls() {
+        var host = root();
+        if (!host || document.getElementById("evidence-search-filters")) return;
+        var toolbar = host.querySelector(".evidence-library-toolbar");
+        var block = document.createElement("div");
+        block.id = "evidence-search-filters";
+        block.className = "evidence-library-toolbar";
+        var fields = [
+            ["evidence-filter-source", "Source", "search", "Source file"],
+            ["evidence-filter-date-from", "Date from", "date", ""],
+            ["evidence-filter-date-to", "Date to", "date", ""],
+            ["evidence-filter-type", "Type", "text", "Media type"],
+            ["evidence-filter-label", "Label", "search", "User label"],
+            ["evidence-filter-link", "Link", "search", "Complaint link or target"],
+            ["evidence-filter-review", "Review state", "text", "unreviewed, needs_review, or linked"]
+        ];
+        fields.forEach(function (spec) {
+            var label = document.createElement("label");
+            label.htmlFor = spec[0];
+            label.appendChild(document.createTextNode(spec[1] + " "));
+            var input = document.createElement("input");
+            input.id = spec[0];
+            input.type = spec[2];
+            input.autocomplete = "off";
+            if (spec[3]) input.placeholder = spec[3];
+            label.appendChild(input);
+            block.appendChild(label);
+        });
+        var status = document.createElement("p");
+        status.id = "evidence-search-status";
+        status.setAttribute("role", "status");
+        status.textContent = "Search results are a derived view of the authorized catalog.";
+        block.appendChild(status);
+        if (toolbar && toolbar.parentNode) toolbar.parentNode.insertBefore(block, toolbar.nextSibling);
+        else host.insertBefore(block, host.firstChild);
+        var list = document.createElement("ol");
+        list.id = "evidence-chronology";
+        list.setAttribute("aria-label", "Case evidence chronology");
+        var summary = document.getElementById("evidence-library-summary");
+        if (summary && summary.parentNode) summary.parentNode.insertBefore(list, summary.nextSibling);
+        else host.appendChild(list);
+        var section = document.createElement("p");
+        section.id = "evidence-complaint-section";
+        var detail = document.getElementById("evidence-library-detail");
+        if (detail) detail.appendChild(section);
+        else host.appendChild(section);
+    }
+
+    function renderChronology() {
+        var list = document.getElementById("evidence-chronology");
+        if (!list) return;
+        list.textContent = "";
+        if (!chronology.length) {
+            var empty = document.createElement("li");
+            empty.id = "evidence-chronology-empty";
+            empty.textContent = "No chronology entries match the authorized filters.";
+            list.appendChild(empty);
+            return;
+        }
+        chronology.forEach(function (entry) {
+            var item = document.createElement("li");
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "evidence-chronology-entry";
+            button.setAttribute("data-evidence-id", entry.evidence_id || "");
+            button.setAttribute("data-complaint-section", entry.complaint_section || "");
+            button.setAttribute("data-artifact-version", String(entry.artifact_version || ""));
+            if (entry.page) button.setAttribute("data-page", String(entry.page));
+            var when = entry.event_date || "Date not recorded";
+            var section = entry.complaint_section || "No complaint section";
+            button.textContent = when + " · " + (entry.source_filename || entry.evidence_id) + " · " + section;
+            button.addEventListener("click", function () { openChronology(entry); });
+            item.appendChild(button);
+            list.appendChild(item);
+        });
+    }
+
+    function openChronology(entry) {
+        var host = root();
+        selectedId = entry.evidence_id || "";
+        selectedSection = entry.complaint_section || "";
+        if (host) {
+            host.dataset.selectedId = selectedId;
+            host.dataset.complaintSection = selectedSection;
+            host.dataset.artifactVersion = String(entry.artifact_version || "");
+            if (host.dataset.layout === "list-detail") host.dataset.pane = "detail";
+        }
+        render();
+        text("evidence-complaint-section", selectedSection
+            ? "Complaint section " + selectedSection + " opens artifact " + selectedId
+                + " version " + String(entry.artifact_version || "")
+                + (entry.page ? " page " + entry.page + " span " + entry.span_start + "-" + entry.span_end : "") + "."
+            : "This timeline entry has no complaint section.");
+        if (selectedSection && window.CSS && CSS.escape) {
+            var candidates = document.querySelectorAll('[data-complaint-section="' + CSS.escape(selectedSection) + '"]');
+            var marker = null;
+            for (var index = 0; index < candidates.length; index++) {
+                var candidate = candidates[index];
+                if (candidate === host || candidate.id === "evidence-library") continue;
+                if (candidate.classList && candidate.classList.contains("evidence-chronology-entry")) continue;
+                marker = candidate;
+                break;
+            }
+            if (marker && typeof marker.focus === "function") marker.focus();
+        }
+        document.dispatchEvent(new CustomEvent("evidence-chronology-selected", {detail: {
+            evidenceId: selectedId,
+            complaintSection: selectedSection,
+            artifactVersion: entry.artifact_version || "",
+            page: entry.page || "",
+            spanStart: entry.span_start || "",
+            spanEnd: entry.span_end || ""
+        }}));
+    }
+
+    async function searchCatalog() {
+        ensureSearchControls();
+        var context = caseContext();
+        var host = root();
+        if (!context || !host) return;
+        var token = ++searchToken;
+        var claimed = chronology.map(function (entry) {
+            return {evidence_id: entry.evidence_id, case_id: context.case_id, tenant_id: context.tenant_id};
+        });
+        var payload = {
+            tenant_id: context.tenant_id,
+            case_id: context.case_id,
+            resource_id: context.resource_id,
+            source: filterValue("evidence-filter-source"),
+            date_from: filterValue("evidence-filter-date-from"),
+            date_to: filterValue("evidence-filter-date-to"),
+            type: filterValue("evidence-filter-type"),
+            label: filterValue("evidence-filter-label"),
+            link: filterValue("evidence-filter-link"),
+            review_state: filterValue("evidence-filter-review"),
+            claimed_index: claimed
+        };
+        var headers = {"Accept": "application/json", "Content-Type": "application/json"};
+        var client = window.workspaceClient;
+        if (client && client.csrfToken) headers["x-csrf-token"] = client.csrfToken;
+        headers["x-tenant-id"] = context.tenant_id;
+        headers["x-case-id"] = context.case_id;
+        headers["x-resource-id"] = context.resource_id;
+        var response;
+        try {
+            response = await fetch("/api/cases/evidence/search", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+        } catch (error) {
+            if (token !== searchToken) return;
+            text("evidence-search-status", "The derived search did not reach the server. The catalog was not replaced.");
+            return;
+        }
+        if (token !== searchToken) return;
+        var body = {};
+        try { body = await response.json(); } catch (error) { body = {}; }
+        if (token !== searchToken) return;
+        if (response.status === 401 || response.status === 403 || body.error === "key_unavailable" || body.error === "unauthenticated") {
+            matchedIds = [];
+            chronology = [];
+            renderChronology();
+            text("evidence-search-status", "Search is locked for this case. Revoked or foreign index rows are not shown.");
+            return;
+        }
+        if (!response.ok || body.error) {
+            text("evidence-search-status", "Search failed. The previous authorized catalog stays in place.");
+            return;
+        }
+        if (body.authority === true || body.plaintext_persisted === true || body.index_is_authority === true) {
+            matchedIds = [];
+            chronology = [];
+            renderChronology();
+            text("evidence-search-status", "Search was refused because the result claimed authority or stored plaintext.");
+            return;
+        }
+        var filtersActive = ["evidence-filter-source", "evidence-filter-date-from", "evidence-filter-date-to", "evidence-filter-type", "evidence-filter-label", "evidence-filter-link", "evidence-filter-review"].some(function (id) {
+            return filterValue(id) !== "";
+        });
+        matchedIds = filtersActive ? (body.items || []).map(function (item) { return item.evidence_id; }) : null;
+        chronology = Array.isArray(body.chronology) ? body.chronology : [];
+        host.dataset.indexEpoch = body.index_epoch || "";
+        host.dataset.searchAuthority = "false";
+        renderChronology();
+        var dropped = Array.isArray(body.dropped_stale) ? body.dropped_stale.length : 0;
+        text("evidence-search-status", "Derived view only. " + chronology.length + " chronology entries."
+            + (dropped ? " " + dropped + " stale index rows were dropped and were not opened." : ""));
+        if (host.dataset.state === "ready") render();
     }
 
     function paintDetail(item) {
@@ -859,6 +1061,9 @@
         }));
         var links = linksFor(item);
         text("evidence-detail-links", links.length ? links.join("\n") : "No current complaint link.");
+        if (selectedSection && item.evidence_id === selectedId) {
+            text("evidence-complaint-section", "Complaint section " + selectedSection + " is open on this artifact.");
+        }
         if (detail) detail.dataset.evidenceId = item.evidence_id || "";
         loadPreview(item);
     }
@@ -1008,6 +1213,7 @@
         }
         setState("ready");
         render();
+        searchCatalog();
     }
 
     function bind() {
@@ -1015,7 +1221,9 @@
         if (!host || host.dataset.bound === "true") return;
         host.dataset.bound = "true";
         ensurePreview();
+        ensureSearchControls();
         layout();
+        document.getElementById("evidence-search-filters").addEventListener("input", function () { searchCatalog(); });
         document.getElementById("evidence-library-search").addEventListener("input", render);
         document.getElementById("evidence-library-status-filter").addEventListener("change", render);
         document.getElementById("evidence-library-refresh").addEventListener("click", function () { load(); });
@@ -1024,7 +1232,13 @@
         document.getElementById("evidence-library-clear").addEventListener("click", function () {
             document.getElementById("evidence-library-search").value = "";
             document.getElementById("evidence-library-status-filter").value = "";
+            ["evidence-filter-source", "evidence-filter-date-from", "evidence-filter-date-to", "evidence-filter-type", "evidence-filter-label", "evidence-filter-link", "evidence-filter-review"].forEach(function (id) {
+                var node = document.getElementById(id);
+                if (node) node.value = "";
+            });
+            matchedIds = null;
             render();
+            searchCatalog();
         });
         document.getElementById("evidence-library-add").addEventListener("click", function () {
             var input = document.getElementById("evidence-attachment");
@@ -1045,8 +1259,11 @@
 
     window.complaintEvidenceLibrary = {
         refresh: load,
+        search: searchCatalog,
+        openChronology: openChronology,
         clearPrivateState: clearPrivateState,
-        selectedId: function () { return selectedId; }
+        selectedId: function () { return selectedId; },
+        complaintSection: function () { return selectedSection; }
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
