@@ -1029,7 +1029,7 @@ Implementation instructions:
 
 ## CIMP-UX-34 Create an honest readiness and next-actions overview
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
