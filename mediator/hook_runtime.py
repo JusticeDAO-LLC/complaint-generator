@@ -3873,6 +3873,21 @@ def reject_public_model_proposal(proposal: Any) -> dict[str, Any]:
     }
 
 
+def qualify_grounded_legal_hooks(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Public workflow entry for classification, statute, requirement, and question hooks.
+
+    The effect is a grounded dependency-graph projection. A caller flag cannot
+    turn model text, a default taxonomy, or a corpus hit into law.
+    """
+
+    from mediator.legal_hooks import qualify_grounded_legal_hooks as _qualify
+
+    receipt = _qualify(dict(payload) if isinstance(payload, Mapping) else payload)
+    receipt["workflow"] = "qualify_grounded_legal_hooks"
+    receipt["handler_enabled_by_caller"] = False
+    return receipt
+
+
 def qualify_private_evidence_hooks(**kwargs: Any) -> dict[str, Any]:
     """Public workflow entry for scoped evidence storage, state, and analysis.
 

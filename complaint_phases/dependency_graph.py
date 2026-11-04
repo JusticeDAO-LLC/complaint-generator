@@ -3025,6 +3025,69 @@ class DependencyGraphBuilder:
         logger.info(f"Built dependency graph: {graph.summary()}")
         return graph
 
+    def build_grounded_hook_graph(
+        self,
+        claims: List[Dict[str, Any]],
+        legal_requirements: Optional[Dict[str, Any]] = None,
+        *,
+        model_text: str = "",
+        taxonomy_names: Optional[List[str]] = None,
+        legal_context: Optional[Dict[str, Any]] = None,
+    ) -> DependencyGraph:
+        """Build a graph whose legal nodes come only from verified source entries.
+
+        Model prose and default claim-taxonomy names are recorded as unresolved.
+        They do not become legal elements. Factual clarification nodes stay
+        labeled as complainant facts.
+        """
+        from integrations.ipfs_datasets.legal import adapt_sourced_legal_requirements
+
+        supplied = legal_requirements if isinstance(legal_requirements, dict) else {}
+        adapted = adapt_sourced_legal_requirements(supplied, legal_context=legal_context)
+        blocked = {str(model_text).strip()} if str(model_text or "").strip() else set()
+        blocked.update(str(name).strip() for name in (taxonomy_names or []) if str(name).strip())
+        for claim_type, entries in list(adapted.items()):
+            rewritten = []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    rewritten.append(entry)
+                    continue
+                name = str(entry.get("name") or "").strip()
+                description = str(entry.get("description") or "").strip()
+                if (
+                    name in blocked
+                    or description in blocked
+                    or entry.get("legacy_template") is True
+                    or entry.get("template_kind") == "claim_keyword_template"
+                ):
+                    entry = dict(entry)
+                    entry["intake_requirement_status"] = "unresolved"
+                    entry["proof_status"] = "not_authoritative"
+                    entry["derivation_status"] = "unresolved"
+                    entry["unresolved_reason"] = "model_or_taxonomy_text_is_not_law"
+                    entry["law_derived"] = False
+                rewritten.append(entry)
+            adapted[claim_type] = rewritten
+        graph = self.build_from_claims(claims, adapted, require_verified_legal_sources=True)
+        factual = []
+        legal = []
+        for node in graph.nodes.values():
+            kind = str((node.attributes or {}).get("record_kind") or node.node_type.value)
+            bucket = factual if node.node_type == NodeType.FACT or (node.attributes or {}).get("about_complainant") else legal
+            bucket.append({
+                "id": node.id,
+                "name": node.name,
+                "node_type": node.node_type.value,
+                "record_kind": kind,
+                "law_derived": bool((node.attributes or {}).get("law_derived")),
+            })
+        graph.metadata["factual_nodes"] = factual
+        graph.metadata["legal_nodes"] = legal
+        graph.metadata["model_text_created_law"] = False
+        graph.metadata["default_taxonomy_created_law"] = False
+        graph.metadata["factual_legal_separated"] = True
+        return graph
+
     def _mark_factual_clarifications(self, graph: DependencyGraph) -> None:
         """Label complainant clarification nodes so they stay distinct from legal requirements."""
         for node in graph.get_nodes_by_type(NodeType.FACT):
