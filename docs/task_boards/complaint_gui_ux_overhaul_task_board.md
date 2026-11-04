@@ -316,7 +316,7 @@ Implementation instructions:
 
 ## CIMP-UX-11 Expose finite stopping, unresolved questions, pause, and resume
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
