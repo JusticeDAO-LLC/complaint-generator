@@ -1618,7 +1618,7 @@ Implementation instructions:
 
 ## CIMP-UX-53 Ground claim support and legal authority hooks
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
