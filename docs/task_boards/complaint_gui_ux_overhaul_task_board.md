@@ -998,7 +998,7 @@ Implementation instructions:
 
 ## CIMP-UX-33 Connect review comments to evidence and complaint sections
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
