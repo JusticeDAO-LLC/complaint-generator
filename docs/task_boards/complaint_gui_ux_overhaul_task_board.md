@@ -1215,7 +1215,7 @@ Implementation instructions:
 
 ## CIMP-UX-40 Compose the lawyer evidence-and-draft review workspace
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
