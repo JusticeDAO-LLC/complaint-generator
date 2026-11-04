@@ -1,5 +1,11 @@
 from pathlib import Path
+import base64
+import copy
+import fcntl
 import json
+import os
+import stat
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -1716,6 +1722,395 @@ def project_complaint_outline(case_file: Any) -> Dict[str, Any]:
     }
 
 
+EDITOR_TASK_ID = "CIMP-UX-31"
+_DRAFT_EDITOR_SCHEMA = "complaint-draft-editor@1"
+_DRAFT_EDITOR_KIND = "complaint-draft-editor"
+_DRAFT_EDITOR_FILE = "draft-editor.json"
+
+
+def _editor_error(exc: Exception) -> HTTPException:
+    from .case_review import CaseReviewError
+    from integrations.private_storage import PrivateKeyLockedError, PrivateKeyMaterialError, PrivateStorageError
+
+    if isinstance(exc, CaseReviewError):
+        code = "draft_field" if exc.code in {"lawyer_review_field", "lawyer_review_bounds"} else exc.code
+        status = 409 if code in {"stale_revision", "stale_domain", "replay_mismatch"} else 422 if code in {
+            "draft_field", "draft_bounds", "stage_not_ready", "draft_revision_required",
+        } else 403 if code in {"actor_not_permitted", "key_revoked"} else 503
+        return HTTPException(status_code=status, detail=code)
+    if isinstance(exc, PrivateKeyLockedError):
+        return HTTPException(status_code=409, detail="key_locked")
+    if isinstance(exc, PrivateKeyMaterialError):
+        code = "key_revoked" if exc.reason in {"case_key_destroyed", "key_unavailable"} and exc.reason == "case_key_destroyed" else "key_unavailable"
+        if exc.reason == "case_key_destroyed":
+            code = "key_revoked"
+        return HTTPException(status_code=403 if code == "key_revoked" else 409, detail=code)
+    if isinstance(exc, PrivateStorageError):
+        return HTTPException(status_code=409, detail="key_unavailable")
+    return HTTPException(status_code=503, detail="workflow_record_unavailable")
+
+
+def _require_draft_owner(scope: Dict[str, Any], request: Request) -> Any:
+    decision = getattr(request.state, "case_authorization", None)
+    if decision is None or decision.membership != "owner" or decision.action not in {"case.read", "case.update", "case.download"}:
+        raise HTTPException(status_code=403, detail="actor_not_permitted")
+    if scope.get("membership") != "owner":
+        raise HTTPException(status_code=403, detail="actor_not_permitted")
+    return decision
+
+
+def _draft_directory(decision: Any, request: Request):
+    from .case_directory import CaseDirectory, CaseDirectoryError
+
+    directory = getattr(request.app.state, "case_directory", None)
+    if not isinstance(directory, CaseDirectory):
+        authorizer = getattr(request.app.state, "case_authorizer", None)
+        directory = getattr(authorizer, "_cases", None)
+    if not isinstance(directory, CaseDirectory):
+        raise HTTPException(status_code=503, detail="workflow_record_unavailable")
+    try:
+        return directory.owned_revision_directory(
+            actor_principal_id=decision.actor_principal_id,
+            case_id=decision.case_id,
+        )
+    except CaseDirectoryError as exc:
+        raise HTTPException(status_code=403, detail=exc.code) from None
+
+
+def _owner_key_session(decision: Any, request: Request):
+    from integrations.private_storage import UserOwnedKeySession
+
+    mediator = getattr(request.app.state, "case_handlers", None)
+    session = None
+    bound = getattr(request.state, "case_handler_mediator", None)
+    if bound is None:
+        resolver_mediator = None
+        try:
+            from .case_routes import _BOUND_HANDLERS
+            resolver = _BOUND_HANDLERS.get()
+            if resolver is not None:
+                resolver_mediator = resolver()[0]
+        except Exception:
+            resolver_mediator = None
+        session = getattr(resolver_mediator, "owner_key_session", None)
+    if session is None:
+        sessions = getattr(request.app.state, "owner_key_sessions", None)
+        if isinstance(sessions, dict):
+            session = sessions.get(decision.actor_principal_id)
+    if not isinstance(session, UserOwnedKeySession):
+        raise HTTPException(status_code=409, detail="key_unavailable")
+    if session.unlocked is not True:
+        raise HTTPException(status_code=409, detail="key_locked")
+    return session
+
+
+def _draft_data_key(session: Any, decision: Any) -> tuple[str, bytes]:
+    key_id = session.ensure_data_key(decision.tenant_id, decision.case_id)
+    key = session.lookup_data_key(decision.tenant_id, decision.case_id, key_id)
+    if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
+        raise HTTPException(status_code=409, detail="key_unavailable")
+    return key_id, bytes(key)
+
+
+def _draft_binding(decision: Any, head_revision: int):
+    from integrations.private_storage import PrivateArtifactBinding
+
+    return PrivateArtifactBinding(
+        tenant_id=decision.tenant_id,
+        case_id=decision.case_id,
+        artifact_kind=_DRAFT_EDITOR_KIND,
+        revision=str(head_revision),
+        principal_id=decision.tenant_id,
+    )
+
+
+def _seal_draft(document: Dict[str, Any], decision: Any, key_id: str, key: bytes) -> bytes:
+    from integrations.private_storage import assert_access_matches_binding, seal_private_artifact
+
+    binding = _draft_binding(decision, int(document["head_revision"]))
+    access = SimpleNamespace(trust="authenticated", principal_id=decision.tenant_id, case_id=decision.case_id)
+    assert_access_matches_binding(access, binding)
+    return seal_private_artifact(
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        binding=binding,
+        key=key,
+        key_id=key_id,
+    )
+
+
+def _open_draft(envelope: bytes, decision: Any, head_revision: int, key_id: str, key: bytes) -> Dict[str, Any]:
+    from integrations.private_storage import assert_access_matches_binding, open_private_artifact
+
+    binding = _draft_binding(decision, head_revision)
+    access = SimpleNamespace(trust="authenticated", principal_id=decision.tenant_id, case_id=decision.case_id)
+    assert_access_matches_binding(access, binding)
+    plaintext = open_private_artifact(envelope, binding=binding, key=key, expected_key_id=key_id)
+    document = json.loads(plaintext.decode("utf-8"))
+    if not isinstance(document, dict) or document.get("head_revision") != head_revision:
+        raise HTTPException(status_code=409, detail="stale_revision")
+    workflow = document.get("draft_workflow")
+    if not isinstance(workflow, dict):
+        raise HTTPException(status_code=409, detail="stale_revision")
+    return document
+
+
+def _read_editor_file(directory_fd: int) -> Optional[Dict[str, Any]]:
+    try:
+        descriptor = os.open(_DRAFT_EDITOR_FILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return None
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode):
+            raise HTTPException(status_code=503, detail="case_revision_unavailable")
+        chunks = []
+        while True:
+            block = os.read(descriptor, 65536)
+            if not block:
+                break
+            chunks.append(block)
+    finally:
+        os.close(descriptor)
+    payload = json.loads(b"".join(chunks).decode("utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema") != _DRAFT_EDITOR_SCHEMA:
+        raise HTTPException(status_code=409, detail="stale_revision")
+    if type(payload.get("revision")) is not int or not isinstance(payload.get("envelope"), str):
+        raise HTTPException(status_code=409, detail="stale_revision")
+    return payload
+
+
+def _write_editor_file(directory_fd: int, head_revision: int, envelope: bytes) -> None:
+    raw = json.dumps({
+        "schema": _DRAFT_EDITOR_SCHEMA,
+        "revision": head_revision,
+        "envelope": base64.b64encode(envelope).decode("ascii"),
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    temporary = ".draft-editor-" + os.urandom(8).hex() + ".tmp"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory_fd)
+    try:
+        view = memoryview(raw)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise HTTPException(status_code=503, detail="case_revision_unavailable")
+            view = view[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        os.replace(temporary, _DRAFT_EDITOR_FILE, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+        os.fsync(directory_fd)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
+
+
+def _editor_lock(path: Path):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def locked():
+        directory_fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        lock_fd = None
+        try:
+            info = os.fstat(directory_fd)
+            if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+                raise HTTPException(status_code=503, detail="case_revision_unavailable")
+            lock_fd = os.open(".draft-editor.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory_fd)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            yield directory_fd
+        finally:
+            if lock_fd is not None:
+                os.close(lock_fd)
+            os.close(directory_fd)
+
+    return locked()
+
+
+def _workflow_versions(document: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not document:
+        return []
+    store = document.get("draft_workflow") if isinstance(document.get("draft_workflow"), dict) else {}
+    return [item for item in store.get("versions") or [] if isinstance(item, dict)]
+
+
+def draft_revision_difference(base_text: str, compare_text: str) -> List[Dict[str, str]]:
+    """Line difference an owner can inspect. Equal lines stay visible."""
+
+    import difflib
+
+    changes: List[Dict[str, str]] = []
+    base_lines = base_text.splitlines()
+    compare_lines = compare_text.splitlines()
+    matcher = difflib.SequenceMatcher(a=base_lines, b=compare_lines, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in {"equal", "delete", "replace"}:
+            for line in base_lines[i1:i2]:
+                changes.append({"op": "equal" if tag == "equal" else "delete", "text": line})
+        if tag in {"insert", "replace"}:
+            for line in compare_lines[j1:j2]:
+                changes.append({"op": "insert", "text": line})
+    return changes
+
+
+def project_draft_editor(document: Optional[Dict[str, Any]], *, base_revision: Optional[int] = None,
+                         compare_revision: Optional[int] = None, save_state: str = "idle") -> Dict[str, Any]:
+    versions = sorted(_workflow_versions(document), key=lambda item: int(item.get("revision") or 0))
+    public = []
+    for item in versions:
+        public.append({
+            "draft_id": str(item.get("draft_id") or ""),
+            "revision": int(item.get("revision") or 0),
+            "text": str(item.get("text") or ""),
+            "text_digest": str(item.get("text_digest") or ""),
+            "actor_principal_id": str(item.get("actor_principal_id") or ""),
+        })
+    current = public[-1] if public else {"draft_id": "", "revision": 0, "text": "", "text_digest": "", "actor_principal_id": ""}
+    left = base_revision
+    right = compare_revision
+    if left is None and right is None and len(public) >= 2:
+        left = public[-2]["revision"]
+        right = public[-1]["revision"]
+    elif left is None and right is not None and len(public) >= 2:
+        left = public[-2]["revision"]
+    base = next((item for item in public if item["revision"] == left), None)
+    compare = next((item for item in public if item["revision"] == right), None)
+    difference = {
+        "base_revision": left or 0,
+        "compare_revision": right or 0,
+        "base_text": base["text"] if base else "",
+        "compare_text": compare["text"] if compare else "",
+        "changes": draft_revision_difference(base["text"] if base else "", compare["text"] if compare else "") if base or compare else [],
+    }
+    head = int(document.get("head_revision") or 0) if isinstance(document, dict) else 0
+    return {
+        "task_id": EDITOR_TASK_ID,
+        "save_state": save_state,
+        "durable": head > 0,
+        "head_revision": head,
+        "draft_id": current["draft_id"],
+        "current_revision": current["revision"],
+        "current_text": current["text"],
+        "text_digest": current["text_digest"],
+        "revisions": public,
+        "difference": difference,
+        "browser_storage": False,
+    }
+
+
+def _loaded_document(directory_fd: int, decision: Any, session: Any) -> Optional[Dict[str, Any]]:
+    stored = _read_editor_file(directory_fd)
+    if stored is None:
+        return {"head_revision": 0, "draft_workflow": {"versions": [], "reviews": [], "exports": []}}
+    key_id, key = _draft_data_key(session, decision)
+    envelope = base64.b64decode(stored["envelope"].encode("ascii"), validate=True)
+    return _open_draft(envelope, decision, int(stored["revision"]), key_id, key)
+
+
+def _publish_memory(case_file: Dict[str, Any], document: Dict[str, Any]) -> None:
+    workflow = document.get("draft_workflow")
+    if isinstance(workflow, dict):
+        case_file["draft_workflow"] = copy.deepcopy(workflow)
+
+
+def _project_locked_editor(case_id: str, request: Request, *, base_revision: Optional[int], compare_revision: Optional[int]) -> Dict[str, Any]:
+    decision = _require_draft_owner({"membership": "owner"}, request)
+    if decision.case_id != case_id:
+        raise HTTPException(status_code=403, detail="cross_case_id")
+    session = _owner_key_session(decision, request)
+    path = _draft_directory(decision, request)
+    with _editor_lock(path) as directory_fd:
+        document = _loaded_document(directory_fd, decision, session)
+    case_file = getattr(_request_mediator(), "intake_case_file", None)
+    if isinstance(case_file, dict) and isinstance(document, dict) and int(document.get("head_revision") or 0) > 0:
+        _publish_memory(case_file, document)
+    return project_draft_editor(document, base_revision=base_revision, compare_revision=compare_revision, save_state="idle")
+
+
+def _request_mediator() -> Any:
+    from .case_routes import _BOUND_HANDLERS
+
+    resolver = _BOUND_HANDLERS.get()
+    if resolver is None:
+        raise HTTPException(status_code=503, detail="workflow_record_unavailable")
+    return resolver()[0]
+
+
+def _save_locked_editor(case_id: str, request: Request, body: Dict[str, Any], scope: Dict[str, Any]) -> Dict[str, Any]:
+    from fastapi.responses import JSONResponse
+    from .case_review import version_draft
+
+    decision = _require_draft_owner(scope, request)
+    if decision.action != "case.update":
+        raise HTTPException(status_code=403, detail="actor_not_permitted")
+    if decision.case_id != case_id:
+        raise HTTPException(status_code=403, detail="cross_case_id")
+    expected = body.get("expected_head_revision")
+    if type(expected) is not int:
+        raise HTTPException(status_code=422, detail="draft_field")
+    session = _owner_key_session(decision, request)
+    key_id, key = _draft_data_key(session, decision)
+    mediator = _request_mediator()
+    case_file = getattr(mediator, "intake_case_file", None)
+    if not isinstance(case_file, dict):
+        raise HTTPException(status_code=503, detail="workflow_record_unavailable")
+    path = _draft_directory(decision, request)
+    with _editor_lock(path) as directory_fd:
+        document = _loaded_document(directory_fd, decision, session)
+        head = int(document.get("head_revision") or 0) if document else 0
+        if head != expected:
+            conflict = project_draft_editor(document, save_state="conflict")
+            conflict["code"] = "stale_revision"
+            conflict["overwrote_head"] = False
+            return JSONResponse(status_code=409, content=conflict)
+        before = _read_editor_file(directory_fd)
+        before_bytes = json.dumps(before, sort_keys=True).encode("utf-8") if before else b""
+        working = copy.deepcopy(case_file)
+        stored_workflow = document.get("draft_workflow") if isinstance(document, dict) else {}
+        if not isinstance(stored_workflow, dict):
+            stored_workflow = {}
+        working["draft_workflow"] = copy.deepcopy(stored_workflow)
+        draft_body = {
+            "operation": "version_draft",
+            "request_id": body.get("request_id"),
+            "draft_id": body.get("draft_id"),
+            "text": body.get("text"),
+        }
+        for name in ("expected_factual_revision", "expected_legal_revision", "expected_evidence_revision", "expected_proof_revision"):
+            if name in body:
+                draft_body[name] = body[name]
+        try:
+            written = version_draft(working, draft_body, actor_principal_id=scope["actor_principal_id"],
+                                    membership=scope["membership"], action="case.update")
+        except Exception:
+            current = _read_editor_file(directory_fd)
+            current_bytes = json.dumps(current, sort_keys=True).encode("utf-8") if current else b""
+            if current_bytes != before_bytes:
+                raise HTTPException(status_code=409, detail="stale_revision") from None
+            raise
+        again = _read_editor_file(directory_fd)
+        again_bytes = json.dumps(again, sort_keys=True).encode("utf-8") if again else b""
+        if again_bytes != before_bytes:
+            conflict = project_draft_editor(document, save_state="conflict")
+            conflict["code"] = "stale_revision"
+            conflict["overwrote_head"] = False
+            return JSONResponse(status_code=409, content=conflict)
+        next_head = head if written.get("replayed") is True else head + 1
+        sealed_document = {"head_revision": next_head, "draft_workflow": working.get("draft_workflow") or {}}
+        envelope = _seal_draft(sealed_document, decision, key_id, key)
+        _write_editor_file(directory_fd, next_head, envelope)
+        reread = _loaded_document(directory_fd, decision, session)
+        if reread is None or int(reread.get("head_revision") or 0) != next_head:
+            raise HTTPException(status_code=503, detail="case_revision_unavailable")
+        _publish_memory(case_file, reread)
+        projected = project_draft_editor(reread, save_state="saved")
+        projected["replayed"] = written.get("replayed") is True
+        projected["overwrote_head"] = True
+        return projected
+
+
 async def require_composed_document_authorizer(request: Request) -> None:
     """When production composition is active, document and download handlers require its decision."""
 
@@ -1846,6 +2241,39 @@ def create_document_router(mediator: Any) -> APIRouter:
     async def read_complaint_outline(case_id: str, request: Request) -> Dict[str, Any]:
         _workflow_scope(case_id, request)
         return project_complaint_outline(_workflow_case_file())
+
+    @router.get("/api/documents/{case_id}/draft-editor")
+    async def read_draft_editor(
+        case_id: str,
+        request: Request,
+        base_revision: Optional[int] = Query(default=None),
+        compare_revision: Optional[int] = Query(default=None),
+    ) -> Dict[str, Any]:
+        scope = _workflow_scope(case_id, request)
+        _require_draft_owner(scope, request)
+        try:
+            return _project_locked_editor(case_id, request, base_revision=base_revision, compare_revision=compare_revision)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _editor_error(exc) from None
+
+    @router.post("/api/documents/{case_id}/draft-editor")
+    async def save_draft_editor(case_id: str, request: Request) -> Dict[str, Any]:
+        scope = _workflow_scope(case_id, request)
+        _require_draft_owner(scope, request)
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=422, detail="draft_field") from None
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=422, detail="draft_field")
+        try:
+            return _save_locked_editor(case_id, request, body, scope)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _editor_error(exc) from None
 
     @router.get("/api/documents/{case_id}/workflow-stage")
     async def read_workflow_stage(case_id: str, request: Request) -> Dict[str, Any]:
