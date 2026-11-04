@@ -719,7 +719,7 @@ Implementation instructions:
 
 ## CIMP-UX-24 Build an understandable facts and timeline interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
