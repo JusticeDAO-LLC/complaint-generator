@@ -3953,13 +3953,15 @@ def _validation_aware_supervisor_class(native_class):
                 if any(item.get("reason") == "reconciliation_limit_reached" for item in
                         result.get("worktree_reconciliation", {}).get("skipped", ())):
                     raise RuntimeError("Native startup candidate recovery remains unresolved")
-                from .startup_integrated_scope import retained_integrated_scope_refusal
+                from .startup_integrated_scope import (
+                    retained_empty_integrated_baseline, retained_integrated_scope_refusal)
                 from .startup_rejected_candidate import retained_replay_rejection
                 from .startup_settled_validation import settled_validation_failure
                 if any(item.get("merged") is not True and not _startup_candidate_is_completed(self, item)
                         and not retained_replay_rejection(self, item, maintenance_result=result)
                         and not settled_validation_failure(self, item, maintenance_result=result)
-                        and not retained_integrated_scope_refusal(self, item, maintenance_result=result) for item in
+                        and not retained_integrated_scope_refusal(self, item, maintenance_result=result)
+                        and not retained_empty_integrated_baseline(self, item, maintenance_result=result) for item in
                         result.get("worktree_reconciliation", {}).get("processed", ())):
                     raise RuntimeError("Native startup candidate recovery remains unresolved")
                 self._complaint_startup_preflight_pending = False
