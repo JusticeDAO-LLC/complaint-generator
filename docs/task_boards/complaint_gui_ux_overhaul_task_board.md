@@ -347,7 +347,7 @@ Implementation instructions:
 
 ## CIMP-UX-12 Make privacy and Grok processing consent understandable
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
