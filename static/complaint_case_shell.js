@@ -36,6 +36,7 @@
     var retiringWorkspace = false;
     var activeController = null;
     var committed = {principalId: "", caseId: "", access: ""};
+    var shellKey = {epoch: null, status: ""};
 
     function text(value) {
         return value === undefined || value === null ? "" : String(value);
@@ -349,6 +350,54 @@
             delete selectedCase.dataset.actorPrincipalId;
             delete selectedCase.dataset.caseId;
         }
+    }
+
+    function clearKeySurfaces() {
+        ["mediator-conversation-log", "complaint-facts-graph-nodes", "complaint-facts-graph-links", "message-list", "evidence-list", "evidence-library-list"].forEach(function (id) {
+            var node = document.getElementById(id);
+            if (node) node.replaceChildren();
+        });
+        ["mediator-conversation-context", "factual-graph-mount", "factual-graph-status", "mediator-prompt-preview"].forEach(function (id) {
+            var node = document.getElementById(id);
+            if (node) node.textContent = "";
+        });
+        ["draft-body", "message-text"].forEach(function (id) {
+            var field = document.getElementById(id);
+            if (field && "value" in field) field.value = "";
+        });
+        clearPagePlaintext(false);
+        if (window.complaintEvidenceLibrary && window.complaintEvidenceLibrary.clearPrivateState) {
+            window.complaintEvidenceLibrary.clearPrivateState();
+        }
+    }
+
+    function keyGuidance(text) {
+        var host = document.getElementById("complaint-key-guidance");
+        if (!host) {
+            host = document.createElement("p");
+            host.id = "complaint-key-guidance";
+            host.setAttribute("role", "status");
+            var parent = document.querySelector("main") || document.body;
+            parent.insertBefore(host, parent.firstChild);
+        }
+        host.hidden = !text;
+        host.textContent = text || "";
+        return host;
+    }
+
+    function applyKeyCoherence(receipt) {
+        if (!receipt || typeof receipt !== "object") return;
+        var status = String(receipt.status || "");
+        var epoch = Number(receipt.epoch || 0);
+        var changed = shellKey.epoch !== null && (shellKey.epoch !== epoch || shellKey.status !== status);
+        var conceal = status !== "unlocked" || receipt.clear_plaintext === true;
+        if (changed || conceal) clearKeySurfaces();
+        shellKey = {epoch: epoch, status: status};
+        document.documentElement.dataset.keyEpoch = String(epoch);
+        document.documentElement.dataset.keyStatus = status;
+        document.documentElement.dataset.emptyCaseCreated = "false";
+        keyGuidance(receipt.recovery_guidance || "");
+        window.dispatchEvent(new CustomEvent("complaint-key-coherence", {detail: receipt}));
     }
 
     function retireUnverifiedView(clearCatalog) {
@@ -1086,16 +1135,28 @@
                 rejected(token);
                 return;
             }
-            if (content.contentState === "locked" && document.body.dataset.workspaceHydrated !== "locked"
-                    && typeof window.resetPrivateWorkspaceView === "function") {
-                // The existing workspace privacy boundary retires its cached
-                // view only after this authenticated owner reports a real lock.
-                retiringWorkspace = true;
-                try {
-                    window.resetPrivateWorkspaceView("locked", "Private keys remain locked. Reload after unlocking to reconnect.");
-                } finally { retiringWorkspace = false; }
-                if (token !== refreshToken) return;
+            if (content.contentState === "locked") {
+                applyKeyCoherence({
+                    status: "locked",
+                    epoch: Number(shellKey.epoch || 0) + 1,
+                    clear_plaintext: true,
+                    reload: false,
+                    empty_case_created: false,
+                    surfaces: ["chat", "evidence", "graphs", "draft", "messages"],
+                    recovery_guidance: "Private keys are locked, rotated, or revoked. An authorized local key owner must unlock this case wallet outside the page, then check access. Revocation does not recreate the case. Cached chat, evidence, graphs, draft, and messages were cleared."
+                });
+                if (document.body.dataset.workspaceHydrated !== "locked"
+                        && typeof window.resetPrivateWorkspaceView === "function") {
+                    // The existing workspace privacy boundary retires its cached
+                    // view only after this authenticated owner reports a real lock.
+                    retiringWorkspace = true;
+                    try {
+                        window.resetPrivateWorkspaceView("locked", "Private keys remain locked. Reload after unlocking to reconnect.");
+                    } finally { retiringWorkspace = false; }
+                    if (token !== refreshToken) return;
+                }
             }
+            if (content.session && content.session.key_coherence) applyKeyCoherence(content.session.key_coherence);
             state = derive(currentActor.body, catalogBody, assignmentBody, content.session, content.contentState);
             var access = boundaryAccess(content.contentState, state.assignment);
             if (committed.access === "reviewer" && state.relationship !== "reviewer") access = "revoked";
@@ -1494,6 +1555,7 @@
         setPresentationMode: setPresentationMode,
         binding: function () { return state.binding; },
         clearPlaintext: clearPagePlaintext,
+        applyKeyCoherence: applyKeyCoherence,
         snapshot: function () {
             var shellCase = document.getElementById("complaint-case-shell-case");
             var shellActor = document.getElementById("complaint-case-shell-actor");

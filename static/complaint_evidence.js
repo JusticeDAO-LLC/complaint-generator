@@ -1257,6 +1257,23 @@
         if (tab) tab.addEventListener("click", function () { load(); });
     }
 
+    var evidenceKeyEpoch = null;
+    window.addEventListener("complaint-key-coherence", function (event) {
+        var detail = event.detail || {};
+        var epoch = Number(detail.epoch || 0);
+        var moved = evidenceKeyEpoch !== null && evidenceKeyEpoch !== epoch;
+        if (detail.clear_plaintext || moved) {
+            clearPrivateState();
+            var list = document.getElementById("evidence-list");
+            if (list) list.replaceChildren();
+            var graph = document.getElementById("factual-graph-mount");
+            if (graph) graph.textContent = "";
+        }
+        var reload = detail.status === "unlocked" && (detail.reload === true || moved);
+        evidenceKeyEpoch = epoch;
+        if (reload && root()) load();
+    });
+
     window.complaintEvidenceLibrary = {
         refresh: load,
         search: searchCatalog,

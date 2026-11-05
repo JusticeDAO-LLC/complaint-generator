@@ -825,5 +825,24 @@
         clearIdentity();
     });
 
+    var messageKeyEpoch = null;
+    window.addEventListener("complaint-key-coherence", function (event) {
+        var detail = event.detail || {};
+        if (!$("message-list")) return;
+        var epoch = Number(detail.epoch || 0);
+        var moved = messageKeyEpoch !== null && messageKeyEpoch !== epoch;
+        messageKeyEpoch = epoch;
+        if (detail.clear_plaintext || (moved && detail.status !== "unlocked")) {
+            clearView(true);
+            setError("");
+            setStatus(detail.recovery_guidance || "Messages were cleared until this case key is available again.");
+            return;
+        }
+        if (detail.status === "unlocked" && (detail.reload === true || moved) && caseId()) {
+            var value = capture();
+            enqueue(function () { return loadThreads(value); }).catch(function (error) { failed(value, error); });
+        }
+    });
+
     setComposer("idle", "Ready");
 })();
