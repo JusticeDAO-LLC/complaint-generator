@@ -1463,7 +1463,7 @@ Implementation instructions:
 
 ## CIMP-UX-48 Measure rendering and large-evidence interface budgets
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
