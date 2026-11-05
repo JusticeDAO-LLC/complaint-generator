@@ -2083,7 +2083,7 @@ Implementation instructions:
 
 ## CIMP-UX-68 Provide fresh bounded current-source UX acceptance and closure
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
