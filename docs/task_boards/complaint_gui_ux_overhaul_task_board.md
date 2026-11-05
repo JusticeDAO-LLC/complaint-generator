@@ -1773,7 +1773,7 @@ Implementation instructions:
 
 ## CIMP-UX-58 Make key unlock, lock, rotation, and revocation coherent in the UI
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
