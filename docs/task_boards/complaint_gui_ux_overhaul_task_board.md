@@ -1432,7 +1432,7 @@ Implementation instructions:
 
 ## CIMP-UX-47 Bound interface requests and stale-result handling
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
