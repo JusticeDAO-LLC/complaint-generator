@@ -1959,7 +1959,7 @@ Implementation instructions:
 
 ## CIMP-UX-64 Exercise complete complaint and human-review journeys
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
