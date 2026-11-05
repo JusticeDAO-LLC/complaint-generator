@@ -123,6 +123,28 @@ def test_live_worktree_process_keeps_the_hold(tmp_path):
     ) is False
 
 
+def test_expired_balance_quarantine_matches_only_the_sealed_hold(tmp_path):
+    from integrations.ipfs_accelerate.startup_rejected_candidate import _expired_balance_quarantine
+    now = datetime.now(timezone.utc)
+    log = _log(tmp_path / "attempt.log", MESSAGE.encode())
+    fence = _record(log, started_at=_old(now))
+    fence.pop("reason")
+    identity = SimpleNamespace(canonical_task_cid="cid-1")
+    quarantine = {
+        "reason": "provider_capacity_settlement_required",
+        "lifecycle_record": {
+            "workspace_path": WORKTREE,
+            "canonical_task_cid": "cid-1",
+        },
+        "fence_authority": fence,
+    }
+    assert _expired_balance_quarantine(quarantine, WORKTREE, identity) is True
+    fresh = _record(log, started_at=(now - timedelta(minutes=5)).isoformat())
+    fresh.pop("reason")
+    quarantine["fence_authority"] = fresh
+    assert _expired_balance_quarantine(quarantine, WORKTREE, identity) is False
+
+
 def test_unsealed_log_keeps_the_hold(tmp_path):
     now = datetime(2026, 11, 5, 9, 0, tzinfo=timezone.utc)
     log = _log(tmp_path / "attempt.log", MESSAGE.encode())

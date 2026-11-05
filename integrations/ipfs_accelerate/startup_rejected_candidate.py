@@ -16,9 +16,9 @@ from typing import Mapping
 from . import release_evidence as evidence
 
 
-def _need(value):
+def _need(value, step=''):
     if not value:
-        raise ValueError('startup_replay_rejection_unverified')
+        raise ValueError(step or 'startup_replay_rejection_unverified')
 
 
 def _journal(path):
@@ -60,7 +60,23 @@ def _scope(result):
     return tuple(result.get(k) for k in ('task_id','branch','worktree_path','implementation_commit','baseline_ref','recovery_key'))
 
 
-def _proof(supervisor,item,daemon,allowed_scopes):
+def _expired_balance_quarantine(quarantine, path, identity) -> bool:
+    """True when this workspace's custody is the aged dead Grok 402 hold."""
+    if not isinstance(quarantine, Mapping) or quarantine.get('reason') != 'provider_capacity_settlement_required':
+        return False
+    record = quarantine.get('lifecycle_record')
+    fence = quarantine.get('fence_authority')
+    if not isinstance(record, Mapping) or not isinstance(fence, Mapping):
+        return False
+    if record.get('workspace_path') != str(path) or record.get('canonical_task_cid') != identity.canonical_task_cid:
+        return False
+    from .settled_balance_capacity import record_is_expired_executed_balance_hold
+    observed = dict(fence)
+    observed['reason'] = 'provider_capacity_settlement_required'
+    return record_is_expired_executed_balance_hold(observed)
+
+
+def _proof(supervisor,item,daemon,allowed_scopes,allow_expired_balance_quarantine=False):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as native
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.current_incident_adjudication import _baseline_unchanged
     from .startup_terminal_candidate import _worktree_custody
@@ -149,10 +165,18 @@ def _proof(supervisor,item,daemon,allowed_scopes):
     _need(not os.path.lexists(Path(config.state_dir)/native.IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME))
     _need(not os.path.lexists(daemon._implementation_lock_path())
         and not os.path.lexists(daemon._implementation_task_claim_path(task_id,canonical_task_cid=identity.canonical_task_cid)))
-    _need(daemon.worktree_lifecycle.load_quarantine(path) is None)
+    quarantine=daemon.worktree_lifecycle.load_quarantine(path)
+    if allow_expired_balance_quarantine:
+        _need(_expired_balance_quarantine(quarantine, path, identity), 'expired_balance_quarantine')
+    else:
+        _need(quarantine is None, 'unexpected_quarantine')
     life=daemon.worktree_lifecycle.load_workspace(path)
-    _need(life is None or (life.is_terminal and life.canonical_task_cid==identity.canonical_task_cid
-        and life.workspace_path==str(path) and life.branch==branch))
+    if allow_expired_balance_quarantine:
+        _need(life is None or (life.canonical_task_cid==identity.canonical_task_cid
+            and life.workspace_path==str(path)), 'quarantine_lifecycle_identity')
+    else:
+        _need(life is None or (life.is_terminal and life.canonical_task_cid==identity.canonical_task_cid
+            and life.workspace_path==str(path) and life.branch==branch), 'lifecycle_not_terminal')
     # Existing queue APIs may initialize schema. Only inspect its existing
     # database read-only; pending, in-flight or quarantined effects stay blocking.
     import duckdb
@@ -169,7 +193,7 @@ def _proof(supervisor,item,daemon,allowed_scopes):
         terminal['event_id'],start['event_id'],gate,report_event['event_id'])
 
 
-def retained_replay_rejection(supervisor,item,*,maintenance_result) -> bool:
+def retained_replay_rejection(supervisor,item,*,maintenance_result,allow_expired_balance_quarantine=False) -> bool:
     """Reprove the negative outcome; never infer a task from branch spelling."""
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalImplementationDaemon
     from ipfs_accelerate_py.agent_supervisor.merge.workspace_quarantine import maintenance
@@ -191,12 +215,20 @@ def retained_replay_rejection(supervisor,item,*,maintenance_result) -> bool:
             scopes=[_scope(entry.get('recovery_result')) for entry in batch]
             _need(len(set(scopes))==len(scopes))
             allowed_scopes=set(scopes)
-            first=[_proof(supervisor,entry,daemon,allowed_scopes) for entry in batch]
+            first=[_proof(supervisor,entry,daemon,allowed_scopes,allow_expired_balance_quarantine) for entry in batch]
             _need(len({proof[-1] for proof in first})==1)
-            return (first==[_proof(supervisor,entry,daemon,allowed_scopes) for entry in batch]
+            return (first==[_proof(supervisor,entry,daemon,allowed_scopes,allow_expired_balance_quarantine) for entry in batch]
                 and getattr(supervisor,'_complaint_startup_reconciliation_context',None) is context
                 and getattr(supervisor,'_complaint_startup_preflight_pending',False) is True)
-    except Exception:
-        # Diagnostic recognition grants nothing when a reader, lock, schema
-        # or proof is unavailable; cancellation still propagates.
+    except Exception as exc:
+        if allow_expired_balance_quarantine:
+            retained_quarantined_balance_replay.last_error=f'{type(exc).__name__}: {exc}'
         return False
+
+
+def retained_quarantined_balance_replay(supervisor,item,*,maintenance_result) -> bool:
+    """Permit startup past one aged dead 402 quarantine. Do not retry or complete it."""
+    retained_quarantined_balance_replay.last_error=''
+    return retained_replay_rejection(
+        supervisor, item, maintenance_result=maintenance_result,
+        allow_expired_balance_quarantine=True)

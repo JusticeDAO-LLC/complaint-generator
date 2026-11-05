@@ -3955,15 +3955,20 @@ def _validation_aware_supervisor_class(native_class):
                     raise RuntimeError("Native startup candidate recovery remains unresolved")
                 from .startup_integrated_scope import (
                     retained_empty_integrated_baseline, retained_integrated_scope_refusal)
-                from .startup_rejected_candidate import retained_replay_rejection
+                from .startup_rejected_candidate import (
+                    retained_quarantined_balance_replay, retained_replay_rejection)
                 from .startup_settled_validation import settled_validation_failure
                 if any(item.get("merged") is not True and not _startup_candidate_is_completed(self, item)
                         and not retained_replay_rejection(self, item, maintenance_result=result)
+                        and not retained_quarantined_balance_replay(self, item, maintenance_result=result)
                         and not settled_validation_failure(self, item, maintenance_result=result)
                         and not retained_integrated_scope_refusal(self, item, maintenance_result=result)
                         and not retained_empty_integrated_baseline(self, item, maintenance_result=result) for item in
                         result.get("worktree_reconciliation", {}).get("processed", ())):
-                    raise RuntimeError("Native startup candidate recovery remains unresolved")
+                    detail = getattr(retained_quarantined_balance_replay, "last_error", "")
+                    raise RuntimeError(
+                        "Native startup candidate recovery remains unresolved"
+                        + (": " + detail if detail else ""))
                 self._complaint_startup_preflight_pending = False
                 self._complaint_startup_reconciliation_context = None
             return result
