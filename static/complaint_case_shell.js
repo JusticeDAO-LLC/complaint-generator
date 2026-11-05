@@ -130,7 +130,8 @@
             + '<details id="complaint-case-shell-more" class="case-shell__more"><summary>More</summary></details>'
             + "</nav>"
             + '<div id="complaint-case-shell-panels">' + panels + "</div>"
-            + "</div>";
+            + "</div>"
+            + '<section id="complaint-case-shell-volume" aria-label="Case message pages" data-state="empty"></section>';
         host.querySelector("#complaint-case-shell-catalog").addEventListener("change", function (event) {
             var caseId = event.target.value;
             if (!caseId || caseId === state.caseId) return;
@@ -964,9 +965,14 @@
     function renderCatalog(cases, selectedId) {
         var select = document.getElementById("complaint-case-shell-catalog");
         if (!select) return;
+        var started = window.performance && performance.now ? performance.now() : 0;
         var rows = Array.isArray(cases) ? cases : [];
         var signature = rows.map(function (item) { return item.case_id; }).join("|") + "#" + (selectedId || "");
-        if (select.dataset.signature === signature) return;
+        if (select.dataset.signature === signature) {
+            catalogCost.retained = rows.length;
+            catalogCost.domOptions = Math.max(0, select.options.length - 1);
+            return;
+        }
         select.dataset.signature = signature;
         select.replaceChildren();
         var placeholder = document.createElement("option");
@@ -980,6 +986,177 @@
             select.appendChild(option);
         });
         select.value = selectedId && rows.some(function (item) { return item.case_id === selectedId; }) ? selectedId : "";
+        catalogCost.renders += 1;
+        catalogCost.lastRenderMs = window.performance && performance.now ? Math.max(0, performance.now() - started) : 0;
+        catalogCost.retained = rows.length;
+        catalogCost.domOptions = Math.max(0, select.options.length - 1);
+        select.dataset.retainedCount = String(rows.length);
+    }
+
+    function volumeRoot() {
+        return document.getElementById("complaint-case-shell-volume");
+    }
+
+    function renderMessagePage() {
+        var root = volumeRoot();
+        if (!root) return;
+        var started = window.performance && performance.now ? performance.now() : 0;
+        var total = volume.messages.length;
+        var pages = Math.max(1, Math.ceil(total / VOLUME_PAGE_SIZE) || 1);
+        if (volume.page < 0) volume.page = 0;
+        if (volume.page > pages - 1) volume.page = pages - 1;
+        var start = volume.page * VOLUME_PAGE_SIZE;
+        var slice = volume.messages.slice(start, start + VOLUME_PAGE_SIZE);
+        root.replaceChildren();
+        var status = document.createElement("p");
+        status.id = "complaint-case-shell-volume-status";
+        status.setAttribute("role", "status");
+        root.dataset.retained = String(total);
+        if (volume.locked) {
+            root.dataset.state = "locked";
+            status.textContent = "Messages are locked for this case. Message text was not opened.";
+            root.appendChild(status);
+            volume.renders += 1;
+            volume.lastRenderMs = window.performance && performance.now ? Math.max(0, performance.now() - started) : 0;
+            volume.domNodes = 1;
+            return;
+        }
+        root.dataset.state = total ? "ready" : "empty";
+        status.textContent = total
+            ? ("Message page " + (volume.page + 1) + " of " + pages + ". " + total + " messages retained.")
+            : "No messages are stored for this case.";
+        root.appendChild(status);
+        var list = document.createElement("div");
+        list.id = "complaint-case-shell-messages";
+        list.setAttribute("role", "listbox");
+        list.setAttribute("aria-label", "Case messages");
+        slice.forEach(function (message, index) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.setAttribute("role", "option");
+            button.dataset.messageId = message.id || "";
+            button.setAttribute("aria-posinset", String(start + index + 1));
+            button.setAttribute("aria-setsize", String(total));
+            button.setAttribute("aria-selected", message.id === volume.selected ? "true" : "false");
+            button.textContent = (message.author || "Unknown sender") + ": " + (message.subject || message.id || "Message");
+            button.addEventListener("click", function () {
+                volume.selected = message.id || "";
+                renderMessagePage();
+                var detail = document.getElementById("complaint-case-shell-message-detail");
+                if (detail) detail.focus();
+            });
+            list.appendChild(button);
+        });
+        list.addEventListener("keydown", function (event) {
+            var current = event.target.closest && event.target.closest("[data-message-id]");
+            if (!current || event.altKey || event.ctrlKey || event.metaKey) return;
+            var buttons = Array.prototype.slice.call(list.querySelectorAll("[data-message-id]"));
+            var index = buttons.indexOf(current);
+            if (index < 0) return;
+            if (event.key === "ArrowDown") {
+                event.preventDefault();
+                if (index < buttons.length - 1) buttons[index + 1].focus();
+                else { volume.page += 1; renderMessagePage(); var first = document.querySelector("#complaint-case-shell-messages [data-message-id]"); if (first) first.focus(); }
+            } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                if (index > 0) buttons[index - 1].focus();
+                else if (volume.page > 0) {
+                    volume.page -= 1;
+                    renderMessagePage();
+                    var facts = document.querySelectorAll("#complaint-case-shell-messages [data-message-id]");
+                    if (facts.length) facts[facts.length - 1].focus();
+                }
+            } else if (event.key === "Home") {
+                event.preventDefault();
+                if (buttons[0]) buttons[0].focus();
+            } else if (event.key === "End") {
+                event.preventDefault();
+                if (buttons.length) buttons[buttons.length - 1].focus();
+            }
+        });
+        var detail = document.createElement("article");
+        detail.id = "complaint-case-shell-message-detail";
+        detail.tabIndex = -1;
+        var selected = volume.messages.filter(function (message) { return message.id === volume.selected; })[0] || null;
+        if (selected) {
+            detail.dataset.messageId = selected.id || "";
+            detail.dataset.provenance = selected.provenance || "";
+            detail.textContent = selected.body || "";
+        } else detail.textContent = total ? "Select a message to read its text." : "";
+        var nav = document.createElement("nav");
+        nav.id = "complaint-case-shell-message-pages";
+        nav.setAttribute("aria-label", "Message pages");
+        var previous = document.createElement("button");
+        previous.type = "button";
+        previous.id = "complaint-case-shell-message-prev";
+        previous.textContent = "Previous message page";
+        previous.disabled = volume.page <= 0;
+        var next = document.createElement("button");
+        next.type = "button";
+        next.id = "complaint-case-shell-message-next";
+        next.textContent = "Next message page";
+        next.disabled = volume.page >= pages - 1;
+        nav.appendChild(previous);
+        nav.appendChild(next);
+        nav.addEventListener("click", function (event) {
+            var button = event.target.closest("button");
+            if (!button || button.disabled) return;
+            if (button.id === "complaint-case-shell-message-prev") volume.page -= 1;
+            if (button.id === "complaint-case-shell-message-next") volume.page += 1;
+            renderMessagePage();
+        });
+        nav.addEventListener("keydown", function (event) {
+            if (event.key === "ArrowLeft") volume.page -= 1;
+            else if (event.key === "ArrowRight") volume.page += 1;
+            else if (event.key === "Home") volume.page = 0;
+            else if (event.key === "End") volume.page = pages - 1;
+            else return;
+            event.preventDefault();
+            renderMessagePage();
+        });
+        root.appendChild(list);
+        root.appendChild(detail);
+        root.appendChild(nav);
+        volume.renders += 1;
+        volume.lastRenderMs = window.performance && performance.now ? Math.max(0, performance.now() - started) : 0;
+        volume.domNodes = root.querySelectorAll("*").length;
+    }
+
+    function volumeBudget() {
+        var pages = Math.max(1, Math.ceil(volume.messages.length / VOLUME_PAGE_SIZE) || 1);
+        return {
+            pageSize: VOLUME_PAGE_SIZE,
+            page: volume.page + 1,
+            pages: pages,
+            total: volume.messages.length,
+            retained: volume.messages.length,
+            visible: document.querySelectorAll("#complaint-case-shell-messages [data-message-id]").length,
+            renders: volume.renders,
+            requests: volume.requests,
+            lastRenderMs: volume.lastRenderMs,
+            domNodes: volume.domNodes,
+            catalogRetained: catalogCost.retained,
+            catalogOptions: catalogCost.domOptions,
+            catalogRenderMs: catalogCost.lastRenderMs,
+            omitted: catalogCost.domOptions !== catalogCost.retained && catalogCost.renders > 0,
+            guardsDisabled: false,
+            locked: volume.locked === true,
+            requestBudget: {maxInFlight: INTERFACE_REQUEST_BUDGET.maxInFlight, maxQueued: INTERFACE_REQUEST_BUDGET.maxQueued, deadlineMs: INTERFACE_REQUEST_BUDGET.deadlineMs}
+        };
+    }
+
+    async function loadMessages() {
+        volume.requests += 1;
+        var response = await fetch("/api/ux48/messages", {credentials: "same-origin", headers: {accept: "application/json"}});
+        var body = {};
+        try { body = await response.json(); } catch (error) { body = {}; }
+        volume.locked = response.status === 401 || response.status === 403 || body.locked === true;
+        volume.messages = volume.locked ? [] : (Array.isArray(body.messages) ? body.messages : []);
+        if (body && body.omit === true && Array.isArray(body.messages) && !volume.locked) volume.messages = body.messages;
+        volume.page = 0;
+        volume.selected = "";
+        renderMessagePage();
+        return volumeBudget();
     }
 
     function sameActor(first, current) {
@@ -1257,6 +1434,9 @@
     });
 
     var INTERFACE_REQUEST_BUDGET = {maxInFlight: 4, maxQueued: 8, deadlineMs: 8000};
+    var VOLUME_PAGE_SIZE = 24;
+    var catalogCost = {renders: 0, lastRenderMs: 0, retained: 0, domOptions: 0};
+    var volume = {messages: [], page: 0, selected: "", locked: false, renders: 0, requests: 0, lastRenderMs: 0, domNodes: 0};
     var RETRY_LIMIT = 3;
     var interfaceInFlight = 0;
     var interfaceQueue = [];
@@ -1727,6 +1907,9 @@
         requestBudget: function () {
             return {maxInFlight: INTERFACE_REQUEST_BUDGET.maxInFlight, maxQueued: INTERFACE_REQUEST_BUDGET.maxQueued, deadlineMs: INTERFACE_REQUEST_BUDGET.deadlineMs};
         },
+        renderCatalog: renderCatalog,
+        loadMessages: loadMessages,
+        volumeBudget: volumeBudget,
         snapshot: function () {
             var shellCase = document.getElementById("complaint-case-shell-case");
             var shellActor = document.getElementById("complaint-case-shell-actor");

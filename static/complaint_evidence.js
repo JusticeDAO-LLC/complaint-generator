@@ -391,6 +391,9 @@
     var readAt = "";
     var previewBlobs = [];
     var previewController = null;
+    var EVIDENCE_PAGE_SIZE = 24;
+    var listPage = 0;
+    var libraryCosts = {renders: 0, requests: 0, lastRenderMs: 0, domNodes: 0};
 
     function root() {
         return document.getElementById("evidence-library");
@@ -429,6 +432,7 @@
         itemsScope = null;
         selectedId = "";
         readAt = "";
+        listPage = 0;
         var host = root();
         if (host) {
             host.dataset.selectedId = "";
@@ -703,6 +707,7 @@
         });
         if (version) params.set("version", version);
         text("evidence-preview-status", "Opening the encrypted preview…");
+        libraryCosts.requests += 1;
         fetch("/api/cases/evidence/preview?" + params.toString(), {
             credentials: "same-origin",
             headers: {"Accept": "application/json"},
@@ -961,6 +966,7 @@
         headers["x-case-id"] = context.case_id;
         headers["x-resource-id"] = context.resource_id;
         var response;
+        libraryCosts.requests += 1;
         try {
             response = await fetch("/api/cases/evidence/search", {
                 method: "POST",
@@ -1068,10 +1074,58 @@
         loadPreview(item);
     }
 
+    function evidencePageCount(total) {
+        return Math.max(1, Math.ceil((total || 0) / EVIDENCE_PAGE_SIZE));
+    }
+
+    function ensureEvidencePager(list) {
+        var nav = document.getElementById("evidence-library-pages");
+        if (nav) return nav;
+        nav = document.createElement("nav");
+        nav.id = "evidence-library-pages";
+        nav.setAttribute("aria-label", "Evidence catalog pages");
+        var previous = document.createElement("button");
+        previous.type = "button";
+        previous.id = "evidence-library-page-prev";
+        previous.textContent = "Previous evidence page";
+        var status = document.createElement("span");
+        status.id = "evidence-library-page-status";
+        status.setAttribute("role", "status");
+        var next = document.createElement("button");
+        next.type = "button";
+        next.id = "evidence-library-page-next";
+        next.textContent = "Next evidence page";
+        nav.appendChild(previous);
+        nav.appendChild(status);
+        nav.appendChild(next);
+        list.insertAdjacentElement("afterend", nav);
+        function move(delta) {
+            listPage += delta;
+            render();
+            var focusId = delta < 0 ? "evidence-library-page-prev" : "evidence-library-page-next";
+            var button = document.getElementById(focusId);
+            if (button && !button.disabled) button.focus();
+        }
+        nav.addEventListener("click", function (event) {
+            var button = event.target.closest("button");
+            if (!button || button.disabled) return;
+            if (button.id === "evidence-library-page-prev") move(-1);
+            if (button.id === "evidence-library-page-next") move(1);
+        });
+        nav.addEventListener("keydown", function (event) {
+            if (event.key === "ArrowLeft") { move(-1); event.preventDefault(); }
+            else if (event.key === "ArrowRight") { move(1); event.preventDefault(); }
+            else if (event.key === "Home") { listPage = 0; render(); event.preventDefault(); }
+            else if (event.key === "End") { listPage = evidencePageCount(visibleItems().length) - 1; render(); event.preventDefault(); }
+        });
+        return nav;
+    }
+
     function render() {
         var host = root();
         var list = document.getElementById("evidence-library-list");
         if (!host || !list || host.dataset.state !== "ready") return;
+        var started = window.performance && performance.now ? performance.now() : 0;
         if (!currentScope(itemsScope)) {
             var current = captureScope();
             var previous = itemsScope;
@@ -1085,6 +1139,11 @@
         }
         layout();
         var shown = visibleItems();
+        var pages = evidencePageCount(shown.length);
+        if (listPage < 0) listPage = 0;
+        if (listPage > pages - 1) listPage = pages - 1;
+        var start = listPage * EVIDENCE_PAGE_SIZE;
+        var pageItems = shown.slice(start, start + EVIDENCE_PAGE_SIZE);
         list.textContent = "";
         if (!shown.length) {
             var empty = document.createElement("p");
@@ -1094,12 +1153,14 @@
                 : "The catalog has no artifacts.";
             list.appendChild(empty);
         }
-        shown.forEach(function (item) {
+        pageItems.forEach(function (item, index) {
             var button = document.createElement("button");
             button.type = "button";
             button.className = "evidence-library-item";
             button.setAttribute("role", "option");
             button.setAttribute("data-evidence-id", item.evidence_id || "");
+            button.setAttribute("aria-setsize", String(shown.length));
+            button.setAttribute("aria-posinset", String(start + index + 1));
             button.setAttribute("aria-pressed", item.evidence_id === selectedId ? "true" : "false");
             var title = document.createElement("strong");
             title.textContent = item.original_filename || item.source_filename || item.evidence_id;
@@ -1124,10 +1185,30 @@
             if (first) first.setAttribute("aria-pressed", "true");
         }
         host.dataset.selectedId = selected ? selected.evidence_id : "";
-        paintDetail(selected);
+        host.dataset.retainedCount = String(items.length);
+        host.dataset.page = String(listPage + 1);
+        host.dataset.pageCount = String(pages);
+        var detail = document.getElementById("evidence-library-detail");
+        var detailId = detail ? detail.dataset.evidenceId || "" : "";
+        if (!selected || detailId !== (selected.evidence_id || "")) paintDetail(selected);
+        var pager = ensureEvidencePager(list);
+        var previous = document.getElementById("evidence-library-page-prev");
+        var next = document.getElementById("evidence-library-page-next");
+        if (previous) previous.disabled = listPage <= 0;
+        if (next) next.disabled = listPage >= pages - 1;
+        var pageStatus = document.getElementById("evidence-library-page-status");
+        if (pageStatus) {
+            pageStatus.textContent = shown.length
+                ? ("Evidence page " + (listPage + 1) + " of " + pages + ". " + shown.length + " matching artifacts retained.")
+                : "Evidence page 1 of 1.";
+        }
+        pager.hidden = false;
         text("evidence-library-summary", items.length
-            ? (shown.length + " of " + items.length + " artifacts shown.")
+            ? ("Showing " + (shown.length ? (start + 1) + "-" + (start + pageItems.length) : "0") + " of " + shown.length + " matching artifacts. " + items.length + " artifacts retained.")
             : "No artifacts are in this case catalog.");
+        libraryCosts.renders += 1;
+        libraryCosts.lastRenderMs = window.performance && performance.now ? Math.max(0, performance.now() - started) : 0;
+        libraryCosts.domNodes = list.querySelectorAll("*").length + pager.querySelectorAll("*").length;
     }
 
     function setState(state, detail) {
@@ -1168,6 +1249,7 @@
             resource_id: context.resource_id
         });
         var response;
+        libraryCosts.requests += 1;
         try {
             response = await fetch("/api/cases/evidence?" + params.toString(), {
                 credentials: "same-origin",
@@ -1280,7 +1362,28 @@
         openChronology: openChronology,
         clearPrivateState: clearPrivateState,
         selectedId: function () { return selectedId; },
-        complaintSection: function () { return selectedSection; }
+        complaintSection: function () { return selectedSection; },
+        showPage: function (page) {
+            listPage = Number(page) - 1;
+            render();
+        },
+        budget: function () {
+            var shown = visibleItems();
+            return {
+                pageSize: EVIDENCE_PAGE_SIZE,
+                page: listPage + 1,
+                pages: evidencePageCount(shown.length),
+                total: items.length,
+                retained: items.length,
+                visible: document.querySelectorAll("#evidence-library-list [data-evidence-id]").length,
+                renders: libraryCosts.renders,
+                requests: libraryCosts.requests,
+                lastRenderMs: libraryCosts.lastRenderMs,
+                domNodes: libraryCosts.domNodes,
+                omitted: false,
+                guardsDisabled: false
+            };
+        }
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
@@ -1296,6 +1399,10 @@
     var catalog = [];
     var listed = [];
     var observedAt = "";
+    var ANNOTATION_PAGE_SIZE = 24;
+    var annotationPage = 0;
+    var selectedAnnotation = "";
+    var annotationCosts = {renders: 0, requests: 0, lastRenderMs: 0, domNodes: 0};
 
     function dialog() { return document.getElementById("evidence-annotation-editor"); }
     function form() { return document.getElementById("evidence-annotation-form"); }
@@ -1446,20 +1553,92 @@
         return "";
     }
 
+    function annotationPageCount() {
+        return Math.max(1, Math.ceil((listed.length || 0) / ANNOTATION_PAGE_SIZE));
+    }
+
+    function ensureAnnotationPager(list) {
+        var nav = document.getElementById("evidence-annotation-pages");
+        if (nav) return nav;
+        nav = document.createElement("nav");
+        nav.id = "evidence-annotation-pages";
+        nav.setAttribute("aria-label", "Annotation pages");
+        var previous = document.createElement("button");
+        previous.type = "button";
+        previous.id = "evidence-annotation-page-prev";
+        previous.textContent = "Previous annotation page";
+        var status = document.createElement("span");
+        status.id = "evidence-annotation-page-status";
+        status.setAttribute("role", "status");
+        var next = document.createElement("button");
+        next.type = "button";
+        next.id = "evidence-annotation-page-next";
+        next.textContent = "Next annotation page";
+        nav.appendChild(previous);
+        nav.appendChild(status);
+        nav.appendChild(next);
+        list.insertAdjacentElement("afterend", nav);
+        nav.addEventListener("click", function (event) {
+            var button = event.target.closest("button");
+            if (!button || button.disabled) return;
+            if (button.id === "evidence-annotation-page-prev") annotationPage -= 1;
+            if (button.id === "evidence-annotation-page-next") annotationPage += 1;
+            paintSaved();
+        });
+        nav.addEventListener("keydown", function (event) {
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            if (event.key === "ArrowLeft") annotationPage -= 1;
+            else if (event.key === "ArrowRight") annotationPage += 1;
+            else if (event.key === "Home") annotationPage = 0;
+            else if (event.key === "End") annotationPage = annotationPageCount() - 1;
+            else return;
+            event.preventDefault();
+            paintSaved();
+        });
+        return nav;
+    }
+
     function paintSaved() {
         var list = node("evidence-annotation-saved");
         var docket = node("docket-annotation-list");
         if (!list) return;
+        var started = window.performance && performance.now ? performance.now() : 0;
+        var pages = annotationPageCount();
+        if (annotationPage < 0) annotationPage = 0;
+        if (annotationPage > pages - 1) annotationPage = pages - 1;
+        var start = annotationPage * ANNOTATION_PAGE_SIZE;
+        var pageItems = listed.slice(start, start + ANNOTATION_PAGE_SIZE);
         list.textContent = "";
         if (!listed.length) {
             var empty = document.createElement("li");
             empty.textContent = "No annotations saved on this artifact version yet.";
             list.appendChild(empty);
         }
-        listed.forEach(function (item) {
+        pageItems.forEach(function (item, index) {
             var row = document.createElement("li");
-            row.tabIndex = -1;
+            row.tabIndex = 0;
             row.dataset.annotationId = item.annotation_id || "";
+            row.setAttribute("role", "option");
+            row.setAttribute("aria-selected", item.annotation_id === selectedAnnotation ? "true" : "false");
+            row.setAttribute("aria-setsize", String(listed.length));
+            row.setAttribute("aria-posinset", String(start + index + 1));
+            row.addEventListener("click", function () {
+                selectedAnnotation = item.annotation_id || "";
+                paintSaved();
+                var chosen = node("evidence-annotation-saved").querySelector("[data-annotation-id='" + selectedAnnotation + "']");
+                if (chosen) chosen.focus();
+            });
+            row.addEventListener("keydown", function (event) {
+                if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+                var rows = Array.prototype.slice.call(list.querySelectorAll("[data-annotation-id]"));
+                var at = rows.indexOf(row);
+                if (event.key === "ArrowDown" && at < rows.length - 1) rows[at + 1].focus();
+                else if (event.key === "ArrowUp" && at > 0) rows[at - 1].focus();
+                else if (event.key === "Home" && rows[0]) rows[0].focus();
+                else if (event.key === "End" && rows.length) rows[rows.length - 1].focus();
+                else return;
+                event.preventDefault();
+            });
             var title = document.createElement("strong");
             var kind = reminderClass(item.note);
             if (item.kind === "label") title.textContent = "Label: " + (item.label || "");
@@ -1468,7 +1647,9 @@
             else if (item.kind === "page_span") title.textContent = "Annotation " + (item.anchor || "");
             else title.textContent = "Annotation";
             var body = document.createElement("div");
-            body.textContent = item.kind === "label" ? "" : (item.note || "");
+            var showNote = listed.length <= ANNOTATION_PAGE_SIZE || item.annotation_id === selectedAnnotation;
+            body.textContent = item.kind === "label" || !showNote ? "" : (item.note || "");
+            if (!showNote && item.note) body.dataset.lazy = "note";
             var meta = document.createElement("div");
             meta.textContent = "Author: " + (item.actor_principal_id || "unknown")
                 + ". Artifact version: " + item.artifact_version
@@ -1490,6 +1671,17 @@
             row.appendChild(meta);
             list.appendChild(row);
         });
+        var pager = ensureAnnotationPager(list);
+        var previous = node("evidence-annotation-page-prev");
+        var next = node("evidence-annotation-page-next");
+        if (previous) previous.disabled = annotationPage <= 0;
+        if (next) next.disabled = annotationPage >= pages - 1;
+        var pageStatus = node("evidence-annotation-page-status");
+        if (pageStatus) pageStatus.textContent = "Annotation page " + (annotationPage + 1) + " of " + pages + ". " + listed.length + " annotations retained.";
+        list.dataset.retainedCount = String(listed.length);
+        annotationCosts.renders += 1;
+        annotationCosts.lastRenderMs = window.performance && performance.now ? Math.max(0, performance.now() - started) : 0;
+        annotationCosts.domNodes = list.querySelectorAll("*").length;
         if (docket) {
             docket.textContent = "";
             var source = list.textContent || "No annotations saved on this artifact version yet.";
@@ -1497,6 +1689,7 @@
             copy.className = "item";
             copy.textContent = source;
             docket.appendChild(copy);
+            docket.dataset.retainedCount = String(listed.length);
         }
     }
 
@@ -1504,6 +1697,7 @@
         var params = scopeQuery();
         var current = form();
         if (!params || !current) return;
+        annotationCosts.requests += 1;
         var response = await fetch("/api/cases/evidence/annotations?" + params.toString(), {
             credentials: "same-origin",
             headers: headers()
@@ -1515,6 +1709,8 @@
             return;
         }
         listed = Array.isArray(body.items) ? body.items : [];
+        if (body && body.omit === true) listed = Array.isArray(body.items) ? body.items : listed;
+        annotationPage = 0;
         current.dataset.expectedRevision = typeof body.annotation_revision === "string" ? body.annotation_revision : "";
         observedAt = new Date().toISOString();
         paintSaved();
@@ -1774,7 +1970,37 @@
         node("evidence-annotation-editor-state").tabIndex = -1;
     }
 
-    window.complaintEvidenceAnnotations = {open: open, close: close};
+    window.complaintEvidenceAnnotations = {
+        open: open,
+        close: close,
+        recordAnnotations: function (items) {
+            listed = Array.isArray(items) ? items : [];
+            annotationPage = 0;
+            selectedAnnotation = "";
+            paintSaved();
+        },
+        showPage: function (page) {
+            annotationPage = Number(page) - 1;
+            paintSaved();
+        },
+        budget: function () {
+            var visible = document.querySelectorAll("#evidence-annotation-saved [data-annotation-id]").length;
+            return {
+                pageSize: ANNOTATION_PAGE_SIZE,
+                page: annotationPage + 1,
+                pages: annotationPageCount(),
+                total: listed.length,
+                retained: listed.length,
+                visible: visible,
+                renders: annotationCosts.renders,
+                requests: annotationCosts.requests,
+                lastRenderMs: annotationCosts.lastRenderMs,
+                domNodes: annotationCosts.domNodes,
+                omitted: false,
+                guardsDisabled: false
+            };
+        }
+    };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
 }());
