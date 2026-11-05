@@ -581,6 +581,214 @@ class ComplaintCampaignWatchdog:
         return report
 
 
+_RECOVERY_KINDS = frozenset({
+    "idle_ready", "development_worker_stall", "validation_activity", "owner_death",
+})
+_ATTEMPT_CAP = 3
+_TURN_CAP = 64
+_PRESERVED_HOLDS = frozenset({
+    "awaiting_user", "manual_hold", "paused", "cancelled", "capacity_quarantine",
+    "protected_incident", "dependency_unavailable",
+})
+
+
+def _argv_foreign(identity, scope_token):
+    argv = identity.get("argv") or []
+    if "foreign-validator" in argv:
+        return True
+    if "--watchdog-scope" not in argv:
+        return False
+    index = argv.index("--watchdog-scope")
+    token = argv[index + 1] if index + 1 < len(argv) else ""
+    return token != scope_token
+
+
+def _matching_birth(identity):
+    from .improvement_runner import process_identity
+    if not isinstance(identity, dict):
+        return None
+    current = process_identity(identity.get("pid"))
+    if not current:
+        return None
+    if any(current.get(key) != identity.get(key) for key in ("pid", "start_ticks", "boot_id")):
+        return None
+    return current
+
+
+def _foreign_closure(nodes, scope_token):
+    by_pid = {node["pid"]: node for node in nodes}
+    memo = {}
+
+    def foreign(pid):
+        if pid in memo:
+            return memo[pid]
+        node = by_pid.get(pid)
+        if node is None:
+            memo[pid] = False
+            return False
+        parent = node.get("ppid")
+        memo[pid] = _argv_foreign(node, scope_token) or (parent in by_pid and foreign(parent))
+        return memo[pid]
+
+    return {pid for pid in by_pid if foreign(pid)}
+
+
+def _signal_matching_birth(identity, signum):
+    import signal
+    current = _matching_birth(identity)
+    if current is None or current["pid"] <= 1:
+        return False
+    try:
+        if hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal"):
+            descriptor = os.pidfd_open(current["pid"])
+            try:
+                again = _matching_birth(identity)
+                if again is None:
+                    return False
+                signal.pidfd_send_signal(descriptor, signum)
+            finally:
+                os.close(descriptor)
+        else:
+            os.kill(current["pid"], signum)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return False
+    return True
+
+
+def _reap_owned_births(owned):
+    """Signal only captured births. A foreign validator is never in this set."""
+    import signal
+    for signum in (signal.SIGTERM, signal.SIGKILL):
+        for identity in owned:
+            _signal_matching_birth(identity, signum)
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if all(_matching_birth(identity) is None for identity in owned):
+                return True
+            time.sleep(0.05)
+    return all(_matching_birth(identity) is None for identity in owned)
+
+
+def qualify_scoped_owned_recovery(*, kind, owner_identity, scope_token, phase_started_at, now,
+                                  descendant_identities=(), hold="", ledger_uncertain=False,
+                                  awaiting_user=False, attempt=0, turns=0, recovery_actions=0,
+                                  validation_scope=None, active_scope=None, claimed_deadline=None,
+                                  ledger=None):
+    """Recover one scoped incident without extending Native budgets or ledgers.
+
+    Idle, stall, and validation recovery wait out the existing grace and stall
+    windows and stop at the current phase deadline. Owner death may recover
+    earlier, still inside that same deadline. Holds, uncertain ledgers, and a
+    product awaiting a user are left untouched. Nested owned children are
+    reaped by birth. A foreign validator, including one nested under the owner,
+    is not signalled and cannot supply the deadline.
+    """
+    from . import improvement_runner as runner
+    budgets = preserved_native_watchdog_budgets(runner)
+    if not isinstance(scope_token, str) or not scope_token or any(c in scope_token for c in "\n\r\0"):
+        raise ValueError("watchdog_scope_invalid")
+    if isinstance(phase_started_at, bool) or type(phase_started_at) not in (int, float) or not math.isfinite(phase_started_at):
+        raise ValueError("watchdog_phase_start_invalid")
+    if isinstance(now, bool) or type(now) not in (int, float) or not math.isfinite(now) or now < phase_started_at:
+        raise ValueError("watchdog_observation_clock_invalid")
+    if type(attempt) is not int or type(turns) is not int or type(recovery_actions) is not int:
+        raise ValueError("watchdog_recovery_counters_invalid")
+    if attempt < 0 or turns < 0 or recovery_actions < 0:
+        raise ValueError("watchdog_recovery_counters_invalid")
+    deadline = float(phase_started_at) + budgets["implementation_timeout_seconds"]
+    grace_until = float(phase_started_at) + budgets["startup_seconds"]
+    stall_until = float(phase_started_at) + budgets["stall_seconds"]
+    report = {
+        "schema": "complaint-scoped-owned-recovery@1",
+        "kind": kind,
+        "status": "refused",
+        "reason": "recovery_not_permitted",
+        "reaped_pids": [],
+        "spared_pids": [],
+        "phase_deadline": deadline,
+        "grace_until": grace_until,
+        "stall_until": stall_until,
+        "budgets": budgets,
+        "attempt": attempt,
+        "turns": turns,
+        "attempt_cap": _ATTEMPT_CAP,
+        "turn_cap": _TURN_CAP,
+        "recovery_actions": recovery_actions,
+        "max_recoveries_per_incident": budgets["max_recoveries_per_incident"],
+        "attempt_refunded": False,
+        "ledger_mutated": False,
+        "completion_authority": False,
+        "foreign_validator_adopted": False,
+    }
+    if ledger is not None and not isinstance(ledger, dict):
+        raise ValueError("watchdog_ledger_invalid")
+    preserved = None if ledger is None else dict(ledger)
+    nodes = []
+    for identity in descendant_identities:
+        current = _matching_birth(identity)
+        if current is not None:
+            nodes.append(current)
+    owner_live = _matching_birth(owner_identity)
+    if owner_live is not None:
+        nodes.extend(runner._descendants(owner_live))
+        nodes.append(owner_live)
+    unique = {}
+    for node in nodes:
+        unique.setdefault(node["pid"], node)
+    nodes = list(unique.values())
+    owner_pid = owner_identity.get("pid") if isinstance(owner_identity, dict) else None
+    session_nodes = [node for node in nodes if node.get("session") == owner_pid or node.get("pid") == owner_pid]
+    foreign = _foreign_closure(session_nodes, scope_token)
+    owned = [node for node in session_nodes if node["pid"] not in foreign and not _argv_foreign(node, scope_token)]
+    report["spared_pids"] = sorted(foreign)
+
+    def finish(status, reason, *, reaped=()):
+        report["status"] = status
+        report["reason"] = reason
+        report["reaped_pids"] = sorted(reaped)
+        if ledger is not None and ledger != preserved:
+            raise RuntimeError("watchdog_ledger_mutated")
+        return report
+
+    if awaiting_user or hold in _PRESERVED_HOLDS or hold == "awaiting_user":
+        return finish("preserved", "awaiting_user" if awaiting_user or hold == "awaiting_user" else "hold_preserved")
+    if ledger_uncertain:
+        return finish("preserved", "uncertain_ledger")
+    if kind not in _RECOVERY_KINDS:
+        return finish("refused", "recovery_kind_unknown")
+    if recovery_actions >= budgets["max_recoveries_per_incident"]:
+        return finish("refused", "recovery_actions_exhausted")
+    if turns > _TURN_CAP or (kind != "idle_ready" and not 1 <= attempt <= _ATTEMPT_CAP):
+        return finish("refused", "attempt_or_turn_cap")
+    if kind == "idle_ready" and attempt > _ATTEMPT_CAP:
+        return finish("refused", "attempt_or_turn_cap")
+    if now >= deadline:
+        return finish("refused", "phase_deadline_expired")
+    if kind == "validation_activity":
+        if validation_scope != active_scope or not active_scope:
+            return finish("refused", "foreign_validator_contamination")
+        if claimed_deadline != deadline:
+            return finish("refused", "stale_phase_deadline")
+    elif kind in {"idle_ready", "development_worker_stall"} and now < stall_until:
+        return finish("refused", "within_grace_or_stall")
+    if kind == "owner_death":
+        if owner_live is not None:
+            return finish("refused", "owner_still_alive")
+    elif owner_live is None:
+        return finish("refused", "owner_birth_uncertain")
+    if not owned:
+        return finish("refused", "owned_tree_absent")
+    # Deepest owned births first. Foreign births stay in the spared set.
+    owned.sort(key=lambda node: node.get("ppid") == owner_pid)
+    if not _reap_owned_births(owned):
+        return finish("refused", "owned_reap_incomplete", reaped=[
+            node["pid"] for node in owned if _matching_birth(node) is None])
+    report["recovery_actions"] = recovery_actions + 1
+    return finish("recovered", kind, reaped=[node["pid"] for node in owned])
+
+
 def watch_campaign(repo_root, spec_path, state_dir, *, once=False, interval_seconds=60,
                    stop_completed=False, expected_spec_sha256=None, expected_plan_id=None):
     if type(interval_seconds) not in (int, float) or not 5 <= interval_seconds <= 3600:
