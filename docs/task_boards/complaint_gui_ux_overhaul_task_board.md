@@ -1866,7 +1866,7 @@ Implementation instructions:
 
 ## CIMP-UX-61 Capture the redesigned screenshot matrix from real application flows
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
