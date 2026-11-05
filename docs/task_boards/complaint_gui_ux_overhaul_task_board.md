@@ -1897,7 +1897,7 @@ Implementation instructions:
 
 ## CIMP-UX-62 Qualify visual regression, accessibility, and interaction continuity
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
