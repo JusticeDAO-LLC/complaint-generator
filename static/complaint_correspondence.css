@@ -8,6 +8,12 @@
     font-family: var(--cx-font-sans, "Public Sans", "Segoe UI", sans-serif);
     font-size: var(--cx-font-body, 1.0625rem);
     line-height: var(--cx-leading-body, 1.5);
+    overflow-x: clip;
+}
+
+.correspondence-page,
+.correspondence-page * {
+    box-sizing: border-box;
 }
 
 .correspondence-skip {
@@ -93,7 +99,9 @@
 
 .correspondence textarea {
     min-height: 6.5rem;
+    max-width: 100%;
     resize: vertical;
+    overflow-wrap: anywhere;
 }
 
 .correspondence button {
@@ -103,6 +111,15 @@
     color: #fff;
     padding: var(--cx-space-2, 8px) var(--cx-space-4, 16px);
     min-height: 2.75rem;
+    min-width: 44px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#send-button {
+    min-width: 44px;
+    min-height: 44px;
 }
 
 .correspondence button[disabled] {

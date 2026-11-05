@@ -216,13 +216,21 @@ body[data-case-task-flow="ordinary"] [data-case-shell-diagnostic="true"] {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    #complaint-case-shell-nav {
+    #complaint-case-shell-nav,
+    #complaint-presentation-modes,
+    .case-shell__access {
         flex-direction: column;
         align-items: stretch;
     }
 
-    #complaint-presentation-modes button {
+    .case-shell__task,
+    #complaint-case-shell-next,
+    #complaint-presentation-modes button,
+    #complaint-entry button,
+    .case-shell__access a {
         flex: 1 1 auto;
+        width: 100%;
+        max-width: 100%;
     }
 }
 
