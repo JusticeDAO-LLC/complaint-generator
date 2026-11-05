@@ -77,6 +77,25 @@
   "native_history_verifier": "integrations.ipfs_accelerate.campaign_completion.verify_campaign_completion",
   "pre_callback": "Task68 controller-focused genuine tests while self-pending; no all68 precondition",
   "post_callback": "ActualNativecallbacks+canonicalidentities+Gitintegration+settledqueue+ownedclosure, thenfreshcurrentUXgroupedacceptance onfinalSource outside900s task",
+  "controller": {
+    "schema": "complaint-ux-current-source-groups@1",
+    "module": "scripts/validate_complaint_ux_overhaul.py",
+    "focused_group": "controller_focus",
+    "focused_selectors": [
+      "kernel_policy",
+      "ast_source_binding",
+      "dom_same_origin_state",
+      "private_state_binding",
+      "source_story_binding"
+    ],
+    "evidence": ["kernel", "ast", "dom", "state", "source"],
+    "executes_final_matrix_during_task68": false,
+    "invokes_native_verifier_during_task68": false,
+    "self_pending_circular_precondition": false,
+    "saved_json_authority": false,
+    "caller_boolean_authority": false,
+    "completion_authority": false
+  },
   "required_current_evidence": [
     "actual screenshot/viewport/actor/state/source/runtime bindings",
     "nonempty real DOM/API/cryptographic state positive+negative cases",
