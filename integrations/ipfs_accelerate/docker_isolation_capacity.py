@@ -15,6 +15,8 @@ import stat
 from pathlib import Path
 from typing import Any, Mapping
 
+from .settled_balance_capacity import record_is_expired_executed_balance_hold
+
 MESSAGE = (
     "Default Grok quota route requires the pinned local Docker isolation image"
 )
@@ -111,6 +113,8 @@ def capacity_isolating_daemon(native_class):
             if (getattr(self, "_docker_isolation_miss_attempt_open", False)
                     and record is not None
                     and record_is_docker_isolation_miss(record)):
+                return None
+            if record is not None and record_is_expired_executed_balance_hold(record):
                 return None
             return record
 
