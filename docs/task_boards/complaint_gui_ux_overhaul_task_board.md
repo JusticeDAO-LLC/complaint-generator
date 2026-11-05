@@ -2021,7 +2021,7 @@ Implementation instructions:
 
 ## CIMP-UX-66 Qualify watchdog recovery and finite owned child lifetimes
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
