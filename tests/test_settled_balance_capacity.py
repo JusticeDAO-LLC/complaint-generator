@@ -1,5 +1,6 @@
 """An aged, dead Grok 402 must not freeze every later task."""
 import hashlib
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -121,6 +122,38 @@ def test_live_worktree_process_keeps_the_hold(tmp_path):
     assert record_is_expired_executed_balance_hold(
         record, now=now, proc_root=tmp_path / "proc",
     ) is False
+
+
+def test_rotated_journal_continues_the_same_chain(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.runtime import event_log
+    from integrations.ipfs_accelerate.startup_rejected_candidate import _journal
+    live = tmp_path / "events.jsonl"
+    stream, snapshot = event_log._event_stream_binding(live)
+
+    def row(sequence, previous):
+        body = {
+            "sequence": sequence,
+            "previous_event_id": previous,
+            "stream_id": stream,
+            "snapshot_id": snapshot,
+            "type": "probe",
+        }
+        body["event_id"] = event_log._event_identity(body)
+        return body
+
+    first = row(1, "")
+    second = row(2, first["event_id"])
+    rotated = tmp_path / "events.jsonl.rotated-20261105083500"
+    rotated.write_bytes((json.dumps(first, sort_keys=True) + "\n").encode())
+    live.write_bytes((json.dumps(second, sort_keys=True) + "\n").encode())
+    os.chmod(rotated, 0o600)
+    os.chmod(live, 0o600)
+    rows, _pin = _journal(live)
+    assert [item["sequence"] for item in rows] == [1, 2]
+    live.write_bytes((json.dumps(row(2, "sha256:" + "ab" * 32), sort_keys=True) + "\n").encode())
+    os.chmod(live, 0o600)
+    with pytest.raises(ValueError, match="journal_chain"):
+        _journal(live)
 
 
 def test_expired_balance_quarantine_matches_only_the_sealed_hold(tmp_path):

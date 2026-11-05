@@ -21,20 +21,36 @@ def _need(value, step=''):
         raise ValueError(step or 'startup_replay_rejection_unverified')
 
 
+def _journal_segments(path: Path):
+    """Current log, preceded by Native's rotated segments in name order."""
+    parent = path.parent
+    rotated = sorted(parent.glob(path.name + '.rotated-*')) if parent.exists() else []
+    return [item for item in rotated if item.is_file() and not item.is_symlink()] + [path]
+
+
 def _journal(path):
     from ipfs_accelerate_py.agent_supervisor.runtime import event_log
-    raw=evidence._read(path,maximum=evidence.MAX_JOURNAL,source=True)
-    _need(raw.endswith(b'\n'))
-    stream,snapshot=event_log._event_stream_binding(path)
-    previous,rows='',[]
-    for sequence,line in enumerate(raw.splitlines(),1):
-        _need(sequence<=evidence.MAX_EVENTS and len(line)<=evidence.MAX_METADATA)
-        row=evidence._object(line)
-        _need(type(row.get('sequence')) is int and row['sequence']==sequence
-            and row.get('previous_event_id','')==previous and row.get('stream_id')==stream
-            and row.get('snapshot_id')==snapshot and row.get('event_id')==event_log._event_identity(row))
-        previous=row['event_id'];rows.append(row)
-    return rows,hashlib.sha256(raw).hexdigest()
+    segments = _journal_segments(path)
+    _need(bool(segments) and segments[-1] == path, 'journal_segments')
+    stream, snapshot = event_log._event_stream_binding(path)
+    previous, rows, expected = '', [], 1
+    digest = hashlib.sha256()
+    for segment in segments:
+        raw = evidence._read(segment, maximum=evidence.MAX_JOURNAL, source=True)
+        _need(raw.endswith(b'\n'), 'journal_segment')
+        digest.update(raw)
+        for line in raw.splitlines():
+            _need(expected <= evidence.MAX_EVENTS and len(line) <= evidence.MAX_METADATA, 'journal_bound')
+            row = evidence._object(line)
+            _need(type(row.get('sequence')) is int and row['sequence'] == expected
+                and row.get('previous_event_id', '') == previous and row.get('stream_id') == stream
+                and row.get('snapshot_id') == snapshot
+                and row.get('event_id') == event_log._event_identity(row), 'journal_chain')
+            previous = row['event_id']
+            expected += 1
+            rows.append(row)
+    _need(bool(rows), 'journal_empty')
+    return rows, digest.hexdigest()
 
 
 def _refusal(result):
