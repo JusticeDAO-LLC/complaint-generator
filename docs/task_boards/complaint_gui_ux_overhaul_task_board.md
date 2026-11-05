@@ -1804,7 +1804,7 @@ Implementation instructions:
 
 ## CIMP-UX-59 Prove cold reconstruction and encrypted workflow continuity
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
