@@ -5469,8 +5469,25 @@ class ComplaintWorkspaceService:
         context = self._private_artifact_context(user_id, case_id)
         binding = PrivateArtifactBinding(tenant_id=context["tenant_id"], case_id=context["case_id"],
             principal_id=context["principal_id"], artifact_kind="session", revision="session-v1")
+        self._refuse_incoherent_key(str(context["tenant_id"]), str(context["case_id"]))
         key_id, key = context["key_provider"].resolve(binding)
         return context, key_id, key
+
+    def _admit_key_bound_mutation(self, user_id: str, *, actor_id: Optional[str], expected_key_epoch: Optional[int], captured_key_id: Optional[str], case_id: Optional[str] = None) -> None:
+        case_id = str(case_id or _REQUEST_CASE.get() or user_id)
+        if expected_key_epoch is None and captured_key_id is None and not actor_id:
+            self._refuse_incoherent_key(user_id, case_id)
+            return
+        gate = self.synchronize_key_coherence(
+            action="write", tenant_id=user_id, case_id=case_id, actor_id=str(actor_id or user_id),
+            expected_epoch=expected_key_epoch, captured_key_id=captured_key_id,
+        )
+        if gate.get("admitted") is not True:
+            raise WorkspacePersistenceError(
+                "The case key no longer admits this write.",
+                code=str(gate.get("code") or "stale_key_epoch"),
+                public_status="recoverable",
+            )
 
     def _joined_key_resolver(self, user_id: str, case_id: str):
         """Resolve a retained envelope key through current owner admission.
@@ -8971,9 +8988,18 @@ class ComplaintWorkspaceService:
             return self.request_handlers.get_session(resolved)
 
         if case_id is None:
-            return _run()
-        with _workspace_reference_scope(case_id=case_id):
-            return _run()
+            payload = _run()
+        else:
+            with _workspace_reference_scope(case_id=case_id):
+                payload = _run()
+        if isinstance(payload, dict):
+            session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+            bound_case = str(case_id or session.get("case_id") or resolved)
+            self._refuse_incoherent_key(resolved, bound_case)
+            published = dict(payload)
+            published["key_coherence"] = self.public_key_coherence(resolved, bound_case, actor_id=resolved)
+            return published
+        return payload
 
     def build_mediator_prompt(self, user_id: Optional[str]) -> Dict[str, Any]:
         session = self.get_session(user_id)
@@ -12078,7 +12104,13 @@ class ComplaintWorkspaceService:
         content: str,
         source: Optional[str] = None,
         attachment_names: Optional[List[str]] = None,
+        expected_key_epoch: Optional[int] = None,
+        captured_key_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        resolved = self._resolve_user_id(user_id)
+        self._admit_key_bound_mutation(resolved, actor_id=actor_id, expected_key_epoch=expected_key_epoch, captured_key_id=captured_key_id, case_id=case_id)
         return self.request_handlers.save_evidence(
             user_id,
             kind=kind,
@@ -12671,7 +12703,13 @@ class ComplaintWorkspaceService:
         title: Optional[str] = None,
         body: Optional[str] = None,
         requested_relief: Optional[List[str]] = None,
+        expected_key_epoch: Optional[int] = None,
+        captured_key_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        case_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        resolved = self._resolve_user_id(user_id)
+        self._admit_key_bound_mutation(resolved, actor_id=actor_id, expected_key_epoch=expected_key_epoch, captured_key_id=captured_key_id, case_id=case_id)
         return self.request_handlers.update_draft(
             user_id,
             title=title,
@@ -18178,7 +18216,215 @@ class ComplaintWorkspaceService:
         self._require_local_filesystem_access()
         from integrations.private_storage import task_key_receipt
 
-        return task_key_receipt(self._private_key_session().lock())
+        receipt = task_key_receipt(self._private_key_session().lock())
+        for record in self._key_coherence_ledger().values():
+            record["epoch"] = int(record.get("epoch") or 0) + 1
+            record["status"] = "locked"
+            record["key_id"] = None
+        return receipt
+
+    def _key_coherence_ledger(self) -> Dict[tuple, Dict[str, Any]]:
+        ledger = getattr(self, "_key_coherence_state", None)
+        if ledger is None:
+            ledger = {}
+            self._key_coherence_state = ledger
+        return ledger
+
+    def _key_coherence_record(self, tenant_id: str, case_id: str) -> Dict[str, Any]:
+        ledger = self._key_coherence_ledger()
+        key = (str(tenant_id), str(case_id))
+        record = ledger.get(key)
+        if record is None:
+            record = {"epoch": 1, "status": "absent", "key_id": None, "revoked": False, "actor_id": ""}
+            ledger[key] = record
+        return record
+
+    def _existing_case_key_id(self, tenant_id: str, case_id: str) -> Optional[str]:
+        """Opaque id already stored for this case. This never mints a key."""
+
+        session = self._private_key_session()
+        document = getattr(session, "_document", None)
+        if not isinstance(document, dict):
+            return None
+        cases = document.get("cases") or {}
+        record = cases.get(f"{tenant_id}\n{case_id}") if isinstance(cases, dict) else None
+        if not isinstance(record, dict) or not record.get("data_key_id"):
+            return None
+        return str(record["data_key_id"])
+
+    def _wallet_binding(self, actor_id: str) -> str:
+        directory = str(self._private_key_directory().resolve())
+        return hashlib.sha256(f"{actor_id}\n{directory}".encode("utf-8")).hexdigest()
+
+    def _refuse_incoherent_key(self, tenant_id: str, case_id: Optional[str]) -> None:
+        if not tenant_id or not case_id:
+            return
+        record = self._key_coherence_ledger().get((str(tenant_id), str(case_id)))
+        if record and record.get("revoked") is True:
+            raise WorkspacePersistenceError(
+                "This case key was revoked. The case was not recreated.",
+                code="key_unavailable",
+                public_status="unlock_needed",
+            )
+
+    def public_key_coherence(self, tenant_id: str, case_id: str, *, actor_id: str) -> Dict[str, Any]:
+        """Public key lifecycle for one case. No passphrase, key bytes, or case text."""
+
+        record = self._key_coherence_record(tenant_id, case_id)
+        session = self._private_key_session()
+        unlocked = bool(session.unlocked) and record.get("revoked") is not True
+        if record.get("revoked") is True:
+            status = "revoked"
+        elif not session.unlocked:
+            status = "locked"
+        elif self._existing_case_key_id(tenant_id, case_id) is None and record.get("status") == "absent":
+            status = "absent"
+        else:
+            status = "unlocked" if record.get("status") != "rotated" else "rotated"
+            if status == "rotated" and unlocked:
+                status = "unlocked"
+        guidance = {
+            "locked": "Private keys are locked. An authorized local key owner must unlock this case wallet outside the page, then reload. Chat, evidence, graphs, the draft, and messages were cleared. No replacement case was opened.",
+            "revoked": "This case key was revoked. Reloading does not recreate the case or reveal cached text. Recover only from a deliberate export of this same wallet.",
+            "absent": "No case key is available. An empty case was not created. Unlock the existing wallet or import its recovery export.",
+            "rotated": "The case key was rotated. Reload authorized content. Writes that still name the previous key epoch were refused.",
+            "unlocked": "Private key access is available. Authorized chat, evidence, graphs, draft, and messages were reloaded for this wallet.",
+        }
+        receipt = {
+            "status": status,
+            "epoch": int(record.get("epoch") or 1),
+            "wallet_binding": self._wallet_binding(str(actor_id)),
+            "actor_id": str(actor_id),
+            "recovery_guidance": guidance.get(status, guidance["locked"]),
+            "clear_plaintext": status != "unlocked",
+            "reload": False,
+            "empty_case_created": False,
+            "admit_writes": status == "unlocked",
+            "surfaces": ["chat", "evidence", "graphs", "draft", "messages"],
+        }
+        if status == "unlocked":
+            receipt["data_key_id"] = self._existing_case_key_id(tenant_id, case_id)
+        return receipt
+
+    def synchronize_key_coherence(
+        self,
+        *,
+        action: str,
+        tenant_id: str,
+        case_id: str,
+        actor_id: str,
+        passphrase: Optional[str] = None,
+        expected_epoch: Optional[int] = None,
+        captured_key_id: Optional[str] = None,
+        wallet_directory: Optional[str] = None,
+        resource_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply one key transition without minting a case or borrowing a wallet."""
+
+        own_directory = self._private_key_directory().resolve()
+        if wallet_directory is not None and Path(wallet_directory).resolve() != own_directory:
+            return {
+                "status": "foreign_wallet",
+                "code": "foreign_wallet",
+                "admitted": False,
+                "empty_case_created": False,
+                "wallet_replaced": False,
+                "recovery_guidance": "This actor cannot use another wallet. The case was not opened and no plaintext was returned.",
+                "surfaces": ["chat", "evidence", "graphs", "draft", "messages"],
+            }
+        record = self._key_coherence_record(tenant_id, case_id)
+        session = self._private_key_session()
+        before_cases = int(session.public_state().get("case_count") or 0)
+        before_key = self._existing_case_key_id(tenant_id, case_id)
+
+        def finish(status: str, *, code: str, admitted: bool, key_id: Optional[str] = None) -> Dict[str, Any]:
+            after_cases = int(self._private_key_session().public_state().get("case_count") or 0)
+            receipt = self.public_key_coherence(tenant_id, case_id, actor_id=actor_id)
+            receipt.update(status=status, code=code, admitted=admitted, empty_case_created=after_cases != before_cases,
+                case_count=after_cases, data_key_unchanged=self._existing_case_key_id(tenant_id, case_id) == before_key)
+            if key_id is not None and status == "unlocked":
+                receipt["data_key_id"] = key_id
+            elif status != "unlocked":
+                receipt.pop("data_key_id", None)
+            return receipt
+
+        if action == "unlock":
+            unlocked = self.unlock_private_keys(passphrase=passphrase)
+            if unlocked.get("unlocked") is not True:
+                record["status"] = "locked"
+                record["key_id"] = None
+                code = str(unlocked.get("code") or "unlock_needed")
+                return finish("authentication_failed" if code == "authentication_failed" else "locked",
+                    code=code, admitted=False)
+            record["epoch"] = int(record.get("epoch") or 0) + 1
+            record["status"] = "unlocked"
+            record["actor_id"] = str(actor_id)
+            record["key_id"] = self._existing_case_key_id(tenant_id, case_id)
+            return finish("unlocked", code="unlocked", admitted=True, key_id=record["key_id"])
+
+        if action == "lock":
+            self.lock_private_keys()
+            record["status"] = "locked"
+            record["key_id"] = None
+            return finish("locked", code="unlock_needed", admitted=False)
+
+        if action == "rotate":
+            if not session.unlocked or record.get("revoked") is True:
+                return finish("locked" if not session.unlocked else "revoked",
+                    code="unlock_needed" if not session.unlocked else "key_unavailable", admitted=False)
+            if expected_epoch is not None and int(expected_epoch) != int(record.get("epoch") or 0):
+                return finish("rotated", code="stale_key_epoch", admitted=False)
+            current = self._existing_case_key_id(tenant_id, case_id)
+            if not current:
+                return finish("absent", code="key_unavailable", admitted=False)
+            if captured_key_id is not None and str(captured_key_id) != current:
+                return finish("rotated", code="stale_key_epoch", admitted=False)
+            from integrations.private_storage import PrivateKeyMaterialError
+            try:
+                rotated = session.rotate_case_grant_data_key(
+                    tenant_id, case_id,
+                    resource_id=str(resource_id or case_id),
+                    expected_data_key_id=current,
+                    operation_id=uuid.uuid4().hex,
+                )
+            except PrivateKeyMaterialError as exc:
+                return finish("absent", code=str(exc), admitted=False)
+            record["epoch"] = int(record.get("epoch") or 0) + 1
+            record["status"] = "rotated"
+            record["key_id"] = str(rotated.get("new_data_key_id") or "")
+            receipt = finish("rotated", code="rotated", admitted=True, key_id=record["key_id"])
+            receipt["data_key_id"] = record["key_id"]
+            receipt["previous_data_key_id"] = current
+            receipt["clear_plaintext"] = True
+            receipt["reload"] = True
+            receipt["recovery_guidance"] = "The case key was rotated. Reload authorized content. Writes that still name the previous key epoch were refused."
+            return receipt
+
+        if action == "revoke":
+            if not session.unlocked:
+                return finish("locked", code="unlock_needed", admitted=False)
+            if not self._existing_case_key_id(tenant_id, case_id):
+                return finish("absent", code="key_unavailable", admitted=False)
+            record["revoked"] = True
+            record["epoch"] = int(record.get("epoch") or 0) + 1
+            record["status"] = "revoked"
+            record["key_id"] = None
+            return finish("revoked", code="key_unavailable", admitted=False)
+
+        if action == "write":
+            if record.get("revoked") is True or not session.unlocked:
+                status = "revoked" if record.get("revoked") is True else "locked"
+                return finish(status, code="key_unavailable" if status == "revoked" else "unlock_needed", admitted=False)
+            current = self._existing_case_key_id(tenant_id, case_id)
+            stale_epoch = expected_epoch is not None and int(expected_epoch) != int(record.get("epoch") or 0)
+            stale_key = captured_key_id is not None and (not current or str(captured_key_id) != current)
+            if stale_epoch or stale_key:
+                return finish(str(record.get("status") or "rotated"), code="stale_key_epoch", admitted=False)
+            if record.get("actor_id") and str(actor_id) != str(record.get("actor_id")):
+                return finish("foreign_wallet", code="foreign_wallet", admitted=False)
+            return finish("unlocked", code="unlocked", admitted=True, key_id=current)
+
+        return finish("absent", code="key_unavailable", admitted=False)
 
     def export_private_key_recovery(
         self,
@@ -18293,6 +18539,7 @@ class ComplaintWorkspaceService:
         """Mint or reload one case data key. The key id is opaque; bytes stay in memory."""
 
         self._require_private_case_key_access(tenant_id, case_id)
+        self._refuse_incoherent_key(tenant_id, case_id)
 
         from integrations.private_storage import PrivateKeyLockedError, task_key_receipt
 
