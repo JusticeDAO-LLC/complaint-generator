@@ -391,6 +391,7 @@
         var epoch = Number(receipt.epoch || 0);
         var changed = shellKey.epoch !== null && (shellKey.epoch !== epoch || shellKey.status !== status);
         var conceal = status !== "unlocked" || receipt.clear_plaintext === true;
+        if (changed) retireComplaintCaseRequests("key");
         if (changed || conceal) clearKeySurfaces();
         shellKey = {epoch: epoch, status: status};
         document.documentElement.dataset.keyEpoch = String(epoch);
@@ -441,6 +442,7 @@
         // catalog response. A refresh can discover a change from another view.
         var currentFields = Boolean(fields && principalId && caseId
             && fields.dataset.actorPrincipalId === principalId && fields.dataset.caseId === caseId);
+        if (actorChanged || caseChanged) retireComplaintCaseRequests(actorChanged ? "actor" : "case");
         if (closed || ((actorChanged || caseChanged) && !currentFields)) {
             var catalog = document.getElementById("case-list");
             retireUnverifiedView(access === "logged-out" || (actorChanged && catalog
@@ -1254,7 +1256,16 @@
         if (presentationMode === "chat-plus-context") paintPresentationContext();
     });
 
+    var INTERFACE_REQUEST_BUDGET = {maxInFlight: 4, maxQueued: 8, deadlineMs: 8000};
     var RETRY_LIMIT = 3;
+    var interfaceInFlight = 0;
+    var interfaceQueue = [];
+    var interfaceGeneration = 0;
+    var activeInterface = [];
+    var consentRevision = "";
+    var interfaceActor = "";
+    var interfaceCase = "";
+    var interfaceKeyRevision = "";
     var retryCounts = {};
     var surfaceGeneration = 0;
     var replayController = null;
@@ -1480,6 +1491,124 @@
         return record;
     }
 
+    function ensureInterfaceStatus() {
+        var node = document.getElementById("complaint-interface-requests");
+        if (node) return node;
+        node = document.createElement("p");
+        node.id = "complaint-interface-requests";
+        node.setAttribute("role", "status");
+        node.dataset.lifecycle = "idle";
+        node.dataset.published = "false";
+        node.dataset.completions = "0";
+        node.dataset.lateRefused = "0";
+        node.dataset.maxInFlight = String(INTERFACE_REQUEST_BUDGET.maxInFlight);
+        node.dataset.maxQueued = String(INTERFACE_REQUEST_BUDGET.maxQueued);
+        node.dataset.deadlineMs = String(INTERFACE_REQUEST_BUDGET.deadlineMs);
+        node.textContent = "No interface request is in flight.";
+        var parent = document.querySelector("main") || document.body;
+        parent.appendChild(node);
+        return node;
+    }
+
+    function paintInterface(lifecycle) {
+        var node = ensureInterfaceStatus();
+        node.dataset.lifecycle = lifecycle;
+        node.dataset.inFlight = String(interfaceInFlight);
+        node.dataset.queued = String(interfaceQueue.length);
+        node.dataset.generation = String(interfaceGeneration);
+        if (lifecycle === "completed") {
+            node.dataset.published = "true";
+            node.dataset.completions = String(Number(node.dataset.completions || 0) + 1);
+            node.textContent = "The interface request finished for the current case, actor, key, and consent.";
+        } else {
+            node.dataset.published = "false";
+            if (lifecycle === "pending") node.textContent = "An interface request is pending.";
+            else if (lifecycle === "unavailable") node.textContent = "The interface request is unavailable. It was not completed.";
+            else if (lifecycle === "cancelled") node.textContent = "The interface request was cancelled. It was not completed.";
+            else node.textContent = "No interface request is in flight.";
+        }
+        return node;
+    }
+
+    function interfaceCancelError() {
+        var error = new Error("cancelled");
+        error.name = "AbortError";
+        error.lifecycle = "cancelled";
+        error.published = false;
+        return error;
+    }
+
+    function retireComplaintCaseRequests(reason) {
+        interfaceGeneration += 1;
+        surfaceGeneration += 1;
+        var queued = interfaceQueue.splice(0, interfaceQueue.length);
+        queued.forEach(function (entry) {
+            entry.reject(interfaceCancelError());
+        });
+        activeInterface.forEach(function (controller) { controller.abort(); });
+        activeInterface = [];
+        var node = paintInterface("cancelled");
+        node.dataset.retireReason = reason || "retired";
+        if (activeController) activeController.abort();
+        if (replayController) replayController.abort();
+        return interfaceGeneration;
+    }
+
+    function noteInterfaceBinding(binding) {
+        var source = binding || {};
+        var actor = source.actor == null ? interfaceActor : String(source.actor);
+        var caseId = source.caseId == null ? interfaceCase : String(source.caseId);
+        var keyRevision = source.keyRevision == null ? interfaceKeyRevision : String(source.keyRevision);
+        var consent = source.consentRevision == null ? consentRevision : String(source.consentRevision);
+        var changed = (interfaceActor && interfaceActor !== actor)
+            || (interfaceCase && interfaceCase !== caseId)
+            || (interfaceKeyRevision && interfaceKeyRevision !== keyRevision)
+            || (consentRevision && consentRevision !== consent);
+        if (changed) retireComplaintCaseRequests("binding");
+        interfaceActor = actor;
+        interfaceCase = caseId;
+        interfaceKeyRevision = keyRevision;
+        consentRevision = consent;
+        return {generation: interfaceGeneration, changed: changed};
+    }
+
+    function acquireInterfacePermit(generation) {
+        if (interfaceInFlight < INTERFACE_REQUEST_BUDGET.maxInFlight) {
+            interfaceInFlight += 1;
+            paintInterface("pending");
+            return Promise.resolve(generation);
+        }
+        if (interfaceQueue.length >= INTERFACE_REQUEST_BUDGET.maxQueued) {
+            paintInterface("unavailable");
+            var unavailable = new Error("unavailable");
+            unavailable.lifecycle = "unavailable";
+            unavailable.published = false;
+            return Promise.reject(unavailable);
+        }
+        paintInterface("pending");
+        return new Promise(function (resolve, reject) {
+            interfaceQueue.push({generation: generation, resolve: resolve, reject: reject});
+        });
+    }
+
+    function releaseInterfacePermit() {
+        interfaceInFlight = Math.max(0, interfaceInFlight - 1);
+        while (interfaceQueue.length && interfaceInFlight < INTERFACE_REQUEST_BUDGET.maxInFlight) {
+            var entry = interfaceQueue.shift();
+            if (entry.generation !== interfaceGeneration) {
+                entry.reject(interfaceCancelError());
+                continue;
+            }
+            interfaceInFlight += 1;
+            entry.resolve(entry.generation);
+            return;
+        }
+        if (!interfaceInFlight && !interfaceQueue.length) {
+            var node = document.getElementById("complaint-interface-requests");
+            if (node && node.dataset.lifecycle === "pending") paintInterface("idle");
+        }
+    }
+
     function installFetchObserver() {
         if (window.fetch && window.fetch.__complaintStateObserved) return;
         nativeFetch = window.fetch.bind(window);
@@ -1490,29 +1619,65 @@
             var requestBody = init && typeof init.body === "string" ? init.body : "";
             var headers = headerRecord(init && init.headers);
             var generation = surfaceGeneration;
-            return nativeFetch(input, init).then(function (response) {
-                if (response.ok) {
-                    if (url.indexOf("/messages/threads") !== -1 && method === "GET") {
-                        response.clone().json().then(function (payload) {
-                            if (generation !== surfaceGeneration) return;
-                            var threads = payload && payload.threads;
-                            var host = document.getElementById("complaint-state-surface");
-                            if (host && host.dataset.outcome !== "failed" && Array.isArray(threads) && threads.length === 0) {
-                                showStateSurface({kind: "empty", operation: method + " " + url});
-                            }
-                        }).catch(function () { /* A non-JSON success is not an empty case. */ });
-                    }
-                    return response;
+            var ticket = interfaceGeneration;
+            return acquireInterfacePermit(ticket).then(function () {
+                var controller = new AbortController();
+                activeInterface.push(controller);
+                if (init && init.signal) {
+                    if (init.signal.aborted) controller.abort();
+                    else init.signal.addEventListener("abort", function () { controller.abort(); });
                 }
-                response.clone().json().then(function (payload) {
-                    noteFailure({status: response.status, body: payload, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
-                }).catch(function () {
-                    noteFailure({status: response.status, body: null, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                var timer = setTimeout(function () { controller.abort(); }, INTERFACE_REQUEST_BUDGET.deadlineMs);
+                var nextInit = Object.assign({}, init || {}, {signal: controller.signal});
+                return nativeFetch(input, nextInit).then(function (response) {
+                    if (ticket !== interfaceGeneration) {
+                        var statusNode = document.getElementById("complaint-interface-requests");
+                        if (statusNode && response.ok) statusNode.dataset.lateRefused = String(Number(statusNode.dataset.lateRefused || 0) + 1);
+                        paintInterface("cancelled");
+                        return response;
+                    }
+                    if (response.ok) {
+                        paintInterface("completed");
+                        if (url.indexOf("/messages/threads") !== -1 && method === "GET") {
+                            response.clone().json().then(function (payload) {
+                                if (generation !== surfaceGeneration || ticket !== interfaceGeneration) return;
+                                var threads = payload && payload.threads;
+                                var host = document.getElementById("complaint-state-surface");
+                                if (host && host.dataset.outcome !== "failed" && Array.isArray(threads) && threads.length === 0) {
+                                    showStateSurface({kind: "empty", operation: method + " " + url});
+                                }
+                            }).catch(function () { /* A non-JSON success is not an empty case. */ });
+                        }
+                        return response;
+                    }
+                    response.clone().json().then(function (payload) {
+                        if (ticket !== interfaceGeneration) return;
+                        noteFailure({status: response.status, body: payload, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                    }).catch(function () {
+                        if (ticket !== interfaceGeneration) return;
+                        noteFailure({status: response.status, body: null, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                    });
+                    return response;
+                }, function (error) {
+                    if (ticket !== interfaceGeneration || (error && error.name === "AbortError")) {
+                        paintInterface("cancelled");
+                    } else {
+                        paintInterface("unavailable");
+                        noteFailure({status: 0, body: {error: "unavailable"}, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                    }
+                    throw error;
+                }).finally(function () {
+                    clearTimeout(timer);
+                    activeInterface = activeInterface.filter(function (item) { return item !== controller; });
+                    releaseInterfacePermit();
                 });
-                return response;
             }, function (error) {
-                if (!error || error.name !== "AbortError") {
-                    noteFailure({status: 0, body: {error: "unavailable"}, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                if (error && error.lifecycle === "unavailable") {
+                    noteFailure({status: 503, body: {error: "unavailable"}, url: url, method: method, requestBody: requestBody, headers: headers, generation: generation});
+                    return new Response(JSON.stringify({status: "unavailable", error: "interface_request_unavailable", lifecycle: "unavailable"}), {
+                        status: 503,
+                        headers: {"content-type": "application/json"}
+                    });
                 }
                 throw error;
             });
@@ -1534,6 +1699,7 @@
         observer.observe(composer, {childList: true, characterData: true, subtree: true});
     }
 
+    window.retireComplaintCaseRequests = retireComplaintCaseRequests;
     installFetchObserver();
     ensureStateSurface();
     wireStateSurface(document.getElementById("complaint-state-surface"));
@@ -1556,6 +1722,11 @@
         binding: function () { return state.binding; },
         clearPlaintext: clearPagePlaintext,
         applyKeyCoherence: applyKeyCoherence,
+        noteInterfaceBinding: noteInterfaceBinding,
+        retireInterfaceRequests: retireComplaintCaseRequests,
+        requestBudget: function () {
+            return {maxInFlight: INTERFACE_REQUEST_BUDGET.maxInFlight, maxQueued: INTERFACE_REQUEST_BUDGET.maxQueued, deadlineMs: INTERFACE_REQUEST_BUDGET.deadlineMs};
+        },
         snapshot: function () {
             var shellCase = document.getElementById("complaint-case-shell-case");
             var shellActor = document.getElementById("complaint-case-shell-actor");
