@@ -11,8 +11,11 @@
         projection: null,
         session: null,
         selectedKey: "",
-        mode: "list"
+        mode: "list",
+        factPage: 0
     };
+    var FACT_PAGE_SIZE = 24;
+    var factCosts = {renders: 0, requests: 0, lastRenderMs: 0, domNodes: 0};
 
     function text(value) {
         return value === undefined || value === null ? "" : String(value);
@@ -59,7 +62,7 @@
                 dated: dateIn(label)
             });
         }
-        ["user_statements", "adopted_evidence", "allegations", "hypotheses", "evidence_revisions", "unresolved", "corrections", "contradictions"].forEach(function (bucket) {
+        ["user_statements", "adopted_evidence", "allegations", "hypotheses", "evidence_revisions", "unresolved", "corrections"].forEach(function (bucket) {
             var items = body[bucket];
             if (!Array.isArray(items)) return;
             items.forEach(function (item) { add(bucket, item); });
@@ -138,7 +141,7 @@
         });
     }
 
-    function showProvenance(row) {
+    function showProvenance(row, focus) {
         var panel = document.getElementById("complaint-facts-provenance");
         if (!panel) return;
         panel.hidden = false;
@@ -157,7 +160,7 @@
         var session = document.getElementById("complaint-facts-session-revision");
         if (graph && !graph.dataset.userEdited) graph.value = text(offer.expected_graph_revision);
         if (session && !session.dataset.userEdited) session.value = offer.expected_session_revision === undefined || offer.expected_session_revision === null ? "" : String(offer.expected_session_revision);
-        panel.focus();
+        if (focus !== false) panel.focus();
     }
 
     function correctionOffer() {
@@ -194,9 +197,65 @@
         }
     }
 
+    function factPageCount(total) {
+        return Math.max(1, Math.ceil((total || 0) / FACT_PAGE_SIZE));
+    }
+
+    function ensureFactPager(host) {
+        var nav = document.getElementById("complaint-facts-pages");
+        if (nav) return nav;
+        nav = document.createElement("nav");
+        nav.id = "complaint-facts-pages";
+        nav.setAttribute("aria-label", "Fact pages");
+        var previous = document.createElement("button");
+        previous.type = "button";
+        previous.id = "complaint-facts-page-prev";
+        previous.textContent = "Previous fact page";
+        var status = document.createElement("span");
+        status.id = "complaint-facts-page-status";
+        status.setAttribute("role", "status");
+        var next = document.createElement("button");
+        next.type = "button";
+        next.id = "complaint-facts-page-next";
+        next.textContent = "Next fact page";
+        nav.appendChild(previous);
+        nav.appendChild(status);
+        nav.appendChild(next);
+        host.appendChild(nav);
+        nav.addEventListener("click", function (event) {
+            var button = event.target.closest("button");
+            if (!button || button.disabled) return;
+            if (button.id === "complaint-facts-page-prev") state.factPage -= 1;
+            if (button.id === "complaint-facts-page-next") state.factPage += 1;
+            renderFacts();
+        });
+        nav.addEventListener("keydown", function (event) {
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            if (event.key === "ArrowLeft") state.factPage -= 1;
+            else if (event.key === "ArrowRight") state.factPage += 1;
+            else if (event.key === "Home") state.factPage = 0;
+            else if (event.key === "End") state.factPage = 1000000;
+            else return;
+            event.preventDefault();
+            renderFacts();
+            var focus = document.getElementById(event.key === "ArrowLeft" ? "complaint-facts-page-prev" : "complaint-facts-page-next");
+            if (focus && !focus.disabled) focus.focus();
+        });
+        return nav;
+    }
+
+    function appendFact(node, row, dated) {
+        if (!node) return;
+        var item = document.createElement("li");
+        if (dated) item.dataset.dated = row.dated ? "true" : "false";
+        item.appendChild(factButton(row));
+        node.appendChild(item);
+    }
+
     function renderFacts() {
         var host = root();
         if (!host) return;
+        var started = window.performance && performance.now ? performance.now() : 0;
         var projection = state.projection || {};
         var rows = rowsFrom(projection);
         var persistedId = text(projection.graph_id);
@@ -210,40 +269,45 @@
         });
         var links = document.getElementById("complaint-facts-graph-links");
         if (links) links.replaceChildren();
-        rows.forEach(function (row) {
-            ["complaint-facts-list", "complaint-facts-timeline", "complaint-facts-graph-nodes"].forEach(function (id) {
-                var node = document.getElementById(id);
-                if (!node) return;
-                var item = document.createElement("li");
-                if (id === "complaint-facts-timeline") item.dataset.dated = row.dated ? "true" : "false";
-                item.appendChild(factButton(row));
-                node.appendChild(item);
-            });
-        });
         var ordered = rows.slice().sort(function (left, right) {
             if (left.dated && right.dated && left.dated !== right.dated) return left.dated < right.dated ? -1 : 1;
             if (left.dated && !right.dated) return -1;
             if (!left.dated && right.dated) return 1;
             return 0;
         });
-        var timeline = document.getElementById("complaint-facts-timeline");
-        if (timeline) {
-            timeline.replaceChildren();
-            ordered.forEach(function (row) {
-                var item = document.createElement("li");
-                item.dataset.dated = row.dated ? "true" : "false";
-                item.appendChild(factButton(row));
-                timeline.appendChild(item);
-            });
-        }
-        (Array.isArray(projection.contradictions) ? projection.contradictions : []).forEach(function (conflict) {
-            if (!links || !conflict) return;
+        var conflicts = (Array.isArray(projection.contradictions) ? projection.contradictions : []).filter(Boolean);
+        var activeRows = state.mode === "timeline" ? ordered : rows;
+        var pages = Math.max(factPageCount(activeRows.length), factPageCount(conflicts.length));
+        if (state.factPage < 0) state.factPage = 0;
+        if (state.factPage > pages - 1) state.factPage = pages - 1;
+        var start = state.factPage * FACT_PAGE_SIZE;
+        var pageRows = activeRows.slice(start, start + FACT_PAGE_SIZE);
+        var targetId = state.mode === "timeline" ? "complaint-facts-timeline" : (state.mode === "graph" ? "complaint-facts-graph-nodes" : "complaint-facts-list");
+        var target = document.getElementById(targetId);
+        pageRows.forEach(function (row) { appendFact(target, row, state.mode === "timeline"); });
+        conflicts.slice(start, start + FACT_PAGE_SIZE).forEach(function (conflict) {
+            if (!links) return;
             var item = document.createElement("li");
             item.dataset.role = "contradiction";
             var ids = Array.isArray(conflict.assertion_ids) ? conflict.assertion_ids.map(text).filter(Boolean) : [];
+            item.dataset.assertionIds = ids.join(",");
             item.textContent = ids.length ? ("Contradiction " + ids.join(" and ")) : "Unresolved contradiction";
             links.appendChild(item);
         });
+        var pager = ensureFactPager(host);
+        var previous = document.getElementById("complaint-facts-page-prev");
+        var next = document.getElementById("complaint-facts-page-next");
+        if (previous) previous.disabled = state.factPage <= 0;
+        if (next) next.disabled = state.factPage >= pages - 1;
+        var pageStatus = document.getElementById("complaint-facts-page-status");
+        if (pageStatus) pageStatus.textContent = "Fact page " + (state.factPage + 1) + " of " + pages + ". " + rows.length + " facts and " + conflicts.length + " contradictions retained.";
+        host.dataset.retainedCount = String(rows.length);
+        host.dataset.contradictionCount = String(conflicts.length);
+        host.dataset.page = String(state.factPage + 1);
+        host.dataset.pageCount = String(pages);
+        factCosts.renders += 1;
+        factCosts.lastRenderMs = window.performance && performance.now ? Math.max(0, performance.now() - started) : 0;
+        factCosts.domNodes = host.querySelectorAll("[data-role='fact'], [data-role='contradiction']").length;
         var graph = document.getElementById("complaint-facts-graph");
         if (graph) {
             graph.dataset.graphId = graphId;
@@ -253,7 +317,7 @@
         if (empty) empty.hidden = rows.length > 0 || host.dataset.state !== "ready";
         if (state.selectedKey) {
             var selected = rows.filter(function (row) { return row.key === state.selectedKey; })[0];
-            if (selected) showProvenance(selected);
+            if (selected) showProvenance(selected, false);
         }
     }
 
@@ -273,6 +337,7 @@
                 button.tabIndex = name === next ? 0 : -1;
             }
         });
+        renderFacts();
     }
 
     function paintState(name, message) {
@@ -324,7 +389,9 @@
             return;
         }
         try {
+            factCosts.requests += 1;
             var projection = await client._request("/api/complaint-workspace/factual-graph?case_id=" + encodeURIComponent(id), {method: "GET"});
+            factCosts.requests += 1;
             var session = await client._request("/api/complaint-workspace/session?case_id=" + encodeURIComponent(id), {method: "GET"});
             if (caseId() !== id) return;
             applyPayload(projection, session);
@@ -498,6 +565,40 @@
             var next = document.getElementById("complaint-facts-mode-" + mode);
             if (next) next.focus();
         });
+        host.addEventListener("keydown", function (event) {
+            var current = event.target.closest && event.target.closest("[data-role='fact']");
+            if (!current || !host.contains(current) || event.altKey || event.ctrlKey || event.metaKey) return;
+            var buttons = Array.prototype.filter.call(host.querySelectorAll("[data-role='fact']"), function (button) {
+                return button.getClientRects().length > 0;
+            });
+            var index = Array.prototype.indexOf.call(buttons, current);
+            if (index < 0) return;
+            if (event.key === "ArrowDown") {
+                event.preventDefault();
+                if (index < buttons.length - 1) buttons[index + 1].focus();
+                else {
+                    state.factPage += 1;
+                    renderFacts();
+                    var first = host.querySelector("#" + (state.mode === "timeline" ? "complaint-facts-timeline" : state.mode === "graph" ? "complaint-facts-graph-nodes" : "complaint-facts-list") + " [data-role='fact']");
+                    if (first) first.focus();
+                }
+            } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                if (index > 0) buttons[index - 1].focus();
+                else if (state.factPage > 0) {
+                    state.factPage -= 1;
+                    renderFacts();
+                    var facts = host.querySelectorAll("#" + (state.mode === "timeline" ? "complaint-facts-timeline" : state.mode === "graph" ? "complaint-facts-graph-nodes" : "complaint-facts-list") + " [data-role='fact']");
+                    if (facts.length) facts[facts.length - 1].focus();
+                }
+            } else if (event.key === "Home") {
+                event.preventDefault();
+                buttons[0].focus();
+            } else if (event.key === "End") {
+                event.preventDefault();
+                buttons[buttons.length - 1].focus();
+            }
+        });
         document.addEventListener("click", function (event) {
             var task = event.target.closest && event.target.closest("[data-case-task='facts']");
             if (task) refresh();
@@ -508,6 +609,30 @@
     window.complaintFacts = {
         refresh: refresh,
         setMode: setMode,
+        showPage: function (page) {
+            state.factPage = Number(page) - 1;
+            renderFacts();
+        },
+        budget: function () {
+            var rows = rowsFrom(state.projection);
+            var conflicts = state.projection && Array.isArray(state.projection.contradictions) ? state.projection.contradictions.length : 0;
+            return {
+                pageSize: FACT_PAGE_SIZE,
+                page: state.factPage + 1,
+                pages: Math.max(factPageCount(rows.length), factPageCount(conflicts)),
+                total: rows.length,
+                contradictions: conflicts,
+                retained: rows.length,
+                visible: document.querySelectorAll("#complaint-facts [data-role='fact']").length,
+                renders: factCosts.renders,
+                requests: factCosts.requests,
+                lastRenderMs: factCosts.lastRenderMs,
+                domNodes: factCosts.domNodes,
+                omitted: false,
+                guardsDisabled: false,
+                corroborationFabricated: false
+            };
+        },
         render: function (projection, session) {
             applyPayload(projection, session);
             setMode(state.mode || "list");
