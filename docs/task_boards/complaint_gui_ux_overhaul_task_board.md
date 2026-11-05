@@ -1928,7 +1928,7 @@ Implementation instructions:
 
 ## CIMP-UX-63 Exercise adversarial evidence, role, transport, and late-result cases
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
