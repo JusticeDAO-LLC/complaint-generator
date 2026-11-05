@@ -12,6 +12,16 @@ function publicTimestamp(value) {
 function publicToolName(value) { return PUBLIC_TOOL_NAMES.has(value) ? value : 'mcp_tool'; }
 function stateChangedError() { const e = new Error('workspace_state_changed'); e.isError = true; return e; }
 const MAX_BOUNDED_INFERENCE_RETRIES = 2;
+const INTERFACE_REQUEST_BUDGET = Object.freeze({maxInFlight: 4, maxQueued: 8, deadlineMs: 8000});
+function interfaceLifecycleError(lifecycle) {
+    const error = new Error(lifecycle);
+    error.code = lifecycle;
+    error.lifecycle = lifecycle;
+    error.isError = true;
+    error.terminal = lifecycle !== 'pending';
+    error.published = false;
+    return error;
+}
 const BOUNDED_INFERENCE_RETRYABLE = new Set(['unavailable', 'rate_limited', 'timeout']);
 const BOUNDED_INFERENCE_STAGE = new Set(['recorded', 'denied', 'not_reached', 'malformed', 'cancelled', 'timeout', 'unavailable', 'dispatching', 'held', 'admitted', 'refused', 'partial', 'rate_limited', 'unobserved', 'checking_consent']);
 
@@ -261,6 +271,12 @@ class ComplaintMcpClient {
         this.csrfToken = typeof options.csrfToken === 'string' ? options.csrfToken : '';
         this.activePrincipalId = '';
         this.caseContext = null;
+        this._interfaceBudget = INTERFACE_REQUEST_BUDGET;
+        this._interfaceInFlight = 0;
+        this._interfaceQueue = [];
+        this._interfaceRecords = [];
+        this._bindingGeneration = 0;
+        this._bindingKey = '';
         if (options.caseContext) this.setCaseContext(options.caseContext);
         this._privacyEpoch = 0;
         this._privacyActive = true;
@@ -279,7 +295,92 @@ class ComplaintMcpClient {
         if (Number.isSafeInteger(revision) && revision >= 1) this.caseContext.expected_revision = revision;
         if (Number.isSafeInteger(context.expected_membership_revision) && context.expected_membership_revision >= 1) this.caseContext.expected_membership_revision = context.expected_membership_revision;
         this._privacyActive = true;
+        this.noteInterfaceBinding({
+            actorId: this.activePrincipalId,
+            caseId: context.case_id,
+            keyRevision: context.key_revision !== undefined ? context.key_revision : context.keyRevision,
+            consentRevision: context.consent_revision !== undefined ? context.consent_revision : context.consentRevision,
+        });
         return {configured: true};
+    }
+
+    _recordInterface(lifecycle, extra) {
+        const row = Object.assign({lifecycle, terminal: lifecycle !== 'pending', published: false, completed: false}, extra || {});
+        this._interfaceRecords.push(row);
+        if (this._interfaceRecords.length > 32) this._interfaceRecords.shift();
+        return row;
+    }
+
+    interfaceRequestView() {
+        const budget = this._interfaceBudget;
+        return {
+            budget: {maxInFlight: budget.maxInFlight, maxQueued: budget.maxQueued, deadlineMs: budget.deadlineMs},
+            inFlight: this._interfaceInFlight,
+            queued: this._interfaceQueue.length,
+            bindingGeneration: this._bindingGeneration,
+            records: this._interfaceRecords.map((row) => Object.assign({}, row)),
+        };
+    }
+
+    noteInterfaceBinding(binding) {
+        const source = binding && typeof binding === 'object' ? binding : {};
+        const key = [
+            source.actorId || source.principal_id || this.activePrincipalId || '',
+            source.caseId || source.case_id || (this.caseContext && this.caseContext.case_id) || '',
+            source.keyRevision == null ? '' : String(source.keyRevision),
+            source.consentRevision == null ? '' : String(source.consentRevision),
+        ].join('\u001f');
+        let changed = false;
+        if (this._bindingKey && this._bindingKey !== key) {
+            this._retireInterfaceRequests('binding');
+            changed = true;
+        }
+        this._bindingKey = key;
+        return {generation: this._bindingGeneration, changed};
+    }
+
+    _retireInterfaceRequests(reason) {
+        this._bindingGeneration += 1;
+        const generation = this._bindingGeneration;
+        const queued = this._interfaceQueue.splice(0, this._interfaceQueue.length);
+        queued.forEach((entry) => {
+            this._recordInterface('cancelled', {reason: reason || 'retired', queued: true, generation, published: false, late: false});
+            entry.reject(interfaceLifecycleError('cancelled'));
+        });
+        if (this._pendingRequests) this._pendingRequests.forEach((controller) => controller.abort());
+        return generation;
+    }
+
+    _acquireInterfacePermit(generation) {
+        const budget = this._interfaceBudget;
+        if (this._interfaceInFlight < budget.maxInFlight) {
+            this._interfaceInFlight += 1;
+            this._recordInterface('pending', {queued: false, generation, published: false});
+            return Promise.resolve(generation);
+        }
+        if (this._interfaceQueue.length >= budget.maxQueued) {
+            this._recordInterface('unavailable', {reason: 'request_budget', generation, published: false, terminal: true});
+            return Promise.reject(interfaceLifecycleError('unavailable'));
+        }
+        this._recordInterface('pending', {queued: true, generation, published: false});
+        return new Promise((resolve, reject) => {
+            this._interfaceQueue.push({generation, resolve, reject});
+        });
+    }
+
+    _releaseInterfacePermit() {
+        this._interfaceInFlight = Math.max(0, this._interfaceInFlight - 1);
+        while (this._interfaceQueue.length && this._interfaceInFlight < this._interfaceBudget.maxInFlight) {
+            const entry = this._interfaceQueue.shift();
+            if (entry.generation !== this._bindingGeneration) {
+                this._recordInterface('cancelled', {queued: true, late: true, generation: entry.generation, published: false});
+                entry.reject(interfaceLifecycleError('cancelled'));
+                continue;
+            }
+            this._interfaceInFlight += 1;
+            entry.resolve(entry.generation);
+            return;
+        }
     }
 
     _caseArguments(argumentsPayload) {
@@ -303,8 +404,16 @@ class ComplaintMcpClient {
         if (typeof this.fetchImpl !== 'function') throw new Error('mcp_tool_error');
         if (!lifecycle && !this._privacyActive) throw stateChangedError();
         const epoch = this._privacyEpoch;
-        const controller = new AbortController();
+        const generation = this._bindingGeneration;
+        let permitHeld = false;
+        let controller = null;
+        let deadlineTimer = null;
+        await this._acquireInterfacePermit(generation);
+        permitHeld = true;
+        controller = new AbortController();
         this._pendingRequests.add(controller);
+        try {
+        if (generation !== this._bindingGeneration || (!lifecycle && !this._privacyActive)) throw interfaceLifecycleError('cancelled');
         const target = new URL(path, this.origin);
         const sameOrigin = target.origin === new URL(this.origin).origin;
         const caseRequest = this.caseContext && sameOrigin && !target.pathname.includes('/auth/');
@@ -327,9 +436,16 @@ class ComplaintMcpClient {
             if (this.caseContext.expected_membership_revision) headers.set('x-expected-membership-revision', String(this.caseContext.expected_membership_revision));
         }
         if (this.csrfToken && new URL(path, this.origin).origin === new URL(this.origin).origin) headers.set('x-csrf-token', this.csrfToken);
-        try {
-            const response = await this.fetchImpl(requestTarget, Object.assign({}, options, {headers, credentials: 'same-origin', signal: controller.signal}));
-            if (!lifecycle && epoch !== this._privacyEpoch) throw stateChangedError();
+            const response = await Promise.race([
+                this.fetchImpl(requestTarget, Object.assign({}, options, {headers, credentials: 'same-origin', signal: controller.signal})),
+                new Promise((_, reject) => {
+                    deadlineTimer = setTimeout(() => {
+                        controller.abort();
+                        reject(interfaceLifecycleError('timeout'));
+                    }, this._interfaceBudget.deadlineMs);
+                }),
+            ]);
+            if (!lifecycle && (epoch !== this._privacyEpoch || generation !== this._bindingGeneration)) throw stateChangedError();
             if (!response.ok) {
                 const denied = response.status === 401 || response.status === 403;
                 let code = denied ? 'authorization_denied' : `http_${response.status}`;
@@ -347,7 +463,7 @@ class ComplaintMcpClient {
                         contract = projectSyncDetail(Object.assign({}, structured, {session_revision: interview.session_revision}));
                     } catch (readError) { /* The fixed HTTP code remains truthful. */ }
                 }
-                if (!lifecycle && epoch !== this._privacyEpoch) throw stateChangedError();
+                if (!lifecycle && (epoch !== this._privacyEpoch || generation !== this._bindingGeneration)) throw stateChangedError();
                 const error = new Error(code);
                 error.code = code;
                 error.status = response.status; error.authorizationDenied = denied; error.isError = true;
@@ -355,22 +471,30 @@ class ComplaintMcpClient {
                 throw error;
             }
             const payload = await response.json();
-            if (!lifecycle && epoch !== this._privacyEpoch) throw stateChangedError();
+            if (!lifecycle && (epoch !== this._privacyEpoch || generation !== this._bindingGeneration)) throw stateChangedError();
             if (payload && payload.isError === true && !payload.jsonrpc) {
                 const code = publicToolErrorCode(payload);
                 const error = new Error(code); error.code = code; error.status = response.status; error.authorizationDenied = code === 'authorization_denied'; error.isError = true;
                 throw error;
             }
+            this._recordInterface('completed', {generation, published: true, completed: true, terminal: true});
             return payload;
         } catch (error) {
-            if (error && error.name === 'AbortError' && options.signal && options.signal.aborted) {
-                const cancelled = new Error('cancelled');
-                cancelled.code = 'cancelled';
-                cancelled.isError = true;
+            const late = generation !== this._bindingGeneration;
+            if (error && (error.name === 'AbortError' || error.lifecycle === 'cancelled' || error.lifecycle === 'timeout' || (error.message === 'workspace_state_changed' && late))) {
+                const lifecycle = error.lifecycle === 'timeout' ? 'timeout' : 'cancelled';
+                this._recordInterface(lifecycle, {generation, published: false, late, completed: false, terminal: true});
+                if (error.lifecycle === 'timeout') throw error;
+                const cancelled = interfaceLifecycleError('cancelled');
+                cancelled.late = late;
                 throw cancelled;
             }
             throw error;
-        } finally { this._pendingRequests.delete(controller); }
+        } finally {
+            if (deadlineTimer) clearTimeout(deadlineTimer);
+            if (controller) this._pendingRequests.delete(controller);
+            if (permitHeld) this._releaseInterfacePermit();
+        }
     }
 
     setBrowserSession(issued) {
@@ -379,6 +503,7 @@ class ComplaintMcpClient {
         this.activePrincipalId = issued && typeof issued.principal_id === 'string' ? issued.principal_id : '';
         this.caseContext = null;
         this._privacyActive = true;
+        this.noteInterfaceBinding({actorId: this.activePrincipalId, caseId: '', keyRevision: '', consentRevision: ''});
         return {principal_id: this.activePrincipalId, configured: Boolean(this.csrfToken)};
     }
 
@@ -565,6 +690,7 @@ class ComplaintMcpClient {
     async callTool(toolName, argumentsPayload) {
         const startedAt = new Date().toISOString();
         const epoch = this._privacyEpoch;
+        const generation = this._bindingGeneration;
         try {
             const result = await this._rpc('tools/call', {
                 name: toolName,
@@ -577,7 +703,7 @@ class ComplaintMcpClient {
                 failure.authorizationDenied = code === 'authorization_denied';
                     throw failure;
             }
-            if (epoch !== this._privacyEpoch || !this._privacyActive) throw stateChangedError();
+            if (epoch !== this._privacyEpoch || generation !== this._bindingGeneration || !this._privacyActive) throw stateChangedError();
             const structuredContent = result && result.structuredContent ? result.structuredContent : result;
             const diagnosticSummary = this._buildToolDiagnosticSummary(structuredContent);
             const args = argumentsPayload && typeof argumentsPayload === 'object' ? argumentsPayload : {};
@@ -610,7 +736,8 @@ class ComplaintMcpClient {
             }
             return result;
         } catch (error) {
-            if (epoch !== this._privacyEpoch || !this._privacyActive) throw stateChangedError();
+            if (epoch !== this._privacyEpoch || generation !== this._bindingGeneration || !this._privacyActive) throw stateChangedError();
+            if (error && (error.lifecycle === 'cancelled' || error.lifecycle === 'unavailable' || error.lifecycle === 'timeout' || error.late === true)) throw error;
             const args = argumentsPayload && typeof argumentsPayload === 'object' ? argumentsPayload : {};
             this._publishLastToolCall({
                 tool_name: toolName,
@@ -733,8 +860,11 @@ class ComplaintMcpClient {
     clearPrivateBrowserState() {
         this._privacyEpoch += 1;
         this._privacyActive = false;
-        this._pendingRequests.forEach((controller) => controller.abort());
-        this._pendingRequests.clear();
+        if (this._interfaceQueue) this._retireInterfaceRequests('privacy');
+        else if (this._pendingRequests) {
+            this._pendingRequests.forEach((controller) => controller.abort());
+            this._pendingRequests.clear();
+        }
         try { this.getCachedDid(); } catch (error) { /* Storage may be unavailable. */ }
         return clearPrivateBrowserStorage([
             this.lastToolCallStorageKey,
@@ -754,6 +884,7 @@ class ComplaintMcpClient {
         });
         this.activeUserId = nextUserId ? String(nextUserId) : '';
         this.caseContext = null;
+        this.noteInterfaceBinding({actorId: this.activeUserId, caseId: '', keyRevision: '', consentRevision: ''});
         return { user_id: this.activeUserId, switched: true, cleared: true };
     }
 
@@ -1291,6 +1422,7 @@ export {
     projectSyncDetail,
     projectBoundedInferenceReceipt,
     MAX_BOUNDED_INFERENCE_RETRIES,
+    INTERFACE_REQUEST_BUDGET,
     clearPrivateBrowserStorage,
 };
 export default ComplaintMcpClient;
