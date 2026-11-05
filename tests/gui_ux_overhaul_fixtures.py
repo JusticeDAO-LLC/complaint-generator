@@ -127,3 +127,58 @@ def declared_visual_widths(contract: dict | None = None) -> list[dict]:
 
 def baseline_manifest() -> dict:
     return json.loads((BASELINE_DIR / "screenshot_manifest.json").read_text(encoding="utf-8"))
+
+
+# Synthetic journey copy. These strings are not real people, filings, or evidence.
+JOURNEY_NARRATIVE = (
+    "On March 4, 2024 a fictional clerk named Alex Rivera refused a garden-level transfer "
+    "after a safety report. No real person or filing is described."
+)
+JOURNEY_ANSWER = "Alex Rivera ended the assignment on March 4, 2024 after the safety report."
+JOURNEY_REPLACEMENT = "Alex Rivera ended the assignment on March 5, 2024 after the safety report."
+JOURNEY_NOTE = "Synthetic margin note. This note is not an exhibit and is not a filing."
+JOURNEY_MESSAGE = "Synthetic lawyer note. Conversation only; not adopted as a fact."
+JOURNEY_CITATION = "ORS 659A.030"
+JOURNEY_RULE = "An employer shall not retaliate against an employee for opposing an unlawful practice."
+JOURNEY_STALE = "This stale sentence must not become the fact."
+
+
+def journey_case_body(case) -> dict:
+    return {
+        "tenant_id": case.tenant_id,
+        "case_id": case.case_id,
+        "resource_id": case.resource_id,
+        "expected_case_revision": case.revision,
+        "expected_revision": case.revision,
+    }
+
+
+def attach_private_evidence_workspace(world, root: Path):
+    """Mount the qualified evidence owner on the journey app.
+
+    The annotation store lives under the private evidence root. A note is not
+    evidence until an explicit adopt, which this helper does not perform.
+    """
+
+    from integrations.evidence_workspace import EvidenceWorkspace, MemoryByteBackend
+
+    backend = MemoryByteBackend()
+    workspace = EvidenceWorkspace(
+        world.cases,
+        {world.owner.principal_id: world.owner_keys, world.lawyer.principal_id: world.recipient},
+        backend,
+        root,
+    )
+    world.app.state.evidence_workspace = workspace
+    world.evidence_backend = backend
+    return workspace
+
+
+def cited_draft_text(*, citation: str, fact: str) -> str:
+    """A draft sentence that names its source. It is not a filing or a proof."""
+
+    return (
+        f"The corrected account is: {fact} "
+        f"The source-bound requirement is cited as {citation}. "
+        "This draft is not a court filing and is not a finding of legal sufficiency."
+    )
