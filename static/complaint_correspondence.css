@@ -67,8 +67,9 @@
     flex-direction: column;
     gap: var(--cx-space-1, 4px);
     font-size: var(--cx-font-small, 0.875rem);
-    min-width: 12rem;
+    min-width: 0;
     flex: 1 1 12rem;
+    max-width: 100%;
 }
 
 .correspondence input,
@@ -224,14 +225,33 @@
     display: none !important;
 }
 
+.correspondence,
+.correspondence__notice,
+.correspondence__body,
+.correspondence__message,
+.correspondence__log {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+    .correspondence {
+        padding-inline: var(--cx-space-3, 12px);
+    }
+}
+
 @media (max-width: 390px) {
     .correspondence {
         padding: var(--cx-space-3, 12px);
     }
 
     .correspondence label,
-    .correspondence button {
+    .correspondence button,
+    .correspondence__actions {
         flex-basis: 100%;
+        width: 100%;
+        min-width: 0;
     }
 }
 

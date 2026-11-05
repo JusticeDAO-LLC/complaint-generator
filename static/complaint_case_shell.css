@@ -39,6 +39,7 @@
 
 .case-shell {
     position: sticky;
+    overflow-wrap: anywhere;
     top: 0;
     z-index: 20;
     box-sizing: border-box;
@@ -178,9 +179,50 @@ body[data-case-task-flow="ordinary"] [data-case-shell-diagnostic="true"] {
     }
 }
 
+#complaint-presentation-modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 100%;
+    min-width: 0;
+}
+
+#complaint-presentation-modes button,
+.case-shell__access a,
+#complaint-entry button {
+    min-height: 44px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+#unresolved-gaps,
+#unresolved-gaps .gap,
+.case-shell__panel,
+.case-shell__panel-body,
+#complaint-presentation-context {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Width changes stacking only. It does not drop unresolved gaps or authority. */
+#unresolved-gaps .gap,
+.case-shell [data-role="gap"] {
+    white-space: normal;
+}
+
 @media (max-width: 767px) {
     .case-shell__identity {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #complaint-case-shell-nav {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #complaint-presentation-modes button {
+        flex: 1 1 auto;
     }
 }
 

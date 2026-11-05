@@ -1014,7 +1014,7 @@
     }
 
     function onDraftTask(event) {
-        var button = event.target && event.target.closest ? event.target.closest("[data-case-task='draft']") : null;
+        var button = event.target && event.target.closest ? event.target.closest(".tab-button[data-tab-target='draft']") : null;
         if (!button) return;
         load().catch(function () {
             var host = document.getElementById("complaint-outline");

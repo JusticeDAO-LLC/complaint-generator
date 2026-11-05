@@ -38,7 +38,7 @@
 
 .evidence-library-body {
     display: grid;
-    grid-template-columns: minmax(200px, 34%) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
     gap: 14px;
     min-width: 0;
 }
@@ -119,6 +119,36 @@
     display: none;
 }
 
+#evidence-preview,
+#evidence-preview-viewport,
+#evidence-preview-stage,
+#evidence-preview-alternative,
+.evidence-library img,
+.evidence-library canvas,
+.evidence-library pre,
+.evidence-library iframe {
+    max-width: 100%;
+    min-width: 0;
+}
+
+#evidence-preview-viewport {
+    min-height: 8rem;
+    max-height: min(320px, 50vh);
+    overflow: auto;
+}
+
+#evidence-preview-stage {
+    overflow-wrap: anywhere;
+}
+
+.evidence-library-actions,
+#evidence-preview-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 100%;
+}
+
 @media (max-width: 767px) {
     /* The expanded case header can cover most of a narrow viewport. Keep
        evidence controls reachable when the user scrolls this workbench. */
@@ -126,7 +156,29 @@
         position: static;
     }
 
-    .evidence-library {
+    .evidence-library,
+    [data-tab-panel="evidence"] {
         padding: 12px;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .evidence-library-body,
+    .evidence-library[data-layout="master-detail"] .evidence-library-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    [data-tab-panel="evidence"] .stage-banner,
+    [data-tab-panel="evidence"] * {
+        grid-template-columns: minmax(0, 1fr) !important;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 390px) {
+    .evidence-library-toolbar label,
+    .evidence-library-actions button,
+    #evidence-preview-controls button {
+        flex: 1 1 100%;
     }
 }

@@ -49,4 +49,62 @@
 .complaint-draft-editor [data-role="revision-diff"] {
     display: grid;
     gap: 0.25rem;
+    min-width: 0;
+}
+
+.complaint-outline__layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) !important;
+    gap: 1rem;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.complaint-draft-editor,
+.complaint-outline__layout,
+[data-role="draft-column"],
+[data-role="support-column"],
+[data-role="draft-text"],
+[data-role="authority-span"],
+[data-role="model-prose"],
+[data-role="gap"],
+[data-role="section-body"] {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+[data-role="gap"] {
+    white-space: normal;
+}
+
+[data-tab-panel="draft"] {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+[data-tab-panel="draft"] button,
+.complaint-draft-editor button,
+.draft-section-nav button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+}
+
+@media (max-width: 767px) {
+    .complaint-outline__layout,
+    [data-tab-panel="draft"] .stage-banner,
+    [data-tab-panel="draft"] * {
+        grid-template-columns: minmax(0, 1fr) !important;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 390px) {
+    .complaint-draft-editor button,
+    .draft-section-nav button,
+    [data-tab-panel="draft"] .button-row button {
+        flex: 1 1 100%;
+        width: 100%;
+    }
 }
