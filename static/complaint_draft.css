@@ -58,6 +58,7 @@
     gap: 1rem;
     min-width: 0;
     max-width: 100%;
+    box-sizing: border-box;
 }
 
 .complaint-draft-editor,
@@ -101,10 +102,18 @@
 }
 
 @media (max-width: 390px) {
+    .complaint-outline__layout {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
     .complaint-draft-editor button,
     .draft-section-nav button,
     [data-tab-panel="draft"] .button-row button {
         flex: 1 1 100%;
         width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        max-width: 100%;
+        box-sizing: border-box;
     }
 }

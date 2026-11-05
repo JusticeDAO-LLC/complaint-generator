@@ -1,10 +1,17 @@
+.evidence-library,
+.evidence-library * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
 .evidence-library {
     margin: 16px 0 22px;
     padding: 16px;
     border: 1px solid var(--line, #d7d2c8);
     border-radius: 18px;
     background: rgba(255, 252, 247, 0.92);
-    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 .evidence-library-toolbar,
@@ -137,7 +144,20 @@
     overflow: auto;
 }
 
-#evidence-preview-stage {
+#evidence-preview-stage,
+.evidence-library img,
+.evidence-library canvas,
+.evidence-library pre {
+    overflow-wrap: anywhere;
+    height: auto;
+}
+
+.evidence-library button,
+#evidence-library-add {
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
     overflow-wrap: anywhere;
 }
 
