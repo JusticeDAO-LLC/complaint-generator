@@ -102,3 +102,28 @@ def assert_png(payload: bytes, *, minimum: int = 800) -> str:
     if len(payload) < minimum:
         raise ValueError("screenshot_blank_or_truncated")
     return hashlib.sha256(payload).hexdigest()
+
+
+# Experience contract reflow width. The capture matrix records 1440, 768, and 390.
+EXPERIENCE_REFLOW_WIDTH = 320
+VISUAL_STATE_VARIANTS = ("loading", "empty", "error", "locked", "stale", "revoked")
+
+
+def declared_visual_widths(contract: dict | None = None) -> list[dict]:
+    """Capture-contract viewports plus the experience-contract 320px reflow."""
+
+    contract = load_contract() if contract is None else contract
+    widths = []
+    for name, size in contract["viewports"].items():
+        widths.append({"name": name, "width": int(size["width"]), "height": int(size["height"]), "source": "capture_contract"})
+    widths.append({
+        "name": "reflow-320",
+        "width": EXPERIENCE_REFLOW_WIDTH,
+        "height": 800,
+        "source": "experience_contract",
+    })
+    return widths
+
+
+def baseline_manifest() -> dict:
+    return json.loads((BASELINE_DIR / "screenshot_manifest.json").read_text(encoding="utf-8"))
