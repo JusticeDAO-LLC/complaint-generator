@@ -2052,7 +2052,7 @@ Implementation instructions:
 
 ## CIMP-UX-67 Publish a useful UX and operations handoff with evidence links
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
