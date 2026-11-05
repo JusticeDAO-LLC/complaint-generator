@@ -6021,6 +6021,176 @@ class ComplaintWorkspaceService:
         )
         return publication.as_dict()
 
+    def workflow_continuity_repository(self, user_id: str, case_id: Optional[str] = None) -> Path:
+        """Encrypted workflow head. This path is not a browser cache."""
+
+        identity = json.dumps(["workflow-continuity", str(user_id), str(case_id or user_id)], separators=(",", ":"))
+        return self._session_dir / "workflow-continuity" / ("p-" + principal_namespace(identity))
+
+    def seal_encrypted_workflow_continuity(
+        self,
+        user_id: str,
+        workflow: Mapping[str, Any],
+        *,
+        case_id: Optional[str] = None,
+        crash_injector: Any = None,
+        transaction_id: Optional[str] = None,
+        effect_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Persist workflow continuity from the unlocked case wallet.
+
+        In-memory service objects are dropped. A crash injector can stop the
+        Kit WAL before the head moves; it does not write a browser copy.
+        """
+
+        from integrations.private_storage import WorkflowContinuityError, commit_workflow_continuity
+
+        resolved = self._check_access(user_id, ability="write", case_id=case_id)
+        selected = str(case_id or resolved)
+        ready = self.ensure_private_case_key(resolved, selected)
+        if ready.get("unlocked") is not True and ready.get("data_key_id") is None:
+            raise WorkspacePersistenceError(
+                "Private workspace keys require unlock.",
+                code="missing_key",
+                public_status="unlock_needed",
+            )
+        context, key_id, key = self._joined_key(resolved, selected)
+        self._workflow_memory = None
+        try:
+            receipt = commit_workflow_continuity(
+                self.workflow_continuity_repository(resolved, context["case_id"]),
+                tenant_id=str(context["tenant_id"]),
+                case_id=str(context["case_id"]),
+                principal_id=str(context["principal_id"]),
+                key=key,
+                key_id=key_id,
+                workflow=workflow,
+                transaction_id=transaction_id,
+                effect_id=effect_id,
+                crash_injector=crash_injector,
+                key_resolver=self._joined_key_resolver(resolved, str(context["case_id"])),
+            )
+        except WorkflowContinuityError as exc:
+            raise WorkspacePersistenceError(str(exc), code=exc.code, public_status="recoverable") from None
+        receipt["wallet_binding"] = self._wallet_binding(resolved)
+        return receipt
+
+    def reconstruct_encrypted_workflow(
+        self,
+        user_id: Optional[str],
+        *,
+        case_id: Optional[str] = None,
+        browser_cache: Any = None,
+        key: Optional[bytes] = None,
+        key_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Cold-open services, the wallet descriptor, and workflow records.
+
+        The process memory and ``browser_cache`` are not sources. A locked
+        wallet, a foreign key id, or a head that fails authentication returns
+        an explicit refusal and does not mint a case.
+        """
+
+        from integrations.private_storage import reconstruct_workflow_continuity
+
+        del browser_cache
+        try:
+            resolved = self._check_access(user_id, ability="read", case_id=case_id)
+        except WorkspaceAuthorizationDenied:
+            return {
+                "schema": "cg-workflow-continuity-v1",
+                "resumed": False,
+                "code": "authorization_denied",
+                "reconstructed_from_browser_cache": False,
+                "browser_cache_ignored": True,
+                "empty_case_created": False,
+                "services": [],
+                "wallet": None,
+                "durability": {
+                    "durability_scope": "unproven",
+                    "local_durable": False,
+                    "remote_durable": False,
+                    "qualified_remote_storage": False,
+                },
+            }
+        selected = str(case_id or resolved)
+        repository = self.workflow_continuity_repository(resolved, selected)
+        session = self._private_key_session()
+        if key is None:
+            if not session.unlocked:
+                view = reconstruct_workflow_continuity(
+                    repository,
+                    tenant_id=resolved,
+                    case_id=selected,
+                    principal_id=resolved,
+                    key=None,
+                    key_id=None,
+                )
+                view["wallet_binding"] = self._wallet_binding(resolved)
+                return view
+            try:
+                _context, key_id, key = self._joined_key(resolved, selected)
+            except WorkspacePersistenceError:
+                view = reconstruct_workflow_continuity(
+                    repository,
+                    tenant_id=resolved,
+                    case_id=selected,
+                    principal_id=resolved,
+                    key=None,
+                    key_id=None,
+                )
+                view["wallet_binding"] = self._wallet_binding(resolved)
+                return view
+        view = reconstruct_workflow_continuity(
+            repository,
+            tenant_id=resolved,
+            case_id=selected,
+            principal_id=resolved,
+            key=key,
+            key_id=key_id,
+            key_resolver=None if key_id is None else self._joined_key_resolver(resolved, selected),
+        )
+        view["wallet_binding"] = self._wallet_binding(resolved)
+        self._workflow_memory = None
+        return view
+
+    def recover_encrypted_workflow(
+        self,
+        user_id: str,
+        *,
+        case_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run WAL recovery against the workflow repository, then reconstruct."""
+
+        from integrations.private_storage import recover_workflow_continuity
+
+        resolved = self._check_access(user_id, ability="write", case_id=case_id)
+        selected = str(case_id or resolved)
+        if not self._private_key_session().unlocked:
+            view = recover_workflow_continuity(
+                self.workflow_continuity_repository(resolved, selected),
+                tenant_id=resolved,
+                case_id=selected,
+                principal_id=resolved,
+                key=None,
+                key_id=None,
+            )
+            view["wallet_binding"] = self._wallet_binding(resolved)
+            return view
+        _context, key_id, key = self._joined_key(resolved, selected)
+        view = recover_workflow_continuity(
+            self.workflow_continuity_repository(resolved, selected),
+            tenant_id=resolved,
+            case_id=selected,
+            principal_id=resolved,
+            key=key,
+            key_id=key_id,
+            key_resolver=self._joined_key_resolver(resolved, selected),
+        )
+        view["wallet_binding"] = self._wallet_binding(resolved)
+        self._workflow_memory = None
+        return view
+
     def _private_local_backend(self):
         from integrations.ipfs_datasets.storage import LocalCacheIPFSBackend
         workspace = self
