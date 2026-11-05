@@ -8679,3 +8679,370 @@ def open_scoped_kit_record(
     if key_locked or key is None:
         raise BoundPrivateRecordError("key_locked")
     return open_private_bound_record(root, record_id=record_id, binding=binding, key=key)
+
+
+# Cold workflow continuity (CIMP-UX-59).
+# Services, the wallet descriptor, pending questions, evidence annotations and
+# links, source context, the draft, and correspondence are one encrypted
+# revision. A browser cache is not an input. Local authenticated readback is
+# local durability. This module has no qualified remote replica producer, so a
+# local commit is never reported as remote durability.
+
+_WORKFLOW_SCHEMA = "cg-workflow-continuity-v1"
+_WORKFLOW_FIELDS = (
+    "services",
+    "wallet",
+    "pending_questions",
+    "evidence_annotations",
+    "evidence_links",
+    "source_context",
+    "draft",
+    "correspondence",
+)
+_LOCAL_DURABILITY_STATEMENT = (
+    "Durability is local private storage after authenticated ciphertext readback. "
+    "It is not qualified remote storage: no remote replica producer with an "
+    "authenticated durability contract is installed, and a local file, a content "
+    "hash, or a queued acknowledgement is not a remote replica."
+)
+
+
+class WorkflowContinuityError(PrivateStorageError):
+    """Workflow continuity could not be opened. No replacement case is created."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code, code=code)
+
+
+def durability_statement(*, local_readback: bool) -> dict[str, Any]:
+    """Say exactly which durability this process proved.
+
+    ``qualified_remote_storage`` stays false. Callers cannot flip it with a flag.
+    """
+
+    proved = local_readback is True
+    return {
+        "durability_scope": "local_private" if proved else "unproven",
+        "local_durable": proved,
+        "remote_durable": False,
+        "qualified_remote_storage": False,
+        "local_copy_establishes_remote_durability": False,
+        "browser_cache_authoritative": False,
+        "content_address_is_encryption": False,
+        "statement": _LOCAL_DURABILITY_STATEMENT if proved else (
+            "Durability is unproven. The last verified local head was left unchanged, "
+            "and remote storage was not qualified."
+        ),
+    }
+
+
+def _workflow_document(workflow: Mapping[str, Any], *, key_id: str) -> dict[str, Any]:
+    if not isinstance(workflow, Mapping):
+        raise WorkflowContinuityError("workflow_rejected")
+    missing = [name for name in _WORKFLOW_FIELDS if name not in workflow]
+    if missing or "browser_cache" in workflow:
+        raise WorkflowContinuityError("workflow_rejected")
+    services = workflow["services"]
+    wallet = workflow["wallet"]
+    if not isinstance(services, list) or not services or not isinstance(wallet, Mapping):
+        raise WorkflowContinuityError("workflow_rejected")
+    rebuilt_services: list[dict[str, str]] = []
+    for item in services:
+        if not isinstance(item, Mapping):
+            raise WorkflowContinuityError("workflow_rejected")
+        service_id = str(item.get("service_id") or "")
+        kind = str(item.get("kind") or "")
+        if not service_id or not kind or "/" in service_id:
+            raise WorkflowContinuityError("workflow_rejected")
+        rebuilt_services.append({
+            "service_id": service_id,
+            "kind": kind,
+            "label": str(item.get("label") or kind),
+        })
+    wallet_id = str(wallet.get("wallet_id") or "")
+    if not wallet_id or str(wallet.get("key_id") or "") != key_id:
+        raise WorkflowContinuityError("wallet_rejected")
+    if "passphrase" in wallet or "key_bytes" in wallet:
+        raise WorkflowContinuityError("wallet_rejected")
+    pending = workflow["pending_questions"]
+    annotations = workflow["evidence_annotations"]
+    links = workflow["evidence_links"]
+    source = workflow["source_context"]
+    draft = workflow["draft"]
+    correspondence = workflow["correspondence"]
+    if not isinstance(pending, list) or not isinstance(annotations, list) or not isinstance(links, list):
+        raise WorkflowContinuityError("workflow_rejected")
+    if not isinstance(source, Mapping) or not isinstance(draft, Mapping) or not isinstance(correspondence, list):
+        raise WorkflowContinuityError("workflow_rejected")
+    if not isinstance(draft.get("text"), str):
+        raise WorkflowContinuityError("workflow_rejected")
+    return {
+        "schema": _WORKFLOW_SCHEMA,
+        "services": rebuilt_services,
+        "wallet": {
+            "wallet_id": wallet_id,
+            "key_id": key_id,
+            "protection": str(wallet.get("protection") or "user_owned"),
+            "case_id": str(wallet.get("case_id") or ""),
+        },
+        "pending_questions": json.loads(json.dumps(list(pending))),
+        "evidence_annotations": json.loads(json.dumps(list(annotations))),
+        "evidence_links": json.loads(json.dumps(list(links))),
+        "source_context": json.loads(json.dumps(dict(source))),
+        "draft": {"text": draft["text"], "revision": str(draft.get("revision") or "0")},
+        "correspondence": json.loads(json.dumps(list(correspondence))),
+    }
+
+
+def _workflow_blobs(document: Mapping[str, Any]) -> tuple[bytes, bytes, bytes]:
+    session = {
+        "schema": document["schema"],
+        "services": document["services"],
+        "wallet": document["wallet"],
+    }
+    facts = {
+        "pending_questions": document["pending_questions"],
+        "evidence_annotations": document["evidence_annotations"],
+        "evidence_links": document["evidence_links"],
+        "source_context": document["source_context"],
+    }
+    proof = {"draft": document["draft"], "correspondence": document["correspondence"]}
+    encoded = tuple(
+        json.dumps(part, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        for part in (session, facts, proof)
+    )
+    return encoded[0], encoded[1], encoded[2]
+
+
+def _workflow_refusal(code: str) -> dict[str, Any]:
+    return {
+        "schema": _WORKFLOW_SCHEMA,
+        "resumed": False,
+        "code": code,
+        "reconstructed_from_browser_cache": False,
+        "browser_cache_ignored": True,
+        "empty_case_created": False,
+        "services": [],
+        "wallet": None,
+        "pending_questions": [],
+        "evidence_annotations": [],
+        "evidence_links": [],
+        "source_context": None,
+        "draft": None,
+        "correspondence": [],
+        "durability": durability_statement(local_readback=False),
+    }
+
+
+def _classify_head_failure(root: Path, key_id: str) -> str:
+    try:
+        envelope, _revision = _head_record(root)
+    except PrivateRevisionError:
+        return "tampered_head"
+    if envelope is None:
+        return "missing_store"
+    try:
+        parsed = parse_private_envelope(envelope)
+    except PrivateArtifactIntegrityError:
+        return "tampered_head"
+    if parsed.get("key_id") != key_id:
+        return "wrong_key"
+    return "tampered_head"
+
+
+def commit_workflow_continuity(
+    repository: str | Path,
+    *,
+    tenant_id: str,
+    case_id: str,
+    principal_id: str,
+    key: bytes,
+    key_id: str,
+    workflow: Mapping[str, Any],
+    transaction_id: str | None = None,
+    effect_id: str | None = None,
+    crash_injector: Callable[..., Any] | None = None,
+    key_resolver: Callable[[str], bytes | None] | None = None,
+) -> dict[str, Any]:
+    """Seal one workflow revision. The browser is not consulted."""
+
+    if key is None:
+        raise WorkflowContinuityError("missing_key")
+    document = _workflow_document(workflow, key_id=key_id)
+    if document["wallet"]["case_id"] not in {"", case_id}:
+        raise WorkflowContinuityError("wallet_rejected")
+    document["wallet"]["case_id"] = case_id
+    current = read_private_revision(
+        repository,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        principal_id=principal_id,
+        key=key,
+        key_id=key_id,
+        key_resolver=key_resolver,
+    )
+    expected = None if current is None else str(current["revision"])
+    session, facts, proof = _workflow_blobs(document)
+    publication = commit_private_revision(
+        repository,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        principal_id=principal_id,
+        key=key,
+        key_id=key_id,
+        expected_revision=expected,
+        session=session,
+        fact_graph=facts,
+        proof=proof,
+        transaction_id=transaction_id,
+        effect_id=effect_id,
+        crash_injector=crash_injector,
+        key_resolver=key_resolver,
+    )
+    receipt = publication.as_dict()
+    receipt["durability"] = durability_statement(local_readback=bool(publication.committed))
+    receipt["browser_cache_used"] = False
+    receipt["empty_case_created"] = False
+    return receipt
+
+
+def reconstruct_workflow_continuity(
+    repository: str | Path,
+    *,
+    tenant_id: str,
+    case_id: str,
+    principal_id: str,
+    key: bytes | None,
+    key_id: str | None,
+    browser_cache: Any = None,
+    key_resolver: Callable[[str], bytes | None] | None = None,
+) -> dict[str, Any]:
+    """Rebuild services and the wallet descriptor from the encrypted head.
+
+    ``browser_cache`` is discarded. A missing key, a key id that is not the
+    envelope's key id, or a head that fails authentication returns no workflow
+    plaintext and does not create a case.
+    """
+
+    del browser_cache
+    root = Path(repository)
+    if key is None or not key_id:
+        return _workflow_refusal("missing_key")
+    try:
+        opened = read_private_revision(
+            root,
+            tenant_id=tenant_id,
+            case_id=case_id,
+            principal_id=principal_id,
+            key=key,
+            key_id=key_id,
+            key_resolver=key_resolver,
+        )
+    except PrivateKeyMaterialError:
+        return _workflow_refusal("missing_key")
+    except PrivateArtifactIntegrityError:
+        return _workflow_refusal(_classify_head_failure(root, key_id))
+    except PrivateRevisionError as exc:
+        code = str(exc.code or "")
+        if code in {"corrupt_manifest", "journal_corrupt"}:
+            return _workflow_refusal("tampered_head")
+        if code == "authentication_failed":
+            return _workflow_refusal(_classify_head_failure(root, key_id))
+        if code in {"recovery_required", "missing_object"}:
+            return _workflow_refusal("recovery_required")
+        return _workflow_refusal("unproven")
+    if opened is None:
+        return _workflow_refusal("missing_store")
+    try:
+        session = json.loads(opened["session"])
+        facts = json.loads(opened["fact_graph"])
+        proof = json.loads(opened["proof"])
+    except (UnicodeError, json.JSONDecodeError, KeyError, TypeError):
+        return _workflow_refusal("tampered_head")
+    if not isinstance(session, dict) or session.get("schema") != _WORKFLOW_SCHEMA:
+        return _workflow_refusal("tampered_head")
+    wallet = session.get("wallet") if isinstance(session.get("wallet"), dict) else None
+    services = session.get("services") if isinstance(session.get("services"), list) else None
+    if wallet is None or services is None or wallet.get("key_id") != key_id or wallet.get("case_id") != case_id:
+        return _workflow_refusal("tampered_head")
+    if not isinstance(facts, dict) or not isinstance(proof, dict):
+        return _workflow_refusal("tampered_head")
+    rebuilt = []
+    for item in services:
+        if not isinstance(item, dict) or not item.get("service_id"):
+            return _workflow_refusal("tampered_head")
+        rebuilt.append({
+            "service_id": item["service_id"],
+            "kind": item.get("kind"),
+            "label": item.get("label"),
+            "source": "encrypted_store",
+        })
+    draft = proof.get("draft") if isinstance(proof.get("draft"), dict) else None
+    return {
+        "schema": _WORKFLOW_SCHEMA,
+        "resumed": True,
+        "code": "resumed",
+        "revision": opened["revision"],
+        "reconstructed_from_browser_cache": False,
+        "browser_cache_ignored": True,
+        "empty_case_created": False,
+        "services": rebuilt,
+        "wallet": {
+            "wallet_id": wallet.get("wallet_id"),
+            "key_id": wallet.get("key_id"),
+            "protection": wallet.get("protection"),
+            "case_id": case_id,
+            "source": "encrypted_store",
+        },
+        "pending_questions": list(facts.get("pending_questions") or []),
+        "evidence_annotations": list(facts.get("evidence_annotations") or []),
+        "evidence_links": list(facts.get("evidence_links") or []),
+        "source_context": facts.get("source_context"),
+        "draft": draft,
+        "correspondence": list(proof.get("correspondence") or []),
+        "durability": durability_statement(local_readback=True),
+    }
+
+
+def recover_workflow_continuity(
+    repository: str | Path,
+    *,
+    tenant_id: str,
+    case_id: str,
+    principal_id: str,
+    key: bytes | None,
+    key_id: str | None,
+    key_resolver: Callable[[str], bytes | None] | None = None,
+) -> dict[str, Any]:
+    """Replay the Kit WAL, then open whatever head that recovery left visible."""
+
+    if key is None or not key_id:
+        refusal = _workflow_refusal("missing_key")
+        refusal["wal_recovery"] = None
+        return refusal
+    try:
+        publication = recover_private_revision(
+            repository,
+            tenant_id=tenant_id,
+            case_id=case_id,
+            principal_id=principal_id,
+            key=key,
+            key_id=key_id,
+            key_resolver=key_resolver,
+        )
+    except PrivateRevisionError as exc:
+        refusal = _workflow_refusal("tampered_head" if exc.code == "journal_corrupt" else "unproven")
+        refusal["wal_recovery"] = {"state": exc.state, "code": exc.code, "committed": False}
+        return refusal
+    view = reconstruct_workflow_continuity(
+        repository,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        principal_id=principal_id,
+        key=key,
+        key_id=key_id,
+        key_resolver=key_resolver,
+    )
+    view["wal_recovery"] = publication.as_dict()
+    view["durability"] = durability_statement(local_readback=view.get("resumed") is True)
+    return view
