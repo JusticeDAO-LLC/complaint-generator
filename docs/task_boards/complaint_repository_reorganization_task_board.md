@@ -411,7 +411,7 @@ Implementation instructions:
 
 ## CIMP-MOD-10 Publish the mike integration interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
