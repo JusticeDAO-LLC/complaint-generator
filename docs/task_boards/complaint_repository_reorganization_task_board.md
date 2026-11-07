@@ -845,7 +845,7 @@ Implementation instructions:
 
 ## CIMP-MOD-20 Document the applications package and its interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
