@@ -1093,7 +1093,7 @@ Implementation instructions:
 
 ## CIMP-MOD-26 Add the repository-organization acceptance command
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
