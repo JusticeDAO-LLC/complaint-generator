@@ -1,0 +1,630 @@
+{
+  "schema": "complaint-generator/documentation-drift@1",
+  "task_id": "CIMP-MOD-02",
+  "documents_rewritten": false,
+  "readme_rewritten": false,
+  "documentation_index_rewritten": false,
+  "readme_sha256": "8cd49714ad243e7fd31d3b960a07ff72b3bdd51e1aecb26f7f1d2e111720a453",
+  "readme_byte_size": 49318,
+  "documentation_index_sha256": "441103a4b3a3b2397b11b5e973752ce45b16d9fbd7316c605127a50ba16565ca",
+  "organization": {
+    "readme_workflow_badge_organization": "JusticeDAO-LLC",
+    "readme_workflow_badge_repository": "JusticeDAO-LLC/complaint-generator",
+    "readme_workflow_badges": [
+      "https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml",
+      "https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml",
+      "https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml",
+      "https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-grounding-regression.yml"
+    ],
+    "git_remote_slug": "endomorphosis/complaint-generator",
+    "git_remote_organization": "endomorphosis",
+    "git_remote_repository": "complaint-generator",
+    "mismatch": true,
+    "documents_rewritten": false,
+    "note": "README workflow badges name JusticeDAO-LLC/complaint-generator. The Git remote for this repository is endomorphosis/complaint-generator. This record does not rewrite README.md or DOCUMENTATION_INDEX.md."
+  },
+  "link_count": 120,
+  "missing_count": 5,
+  "links": [
+    {
+      "source": "README.md",
+      "target": "docs/THREE_PHASE_SYSTEM.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "examples/three_phase_example.py",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/COMPLAINT_ANALYSIS_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/HACC_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/PROBATE_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/LLM_ROUTER.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/BACKENDS.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/LEGAL_AUTHORITY_RESEARCH.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/WEB_EVIDENCE_DISCOVERY.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/EVIDENCE_MANAGEMENT.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/ADVERSARIAL_HARNESS.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/MIKE_INTEGRATION_PLAYBOOK.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/API_REFERENCE_GRAPHRAG.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/API_REFERENCE_COMMON.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/API_REFERENCE_AGENTIC.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/PERFORMANCE_TUNING.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/DEPLOYMENT.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/CONFIGURATION.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/APPLICATIONS.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/EXAMPLES.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/ARCHITECTURE.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/SECURITY.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/API_REFERENCE.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/REFINEMENT_STRATEGY_GUIDE.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/PAYLOAD_CONTRACTS.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/IPFS_DATASETS_PY_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/LEGAL_HOOKS.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "docs/SEARCH_HOOKS.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "DOCUMENTATION_INDEX.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "TESTING.md",
+      "status": "present"
+    },
+    {
+      "source": "README.md",
+      "target": "CONTRIBUTING.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "README.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/CONFIGURATION.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/DEPLOYMENT.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "TESTING.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "CONTRIBUTING.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": ".github/pull_request_template.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": ".github/workflows/standard-regression.yml",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": ".github/workflows/claim-support-regression.yml",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "plan-mcpPlusPlusIntegration.prompt.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "adversarial_harness/README.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "complaint_analysis/README.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "complaint_phases/README.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "mediator/readme.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "ipfs_datasets_py/ipfs_datasets_py/logic/DOCUMENTATION_INDEX.md",
+      "status": "missing"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "ipfs_datasets_py/ipfs_datasets_py/logic/zkp/README.md",
+      "status": "missing"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "ipfs_datasets_py/ipfs_datasets_py/logic/zkp/TODO_MASTER.md",
+      "status": "missing"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "tests/README.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/ARCHITECTURE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/APPLICATIONS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/THREE_PHASE_SYSTEM.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/SECURITY.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/ADVERSARIAL_HARNESS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/ADVERSARIAL_IMPLEMENTATION_SUMMARY.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/BACKENDS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/LLM_ROUTER.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/COMPLAINT_ANALYSIS_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/COMPLAINT_ANALYSIS_EXAMPLES.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/LEGAL_HOOKS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/LEGAL_AUTHORITY_RESEARCH.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/EVIDENCE_MANAGEMENT.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/WEB_EVIDENCE_DISCOVERY.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/PAYLOAD_CONTRACTS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/CHRONOLOGY_FIRST_INTAKE_EVIDENCE_NEXT_BATCH_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/TEMPORAL_TIMELINE_PROOF_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/SEARCH_HOOKS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "ipfs_datasets_py/README.md",
+      "status": "missing"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "ipfs_datasets_py/scripts/ops/legal_data/README.md",
+      "status": "missing"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_BATCH6_IMPLEMENTATION_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_FILE_WORKLIST.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_INTEGRATION_ARCHITECTURE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_ANALYSIS_README.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_FILES_SUMMARY.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_QUICK_REFERENCE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_SCRIPTS_REUSE_ANALYSIS.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_IPFS_HYBRID_USAGE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/HACC_VS_IPFS_DATASETS_QUICK.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/PROBATE_INTEGRATION.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/EXTRACTION_CONFIG_GUIDE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/REFINEMENT_STRATEGY_GUIDE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/PERFORMANCE_TUNING.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/FEATURE_WIRING_MATRIX.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/API_REFERENCE.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/API_REFERENCE_GRAPHRAG.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/API_REFERENCE_COMMON.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/API_REFERENCE_AGENTIC.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/EXAMPLES.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/IMPLEMENTATION_SUMMARY.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/TAXONOMY_EXPANSION_SUMMARY.md",
+      "status": "present"
+    },
+    {
+      "source": "DOCUMENTATION_INDEX.md",
+      "target": "docs/VERIFICATION_SUMMARY.md",
+      "status": "present"
+    }
+  ]
+}
