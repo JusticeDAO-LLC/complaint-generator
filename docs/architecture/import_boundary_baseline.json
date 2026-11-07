@@ -1,0 +1,636 @@
+{
+  "schema": "complaint-generator/import-boundary-baseline@1",
+  "task_id": "CIMP-MOD-12",
+  "guarded_modules": [
+    {
+      "module": "mediator.mediator",
+      "owner_package": "mediator",
+      "owner_path": null
+    },
+    {
+      "module": "applications.complaint_workspace",
+      "owner_package": "applications",
+      "owner_path": null
+    },
+    {
+      "module": "complaint_phases.denoiser",
+      "owner_package": "complaint_phases",
+      "owner_path": null
+    },
+    {
+      "module": "document_pipeline",
+      "owner_package": null,
+      "owner_path": "document_pipeline.py"
+    }
+  ],
+  "bypasses": [
+    {
+      "path": "applications/complaint_cli.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "applications/complaint_workspace.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "applications/complaint_workspace.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "applications/document_api.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "claim_support_review.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "complaint_generator/legacy_session_migration.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "complaint_generator/local_evidence_import.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "complaint_generator/ui_optimizer_daemon.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "complaint_generator/workspace.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "examples/adversarial_harness_example.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "examples/three_phase_example.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "integrations/ipfs_datasets/capabilities.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "main.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "mediator/mediator.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "mediator/mediator.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "mediator/workflow_service.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "scripts/run_hacc_adversarial_report.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "scripts/run_hacc_preset_matrix.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/gui_collaboration_fixtures.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/gui_native_browser.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/mgnd_fixtures.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/private_session_assertions.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_alignment_runtime_contract.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_authority_dependency_pipeline.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_authority_dependency_public_pipeline.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_batch3_ambiguity_contradiction_workflow.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_batch_206_denoiser_methods.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_batch_219_denoiser_methods.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_cimp_gui_01.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_05.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_07.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_09.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_14.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_15.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_16.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_17.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_18.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_19.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_20.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_34.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_gui_36.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_04.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_05.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_07.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_11.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_12.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_14.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_15.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_17.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_21.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_28.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_31.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_32.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_33.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_34.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_35.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_36.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_36.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_37.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_37.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_38.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_38.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_40.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_mgnd_43.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_02.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_02.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_cimp_ux_10.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_49.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_50.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_56.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_58.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_59.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_60.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_cimp_ux_64.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_complaint_generator_site_playwright.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_complaint_generator_tools.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_complaint_intake_acceptance.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_complaint_mcp_streamable_http.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_docket_workspace_surface.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_document_pipeline.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "tests/test_document_pipeline_fallbacks.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "tests/test_document_workflow_targeting_summary.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "tests/test_explicit_legal_context.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_factual_correction_replay.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_factual_correction_replay.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_formal_diagnostics_export_structure.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_formal_document_pipeline.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "tests/test_gui18_private_publication.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui18_private_publication.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_gui19_private_stop_delivery.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui21_factual_graph_http.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui24_private_context.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui25_26_private_owner_http.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui26_source_admission_scope.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui27_private_law_graph.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui28_private_dependency_refresh.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui29_private_legal_analysis.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui30_private_owner.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_gui47_private_acceptance.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_gui47_response_delivery.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_intake_documented_commands.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_intake_evidence_backlog_batch0_2.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_intake_evidence_backlog_batch0_2.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_intake_public_release_journeys.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_intake_router_integration.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_intake_router_requests.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_intake_router_semantics.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_legal_corpus_candidate_contract.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_mediator.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_mediator_three_phase.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_mike_status_contract.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_derived_index_durability.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_llm_egress.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_storage_adapter.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_terminal_notice.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_crypto.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_deletion.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_isolation.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_keys.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_metadata.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_migration.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_policy.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_portability.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_private_workspace_recovery.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_proof_report_operator_surfaces.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_quality_scorer_and_new_mcp_tools.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_question_saturation_contract.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_review_api.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_review_surface_site_playwright.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_score_improve_proof_history.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_t1_t3_temporal_next_steps.py",
+      "imported_module": "document_pipeline"
+    },
+    {
+      "path": "tests/test_tui_controls_pty.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_graph_revisions.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_tui_intake_baseline.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_interview_acceptance.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_legal_requirements.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_tui_narrative_capture.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_private_resume.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_question_selection.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_question_selection.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_tui_router_trace.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_shared_interview.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_shared_interview.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_tui_stopping_policy.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_tui_stopping_policy.py",
+      "imported_module": "complaint_phases.denoiser"
+    },
+    {
+      "path": "tests/test_tui_stopping_policy.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_tui_terminal_unlock.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_upstream_alignment_contract.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_upstream_drift_inventory.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_w94_authority_graph_integration.py",
+      "imported_module": "mediator.mediator"
+    },
+    {
+      "path": "tests/test_website_cohesion_playwright.py",
+      "imported_module": "applications.complaint_workspace"
+    },
+    {
+      "path": "tests/test_workspace_legacy_intake_sanitization.py",
+      "imported_module": "applications.complaint_workspace"
+    }
+  ]
+}
