@@ -1009,7 +1009,7 @@ Implementation instructions:
 
 ## CIMP-MOD-24 Document the complaint_generator package and its interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
