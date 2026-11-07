@@ -503,7 +503,7 @@ Implementation instructions:
 
 ## CIMP-MOD-12 Ratchet imports so new files use the package interfaces
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
