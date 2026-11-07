@@ -1,0 +1,70 @@
+{
+  "schema": "complaint-generator/entrypoint-ownership@1",
+  "interface_version": "1.0.0",
+  "owner": "complaint_generator.entrypoints",
+  "merge_performed": false,
+  "merge_reason": "Public callable names and signatures do not match the owner. applications.cli defines no module-level public function. main() -> int on complaint_generator.entrypoints differs from main() -> None on applications.complaint_cli and complaint_generator.cli. Those signatures stay recorded and unmodified.",
+  "modules": [
+    {
+      "module": "complaint_generator.entrypoints",
+      "path": "complaint_generator/entrypoints.py",
+      "role": "owner"
+    },
+    {
+      "module": "applications.cli",
+      "path": "applications/cli.py",
+      "role": "caller"
+    },
+    {
+      "module": "applications.complaint_cli",
+      "path": "applications/complaint_cli.py",
+      "role": "caller"
+    },
+    {
+      "module": "complaint_generator.cli",
+      "path": "complaint_generator/cli.py",
+      "role": "caller"
+    }
+  ],
+  "callables": [
+    {
+      "name": "main",
+      "status": "divergent",
+      "merged": false,
+      "definitions": [
+        {
+          "module": "complaint_generator.entrypoints",
+          "name": "main",
+          "kind": "function",
+          "signature": "def main() -> int"
+        },
+        {
+          "module": "applications.complaint_cli",
+          "name": "main",
+          "kind": "function",
+          "signature": "def main() -> None"
+        },
+        {
+          "module": "complaint_generator.cli",
+          "name": "main",
+          "kind": "function",
+          "signature": "def main() -> None"
+        }
+      ]
+    },
+    {
+      "name": "run_main",
+      "status": "owner_only",
+      "merged": false,
+      "definitions": [
+        {
+          "module": "complaint_generator.entrypoints",
+          "name": "run_main",
+          "kind": "imported_alias",
+          "import_module": "run",
+          "import_name": "main"
+        }
+      ]
+    }
+  ]
+}
