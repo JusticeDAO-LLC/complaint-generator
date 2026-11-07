@@ -1,0 +1,72 @@
+{
+  "schema": "complaint-generator/module-interface-schema@1",
+  "task_id": "CIMP-MOD-03",
+  "interface_schema": "complaint-generator/module-interface@1",
+  "describes": {
+    "INTERFACE_SCHEMA": "complaint-generator/module-interface@1",
+    "INTERFACE_VERSION": "major.minor.patch"
+  },
+  "attribute_map": {
+    "schema": "INTERFACE_SCHEMA",
+    "module": "__name__",
+    "version": "INTERFACE_VERSION",
+    "owner_modules": "OWNER_MODULES",
+    "public_symbols": "PUBLIC_SYMBOLS",
+    "status": "STATUS"
+  },
+  "required": [
+    "schema",
+    "module",
+    "version",
+    "owner_modules",
+    "public_symbols"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "complaint-generator/module-interface@1",
+      "description": "INTERFACE_SCHEMA. Identifies the module-interface contract this record implements."
+    },
+    "module": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Importable module name. The checker uses the requested module's __name__."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "INTERFACE_VERSION. A major.minor.patch string such as 1.0.0."
+    },
+    "owner_modules": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "OWNER_MODULES. Importable modules that define the public symbols. Parsed, not executed."
+    },
+    "public_symbols": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "PUBLIC_SYMBOLS. Attribute names that must be defined in an owner module."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "facade-only"
+      ],
+      "description": "STATUS. An empty public_symbols list is valid only when STATUS is facade-only."
+    }
+  },
+  "rules": [
+    "schema, module, version, owner_modules, and public_symbols are required.",
+    "version must be a major.minor.patch string.",
+    "An empty public surface is accepted only when STATUS is facade-only.",
+    "Each public symbol must be defined in an owner module.",
+    "Importing the interface module must not start a server. The checker rejects a server-starting import without executing it."
+  ],
+  "checker": "scripts/check_module_interface.py"
+}
