@@ -1,0 +1,49 @@
+{
+  "schema": "complaint-generator/duplicate-owner@1",
+  "interface_version": "1.0.0",
+  "task_id": "CIMP-MOD-16",
+  "concern": "legal_document",
+  "status": "separate",
+  "merged": false,
+  "facade": {
+    "module": "complaint_phases.legal_document_facade",
+    "path": "complaint_phases/legal_document_facade.py",
+    "version": "1.0.0",
+    "interface_schema": "complaint-generator/module-interface@1",
+    "reexports_from": "complaint_phases/legal_document.py",
+    "public_symbols": [
+      "DocumentSection",
+      "ParsedLegalDocument",
+      "PleadingCaption",
+      "PleadingHeader",
+      "build_pleading_caption",
+      "extract_pleading_header",
+      "paginate_pleading_lines",
+      "parse_legal_document",
+      "render_pleading_caption_block"
+    ]
+  },
+  "owners": [
+    {
+      "path": "complaint_phases/legal_document.py",
+      "module": "complaint_phases.legal_document",
+      "role": "reexport_source",
+      "separate": false,
+      "merged": false
+    },
+    {
+      "path": "lib/legal_document.py",
+      "module": "lib.legal_document",
+      "role": "separate_owner",
+      "separate": true,
+      "merged": false
+    },
+    {
+      "path": "mediator/formal_document.py",
+      "module": "mediator.formal_document",
+      "role": "separate_owner",
+      "separate": true,
+      "merged": false
+    }
+  ]
+}
