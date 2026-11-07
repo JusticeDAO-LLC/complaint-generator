@@ -927,7 +927,7 @@ Implementation instructions:
 
 ## CIMP-MOD-22 Document the complaint_phases package and its interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
