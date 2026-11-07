@@ -117,6 +117,22 @@ def test_ready_work_without_selected_worker_is_recoverable_despite_heartbeat(tmp
     assert result["status"] == "no_progress" and result["recovery_permitted"]
 
 
+def test_recent_implementation_finish_is_not_an_idle_selector(tmp_path, monkeypatch):
+    from integrations.ipfs_accelerate.improvement_runner import _event_timestamp
+    watcher, runner, view = _adapter(tmp_path, monkeypatch, state="running")
+    view.update(healthy=True, worker_liveness="alive", owned_process_alive=True)
+    view["board"]["ready_task_ids"] = ["TASK-1"]
+    view["native_state"]["last_implementation_finished_at"] = "1970-01-01T00:15:00+00:00"
+    runner._event_timestamp = _event_timestamp
+    recent = watcher.observe()
+    assert recent["status"] == "running" and not recent["recovery_permitted"]
+    assert watcher.latest_monitoring["idle_ready"] is False
+    view["native_state"]["last_implementation_finished_at"] = "1970-01-01T00:01:40+00:00"
+    stalled = watcher.observe()
+    assert stalled["status"] == "no_progress" and stalled["recovery_permitted"]
+    assert watcher.latest_monitoring["idle_ready"] is True
+
+
 @pytest.mark.parametrize("legitimate_wait", ["dependencies", "active_worker", "manual_hold", "startup"])
 def test_ready_work_detection_preserves_legitimate_waits(tmp_path, monkeypatch, legitimate_wait):
     watcher, _, view = _adapter(tmp_path, monkeypatch, state="blocked")

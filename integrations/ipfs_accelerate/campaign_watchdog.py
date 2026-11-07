@@ -314,15 +314,20 @@ class ComplaintCampaignWatchdog:
         selected_at = self.runner._event_timestamp({"timestamp": native.get("active_task_started_at")}) or 0
         grace_started = max(float(launch.get("started_at") or 0), selected_at)
         # A live heartbeat can coexist with an orphaned claim or an idle
-        # selector. Logical ready work distinguishes that mechanical block
-        # from a task genuinely waiting for dependencies or user input.
+        # selector. The stall window starts when the selector became idle,
+        # which is the later of launch and the last finished implementation.
+        # A task that just settled is not idle yet: process age alone must
+        # not turn that handoff into no_progress and signal the owner down.
+        finished_at = self.runner._event_timestamp(
+            {"timestamp": native.get("last_implementation_finished_at")}) or 0
+        idle_anchor = max(grace_started, float(finished_at))
         idle_ready = False
         if (state in {"blocked", "running"} and not retry_cooldown and not hold and pending
                 and status.get("board", {}).get("ready_task_ids")
                 and not active and not native.get("implementation_in_progress")
                 and not status.get("provider_progress_verified")
                 and not status.get("validation_activity_verified")
-                and self.clock() >= grace_started + self.runner.STALL_SECONDS):
+                and self.clock() >= idle_anchor + self.runner.STALL_SECONDS):
             state = "no_progress"
             idle_ready = True
             permitted = bool(bound and not status.get("native_read_errors")
