@@ -546,7 +546,7 @@ Implementation instructions:
 
 ## CIMP-MOD-13 Give CLI entry points one versioned owner
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
