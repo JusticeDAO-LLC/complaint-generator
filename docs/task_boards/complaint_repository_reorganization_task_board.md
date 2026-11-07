@@ -319,7 +319,7 @@ Implementation instructions:
 
 ## CIMP-MOD-08 Publish the ipfs_accelerate integration interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
