@@ -273,7 +273,7 @@ Implementation instructions:
 
 ## CIMP-MOD-07 Publish the complaint_phases package interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
