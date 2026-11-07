@@ -1,0 +1,103 @@
+{
+  "schema": "complaint-generator/mcp-ownership@1",
+  "interface_version": "1.0.0",
+  "task_id": "CIMP-MOD-14",
+  "binds_network_socket": false,
+  "server_started_by_record": false,
+  "import_failure": {
+    "status": "unavailable",
+    "treat_protocol_response_as_success": false
+  },
+  "owners": [
+    {
+      "module": "applications.complaint_mcp_protocol",
+      "path": "applications/complaint_mcp_protocol.py",
+      "role": "protocol_owner",
+      "kind": "implementation"
+    },
+    {
+      "module": "complaint_generator.mcp",
+      "path": "complaint_generator/mcp.py",
+      "role": "versioned_owner",
+      "kind": "facade",
+      "reexports_module": "applications.complaint_mcp_protocol",
+      "symbols": [
+        "handle_jsonrpc_message",
+        "tool_list_payload"
+      ]
+    }
+  ],
+  "duplicate_servers": [
+    {
+      "module": "applications.complaint_mcp_server",
+      "path": "applications/complaint_mcp_server.py",
+      "role": "duplicate_server",
+      "package": "applications",
+      "entry": "main",
+      "transport": "stdio",
+      "imports_protocol": "applications.complaint_mcp_protocol"
+    },
+    {
+      "module": "complaint_generator.mcp_server",
+      "path": "complaint_generator/mcp_server.py",
+      "role": "duplicate_server",
+      "package": "complaint_generator",
+      "entry": "main",
+      "transport": "stdio",
+      "reexports_module": "applications.complaint_mcp_server"
+    }
+  ],
+  "callables": [
+    {
+      "name": "handle_jsonrpc_message",
+      "owner": "applications.complaint_mcp_protocol",
+      "definitions": [
+        {
+          "module": "applications.complaint_mcp_protocol",
+          "kind": "function",
+          "signature": "def handle_jsonrpc_message(service: ComplaintWorkspaceService, request: Any, *, access: Optional[WorkspaceAccess]=None) -> Optional[Dict[str, Any]]"
+        },
+        {
+          "module": "complaint_generator.mcp",
+          "kind": "imported_alias",
+          "import_module": "applications.complaint_mcp_protocol",
+          "import_name": "handle_jsonrpc_message"
+        }
+      ]
+    },
+    {
+      "name": "tool_list_payload",
+      "owner": "applications.complaint_mcp_protocol",
+      "definitions": [
+        {
+          "module": "applications.complaint_mcp_protocol",
+          "kind": "function",
+          "signature": "def tool_list_payload(service: ComplaintWorkspaceService) -> Dict[str, Any]"
+        },
+        {
+          "module": "complaint_generator.mcp",
+          "kind": "imported_alias",
+          "import_module": "applications.complaint_mcp_protocol",
+          "import_name": "tool_list_payload"
+        }
+      ]
+    },
+    {
+      "name": "main",
+      "owner": "applications.complaint_mcp_server",
+      "definitions": [
+        {
+          "module": "applications.complaint_mcp_server",
+          "kind": "function",
+          "signature": "def main() -> None"
+        },
+        {
+          "module": "complaint_generator.mcp_server",
+          "kind": "imported_alias",
+          "import_module": "applications.complaint_mcp_server",
+          "import_name": "main"
+        }
+      ]
+    }
+  ]
+}
