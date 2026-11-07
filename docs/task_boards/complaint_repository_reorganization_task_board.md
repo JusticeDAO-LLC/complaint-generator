@@ -135,7 +135,7 @@ Implementation instructions:
 
 ## CIMP-MOD-04 Publish the applications package interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
