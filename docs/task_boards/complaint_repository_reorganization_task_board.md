@@ -365,7 +365,7 @@ Implementation instructions:
 
 ## CIMP-MOD-09 Publish the ipfs_datasets integration interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
