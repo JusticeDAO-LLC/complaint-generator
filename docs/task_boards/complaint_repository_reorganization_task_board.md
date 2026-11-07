@@ -968,7 +968,7 @@ Implementation instructions:
 
 ## CIMP-MOD-23 Document the integration packages and their interfaces
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
