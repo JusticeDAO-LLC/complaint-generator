@@ -802,7 +802,7 @@ Implementation instructions:
 
 ## CIMP-MOD-19 Archive root session reports out of the repository root
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
