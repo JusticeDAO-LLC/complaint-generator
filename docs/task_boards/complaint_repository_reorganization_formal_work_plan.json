@@ -1,0 +1,2873 @@
+{
+  "abstraction_ids": [],
+  "actors": [
+    {
+      "actor_id": "actor.complaint_improvement",
+      "authority_ids": [],
+      "capabilities": [
+        "behavioral_validation",
+        "implementation"
+      ],
+      "contract_version": 1,
+      "kind": "agent",
+      "metadata": {
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        }
+      },
+      "principal_id": "complaint-generator",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    }
+  ],
+  "contract_version": 1,
+  "effects": [],
+  "events": [],
+  "evidence_requirements": [
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_01.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The map records every top-level Python package, the root scripts and markdown files, and the empty root ipfs_datasets_py and mike compatibility directories.",
+          "Duplicate owners are named for CLI, MCP, deontic logic, and legal-document modules, with file paths and byte sizes, and no source file is moved or rewritten."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_01.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-01",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-01",
+        "MODG-inventory",
+        "MODS-inventory"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_02.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The drift record lists README and DOCUMENTATION_INDEX links whose targets are missing, including root ipfs_datasets_py documentation paths that are not present in this checkout.",
+          "It records that README workflow badges point at JusticeDAO-LLC while the Git remote is endomorphosis/complaint-generator, and it does not rewrite either document."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_02.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-02",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-02",
+        "MODG-inventory",
+        "MODS-doc-drift"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_03.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The schema requires schema, module, version, owner_modules, and public_symbols, and version must be a major.minor.patch string.",
+          "The checker accepts a conforming interface module, accepts an empty public surface only when STATUS is facade-only, and rejects a missing version, a server-starting import, and a public symbol that is not defined in an owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_03.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-03",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-03",
+        "MODG-contracts",
+        "MODS-contract-schema"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_04.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "applications.interface version 1.0.0 names the current public route and workspace entry symbols without importing complaint_workspace at interface import time.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_04.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-04",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-04",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_05.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "complaint_generator.interface version 1.0.0 names the current entrypoint, workspace, and MCP symbols without importing a server at interface import time.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_05.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-05",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-05",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_06.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "mediator.interface version 1.0.0 names workflow and hook symbols that already exist, and importing the interface does not import mediator.mediator.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_06.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-06",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-06",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_07.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "complaint_phases.interface version 1.0.0 names phase, graph, and intake symbols that already exist, without executing a phase pipeline on import.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_07.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-07",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-07",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_08.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The accelerate integration interface version 1.0.0 names campaign and plan symbols that already exist, without starting a supervisor on import.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_08.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-08",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-08",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_09.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The datasets integration interface version 1.0.0 names loader and adapter symbols that already exist, without updating a submodule on import.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_09.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-09",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-09",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_10.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The mike integration interface version 1.0.0 records the current connector symbols, or an explicit empty public surface when the package has no import-time API.",
+          "Importing the interface does not import the root mike compatibility directory or external.mike."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_10.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-10",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-10",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_11.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "lib.interface version 1.0.0 names the current lib owners for logging, formal logic, and document helpers that already exist.",
+          "The test rejects a symbol that is not defined in the declared owner module and records that lib.deontic_logic and lib.legal_document are legacy owners pending the ownership tasks."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_11.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-11",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-11",
+        "MODG-contracts",
+        "MODS-package-contracts"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_12.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The baseline records the current internal imports that bypass a published interface, and the checker fails when a Python file newer than the baseline adds another bypass.",
+          "Existing large modules remain allowed by the baseline. The test proves a synthetic new bypass fails and an interface import passes."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_12.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-12",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-12",
+        "MODG-boundaries",
+        "MODS-import-ratchet"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_13.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The ownership record names complaint_generator.entrypoints as the owner and lists applications.cli, applications.complaint_cli, and complaint_generator.cli as callers or duplicates.",
+          "No CLI body is merged unless the test shows the public callable names and signatures already match. Divergent signatures stay recorded and unmodified."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_13.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-13",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-13",
+        "MODG-boundaries",
+        "MODS-entry-shims"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_14.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The ownership record names the current MCP owner modules and the duplicate server modules in applications and complaint_generator.",
+          "No server is started, and no protocol response is treated as success when the owner module cannot be imported."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_14.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-14",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-14",
+        "MODG-boundaries",
+        "MODS-entry-shims"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_15.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The record compares public functions in lib/deontic_logic.py and complaint_phases/deontic_logic.py and names one owner only when the signatures match.",
+          "When the signatures differ, both implementations stay unchanged and the record status is divergent."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_15.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-15",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-15",
+        "MODG-boundaries",
+        "MODS-duplicate-owners"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_16.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The facade version 1.0.0 re-exports only symbols already defined in complaint_phases/legal_document.py and records lib/legal_document.py and mediator/formal_document.py as separate owners.",
+          "Importing the facade does not import mediator.mediator, and none of the three implementation bodies is rewritten."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_16.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-16",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-16",
+        "MODG-boundaries",
+        "MODS-duplicate-owners"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_17.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The README names the current packages, the external submodule checkouts, and the endomorphosis/complaint-generator remote, and it no longer presents JusticeDAO-LLC workflow badges as this repository's status.",
+          "It describes versioned package interfaces and tells readers not to import giant implementation modules from new code. It does not link to root session or batch reports."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_17.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-17",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-17",
+        "MODG-docs",
+        "MODS-root-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_18.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "Every relative link in DOCUMENTATION_INDEX.md resolves to a file in this checkout, including the replacement for the missing root ipfs_datasets_py logic index.",
+          "The index points at docs/architecture/repository_module_map.json and the versioned interface schema, and it does not describe tests/README.md as a 19-file suite unless that is still true."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_18.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-18",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-18",
+        "MODG-docs",
+        "MODS-root-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_19.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "Root session, batch, old-README, and completion-summary markdown listed by the module map moves to docs/archive/sessions, and README.md, DOCUMENTATION_INDEX.md, CONTRIBUTING.md, TESTING.md, and TODO.md stay at the root.",
+          "The archive index lists every moved file, and no remaining root markdown link in the README or documentation index points at a moved file."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_19.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-19",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-19",
+        "MODG-docs",
+        "MODS-root-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_20.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The applications README names interface version 1.0.0, the owner modules, and the rule that new code imports applications.interface rather than complaint_workspace.",
+          "Every relative link in that README resolves, and the test imports applications.interface."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_20.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-20",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-20",
+        "MODG-docs",
+        "MODS-package-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_21.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The mediator readme names interface version 1.0.0 and states that mediator.py remains the legacy implementation behind the interface.",
+          "Every relative link resolves, and the test imports mediator.interface without importing mediator.mediator."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_21.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-21",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-21",
+        "MODG-docs",
+        "MODS-package-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_22.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The phase README names interface version 1.0.0 and distinguishes the phase pipeline from the separate legal and deontic owners.",
+          "Every relative link resolves, and the test imports complaint_phases.interface."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_22.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-22",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-22",
+        "MODG-docs",
+        "MODS-package-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_23.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The integrations README names the accelerate, datasets, and mike interface versions and states that external/ pins are not advanced by documentation work.",
+          "Every relative link resolves, and the test imports the three integration interface modules."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_23.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-23",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-23",
+        "MODG-docs",
+        "MODS-package-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_24.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The package README names interface version 1.0.0 and names the CLI and MCP modules that the interface already lists.",
+          "Every relative link resolves, and the test imports complaint_generator.interface."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_24.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-24",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-24",
+        "MODG-docs",
+        "MODS-package-docs"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_25.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The guide states the package map, the interface version, the import ratchet, the submodule pin policy, and the files new work must not edit.",
+          "It tells an operator how to run scripts/check_module_interface.py and scripts/check_import_boundaries.py, and every relative link resolves."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_25.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-25",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-25",
+        "MODG-docs",
+        "MODS-operator-guide"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [
+        "python -m pytest -q tests/test_cimp_mod_26.py"
+      ],
+      "freshness_seconds": null,
+      "kind": "test",
+      "metadata": {
+        "acceptance": [
+          "The acceptance command checks every published interface version, the import baseline, the documentation index links, and the archive index, and it exits nonzero when any check fails.",
+          "The completion contract records completion_authority false and does not mark any CIMP-MOD task complete."
+        ],
+        "required_evidence": "Behavioral assertions at the tested source revision; skipped or unexecuted checks do not satisfy this requirement.",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_26.py"
+        ]
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "test.CIMP-MOD-26",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "CIMP-MOD-26",
+        "MODG-closure",
+        "MODS-acceptance"
+      ]
+    }
+  ],
+  "fluents": [],
+  "formulas": [
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-acceptance",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-entry-shims",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "MODG-boundaries",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "MODG-closure",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-inventory",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-import-ratchet",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "MODG-inventory",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "MODG-docs",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-root-docs",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "MODG-contracts",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-duplicate-owners",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-operator-guide",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-contract-schema",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-doc-drift",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-package-docs",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "MODS-package-contracts",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    }
+  ],
+  "goals": [
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-12",
+        "test.CIMP-MOD-13",
+        "test.CIMP-MOD-14",
+        "test.CIMP-MOD-15",
+        "test.CIMP-MOD-16"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "title": "Keep new work behind those interfaces and name one owner for each duplicate"
+      },
+      "owner_actor_id": "actor.complaint_improvement",
+      "satisfaction_formula_id": "baguqeerafhivclntoqyftfd5mwmi2uqdtkkkmoqdhzitqosjofh2jebzegja",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/task_boards/complaint_repository_reorganization_spec.json"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-26"
+      ],
+      "goal_id": "MODG-closure",
+      "metadata": {
+        "title": "Prove the organization with a read-only acceptance command"
+      },
+      "owner_actor_id": "actor.complaint_improvement",
+      "satisfaction_formula_id": "baguqeeragog6gd7gldfhz6cxw3kbnegwwybln2jsaohqe3nzjzj6utqsf2mq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/task_boards/complaint_repository_reorganization_spec.json"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-03",
+        "test.CIMP-MOD-04",
+        "test.CIMP-MOD-05",
+        "test.CIMP-MOD-06",
+        "test.CIMP-MOD-07",
+        "test.CIMP-MOD-08",
+        "test.CIMP-MOD-09",
+        "test.CIMP-MOD-10",
+        "test.CIMP-MOD-11"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "title": "Put a versioned interface in front of each current package"
+      },
+      "owner_actor_id": "actor.complaint_improvement",
+      "satisfaction_formula_id": "baguqeerapjsvbswf2mtf77cynzgj3v3zu5kn3w2tjnswk5isxyp6agijes5a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/task_boards/complaint_repository_reorganization_spec.json"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-17",
+        "test.CIMP-MOD-18",
+        "test.CIMP-MOD-19",
+        "test.CIMP-MOD-20",
+        "test.CIMP-MOD-21",
+        "test.CIMP-MOD-22",
+        "test.CIMP-MOD-23",
+        "test.CIMP-MOD-24",
+        "test.CIMP-MOD-25"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "title": "Replace stale root documentation with current module documentation"
+      },
+      "owner_actor_id": "actor.complaint_improvement",
+      "satisfaction_formula_id": "baguqeeralxdx7dhrugnscodwkc3bhfvnykld566j3rhn65wkknfxc3uvtozq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/task_boards/complaint_repository_reorganization_spec.json"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-01",
+        "test.CIMP-MOD-02"
+      ],
+      "goal_id": "MODG-inventory",
+      "metadata": {
+        "title": "Measure package sprawl and documentation drift before moving code"
+      },
+      "owner_actor_id": "actor.complaint_improvement",
+      "satisfaction_formula_id": "baguqeeralv4rvuykuyfwqh2e3j6gsudxo52iic2dhan7nbbu3thfsw3b2cvq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "docs/task_boards/complaint_repository_reorganization_spec.json"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    }
+  ],
+  "metadata": {
+    "evidence_policy": "Ingestion and bounded consistency are not execution or task completion.",
+    "execution_policy": {
+      "automatic_fallback": false,
+      "context_exclude": [
+        ".complaint_workspace/**",
+        ".complaint_workspace*/**",
+        "data/**",
+        "output/**",
+        "statefiles/**",
+        "exports/**",
+        "secrets/**",
+        "evidence/**",
+        "uploads/**",
+        "attachments/**",
+        ".env*",
+        "*.key",
+        "*.pem",
+        "workspace/**",
+        "artifacts/**",
+        "external/**"
+      ],
+      "deployment": false,
+      "development_inputs": "Current repository source at the baseline commit. No new SDK pins, screenshots, or private case data.",
+      "implementation_provider_scope": "Authorized Grok 4.7 development implementation via llm_router. Offline tests do not disable that provider process. Development permission is not consent to case-data egress.",
+      "implementation_timeout_seconds": 900,
+      "initial_lanes": 4,
+      "initial_ready_task": "CIMP-MOD-01",
+      "live_exceptions": [],
+      "manual_holds_respected": true,
+      "max_agent_turns": 64,
+      "max_task_attempts": 3,
+      "merge_target": "codex/repository-reorganization-20261106",
+      "native_task_source_profile": "explicit legacy-markdown projection of the Native FormalWorkPlan",
+      "offline_default": true,
+      "parallelism": "Tasks with satisfied dependencies and disjoint targets may run together, up to four lanes. CIMP-MOD-01 and CIMP-MOD-02 start together. Package interfaces CIMP-MOD-04 through CIMP-MOD-11 run together after the schema task. Package documentation runs with the boundary tasks once their own interface exists.",
+      "product_inference": "This plan does not change case inference, consent, or legal conclusions.",
+      "protected_state": "Completed intake, mediator-grounding, GUI collaboration, and GUI UX campaigns, both retained quarantines, submodule pins, and unrelated campaign processes stay untouched.",
+      "provider_role": "grok-only",
+      "qualification_scope": "One focused new test module per task. Do not run the full historical suite inside the 900-second task budget.",
+      "remote_push": false,
+      "required_evidence": [
+        "A focused pytest module with positive and negative cases and zero skips",
+        "Version strings and owner paths that match the current tree",
+        "No behavior change outside a declared shim whose signatures already match"
+      ],
+      "stop_semantics": "A divergent duplicate implementation is recorded as divergent. It is not silently merged and it is not marked complete by a caller flag.",
+      "upstream_checkout_policy": "Use the pinned external/ipfs_accelerate_py, external/ipfs_datasets_py, and external/ipfs_kit_py checkouts. Do not float pins, recursively initialize submodules, or clone CommonCrawl.",
+      "validation_timeout_seconds": 900,
+      "worktree_pool_max_entries": 4
+    },
+    "provider": {
+      "allow_fallback": false,
+      "model": "grok-4.7",
+      "provider": "grok_cli",
+      "router": "ipfs_accelerate_py.llm_router"
+    },
+    "spec_sha256": "4cc309ce11b603e00dd493c4571245ca27669b507ea8b13ae10e25193f226717",
+    "title": "Reorganize complaint-generator into versioned modules and current documentation"
+  },
+  "norms": [],
+  "plan_id": "baguqeerav5a3e2emaxj437aorrrppktbttyszjkvvey67asbgihf6kuiu47a",
+  "preconditions": [],
+  "repository_tree_id": "",
+  "schema": "ipfs_accelerate_py/agent-supervisor/formal-work-plan@1",
+  "source_ids": [
+    "complaint-generator",
+    "docs/task_boards/complaint_repository_reorganization_spec.json"
+  ],
+  "subgoals": [
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-26"
+      ],
+      "goal_id": "MODG-closure",
+      "metadata": {
+        "title": "Interface, boundary, documentation, and archive checks"
+      },
+      "parent_id": "MODG-closure",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera2aowlivcytchxsa2nsz5kpx3ewzg64pr2un2cvehr3yysevyi4wa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-acceptance"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-03"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "title": "Shared module-interface schema and checker"
+      },
+      "parent_id": "MODG-contracts",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeratzl4xqmstf37uygmzv374lvjmgky6jcdtf6lwa3yn7e5yw6y46kq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-contract-schema"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-02"
+      ],
+      "goal_id": "MODG-inventory",
+      "metadata": {
+        "title": "README and index links that do not match the tree"
+      },
+      "parent_id": "MODG-inventory",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerawurchuoelr3udwaiwntkcn6yymfcswjgys4omo4nfobvckaitg4a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-doc-drift"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-15",
+        "test.CIMP-MOD-16"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "title": "Deontic and legal-document owners left intact until signatures match"
+      },
+      "parent_id": "MODG-boundaries",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraqh7j6w34sfducinyjp53ggqe4g5zk5bf2pkan4efdrr6cfzh5nzq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-duplicate-owners"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-13",
+        "test.CIMP-MOD-14"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "title": "CLI and MCP ownership without silent behavior changes"
+      },
+      "parent_id": "MODG-boundaries",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera2exzwhryskfvsewwcqyvfz7nktjswdon3rtx4zhqxrlp53kjkxwa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-entry-shims"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-12"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "title": "Baseline of internal imports and a ratchet against new bypasses"
+      },
+      "parent_id": "MODG-boundaries",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerajzb37rzqaoshfckaslmad2yuurnrk5jammutnsxnt32rahcgzhpq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-import-ratchet"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-01"
+      ],
+      "goal_id": "MODG-inventory",
+      "metadata": {
+        "title": "Current package, script, and duplicate-owner map"
+      },
+      "parent_id": "MODG-inventory",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraj4n7g5ftmmwxzgjoiwqzkufvvsb3zu3uap4nwavhxd6gmeeqt6xq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-inventory"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-25"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "title": "Operator guide for boundaries, pins, and parallel tasks"
+      },
+      "parent_id": "MODG-docs",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeras5mbg27wqe3ncpxwhqs3duf25tw3pisl4wdd334z7cvbmvt5ebmq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-operator-guide"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-04",
+        "test.CIMP-MOD-05",
+        "test.CIMP-MOD-06",
+        "test.CIMP-MOD-07",
+        "test.CIMP-MOD-08",
+        "test.CIMP-MOD-09",
+        "test.CIMP-MOD-10",
+        "test.CIMP-MOD-11"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "title": "Package interfaces that name existing public symbols"
+      },
+      "parent_id": "MODG-contracts",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeray4w2vbg25xcec76v3z3m6x2wgt3xyn32d2zvjc7vol33kpdgb36a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-package-contracts"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-20",
+        "test.CIMP-MOD-21",
+        "test.CIMP-MOD-22",
+        "test.CIMP-MOD-23",
+        "test.CIMP-MOD-24"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "title": "Package guides bound to interface version 1.0.0"
+      },
+      "parent_id": "MODG-docs",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraxeheacpm3o4nxc7ocuyiatcbehzz55ifqd4e2zkqtcjfb7muaksq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-package-docs"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-17",
+        "test.CIMP-MOD-18",
+        "test.CIMP-MOD-19"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "title": "README, documentation index, and archived session reports"
+      },
+      "parent_id": "MODG-docs",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerapcsnboh2ubcrrqj5jn4pkwsar565tphpwsmsdnexcv625wb3juna",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "MODS-root-docs"
+    }
+  ],
+  "tasks": [
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-01"
+      ],
+      "goal_id": "MODG-inventory",
+      "metadata": {
+        "acceptance": [
+          "The map records every top-level Python package, the root scripts and markdown files, and the empty root ipfs_datasets_py and mike compatibility directories.",
+          "Duplicate owners are named for CLI, MCP, deontic logic, and legal-document modules, with file paths and byte sizes, and no source file is moved or rewritten."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-01 Inventory packages, duplicate owners, and root sprawl\nTargets: docs/architecture/repository_module_map.json, tests/test_cimp_mod_01.py\nRequired outcomes:\n- The map records every top-level Python package, the root scripts and markdown files, and the empty root ipfs_datasets_py and mike compatibility directories.\n- Duplicate owners are named for CLI, MCP, deontic logic, and legal-document modules, with file paths and byte sizes, and no source file is moved or rewritten.\n\nWrite docs/architecture/repository_module_map.json with schema complaint-generator/repository-module-map@1.\nInclude package paths, the largest Python modules by path and size, root markdown that is a session or batch report, and compatibility directories that are not the external/ submodule checkouts.\nThe test loads that JSON and checks those observations against the current tree. It must fail if a recorded package directory is missing.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/architecture/repository_module_map.json",
+          "tests/test_cimp_mod_01.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/architecture/repository_module_map.json",
+          "tests/test_cimp_mod_01.py"
+        ],
+        "title": "Inventory packages, duplicate owners, and root sprawl",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_01.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-inventory",
+      "task_id": "CIMP-MOD-01",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-02"
+      ],
+      "goal_id": "MODG-inventory",
+      "metadata": {
+        "acceptance": [
+          "The drift record lists README and DOCUMENTATION_INDEX links whose targets are missing, including root ipfs_datasets_py documentation paths that are not present in this checkout.",
+          "It records that README workflow badges point at JusticeDAO-LLC while the Git remote is endomorphosis/complaint-generator, and it does not rewrite either document."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-02 Record documentation paths that no longer match the tree\nTargets: docs/architecture/documentation_drift.json, tests/test_cimp_mod_02.py\nRequired outcomes:\n- The drift record lists README and DOCUMENTATION_INDEX links whose targets are missing, including root ipfs_datasets_py documentation paths that are not present in this checkout.\n- It records that README workflow badges point at JusticeDAO-LLC while the Git remote is endomorphosis/complaint-generator, and it does not rewrite either document.\n\nParse README.md and DOCUMENTATION_INDEX.md for relative links. Classify each as present or missing.\nWrite docs/architecture/documentation_drift.json with schema complaint-generator/documentation-drift@1.\nThe test checks at least one known missing index target and the organization mismatch, and it checks that README.md bytes are unchanged by this task.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/architecture/documentation_drift.json",
+          "tests/test_cimp_mod_02.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/architecture/documentation_drift.json",
+          "tests/test_cimp_mod_02.py"
+        ],
+        "title": "Record documentation paths that no longer match the tree",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_02.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-doc-drift",
+      "task_id": "CIMP-MOD-02",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-01"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-03"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "The schema requires schema, module, version, owner_modules, and public_symbols, and version must be a major.minor.patch string.",
+          "The checker accepts a conforming interface module, accepts an empty public surface only when STATUS is facade-only, and rejects a missing version, a server-starting import, and a public symbol that is not defined in an owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-03 Define the versioned module-interface schema and checker\nTargets: docs/architecture/module_interface_schema.json, scripts/check_module_interface.py, tests/test_cimp_mod_03.py\nRequired outcomes:\n- The schema requires schema, module, version, owner_modules, and public_symbols, and version must be a major.minor.patch string.\n- The checker accepts a conforming interface module, accepts an empty public surface only when STATUS is facade-only, and rejects a missing version, a server-starting import, and a public symbol that is not defined in an owner module.\n\ndocs/architecture/module_interface_schema.json is complaint-generator/module-interface-schema@1 and describes INTERFACE_SCHEMA complaint-generator/module-interface@1.\nscripts/check_module_interface.py takes one module name and exits nonzero with a specific reason when the contract fails.\nThe test uses temporary conforming and nonconforming modules. It does not import the large application packages.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/architecture/module_interface_schema.json",
+          "scripts/check_module_interface.py",
+          "tests/test_cimp_mod_03.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/architecture/module_interface_schema.json",
+          "scripts/check_module_interface.py",
+          "tests/test_cimp_mod_03.py"
+        ],
+        "title": "Define the versioned module-interface schema and checker",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_03.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-contract-schema",
+      "task_id": "CIMP-MOD-03",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-04"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "applications.interface version 1.0.0 names the current public route and workspace entry symbols without importing complaint_workspace at interface import time.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-04 Publish the applications package interface\nTargets: applications/interface.py, tests/test_cimp_mod_04.py\nRequired outcomes:\n- applications.interface version 1.0.0 names the current public route and workspace entry symbols without importing complaint_workspace at interface import time.\n- The test rejects a symbol that is not defined in the declared owner module.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are applications.server, applications.case_routes, and applications.launcher. Choose symbols that already exist.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "applications/interface.py",
+          "tests/test_cimp_mod_04.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "applications/interface.py",
+          "tests/test_cimp_mod_04.py"
+        ],
+        "title": "Publish the applications package interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_04.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-04",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-05"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "complaint_generator.interface version 1.0.0 names the current entrypoint, workspace, and MCP symbols without importing a server at interface import time.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-05 Publish the complaint_generator package interface\nTargets: complaint_generator/interface.py, tests/test_cimp_mod_05.py\nRequired outcomes:\n- complaint_generator.interface version 1.0.0 names the current entrypoint, workspace, and MCP symbols without importing a server at interface import time.\n- The test rejects a symbol that is not defined in the declared owner module.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are complaint_generator.entrypoints, complaint_generator.workspace, and complaint_generator.mcp.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_generator/interface.py",
+          "tests/test_cimp_mod_05.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_generator/interface.py",
+          "tests/test_cimp_mod_05.py"
+        ],
+        "title": "Publish the complaint_generator package interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_05.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-05",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-06"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "mediator.interface version 1.0.0 names workflow and hook symbols that already exist, and importing the interface does not import mediator.mediator.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-06 Publish the mediator package interface\nTargets: mediator/interface.py, tests/test_cimp_mod_06.py\nRequired outcomes:\n- mediator.interface version 1.0.0 names workflow and hook symbols that already exist, and importing the interface does not import mediator.mediator.\n- The test rejects a symbol that is not defined in the declared owner module.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are mediator.workflow_service, mediator.hook_runtime, and mediator.state. Do not parse all of mediator.py if a smaller owner already defines the symbol.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "mediator/interface.py",
+          "tests/test_cimp_mod_06.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "mediator/interface.py",
+          "tests/test_cimp_mod_06.py"
+        ],
+        "title": "Publish the mediator package interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_06.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-06",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-07"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "complaint_phases.interface version 1.0.0 names phase, graph, and intake symbols that already exist, without executing a phase pipeline on import.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-07 Publish the complaint_phases package interface\nTargets: complaint_phases/interface.py, tests/test_cimp_mod_07.py\nRequired outcomes:\n- complaint_phases.interface version 1.0.0 names phase, graph, and intake symbols that already exist, without executing a phase pipeline on import.\n- The test rejects a symbol that is not defined in the declared owner module.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are complaint_phases.phase_manager, complaint_phases.knowledge_graph, and complaint_phases.intake_case_file.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_phases/interface.py",
+          "tests/test_cimp_mod_07.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_phases/interface.py",
+          "tests/test_cimp_mod_07.py"
+        ],
+        "title": "Publish the complaint_phases package interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_07.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-07",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-08"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "The accelerate integration interface version 1.0.0 names campaign and plan symbols that already exist, without starting a supervisor on import.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-08 Publish the ipfs_accelerate integration interface\nTargets: integrations/ipfs_accelerate/interface.py, tests/test_cimp_mod_08.py\nRequired outcomes:\n- The accelerate integration interface version 1.0.0 names campaign and plan symbols that already exist, without starting a supervisor on import.\n- The test rejects a symbol that is not defined in the declared owner module.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are integrations.ipfs_accelerate.campaign and integrations.ipfs_accelerate.improvement_plan.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "integrations/ipfs_accelerate/interface.py",
+          "tests/test_cimp_mod_08.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "integrations/ipfs_accelerate/interface.py",
+          "tests/test_cimp_mod_08.py"
+        ],
+        "title": "Publish the ipfs_accelerate integration interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_08.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-08",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-09"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "The datasets integration interface version 1.0.0 names loader and adapter symbols that already exist, without updating a submodule on import.",
+          "The test rejects a symbol that is not defined in the declared owner module."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-09 Publish the ipfs_datasets integration interface\nTargets: integrations/ipfs_datasets/interface.py, tests/test_cimp_mod_09.py\nRequired outcomes:\n- The datasets integration interface version 1.0.0 names loader and adapter symbols that already exist, without updating a submodule on import.\n- The test rejects a symbol that is not defined in the declared owner module.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are integrations.ipfs_datasets.loader and one other existing adapter module in that package. Do not import external.ipfs_datasets_py at interface import time.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "integrations/ipfs_datasets/interface.py",
+          "tests/test_cimp_mod_09.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "integrations/ipfs_datasets/interface.py",
+          "tests/test_cimp_mod_09.py"
+        ],
+        "title": "Publish the ipfs_datasets integration interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_09.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-09",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-10"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "The mike integration interface version 1.0.0 records the current connector symbols, or an explicit empty public surface when the package has no import-time API.",
+          "Importing the interface does not import the root mike compatibility directory or external.mike."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-10 Publish the mike integration interface\nTargets: integrations/mike/interface.py, tests/test_cimp_mod_10.py\nRequired outcomes:\n- The mike integration interface version 1.0.0 records the current connector symbols, or an explicit empty public surface when the package has no import-time API.\n- Importing the interface does not import the root mike compatibility directory or external.mike.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nInspect integrations/mike. An empty PUBLIC_SYMBOLS tuple is valid only with STATUS = \"facade-only\" and a reason string. Do not create a fake connector.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "integrations/mike/interface.py",
+          "tests/test_cimp_mod_10.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "integrations/mike/interface.py",
+          "tests/test_cimp_mod_10.py"
+        ],
+        "title": "Publish the mike integration interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_10.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-10",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-03"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-11"
+      ],
+      "goal_id": "MODG-contracts",
+      "metadata": {
+        "acceptance": [
+          "lib.interface version 1.0.0 names the current lib owners for logging, formal logic, and document helpers that already exist.",
+          "The test rejects a symbol that is not defined in the declared owner module and records that lib.deontic_logic and lib.legal_document are legacy owners pending the ownership tasks."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-11 Publish the lib package interface\nTargets: lib/interface.py, tests/test_cimp_mod_11.py\nRequired outcomes:\n- lib.interface version 1.0.0 names the current lib owners for logging, formal logic, and document helpers that already exist.\n- The test rejects a symbol that is not defined in the declared owner module and records that lib.deontic_logic and lib.legal_document are legacy owners pending the ownership tasks.\n\nCreate a new interface module only. Do not edit the package's existing implementation files.\nThe module defines INTERFACE_SCHEMA, INTERFACE_VERSION, OWNER_MODULES as a tuple of importable module names, and PUBLIC_SYMBOLS as a tuple of attribute names that already exist in those owner modules.\nConfirm each public symbol by parsing the owner module with ast, or by a lazy import of that module alone. Do not import mediator.mediator, applications.complaint_workspace, or document_pipeline from the interface module at import time.\nThe test imports only the new interface module and fails if a declared symbol is absent from the parsed owner, if the version is not 1.0.0, or if importing the interface starts a server or reads a private workspace path.\n\nOwner candidates are lib.log, lib.formal_logic, and lib.knowledge_graph_export. Mention the duplicate deontic and legal-document modules in INTERFACE_NOTES, not by merging them.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "lib/interface.py",
+          "tests/test_cimp_mod_11.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "lib/interface.py",
+          "tests/test_cimp_mod_11.py"
+        ],
+        "title": "Publish the lib package interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_11.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-contracts",
+      "task_id": "CIMP-MOD-11",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-04",
+        "CIMP-MOD-05",
+        "CIMP-MOD-06",
+        "CIMP-MOD-07",
+        "CIMP-MOD-08",
+        "CIMP-MOD-09",
+        "CIMP-MOD-10",
+        "CIMP-MOD-11"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-12"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "acceptance": [
+          "The baseline records the current internal imports that bypass a published interface, and the checker fails when a Python file newer than the baseline adds another bypass.",
+          "Existing large modules remain allowed by the baseline. The test proves a synthetic new bypass fails and an interface import passes."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-12 Ratchet imports so new files use the package interfaces\nTargets: docs/architecture/import_boundary_baseline.json, scripts/check_import_boundaries.py, tests/test_cimp_mod_12.py\nRequired outcomes:\n- The baseline records the current internal imports that bypass a published interface, and the checker fails when a Python file newer than the baseline adds another bypass.\n- Existing large modules remain allowed by the baseline. The test proves a synthetic new bypass fails and an interface import passes.\n\nA bypass is an import of mediator.mediator, applications.complaint_workspace, complaint_phases.denoiser, or document_pipeline from a file that is not the owner package and not listed in the baseline.\nDo not rewrite existing imports in this task. Generate the baseline from the current tree and store file path plus imported module.\nscripts/check_import_boundaries.py exits nonzero for an unlisted bypass. The test uses temporary files.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/architecture/import_boundary_baseline.json",
+          "scripts/check_import_boundaries.py",
+          "tests/test_cimp_mod_12.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/architecture/import_boundary_baseline.json",
+          "scripts/check_import_boundaries.py",
+          "tests/test_cimp_mod_12.py"
+        ],
+        "title": "Ratchet imports so new files use the package interfaces",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_12.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-import-ratchet",
+      "task_id": "CIMP-MOD-12",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-05"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-13"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "acceptance": [
+          "The ownership record names complaint_generator.entrypoints as the owner and lists applications.cli, applications.complaint_cli, and complaint_generator.cli as callers or duplicates.",
+          "No CLI body is merged unless the test shows the public callable names and signatures already match. Divergent signatures stay recorded and unmodified."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-13 Give CLI entry points one versioned owner\nTargets: complaint_generator/entrypoint_ownership.json, tests/test_cimp_mod_13.py\nRequired outcomes:\n- The ownership record names complaint_generator.entrypoints as the owner and lists applications.cli, applications.complaint_cli, and complaint_generator.cli as callers or duplicates.\n- No CLI body is merged unless the test shows the public callable names and signatures already match. Divergent signatures stay recorded and unmodified.\n\nCompare the public functions with ast. Write complaint_generator/entrypoint_ownership.json with schema complaint-generator/entrypoint-ownership@1 and interface_version 1.0.0.\nA shim may be added only inside complaint_generator/entrypoints.py when it re-exports an existing function without changing argv behavior. Otherwise write the record only.\nThe test fails if a recorded callable is absent, and it fails if a shim changes a function signature.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_generator/entrypoint_ownership.json",
+          "tests/test_cimp_mod_13.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_generator/entrypoint_ownership.json",
+          "tests/test_cimp_mod_13.py"
+        ],
+        "title": "Give CLI entry points one versioned owner",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_13.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-entry-shims",
+      "task_id": "CIMP-MOD-13",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-05"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-14"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "acceptance": [
+          "The ownership record names the current MCP owner modules and the duplicate server modules in applications and complaint_generator.",
+          "No server is started, and no protocol response is treated as success when the owner module cannot be imported."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-14 Give MCP servers one versioned owner\nTargets: complaint_generator/mcp_ownership.json, tests/test_cimp_mod_14.py\nRequired outcomes:\n- The ownership record names the current MCP owner modules and the duplicate server modules in applications and complaint_generator.\n- No server is started, and no protocol response is treated as success when the owner module cannot be imported.\n\nInspect applications/complaint_mcp_server.py, applications/complaint_mcp_protocol.py, complaint_generator/mcp.py, and complaint_generator/mcp_server.py.\nWrite complaint_generator/mcp_ownership.json with schema complaint-generator/mcp-ownership@1 and interface_version 1.0.0.\nDo not bind a new network socket. The test parses the record and the AST of the named owners.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_generator/mcp_ownership.json",
+          "tests/test_cimp_mod_14.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_generator/mcp_ownership.json",
+          "tests/test_cimp_mod_14.py"
+        ],
+        "title": "Give MCP servers one versioned owner",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_14.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-entry-shims",
+      "task_id": "CIMP-MOD-14",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-07",
+        "CIMP-MOD-11"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-15"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "acceptance": [
+          "The record compares public functions in lib/deontic_logic.py and complaint_phases/deontic_logic.py and names one owner only when the signatures match.",
+          "When the signatures differ, both implementations stay unchanged and the record status is divergent."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-15 Record the deontic-logic owner without merging implementations\nTargets: docs/architecture/deontic_logic_ownership.json, tests/test_cimp_mod_15.py\nRequired outcomes:\n- The record compares public functions in lib/deontic_logic.py and complaint_phases/deontic_logic.py and names one owner only when the signatures match.\n- When the signatures differ, both implementations stay unchanged and the record status is divergent.\n\nUse ast only. Do not execute either module and do not delete either file.\nSchema complaint-generator/duplicate-owner@1, interface_version 1.0.0.\nThe test checks the status against the current signatures.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/architecture/deontic_logic_ownership.json",
+          "tests/test_cimp_mod_15.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/architecture/deontic_logic_ownership.json",
+          "tests/test_cimp_mod_15.py"
+        ],
+        "title": "Record the deontic-logic owner without merging implementations",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_15.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-duplicate-owners",
+      "task_id": "CIMP-MOD-15",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-07"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-16"
+      ],
+      "goal_id": "MODG-boundaries",
+      "metadata": {
+        "acceptance": [
+          "The facade version 1.0.0 re-exports only symbols already defined in complaint_phases/legal_document.py and records lib/legal_document.py and mediator/formal_document.py as separate owners.",
+          "Importing the facade does not import mediator.mediator, and none of the three implementation bodies is rewritten."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-16 Add a legal-document facade without merging the three owners\nTargets: complaint_phases/legal_document_facade.py, docs/architecture/legal_document_owners.json, tests/test_cimp_mod_16.py\nRequired outcomes:\n- The facade version 1.0.0 re-exports only symbols already defined in complaint_phases/legal_document.py and records lib/legal_document.py and mediator/formal_document.py as separate owners.\n- Importing the facade does not import mediator.mediator, and none of the three implementation bodies is rewritten.\n\nThe facade defines INTERFACE_SCHEMA and INTERFACE_VERSION. The JSON record uses schema complaint-generator/duplicate-owner@1.\nThe test parses all three owners and fails if the facade exposes a symbol that complaint_phases/legal_document.py does not define.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_phases/legal_document_facade.py",
+          "docs/architecture/legal_document_owners.json",
+          "tests/test_cimp_mod_16.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_phases/legal_document_facade.py",
+          "docs/architecture/legal_document_owners.json",
+          "tests/test_cimp_mod_16.py"
+        ],
+        "title": "Add a legal-document facade without merging the three owners",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_16.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-duplicate-owners",
+      "task_id": "CIMP-MOD-16",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-01",
+        "CIMP-MOD-02"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-17"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The README names the current packages, the external submodule checkouts, and the endomorphosis/complaint-generator remote, and it no longer presents JusticeDAO-LLC workflow badges as this repository's status.",
+          "It describes versioned package interfaces and tells readers not to import giant implementation modules from new code. It does not link to root session or batch reports."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-17 Rewrite the README around the current modules and remote\nTargets: README.md, tests/test_cimp_mod_17.py\nRequired outcomes:\n- The README names the current packages, the external submodule checkouts, and the endomorphosis/complaint-generator remote, and it no longer presents JusticeDAO-LLC workflow badges as this repository's status.\n- It describes versioned package interfaces and tells readers not to import giant implementation modules from new code. It does not link to root session or batch reports.\n\nReplace the stale overview with the current intake, mediator, phase, application, and integration layout.\nKeep the description of complaint preparation accurate. Do not claim a feature exists unless the module map or source names it.\nThe test reads README.md and fails on JusticeDAO-LLC badge URLs, missing-package claims, and links to SESSION_ or BATCH_ root files.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "README.md",
+          "tests/test_cimp_mod_17.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "README.md",
+          "tests/test_cimp_mod_17.py"
+        ],
+        "title": "Rewrite the README around the current modules and remote",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_17.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-root-docs",
+      "task_id": "CIMP-MOD-17",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-01",
+        "CIMP-MOD-02"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-18"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "Every relative link in DOCUMENTATION_INDEX.md resolves to a file in this checkout, including the replacement for the missing root ipfs_datasets_py logic index.",
+          "The index points at docs/architecture/repository_module_map.json and the versioned interface schema, and it does not describe tests/README.md as a 19-file suite unless that is still true."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-18 Rebuild the documentation index from files that exist\nTargets: DOCUMENTATION_INDEX.md, tests/test_cimp_mod_18.py\nRequired outcomes:\n- Every relative link in DOCUMENTATION_INDEX.md resolves to a file in this checkout, including the replacement for the missing root ipfs_datasets_py logic index.\n- The index points at docs/architecture/repository_module_map.json and the versioned interface schema, and it does not describe tests/README.md as a 19-file suite unless that is still true.\n\nRebuild DOCUMENTATION_INDEX.md from the current tree. Drop or retarget links recorded as missing by the drift report.\nThe test extracts relative links and fails when a target is absent. It does not fetch external documentation.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "DOCUMENTATION_INDEX.md",
+          "tests/test_cimp_mod_18.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "DOCUMENTATION_INDEX.md",
+          "tests/test_cimp_mod_18.py"
+        ],
+        "title": "Rebuild the documentation index from files that exist",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_18.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-root-docs",
+      "task_id": "CIMP-MOD-18",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-17",
+        "CIMP-MOD-18"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-19"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "Root session, batch, old-README, and completion-summary markdown listed by the module map moves to docs/archive/sessions, and README.md, DOCUMENTATION_INDEX.md, CONTRIBUTING.md, TESTING.md, and TODO.md stay at the root.",
+          "The archive index lists every moved file, and no remaining root markdown link in the README or documentation index points at a moved file."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-19 Archive root session reports out of the repository root\nTargets: docs/archive/sessions/INDEX.md, tests/test_cimp_mod_19.py\nRequired outcomes:\n- Root session, batch, old-README, and completion-summary markdown listed by the module map moves to docs/archive/sessions, and README.md, DOCUMENTATION_INDEX.md, CONTRIBUTING.md, TESTING.md, and TODO.md stay at the root.\n- The archive index lists every moved file, and no remaining root markdown link in the README or documentation index points at a moved file.\n\nMove only historical root markdown. Do not move plan files under docs/task_boards or architecture records created by earlier tasks.\nUse git mv so history is preserved. docs/archive/sessions/INDEX.md is schema-free markdown with one relative link per archived file.\nThe test checks the keep-list remains at the root and every index link resolves.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/archive/sessions/INDEX.md",
+          "tests/test_cimp_mod_19.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/archive/sessions/INDEX.md",
+          "tests/test_cimp_mod_19.py"
+        ],
+        "title": "Archive root session reports out of the repository root",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_19.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-root-docs",
+      "task_id": "CIMP-MOD-19",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-04"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-20"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The applications README names interface version 1.0.0, the owner modules, and the rule that new code imports applications.interface rather than complaint_workspace.",
+          "Every relative link in that README resolves, and the test imports applications.interface."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-20 Document the applications package and its interface\nTargets: applications/README.md, tests/test_cimp_mod_20.py\nRequired outcomes:\n- The applications README names interface version 1.0.0, the owner modules, and the rule that new code imports applications.interface rather than complaint_workspace.\n- Every relative link in that README resolves, and the test imports applications.interface.\n\nWrite applications/README.md from the interface module and the module map. Do not document a route the interface does not name.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "applications/README.md",
+          "tests/test_cimp_mod_20.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "applications/README.md",
+          "tests/test_cimp_mod_20.py"
+        ],
+        "title": "Document the applications package and its interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_20.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-docs",
+      "task_id": "CIMP-MOD-20",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-06"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-21"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The mediator readme names interface version 1.0.0 and states that mediator.py remains the legacy implementation behind the interface.",
+          "Every relative link resolves, and the test imports mediator.interface without importing mediator.mediator."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-21 Document the mediator package and its interface\nTargets: mediator/readme.md, tests/test_cimp_mod_21.py\nRequired outcomes:\n- The mediator readme names interface version 1.0.0 and states that mediator.py remains the legacy implementation behind the interface.\n- Every relative link resolves, and the test imports mediator.interface without importing mediator.mediator.\n\nUpdate the existing mediator/readme.md. Do not create a second README.md that splits the package documentation.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "mediator/readme.md",
+          "tests/test_cimp_mod_21.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "mediator/readme.md",
+          "tests/test_cimp_mod_21.py"
+        ],
+        "title": "Document the mediator package and its interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_21.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-docs",
+      "task_id": "CIMP-MOD-21",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-07"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-22"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The phase README names interface version 1.0.0 and distinguishes the phase pipeline from the separate legal and deontic owners.",
+          "Every relative link resolves, and the test imports complaint_phases.interface."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-22 Document the complaint_phases package and its interface\nTargets: complaint_phases/README.md, tests/test_cimp_mod_22.py\nRequired outcomes:\n- The phase README names interface version 1.0.0 and distinguishes the phase pipeline from the separate legal and deontic owners.\n- Every relative link resolves, and the test imports complaint_phases.interface.\n\nUpdate complaint_phases/README.md. Do not describe a three-phase diffusion product claim that the interface does not expose.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_phases/README.md",
+          "tests/test_cimp_mod_22.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_phases/README.md",
+          "tests/test_cimp_mod_22.py"
+        ],
+        "title": "Document the complaint_phases package and its interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_22.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-docs",
+      "task_id": "CIMP-MOD-22",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-08",
+        "CIMP-MOD-09",
+        "CIMP-MOD-10"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-23"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The integrations README names the accelerate, datasets, and mike interface versions and states that external/ pins are not advanced by documentation work.",
+          "Every relative link resolves, and the test imports the three integration interface modules."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-23 Document the integration packages and their interfaces\nTargets: integrations/README.md, tests/test_cimp_mod_23.py\nRequired outcomes:\n- The integrations README names the accelerate, datasets, and mike interface versions and states that external/ pins are not advanced by documentation work.\n- Every relative link resolves, and the test imports the three integration interface modules.\n\nCreate integrations/README.md. Point submodule checkouts at external/ and identify the empty root ipfs_datasets_py and mike directories as compatibility paths, not the SDK trees.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "integrations/README.md",
+          "tests/test_cimp_mod_23.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "integrations/README.md",
+          "tests/test_cimp_mod_23.py"
+        ],
+        "title": "Document the integration packages and their interfaces",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_23.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-docs",
+      "task_id": "CIMP-MOD-23",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-05"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-24"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The package README names interface version 1.0.0 and names the CLI and MCP modules that the interface already lists.",
+          "Every relative link resolves, and the test imports complaint_generator.interface."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-24 Document the complaint_generator package and its interface\nTargets: complaint_generator/README.md, tests/test_cimp_mod_24.py\nRequired outcomes:\n- The package README names interface version 1.0.0 and names the CLI and MCP modules that the interface already lists.\n- Every relative link resolves, and the test imports complaint_generator.interface.\n\nCreate complaint_generator/README.md. Do not link to entrypoint_ownership.json or mcp_ownership.json; those files belong to later tasks. Describe the current modules by paths that already exist.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "complaint_generator/README.md",
+          "tests/test_cimp_mod_24.py"
+        ],
+        "priority": "P1",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "complaint_generator/README.md",
+          "tests/test_cimp_mod_24.py"
+        ],
+        "title": "Document the complaint_generator package and its interface",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_24.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-package-docs",
+      "task_id": "CIMP-MOD-24",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-12",
+        "CIMP-MOD-17"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-25"
+      ],
+      "goal_id": "MODG-docs",
+      "metadata": {
+        "acceptance": [
+          "The guide states the package map, the interface version, the import ratchet, the submodule pin policy, and the files new work must not edit.",
+          "It tells an operator how to run scripts/check_module_interface.py and scripts/check_import_boundaries.py, and every relative link resolves."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-25 Write the repository operator guide for module boundaries\nTargets: docs/architecture/REPOSITORY.md, tests/test_cimp_mod_25.py\nRequired outcomes:\n- The guide states the package map, the interface version, the import ratchet, the submodule pin policy, and the files new work must not edit.\n- It tells an operator how to run scripts/check_module_interface.py and scripts/check_import_boundaries.py, and every relative link resolves.\n\ndocs/architecture/REPOSITORY.md is the current architecture guide. Include the parallel work rule: tasks may edit only their declared targets.\nState that origin/main and origin/master already contain the published UX work, and this reorganization does not reopen those boards.\nThe test resolves links and checks the pin and quarantine warnings are present.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "docs/architecture/REPOSITORY.md",
+          "tests/test_cimp_mod_25.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "docs/architecture/REPOSITORY.md",
+          "tests/test_cimp_mod_25.py"
+        ],
+        "title": "Write the repository operator guide for module boundaries",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_25.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-operator-guide",
+      "task_id": "CIMP-MOD-25",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.complaint_improvement"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "CIMP-MOD-13",
+        "CIMP-MOD-14",
+        "CIMP-MOD-15",
+        "CIMP-MOD-16",
+        "CIMP-MOD-19",
+        "CIMP-MOD-20",
+        "CIMP-MOD-21",
+        "CIMP-MOD-22",
+        "CIMP-MOD-23",
+        "CIMP-MOD-24",
+        "CIMP-MOD-25"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "test.CIMP-MOD-26"
+      ],
+      "goal_id": "MODG-closure",
+      "metadata": {
+        "acceptance": [
+          "The acceptance command checks every published interface version, the import baseline, the documentation index links, and the archive index, and it exits nonzero when any check fails.",
+          "The completion contract records completion_authority false and does not mark any CIMP-MOD task complete."
+        ],
+        "completion": "validation",
+        "implementation_prompt": "Implement this bounded repository-organization task on the current complaint-generator source.\nConstraints for this task:\n- Preserve current behavior. Add versioned facades, ownership records, and documentation. Do not rewrite applications/complaint_workspace.py, mediator/mediator.py, mediator/claim_support_hooks.py, complaint_phases/denoiser.py, document_pipeline.py, or other multi-hundred-kilobyte modules.\n- Do not edit external/, submodule gitlinks, or dependency pins. Do not run git submodule update, and do not initialize nested submodules.\n- Do not touch campaign runtime state, quarantine records, DuckDB, launcher files, attempt counters, or other campaigns.\n- Write only the declared target files. A focused pytest module must contain meaningful positive and negative cases and zero skips.\n- Run only the declared validation command. Do not start a supervisor, server, browser, or provider.\n- Public interface modules, when this task creates one, must define INTERFACE_SCHEMA = \"complaint-generator/module-interface@1\" and INTERFACE_VERSION = \"1.0.0\". They must import without starting a server or reading private workspace state.\n- Missing capability is an explicit unavailable result. Do not catch ImportError and report success.\n- The completed intake, mediator-grounding, GUI collaboration, and GUI UX boards stay historical. Do not edit them.\n\nTask: CIMP-MOD-26 Add the repository-organization acceptance command\nTargets: scripts/validate_repository_organization.py, docs/task_boards/complaint_repository_reorganization_completion_contract.json, tests/test_cimp_mod_26.py\nRequired outcomes:\n- The acceptance command checks every published interface version, the import baseline, the documentation index links, and the archive index, and it exits nonzero when any check fails.\n- The completion contract records completion_authority false and does not mark any CIMP-MOD task complete.\n\nThe validator is a read-only command. It must not edit files, start a supervisor, or write campaign state.\nThe completion contract schema is complaint-generator/repository-reorganization-completion@1 with completion_authority false.\nThe test runs the validator against the current tree and against a temporary broken interface version.",
+        "implementation_provider": "grok",
+        "model": "grok-4.7",
+        "outputs": [
+          "scripts/validate_repository_organization.py",
+          "docs/task_boards/complaint_repository_reorganization_completion_contract.json",
+          "tests/test_cimp_mod_26.py"
+        ],
+        "priority": "P0",
+        "provider": {
+          "allow_fallback": false,
+          "model": "grok-4.7",
+          "provider": "grok_cli",
+          "router": "ipfs_accelerate_py.llm_router"
+        },
+        "provider_role": "grok-only",
+        "targets": [
+          "scripts/validate_repository_organization.py",
+          "docs/task_boards/complaint_repository_reorganization_completion_contract.json",
+          "tests/test_cimp_mod_26.py"
+        ],
+        "title": "Add the repository-organization acceptance command",
+        "validation_commands": [
+          "python -m pytest -q tests/test_cimp_mod_26.py"
+        ]
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "MODS-acceptance",
+      "task_id": "CIMP-MOD-26",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    }
+  ],
+  "temporal_constraints": [],
+  "trace_bound": 1,
+  "vocabulary_profile_id": "supervisor-reviewed",
+  "vocabulary_version": 2
+}
