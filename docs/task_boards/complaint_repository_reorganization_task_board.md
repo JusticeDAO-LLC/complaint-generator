@@ -632,7 +632,7 @@ Implementation instructions:
 
 ## CIMP-MOD-15 Record the deontic-logic owner without merging implementations
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
