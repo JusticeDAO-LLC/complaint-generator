@@ -227,7 +227,7 @@ Implementation instructions:
 
 ## CIMP-MOD-06 Publish the mediator package interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
