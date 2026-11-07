@@ -457,7 +457,7 @@ Implementation instructions:
 
 ## CIMP-MOD-11 Publish the lib package interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
