@@ -92,7 +92,7 @@ Implementation instructions:
 
 ## CIMP-MOD-03 Define the versioned module-interface schema and checker
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
