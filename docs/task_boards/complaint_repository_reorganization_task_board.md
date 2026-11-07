@@ -49,7 +49,7 @@ Implementation instructions:
 
 ## CIMP-MOD-02 Record documentation paths that no longer match the tree
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
