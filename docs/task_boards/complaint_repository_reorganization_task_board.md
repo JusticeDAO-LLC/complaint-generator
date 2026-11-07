@@ -760,7 +760,7 @@ Implementation instructions:
 
 ## CIMP-MOD-18 Rebuild the documentation index from files that exist
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
