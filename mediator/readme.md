@@ -1,6 +1,34 @@
 # The Mediator
 
-Core orchestration module of the complaint generator. Sits between the frontend application and the backend services, coordinating all complaint processing workflows.
+Core orchestration module of the complaint generator. Sits between the frontend application and the backend services, coordinating all complaint processing workflows. The package directory is `mediator`, and its initializer is [`mediator/__init__.py`](__init__.py). The repository module map records this package at [`docs/architecture/repository_module_map.json`](../docs/architecture/repository_module_map.json).
+
+## Interface
+
+Public entry for new code is [`mediator.interface`](interface.py).
+
+| Field | Value |
+| --- | --- |
+| Schema | `complaint-generator/module-interface@1` |
+| Interface version | `1.0.0` |
+| Module | `mediator.interface` |
+
+The interface version is `1.0.0`. `INTERFACE_VERSION` is `1.0.0`. Importing `mediator.interface` records owner modules and symbol names. That import does not import `mediator.mediator`, start a server, or read a private workspace path.
+
+mediator.py remains the legacy implementation behind the interface. New code imports `mediator.interface` rather than `mediator.mediator`. [`mediator/mediator.py`](mediator.py) is not an owner of this interface and is not imported by the facade.
+
+## Owner modules
+
+The interface names these owner modules and no others:
+
+| Owner module | Source | Public symbols |
+| --- | --- | --- |
+| `mediator.workflow_service` | [`mediator/workflow_service.py`](workflow_service.py) | `WorkflowActionService` |
+| `mediator.hook_runtime` | [`mediator/hook_runtime.py`](hook_runtime.py) | `HookExecutionContext`, `bind_hook_execution_context`, `authorize_hook_execution`, `hook_runtime_identity` |
+| `mediator.state` | [`mediator/state.py`](state.py) | `State`, `extract_chat_history_context_strings_from_state` |
+
+`WorkflowActionService` is the public workflow symbol on `mediator.workflow_service`. Hook symbols are `HookExecutionContext`, `bind_hook_execution_context`, `authorize_hook_execution`, and `hook_runtime_identity` on `mediator.hook_runtime`. State symbols are `State` and `extract_chat_history_context_strings_from_state` on `mediator.state`.
+
+This document names only those public symbols. It does not add a symbol the interface does not name.
 
 ## Overview
 
@@ -11,9 +39,9 @@ Arrow directions indicate dependencies.
 
 ## Core Components
 
-### Mediator Class (`mediator.py`)
+### Mediator Class ([`mediator.py`](mediator.py))
 
-The main orchestration class that coordinates all complaint processing activities.
+mediator.py remains the legacy implementation behind the interface. The `Mediator` class coordinates complaint processing activities. It is not a public symbol of interface version `1.0.0`.
 
 **Key Methods:**
 - `analyze_complaint_legal_issues()` - Run 4-stage legal analysis pipeline
@@ -30,7 +58,7 @@ The main orchestration class that coordinates all complaint processing activitie
 - `advance_to_formalization_phase()` - Transition to formalization phase
 - `get_three_phase_status()` - Get current status of three-phase workflow
 
-### State Management (`state.py`)
+### State Management ([`state.py`](state.py))
 
 DuckDB-backed persistent state management for evidence, legal authorities, and processing state.
 
@@ -52,7 +80,7 @@ The mediator uses a hook-based architecture for extensibility. Each hook is impl
 
 The mediator instantiates these hook classes during initialization and calls their methods directly rather than using a generic `.execute()` interface.
 
-#### Legal Analysis Hooks (`legal_hooks.py`)
+#### Legal Analysis Hooks ([`legal_hooks.py`](legal_hooks.py))
 
 Four-stage legal analysis pipeline:
 
@@ -65,7 +93,7 @@ Four-stage legal analysis pipeline:
 4. **QuestionGenerationHook** - Create evidence-gathering questions
    - Methods: `generate_questions(requirements)` → question list
 
-#### Legal Research Hooks (`legal_authority_hooks.py`)
+#### Legal Research Hooks ([`legal_authority_hooks.py`](legal_authority_hooks.py))
 
 Multi-source legal research with automated discovery:
 
@@ -73,7 +101,7 @@ Multi-source legal research with automated discovery:
 - **LegalAuthorityStorageHook** - Store findings in DuckDB with relevance scoring
 - **LegalAuthorityAnalysisHook** - AI-powered relevance analysis and recommendations
 
-#### Evidence Management Hooks (`evidence_hooks.py`)
+#### Evidence Management Hooks ([`evidence_hooks.py`](evidence_hooks.py))
 
 IPFS-based evidence storage with DuckDB metadata:
 
@@ -81,7 +109,7 @@ IPFS-based evidence storage with DuckDB metadata:
 - **EvidenceStateHook** - Track evidence metadata (type, description, claim association)
 - **EvidenceAnalysisHook** - Identify gaps and generate recommendations
 
-#### Web Evidence Discovery Hooks (`web_evidence_hooks.py`)
+#### Web Evidence Discovery Hooks ([`web_evidence_hooks.py`](web_evidence_hooks.py))
 
 Automated evidence discovery from web sources:
 
@@ -90,7 +118,7 @@ Automated evidence discovery from web sources:
 - Automatic keyword generation from claims
 - Domain filtering and content classification
 
-#### Legal Corpus RAG Hooks (`legal_corpus_hooks.py`)
+#### Legal Corpus RAG Hooks ([`legal_corpus_hooks.py`](legal_corpus_hooks.py))
 
 Retrieval-Augmented Generation over legal corpus:
 
@@ -103,7 +131,7 @@ Retrieval-Augmented Generation over legal corpus:
 
 ## Three-Phase Complaint Processing
 
-The mediator coordinates a sophisticated three-phase workflow (see `docs/THREE_PHASE_SYSTEM.md`):
+The mediator coordinates a sophisticated three-phase workflow (see [docs/THREE_PHASE_SYSTEM.md](../docs/THREE_PHASE_SYSTEM.md)):
 
 ### Phase 1: Intake & Denoising
 - Build knowledge graph (entities, relationships)
