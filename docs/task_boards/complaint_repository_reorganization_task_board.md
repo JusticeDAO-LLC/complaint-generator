@@ -589,7 +589,7 @@ Implementation instructions:
 
 ## CIMP-MOD-14 Give MCP servers one versioned owner
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
