@@ -808,7 +808,7 @@ Implementation instructions:
 
 ## CIMP-CON-24 Delegate claim-support hook diagnostics to a sibling module
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
