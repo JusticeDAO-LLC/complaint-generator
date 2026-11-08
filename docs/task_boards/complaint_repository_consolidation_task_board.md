@@ -391,7 +391,7 @@ Implementation instructions:
 
 ## CIMP-CON-12 Make the applications interface lazily export its public symbols
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
