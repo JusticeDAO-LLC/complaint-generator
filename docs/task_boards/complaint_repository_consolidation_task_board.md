@@ -563,7 +563,7 @@ Implementation instructions:
 
 ## CIMP-CON-17 Extract the large claim-support review builders
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
