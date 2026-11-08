@@ -425,7 +425,7 @@ Implementation instructions:
 
 ## CIMP-CON-13 Export Mediator from mediator.interface and switch the small callers
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
