@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from collections import Counter
 
-from workflow_phase_guidance import build_workflow_phase_plan
+from complaint_phases.document_surface import build_workflow_phase_plan
 
 logger = logging.getLogger(__name__)
 

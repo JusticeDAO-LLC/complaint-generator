@@ -13,19 +13,18 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from document_pipeline import DEFAULT_OUTPUT_DIR, _build_claim_checklist_chip_labels as _pipeline_claim_chip_labels
-from .fastapi_compat import attach_router_routes
-from integrations.ipfs_datasets.storage import retrieve_bytes
-from intake_status import (
+from complaint_phases.document_surface import (
+    DEFAULT_OUTPUT_DIR,
+    _build_claim_checklist_chip_labels as _pipeline_claim_chip_labels,
     build_intake_case_review_summary,
     build_intake_status_summary,
     build_intake_warning_entries,
-)
-from workflow_phase_guidance import (
     humanize_workflow_priority_label,
     normalize_workflow_phase_recommended_actions,
     resolve_prioritized_workflow_phase,
 )
+from .fastapi_compat import attach_router_routes
+from integrations.ipfs_datasets.storage import retrieve_bytes
 
 
 FORMAL_COMPLAINT_DOCUMENT_REQUEST_EXAMPLE = {
