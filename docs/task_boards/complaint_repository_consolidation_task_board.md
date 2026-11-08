@@ -494,7 +494,7 @@ Implementation instructions:
 
 ## CIMP-CON-15 Route the CLI and phase manager through the complaint_phases interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
