@@ -773,7 +773,7 @@ Implementation instructions:
 
 ## CIMP-CON-23 Delegate denoiser question-selection methods to a sibling module
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
