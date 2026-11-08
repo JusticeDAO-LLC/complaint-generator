@@ -357,7 +357,7 @@ Implementation instructions:
 
 ## CIMP-CON-11 Move the claim-support review body out of the repository root
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
