@@ -528,7 +528,7 @@ Implementation instructions:
 
 ## CIMP-CON-16 Point document and review callers at versioned surfaces
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
