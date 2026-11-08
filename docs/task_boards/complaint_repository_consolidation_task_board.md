@@ -460,7 +460,7 @@ Implementation instructions:
 
 ## CIMP-CON-14 Route hook runtime and workflow service through mediator.interface
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
