@@ -668,7 +668,7 @@ Implementation instructions:
 
 ## CIMP-CON-20 Extract document-optimization summary functions
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
