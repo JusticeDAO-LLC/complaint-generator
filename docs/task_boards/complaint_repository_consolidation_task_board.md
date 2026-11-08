@@ -633,7 +633,7 @@ Implementation instructions:
 
 ## CIMP-CON-19 Delegate document-pipeline readiness methods to a sibling module
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
