@@ -2288,7 +2288,7 @@ def _qualify_saved_host(
     )
     from mediator.evidence_hooks import EvidenceStorageHook
     from mediator.legal_authority_hooks import LegalAuthoritySearchHook, LegalAuthorityStorageHook
-    from mediator.mediator import Mediator
+    from mediator.interface import Mediator
 
     def failed(code: str, status: str, *, consent: bool = False, artifact: bool = False, index: bool = False) -> dict[str, Any]:
         return {
@@ -3916,7 +3916,7 @@ def qualify_claim_support_and_legal_authority(payload: Mapping[str, Any]) -> dic
     import tempfile
     from pathlib import Path
 
-    from mediator.claim_support_hooks import ClaimSupportHook, apply_qualified_claim_support
+    from mediator.interface import ClaimSupportHook, apply_qualified_claim_support
     from mediator.legal_authority_hooks import (
         LegalAuthorityAnalysisHook,
         LegalAuthorityStorageHook,
