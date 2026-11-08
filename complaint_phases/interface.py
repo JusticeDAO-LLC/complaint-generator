@@ -1,14 +1,21 @@
 """Versioned public surface for the complaint_phases package.
 
 Importing this module records owner modules and symbol names. It does not
-import those owners, start a phase pipeline, start a server, or read a
-private workspace path. Call ``missing_public_symbols`` to confirm each name
-by parsing owner source.
+import those owners, import ``complaint_phases.denoiser``, start a phase
+pipeline, start a server, or read a private workspace path.
+``ComplaintDenoiser``, ``project_stopping_policy``,
+``publish_authorized_dependency_action``, and ``format_terminal_why`` are
+lazy exports: the first access of each name loads that attribute from
+``complaint_phases.denoiser``. ``redact_diagnostic_value`` is loaded the same
+way so callers can keep diagnostic redaction without importing the denoiser
+module themselves. Call ``missing_public_symbols`` to confirm each catalogued
+name by parsing owner source.
 """
 
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 INTERFACE_SCHEMA = "complaint-generator/module-interface@1"
@@ -176,6 +183,36 @@ def _is_main_guard(node: ast.stmt) -> bool:
         and isinstance(right, ast.Constant)
         and right.value == "__main__"
     )
+
+
+# Loaded only when the attribute is accessed. Importing this module does not
+# import complaint_phases.denoiser.
+_LAZY_EXPORTS = {
+    "ComplaintDenoiser": ("complaint_phases.denoiser", "ComplaintDenoiser"),
+    "project_stopping_policy": ("complaint_phases.denoiser", "project_stopping_policy"),
+    "publish_authorized_dependency_action": (
+        "complaint_phases.denoiser",
+        "publish_authorized_dependency_action",
+    ),
+    "format_terminal_why": ("complaint_phases.denoiser", "format_terminal_why"),
+    "redact_diagnostic_value": ("complaint_phases.denoiser", "redact_diagnostic_value"),
+}
+
+
+def __getattr__(name: str):
+    """Load a facade name from complaint_phases.denoiser on first access."""
+    spec = _LAZY_EXPORTS.get(name)
+    if spec is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr = spec
+    owner = importlib.import_module(module_name)
+    value = getattr(owner, attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))
 
 
 def _assigned_names(target: ast.expr) -> set[str]:

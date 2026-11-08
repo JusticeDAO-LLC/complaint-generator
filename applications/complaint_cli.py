@@ -994,14 +994,14 @@ def chat(user_id: str = "demo-user", max_turns: int = 0, privacy_mode: str = "")
         _require_readable_session(payload)
         trace = (payload.get("session") or {}).get("router_trace") or {}
         if trace.get("diagnostics"):
-            from complaint_phases.denoiser import redact_diagnostic_value
+            from complaint_phases.interface import redact_diagnostic_value
 
             terminal_echo(
                 "Router diagnostics: "
                 + json.dumps(redact_diagnostic_value(trace["diagnostics"]), sort_keys=True)
             )
         if isinstance(payload.get("diagnostic_receipt"), dict):
-            from complaint_phases.denoiser import redact_diagnostic_value
+            from complaint_phases.interface import redact_diagnostic_value
 
             terminal_echo(
                 "Why diagnostic receipt: "

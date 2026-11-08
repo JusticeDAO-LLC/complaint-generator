@@ -83,7 +83,7 @@ def _utc_now_isoformat() -> str:
 
 def _attach_stopping_policy(action: Dict[str, Any], stop: Dict[str, Any], *, paused: bool = False) -> Dict[str, Any]:
     """Copy the truthful stopping projection onto a phase action."""
-    from complaint_phases.denoiser import project_stopping_policy
+    from complaint_phases.interface import project_stopping_policy
 
     projected = project_stopping_policy(stop, paused=paused)
     action['outcome'] = projected['outcome']
@@ -1394,7 +1394,7 @@ class PhaseManager:
 
     def explain_current_inquiry(self) -> Dict[str, Any]:
         """Return the terminal /why payload for the current explained question."""
-        from complaint_phases.denoiser import format_terminal_why
+        from complaint_phases.interface import format_terminal_why
 
         inquiry = self.phase_data[ComplaintPhase.INTAKE].get("current_explained_inquiry")
         return format_terminal_why(inquiry if isinstance(inquiry, dict) else None)
