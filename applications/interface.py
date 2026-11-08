@@ -2,7 +2,9 @@
 
 Importing this module records owner modules and symbol names. It does not
 import those owners, start a server, or read a private workspace path.
-Call ``missing_public_symbols`` to confirm each name by parsing owner source.
+Public symbols are lazy exports: the first access of each name loads that
+attribute from its owner module. Call ``missing_public_symbols`` to confirm
+each catalogued name by parsing owner source.
 
 Public route symbols live on ``applications.server`` and
 ``applications.case_routes``. Workspace entry symbols live on
@@ -13,6 +15,7 @@ owner and is not imported.
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 INTERFACE_SCHEMA = "complaint-generator/module-interface@1"
@@ -160,6 +163,40 @@ def _import_time_statements(body: list[ast.stmt]) -> list[ast.stmt]:
             statements.extend(_import_time_statements(node.orelse))
             statements.extend(_import_time_statements(node.finalbody))
     return statements
+
+
+# Loaded only when the attribute is accessed. Importing this module does not
+# import applications.complaint_workspace, mediator.mediator, or document_pipeline.
+_LAZY_EXPORTS = {
+    "SERVER": ("applications.server", "SERVER"),
+    "CASE_ROUTE_KINDS": ("applications.case_routes", "CASE_ROUTE_KINDS"),
+    "compose_case_routes": ("applications.case_routes", "compose_case_routes"),
+    "launch_application": ("applications.launcher", "launch_application"),
+    "start_configured_applications": (
+        "applications.launcher",
+        "start_configured_applications",
+    ),
+    "create_uvicorn_app_for_type": (
+        "applications.launcher",
+        "create_uvicorn_app_for_type",
+    ),
+}
+
+
+def __getattr__(name: str):
+    """Load a facade name from its owner module on first access."""
+    spec = _LAZY_EXPORTS.get(name)
+    if spec is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr = spec
+    owner = importlib.import_module(module_name)
+    value = getattr(owner, attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))
 
 
 def _is_main_guard(node: ast.stmt) -> bool:
