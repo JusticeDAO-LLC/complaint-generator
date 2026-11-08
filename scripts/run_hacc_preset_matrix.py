@@ -1337,7 +1337,7 @@ def _run_preset_batch(
     from adversarial_harness import AdversarialHarness, Optimizer
     from backends import LLMRouterBackend
     from integrations.ipfs_datasets import ensure_ipfs_backend, get_router_status_report
-    from mediator.mediator import Mediator
+    from mediator.interface import Mediator
 
     session_state_dir = preset_dir / "sessions"
     preset_dir.mkdir(parents=True, exist_ok=True)

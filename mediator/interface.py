@@ -2,13 +2,15 @@
 
 Importing this module records owner modules and symbol names. It does not
 import those owners, import mediator.mediator, start a server, or read a
-private workspace path. Call ``missing_public_symbols`` to confirm each name
-by parsing owner source.
+private workspace path. ``Mediator`` is a lazy export: the first access loads
+``mediator.mediator.Mediator``. Call ``missing_public_symbols`` to confirm
+each catalogued name by parsing owner source.
 """
 
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 INTERFACE_SCHEMA = "complaint-generator/module-interface@1"
@@ -175,6 +177,20 @@ def _is_main_guard(node: ast.stmt) -> bool:
         and isinstance(right, ast.Constant)
         and right.value == "__main__"
     )
+
+
+def __getattr__(name: str):
+    """Load ``Mediator`` from ``mediator.mediator`` on first access."""
+    if name != "Mediator":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    owner = importlib.import_module("mediator.mediator")
+    value = owner.Mediator
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | {"Mediator"})
 
 
 def _assigned_names(target: ast.expr) -> set[str]:
