@@ -1,7 +1,7 @@
 {
   "schema": "complaint-generator/repository-module-map@1",
   "task_id": "CIMP-MOD-01",
-  "source_files_moved": false,
+  "source_files_moved": true,
   "source_files_rewritten": false,
   "inventory_policy": {
     "top_level_package_rule": "A top-level Python package is a directory directly under the repository root that contains __init__.py. Unreadable top-level directories are omitted rather than treated as packages.",
@@ -105,51 +105,51 @@
   ],
   "root_scripts": [
     {
-      "path": "add_dedup_factory.py",
+      "path": "scripts/maintenance/add_dedup_factory.py",
       "byte_size": 3176
     },
     {
-      "path": "add_init_vars.py",
+      "path": "scripts/maintenance/add_init_vars.py",
       "byte_size": 1933
     },
     {
-      "path": "add_optimization_methods.py",
+      "path": "scripts/maintenance/add_optimization_methods.py",
       "byte_size": 5396
     },
     {
-      "path": "batch_230_benchmark.py",
+      "path": "scripts/maintenance/batch_230_benchmark.py",
       "byte_size": 13667
     },
     {
-      "path": "batch_231_llm_fallback_profile.py",
+      "path": "scripts/maintenance/batch_231_llm_fallback_profile.py",
       "byte_size": 3832
     },
     {
       "path": "claim_support_review.py",
-      "byte_size": 289645
+      "byte_size": 843
     },
     {
-      "path": "complete_optimizer_integration.py",
+      "path": "scripts/maintenance/complete_optimizer_integration.py",
       "byte_size": 8750
     },
     {
       "path": "document_optimization.py",
-      "byte_size": 241286
+      "byte_size": 881
     },
     {
       "path": "document_pipeline.py",
-      "byte_size": 585582
+      "byte_size": 448
     },
     {
       "path": "intake_status.py",
-      "byte_size": 82417
+      "byte_size": 446
     },
     {
       "path": "main.py",
-      "byte_size": 1135
+      "byte_size": 1136
     },
     {
-      "path": "profile_generate_10k.py",
+      "path": "scripts/maintenance/profile_generate_10k.py",
       "byte_size": 2140
     },
     {
@@ -161,80 +161,80 @@
       "byte_size": 2417
     },
     {
-      "path": "test_complaint_mcp_protocol.py",
+      "path": "scripts/legacy_root_checks/test_complaint_mcp_protocol.py",
       "byte_size": 12254
     },
     {
-      "path": "test_criticscor_comparisons.py",
+      "path": "scripts/legacy_root_checks/test_criticscor_comparisons.py",
       "byte_size": 1698
     },
     {
-      "path": "test_extraction_config_validation.py",
+      "path": "scripts/legacy_root_checks/test_extraction_config_validation.py",
       "byte_size": 17072
     },
     {
-      "path": "test_main_app_surface.py",
+      "path": "scripts/legacy_root_checks/test_main_app_surface.py",
       "byte_size": 5624
     },
     {
-      "path": "test_parallel_validation_fix.py",
+      "path": "scripts/legacy_root_checks/test_parallel_validation_fix.py",
       "byte_size": 1804
     },
     {
-      "path": "test_pipeline_error_recovery.py",
+      "path": "scripts/legacy_root_checks/test_pipeline_error_recovery.py",
       "byte_size": 18842
     },
     {
-      "path": "test_probate_integration.py",
+      "path": "scripts/legacy_root_checks/test_probate_integration.py",
       "byte_size": 5114
     },
     {
-      "path": "update_detect_graph_type.py",
+      "path": "scripts/maintenance/update_detect_graph_type.py",
       "byte_size": 5867
     },
     {
       "path": "workflow_phase_guidance.py",
-      "byte_size": 23094
+      "byte_size": 466
     }
   ],
   "root_markdown": [
     {
-      "path": "AUDIT_DICT_RETURNS_REPORT.md",
+      "path": "docs/archive/reports/AUDIT_DICT_RETURNS_REPORT.md",
       "byte_size": 3979,
       "session_or_batch_report": false
     },
     {
-      "path": "AUTONOMOUS_SESSION_REPORT.md",
+      "path": "docs/archive/sessions/AUTONOMOUS_SESSION_REPORT.md",
       "byte_size": 14822,
       "session_or_batch_report": true
     },
     {
-      "path": "BATCH_202_PLAN.md",
+      "path": "docs/archive/reports/BATCH_202_PLAN.md",
       "byte_size": 4452,
       "session_or_batch_report": false
     },
     {
-      "path": "BATCH_254_258_SESSION_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_254_258_SESSION_SUMMARY.md",
       "byte_size": 15081,
       "session_or_batch_report": true
     },
     {
-      "path": "BATCH_305_306_SESSION_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_305_306_SESSION_SUMMARY.md",
       "byte_size": 6799,
       "session_or_batch_report": true
     },
     {
-      "path": "BATCH_328_API_RETURN_TYPES_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_328_API_RETURN_TYPES_SUMMARY.md",
       "byte_size": 11564,
       "session_or_batch_report": true
     },
     {
-      "path": "BATCH_329_EXCEPTION_HANDLING_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_329_EXCEPTION_HANDLING_SUMMARY.md",
       "byte_size": 11919,
       "session_or_batch_report": true
     },
     {
-      "path": "BENCHMARK_SUITE_SESSION_SUMMARY.md",
+      "path": "docs/archive/sessions/BENCHMARK_SUITE_SESSION_SUMMARY.md",
       "byte_size": 10574,
       "session_or_batch_report": true
     },
@@ -245,126 +245,126 @@
     },
     {
       "path": "DOCUMENTATION_INDEX.md",
-      "byte_size": 19422,
+      "byte_size": 20667,
       "session_or_batch_report": false
     },
     {
-      "path": "EXTRACTION_PIPELINE_PROFILE_FINAL.md",
+      "path": "docs/archive/reports/EXTRACTION_PIPELINE_PROFILE_FINAL.md",
       "byte_size": 10708,
       "session_or_batch_report": false
     },
     {
-      "path": "ITEM_7_COMPLETION_SUMMARY.md",
+      "path": "docs/archive/sessions/ITEM_7_COMPLETION_SUMMARY.md",
       "byte_size": 9658,
       "session_or_batch_report": false
     },
     {
-      "path": "P3_INFRASTRUCTURE_COMPLETION_SESSION.md",
+      "path": "docs/archive/sessions/P3_INFRASTRUCTURE_COMPLETION_SESSION.md",
       "byte_size": 6935,
       "session_or_batch_report": true
     },
     {
-      "path": "P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md",
+      "path": "docs/archive/sessions/P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md",
       "byte_size": 8334,
       "session_or_batch_report": true
     },
     {
-      "path": "PARALLEL_VALIDATION_FIX_REPORT.md",
+      "path": "docs/archive/reports/PARALLEL_VALIDATION_FIX_REPORT.md",
       "byte_size": 4095,
       "session_or_batch_report": false
     },
     {
-      "path": "PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md",
+      "path": "docs/archive/sessions/PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md",
       "byte_size": 10410,
       "session_or_batch_report": true
     },
     {
-      "path": "PHASE_2_COMPLETION_SUMMARY.md",
+      "path": "docs/archive/sessions/PHASE_2_COMPLETION_SUMMARY.md",
       "byte_size": 5565,
       "session_or_batch_report": false
     },
     {
-      "path": "QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md",
+      "path": "docs/archive/sessions/QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md",
       "byte_size": 7895,
       "session_or_batch_report": true
     },
     {
-      "path": "QUERY_OPTIMIZER_MODULARIZATION_COMPLETION.md",
+      "path": "docs/archive/sessions/QUERY_OPTIMIZER_MODULARIZATION_COMPLETION.md",
       "byte_size": 15427,
       "session_or_batch_report": false
     },
     {
       "path": "README.md",
-      "byte_size": 49318,
+      "byte_size": 7148,
       "session_or_batch_report": false
     },
     {
-      "path": "README_OLD.md",
+      "path": "docs/archive/sessions/README_OLD.md",
       "byte_size": 817,
       "session_or_batch_report": false
     },
     {
-      "path": "README_OLD_BACKUP.md",
+      "path": "docs/archive/sessions/README_OLD_BACKUP.md",
       "byte_size": 16697,
       "session_or_batch_report": false
     },
     {
-      "path": "README_OLD_FULL.md",
+      "path": "docs/archive/sessions/README_OLD_FULL.md",
       "byte_size": 30925,
       "session_or_batch_report": false
     },
     {
-      "path": "SESSION_3_COMPLETE_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_3_COMPLETE_SUMMARY.md",
       "byte_size": 12676,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md",
+      "path": "docs/archive/sessions/SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md",
       "byte_size": 8397,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_84_FINAL_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_84_FINAL_SUMMARY.md",
       "byte_size": 7741,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_84_PHASE4_EXTENDED_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_EXTENDED_SUMMARY.md",
       "byte_size": 17752,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_84_PHASE4_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_SUMMARY.md",
       "byte_size": 13483,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_84_PROGRESS.md",
+      "path": "docs/archive/sessions/SESSION_84_PROGRESS.md",
       "byte_size": 13783,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_SUMMARY_2024_02_24.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2024_02_24.md",
       "byte_size": 10746,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_SUMMARY_2026_02_23.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_23.md",
       "byte_size": 8389,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_SUMMARY_2026_02_24_COMPLETE.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_24_COMPLETE.md",
       "byte_size": 13118,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md",
       "byte_size": 5478,
       "session_or_batch_report": true
     },
     {
-      "path": "SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md",
       "byte_size": 8261,
       "session_or_batch_report": true
     },
@@ -379,119 +379,119 @@
       "session_or_batch_report": false
     },
     {
-      "path": "UNIFIED_PERFORMANCE_ANALYSIS.md",
+      "path": "docs/archive/reports/UNIFIED_PERFORMANCE_ANALYSIS.md",
       "byte_size": 12002,
       "session_or_batch_report": false
     },
     {
-      "path": "plan-mcpPlusPlusIntegration.prompt.md",
+      "path": "docs/archive/reports/plan-mcpPlusPlusIntegration.prompt.md",
       "byte_size": 6459,
       "session_or_batch_report": false
     }
   ],
   "session_or_batch_reports": [
     {
-      "path": "AUTONOMOUS_SESSION_REPORT.md",
+      "path": "docs/archive/sessions/AUTONOMOUS_SESSION_REPORT.md",
       "byte_size": 14822,
       "kind": "session_report"
     },
     {
-      "path": "BATCH_254_258_SESSION_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_254_258_SESSION_SUMMARY.md",
       "byte_size": 15081,
       "kind": "session_and_batch_report"
     },
     {
-      "path": "BATCH_305_306_SESSION_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_305_306_SESSION_SUMMARY.md",
       "byte_size": 6799,
       "kind": "session_and_batch_report"
     },
     {
-      "path": "BATCH_328_API_RETURN_TYPES_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_328_API_RETURN_TYPES_SUMMARY.md",
       "byte_size": 11564,
       "kind": "batch_report"
     },
     {
-      "path": "BATCH_329_EXCEPTION_HANDLING_SUMMARY.md",
+      "path": "docs/archive/sessions/BATCH_329_EXCEPTION_HANDLING_SUMMARY.md",
       "byte_size": 11919,
       "kind": "batch_report"
     },
     {
-      "path": "BENCHMARK_SUITE_SESSION_SUMMARY.md",
+      "path": "docs/archive/sessions/BENCHMARK_SUITE_SESSION_SUMMARY.md",
       "byte_size": 10574,
       "kind": "session_report"
     },
     {
-      "path": "P3_INFRASTRUCTURE_COMPLETION_SESSION.md",
+      "path": "docs/archive/sessions/P3_INFRASTRUCTURE_COMPLETION_SESSION.md",
       "byte_size": 6935,
       "kind": "session_report"
     },
     {
-      "path": "P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md",
+      "path": "docs/archive/sessions/P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md",
       "byte_size": 8334,
       "kind": "session_report"
     },
     {
-      "path": "PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md",
+      "path": "docs/archive/sessions/PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md",
       "byte_size": 10410,
       "kind": "session_report"
     },
     {
-      "path": "QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md",
+      "path": "docs/archive/sessions/QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md",
       "byte_size": 7895,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_3_COMPLETE_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_3_COMPLETE_SUMMARY.md",
       "byte_size": 12676,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md",
+      "path": "docs/archive/sessions/SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md",
       "byte_size": 8397,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_84_FINAL_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_84_FINAL_SUMMARY.md",
       "byte_size": 7741,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_84_PHASE4_EXTENDED_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_EXTENDED_SUMMARY.md",
       "byte_size": 17752,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_84_PHASE4_SUMMARY.md",
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_SUMMARY.md",
       "byte_size": 13483,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_84_PROGRESS.md",
+      "path": "docs/archive/sessions/SESSION_84_PROGRESS.md",
       "byte_size": 13783,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_SUMMARY_2024_02_24.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2024_02_24.md",
       "byte_size": 10746,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_SUMMARY_2026_02_23.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_23.md",
       "byte_size": 8389,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_SUMMARY_2026_02_24_COMPLETE.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_24_COMPLETE.md",
       "byte_size": 13118,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md",
       "byte_size": 5478,
       "kind": "session_report"
     },
     {
-      "path": "SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md",
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md",
       "byte_size": 8261,
       "kind": "session_report"
     }
@@ -522,7 +522,7 @@
         },
         {
           "path": "applications/complaint_cli.py",
-          "byte_size": 87621,
+          "byte_size": 87623,
           "role": "workspace Typer CLI implementation"
         },
         {
@@ -614,23 +614,23 @@
     },
     {
       "rank": 3,
-      "path": "document_pipeline.py",
-      "byte_size": 585582
+      "path": "complaint_phases/document_pipeline.py",
+      "byte_size": 489169
     },
     {
       "rank": 4,
       "path": "mediator/claim_support_hooks.py",
-      "byte_size": 506768
+      "byte_size": 446562
     },
     {
       "rank": 5,
-      "path": "complaint_phases/denoiser.py",
-      "byte_size": 439120
+      "path": "integrations/ipfs_datasets/logic.py",
+      "byte_size": 406825
     },
     {
       "rank": 6,
-      "path": "integrations/ipfs_datasets/logic.py",
-      "byte_size": 406825
+      "path": "complaint_phases/denoiser.py",
+      "byte_size": 386165
     },
     {
       "rank": 7,
@@ -645,7 +645,7 @@
     {
       "rank": 9,
       "path": "adversarial_harness/optimizer.py",
-      "byte_size": 338370
+      "byte_size": 338380
     },
     {
       "rank": 10,
@@ -674,8 +674,8 @@
     },
     {
       "rank": 15,
-      "path": "claim_support_review.py",
-      "byte_size": 289645
+      "path": "tests/test_claim_support_hooks.py",
+      "byte_size": 252947
     }
   ]
 }

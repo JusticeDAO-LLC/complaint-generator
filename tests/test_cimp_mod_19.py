@@ -178,20 +178,24 @@ def historical_names_from_module_map(module_map: dict) -> list[str]:
 def test_module_map_historical_markdown_is_archived() -> None:
     archived = archived_names()
     module_map = load_module_map()
-    recorded_root = {Path(item["path"]).name for item in module_map["root_markdown"]}
-    recorded_reports = {Path(item["path"]).name for item in module_map["session_or_batch_reports"]}
-    mapped = historical_names_from_module_map(module_map)
+    recorded = {item["path"] for item in module_map["root_markdown"]}
+    assert module_map["source_files_moved"] is True
+    assert module_map["source_files_rewritten"] is False
     assert archived
-    assert mapped == list(archived)
     for name in archived:
         assert is_historical_root_markdown(name) is True
-        assert name in recorded_root
-        assert (REPO_ROOT / name).is_file(), name
-    for name in recorded_reports:
+        assert name not in recorded
+        assert f"docs/archive/sessions/{name}" in recorded
+        assert not (REPO_ROOT / name).exists(), name
+        assert (ARCHIVE_DIR / name).is_file(), name
+    for item in module_map["session_or_batch_reports"]:
+        name = Path(item["path"]).name
         assert is_historical_root_markdown(name) is True
         assert name in archived
+        assert item["path"] == f"docs/archive/sessions/{name}"
+        assert not (REPO_ROOT / name).exists(), name
     for name in KEEP_AT_ROOT:
-        assert name in recorded_root
+        assert name in recorded
         assert is_historical_root_markdown(name) is False
         assert (REPO_ROOT / name).is_file(), name
         assert not (ARCHIVE_DIR / name).exists(), name
@@ -210,8 +214,8 @@ def test_archive_index_lists_each_moved_file_once() -> None:
         if path.name != "INDEX.md" and path.is_file()
     }
     assert present <= set(archived)
-    missing = [name for name in archived if name not in present]
-    assert unresolved_index_links(index_text, ARCHIVE_DIR) == missing
+    assert all((ARCHIVE_DIR / name).is_file() for name in archived)
+    assert unresolved_index_links(index_text, ARCHIVE_DIR) == []
     assert unresolved_index_links("[index](INDEX.md)\n", ARCHIVE_DIR) == []
 
 
@@ -224,17 +228,22 @@ def test_readme_and_documentation_index_do_not_link_moved_root_files() -> None:
 
 
 def test_plan_and_architecture_records_stay_out_of_the_session_archive() -> None:
-    stayed = (
+    reports = (
         "BATCH_202_PLAN.md",
         "AUDIT_DICT_RETURNS_REPORT.md",
         "plan-mcpPlusPlusIntegration.prompt.md",
+    )
+    stayed = (
         "docs/task_boards/complaint_repository_reorganization_task_board.md",
         "docs/architecture/repository_module_map.json",
     )
+    for name in reports:
+        assert not (REPO_ROOT / name).exists(), name
+        assert (REPO_ROOT / "docs" / "archive" / "reports" / name).is_file(), name
+        assert not (ARCHIVE_DIR / name).exists(), name
     for relative in stayed:
         assert (REPO_ROOT / relative).is_file(), relative
         assert not (ARCHIVE_DIR / Path(relative).name).exists()
-    assert not (ARCHIVE_DIR / "BATCH_202_PLAN.md").exists()
     assert not (ARCHIVE_DIR / "repository_module_map.json").exists()
     assert not (ARCHIVE_DIR / "complaint_repository_reorganization_task_board.md").exists()
 

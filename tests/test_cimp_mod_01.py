@@ -39,7 +39,7 @@ COMPATIBILITY_DIRECTORIES = ("ipfs_datasets_py", "mike")
 
 
 def is_session_or_batch_report(name: str) -> bool:
-    upper = name.upper()
+    upper = Path(name).name.upper()
     if not upper.endswith(".MD"):
         return False
     if "SESSION" in upper:
@@ -50,7 +50,7 @@ def is_session_or_batch_report(name: str) -> bool:
 
 
 def report_kind(name: str) -> str:
-    upper = name.upper()
+    upper = Path(name).name.upper()
     has_session = "SESSION" in upper
     has_batch = "BATCH" in upper
     if has_session and has_batch:
@@ -201,12 +201,12 @@ def require_duplicate_owners(root: Path, groups: list[dict]) -> None:
 
 
 def require_inventory_flags(document: dict) -> None:
-    if document.get("source_files_moved") is not False:
-        raise AssertionError("source files must stay in place")
-    if document.get("source_files_rewritten") is not False:
-        raise AssertionError("source files must not be rewritten")
     if document.get("schema") != SCHEMA:
         raise AssertionError(f"schema must be {SCHEMA}")
+    if document.get("source_files_rewritten") is not False:
+        raise AssertionError("source files must not be rewritten")
+    if document.get("source_files_moved") is not True:
+        raise AssertionError("source files must be recorded as moved")
 
 
 def load_map() -> dict:
@@ -261,15 +261,21 @@ def test_package_path_that_is_a_file_fails(tmp_path: Path) -> None:
         require_package_directories(tmp_path, packages)
 
 
+def records_at_repository_root(records: list[dict]) -> list[dict]:
+    return [record for record in records if "/" not in record["path"]]
+
+
 def test_root_scripts_and_markdown_match_tree(module_map: dict) -> None:
     scripts = discover_root_files(REPO_ROOT, ".py")
     markdown = discover_root_markdown(REPO_ROOT)
-    assert module_map["root_scripts"] == scripts
-    assert module_map["root_markdown"] == markdown
+    assert records_at_repository_root(module_map["root_scripts"]) == scripts
+    assert records_at_repository_root(module_map["root_markdown"]) == markdown
     require_byte_sizes(REPO_ROOT, module_map["root_scripts"])
     require_byte_sizes(REPO_ROOT, module_map["root_markdown"])
     assert any(item["path"] == "document_pipeline.py" for item in scripts)
     assert any(item["path"] == "README.md" for item in markdown)
+    assert any(item["path"] == "scripts/maintenance/add_dedup_factory.py" for item in module_map["root_scripts"])
+    assert not any(item["path"] == "AUTONOMOUS_SESSION_REPORT.md" for item in module_map["root_markdown"])
 
 
 def test_session_and_batch_reports_are_the_classified_root_markdown(module_map: dict) -> None:
@@ -280,8 +286,10 @@ def test_session_and_batch_reports_are_the_classified_root_markdown(module_map: 
     recorded_paths = {item["path"] for item in reports}
     assert "README.md" not in recorded_paths
     assert "BATCH_202_PLAN.md" not in recorded_paths
-    assert "AUTONOMOUS_SESSION_REPORT.md" in recorded_paths
-    assert "BATCH_328_API_RETURN_TYPES_SUMMARY.md" in recorded_paths
+    assert "docs/archive/reports/BATCH_202_PLAN.md" not in recorded_paths
+    assert "docs/archive/sessions/AUTONOMOUS_SESSION_REPORT.md" in recorded_paths
+    assert "AUTONOMOUS_SESSION_REPORT.md" not in recorded_paths
+    assert "docs/archive/sessions/BATCH_328_API_RETURN_TYPES_SUMMARY.md" in recorded_paths
     kinds = {item["kind"] for item in reports}
     assert "session_report" in kinds
     assert "batch_report" in kinds
@@ -403,10 +411,10 @@ def test_largest_python_modules_match_the_tree(module_map: dict) -> None:
     assert sizes == sorted(sizes, reverse=True)
 
 
-def test_rewritten_or_moved_inventory_flags_fail() -> None:
-    with pytest.raises(AssertionError, match="stay in place"):
-        require_inventory_flags({"schema": SCHEMA, "source_files_moved": True, "source_files_rewritten": False})
+def test_rewritten_or_unmoved_inventory_flags_fail() -> None:
+    with pytest.raises(AssertionError, match="recorded as moved"):
+        require_inventory_flags({"schema": SCHEMA, "source_files_moved": False, "source_files_rewritten": False})
     with pytest.raises(AssertionError, match="not be rewritten"):
-        require_inventory_flags({"schema": SCHEMA, "source_files_moved": False, "source_files_rewritten": True})
+        require_inventory_flags({"schema": SCHEMA, "source_files_moved": True, "source_files_rewritten": True})
     with pytest.raises(AssertionError, match="schema"):
-        require_inventory_flags({"schema": "other", "source_files_moved": False, "source_files_rewritten": False})
+        require_inventory_flags({"schema": "other", "source_files_moved": True, "source_files_rewritten": False})
