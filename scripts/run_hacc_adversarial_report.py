@@ -212,7 +212,7 @@ def main() -> int:
     from adversarial_harness import AdversarialHarness, HACC_QUERY_PRESETS, Optimizer
     from backends import LLMRouterBackend
     from integrations.ipfs_datasets import ensure_ipfs_backend, get_router_status_report
-    from mediator.mediator import Mediator
+    from mediator.interface import Mediator
 
     if args.preset not in HACC_QUERY_PRESETS:
         raise ValueError(

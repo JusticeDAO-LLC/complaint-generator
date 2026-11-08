@@ -1,5 +1,5 @@
 from applications.review_ui import create_review_surface_app
-from mediator.mediator import Mediator
+from mediator.interface import Mediator
 
 
 def build_chat_payload(message, *, sender=None, hashed_username=None, inquiry_payload=None):
