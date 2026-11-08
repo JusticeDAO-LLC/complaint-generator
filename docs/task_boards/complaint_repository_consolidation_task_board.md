@@ -254,7 +254,7 @@ Implementation instructions:
 
 ## CIMP-CON-08 Move intake_status and workflow guidance behind thin root shims
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
