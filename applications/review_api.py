@@ -14,7 +14,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from claim_support_review import (
+from mediator.interface import (
     ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
     ClaimSupportIntakeSummaryConfirmRequest,

@@ -2,9 +2,9 @@
 
 Importing this module records owner modules and symbol names. It does not
 import those owners, import mediator.mediator, start a server, or read a
-private workspace path. ``Mediator``, ``ClaimSupportHook``, and
-``apply_qualified_claim_support`` are lazy exports: the first access of each
-name loads that attribute from its owner module. Call
+private workspace path. ``Mediator``, ``ClaimSupportHook``, ``apply_qualified_claim_support``, and
+the claim-support review request and payload builders are lazy exports: the
+first access of each name loads that attribute from its owner module. Call
 ``missing_public_symbols`` to confirm each catalogued name by parsing owner
 source.
 """
@@ -45,6 +45,8 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "mediator.mediator",
     "applications.complaint_workspace",
     "document_pipeline",
+    "mediator.claim_support_review",
+    "claim_support_review",
 )
 
 
@@ -182,13 +184,74 @@ def _is_main_guard(node: ast.stmt) -> bool:
 
 
 # Loaded only when the attribute is accessed. Importing this module does not
-# import mediator.mediator or mediator.claim_support_hooks.
+# import mediator.mediator, mediator.claim_support_hooks, or
+# mediator.claim_support_review.
 _LAZY_EXPORTS = {
     "Mediator": ("mediator.mediator", "Mediator"),
     "ClaimSupportHook": ("mediator.claim_support_hooks", "ClaimSupportHook"),
     "apply_qualified_claim_support": (
         "mediator.claim_support_hooks",
         "apply_qualified_claim_support",
+    ),
+    "ClaimSupportDocumentSaveRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportDocumentSaveRequest",
+    ),
+    "ClaimSupportFollowUpExecuteRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportFollowUpExecuteRequest",
+    ),
+    "ClaimSupportIntakeSummaryConfirmRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportIntakeSummaryConfirmRequest",
+    ),
+    "ClaimSupportManualReviewResolveRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportManualReviewResolveRequest",
+    ),
+    "ClaimSupportReparseDocumentRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportReparseDocumentRequest",
+    ),
+    "ClaimSupportReviewRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportReviewRequest",
+    ),
+    "ClaimSupportTestimonySaveRequest": (
+        "mediator.claim_support_review",
+        "ClaimSupportTestimonySaveRequest",
+    ),
+    "build_claim_support_document_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_document_payload",
+    ),
+    "build_claim_support_follow_up_execution_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_follow_up_execution_payload",
+    ),
+    "build_claim_support_intake_summary_confirmation_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_intake_summary_confirmation_payload",
+    ),
+    "build_claim_support_manual_review_resolution_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_manual_review_resolution_payload",
+    ),
+    "build_claim_support_reparse_document_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_reparse_document_payload",
+    ),
+    "build_claim_support_review_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_review_payload",
+    ),
+    "build_claim_support_testimony_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_testimony_payload",
+    ),
+    "build_claim_support_uploaded_document_payload": (
+        "mediator.claim_support_review",
+        "build_claim_support_uploaded_document_payload",
     ),
 }
 
