@@ -1880,7 +1880,7 @@ class WorkflowActionService:
 		are never installed as links, questions, sources or proof obligations.
 		"""
 		from copy import deepcopy
-		from mediator.mediator import Mediator
+		from mediator.interface import Mediator
 		from integrations.ipfs_datasets.legal import adapt_sourced_legal_requirements
 
 		mediator = self._mediator
@@ -2128,7 +2128,7 @@ class WorkflowActionService:
 		arbitrary late worker/model links or proof rows are explicitly unavailable.
 		"""
 		from copy import deepcopy
-		from mediator.mediator import Mediator
+		from mediator.interface import Mediator
 		case_file = self._refresh_case_file() if isinstance(self._mediator, Mediator) else {}
 		raw = case_file.get("legal_graph_refresh")
 		ledger = deepcopy(raw) if isinstance(raw, dict) else {}

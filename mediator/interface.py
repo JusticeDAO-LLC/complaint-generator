@@ -2,9 +2,11 @@
 
 Importing this module records owner modules and symbol names. It does not
 import those owners, import mediator.mediator, start a server, or read a
-private workspace path. ``Mediator`` is a lazy export: the first access loads
-``mediator.mediator.Mediator``. Call ``missing_public_symbols`` to confirm
-each catalogued name by parsing owner source.
+private workspace path. ``Mediator``, ``ClaimSupportHook``, and
+``apply_qualified_claim_support`` are lazy exports: the first access of each
+name loads that attribute from its owner module. Call
+``missing_public_symbols`` to confirm each catalogued name by parsing owner
+source.
 """
 
 from __future__ import annotations
@@ -179,18 +181,32 @@ def _is_main_guard(node: ast.stmt) -> bool:
     )
 
 
+# Loaded only when the attribute is accessed. Importing this module does not
+# import mediator.mediator or mediator.claim_support_hooks.
+_LAZY_EXPORTS = {
+    "Mediator": ("mediator.mediator", "Mediator"),
+    "ClaimSupportHook": ("mediator.claim_support_hooks", "ClaimSupportHook"),
+    "apply_qualified_claim_support": (
+        "mediator.claim_support_hooks",
+        "apply_qualified_claim_support",
+    ),
+}
+
+
 def __getattr__(name: str):
-    """Load ``Mediator`` from ``mediator.mediator`` on first access."""
-    if name != "Mediator":
+    """Load a facade name from its owner module on first access."""
+    spec = _LAZY_EXPORTS.get(name)
+    if spec is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    owner = importlib.import_module("mediator.mediator")
-    value = owner.Mediator
+    module_name, attr = spec
+    owner = importlib.import_module(module_name)
+    value = getattr(owner, attr)
     globals()[name] = value
     return value
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | {"Mediator"})
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))
 
 
 def _assigned_names(target: ast.expr) -> set[str]:
