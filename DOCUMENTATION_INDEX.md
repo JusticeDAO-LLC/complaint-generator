@@ -2,6 +2,8 @@
 
 Complete index of all documentation in the complaint-generator repository.
 
+Session reports live in [docs/archive/sessions](docs/archive/sessions/INDEX.md). Plans and profiles live in [docs/archive/reports](docs/archive/reports/INDEX.md). The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. Public modules use `INTERFACE_SCHEMA` `complaint-generator/module-interface@1` and `INTERFACE_VERSION` `1.0.0`. The Git remote is `endomorphosis/complaint-generator`. The sibling map is [docs/architecture/consolidation_modules.md](docs/architecture/consolidation_modules.md).
+
 ## Quick Start
 
 - [README.md](README.md) - Main project overview and getting started guide
@@ -15,7 +17,7 @@ Complete index of all documentation in the complaint-generator repository.
 
 ## MCP++ Integration
 
-- [plan-mcpPlusPlusIntegration.prompt.md](plan-mcpPlusPlusIntegration.prompt.md) - High-level integration plan and specifications for MCP++ integration
+- [docs/archive/reports/plan-mcpPlusPlusIntegration.prompt.md](docs/archive/reports/plan-mcpPlusPlusIntegration.prompt.md) - Archived MCP++ integration plan
 
 ## Core Module Documentation
 

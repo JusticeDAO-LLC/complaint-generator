@@ -240,12 +240,12 @@
     },
     {
       "path": "CONTRIBUTING.md",
-      "byte_size": 12311,
+      "byte_size": 12865,
       "session_or_batch_report": false
     },
     {
       "path": "DOCUMENTATION_INDEX.md",
-      "byte_size": 20667,
+      "byte_size": 21312,
       "session_or_batch_report": false
     },
     {
@@ -295,7 +295,7 @@
     },
     {
       "path": "README.md",
-      "byte_size": 7148,
+      "byte_size": 7717,
       "session_or_batch_report": false
     },
     {
@@ -370,7 +370,7 @@
     },
     {
       "path": "TESTING.md",
-      "byte_size": 10227,
+      "byte_size": 10848,
       "session_or_batch_report": false
     },
     {
@@ -605,12 +605,12 @@
     {
       "rank": 1,
       "path": "applications/complaint_workspace.py",
-      "byte_size": 992409
+      "byte_size": 914188
     },
     {
       "rank": 2,
       "path": "mediator/mediator.py",
-      "byte_size": 656221
+      "byte_size": 587918
     },
     {
       "rank": 3,

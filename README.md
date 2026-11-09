@@ -28,6 +28,10 @@ A current package is a top-level directory that contains `__init__.py`, as recor
 | `templates` | HTML templates package |
 | `tests` | Pytest package |
 
+## Where the consolidated code lives
+
+Session reports live in [`docs/archive/sessions`](docs/archive/sessions/INDEX.md). Plans and profiles live in [`docs/archive/reports`](docs/archive/reports/INDEX.md). The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. The sibling map is [`docs/architecture/consolidation_modules.md`](docs/architecture/consolidation_modules.md).
+
 ## Layout
 
 ### Intake
@@ -88,7 +92,7 @@ Each public facade defines `INTERFACE_SCHEMA = "complaint-generator/module-inter
 | `integrations.ipfs_datasets.interface` | `integrations` |
 | `integrations.mike.interface` | `integrations` |
 
-New code imports these versioned interfaces. It does not import giant implementation modules. The module map's largest Python modules include `applications/complaint_workspace.py`, `mediator/mediator.py`, `document_pipeline.py`, `mediator/claim_support_hooks.py`, and `complaint_phases/denoiser.py`. Those files remain implementation bodies. Do not import `applications.complaint_workspace`, `mediator.mediator`, `document_pipeline`, `mediator.claim_support_hooks`, or `complaint_phases.denoiser` from new code.
+New code imports these versioned interfaces. It does not import giant implementation modules. Root `document_pipeline.py`, `document_optimization.py`, `intake_status.py`, and `workflow_phase_guidance.py` are shims. Their bodies live in `complaint_phases`. Draft helpers live in `applications/complaint_workspace_drafting.py`. Intake-question helpers live in `mediator/intake_question_flow.py`. Do not import `applications.complaint_workspace`, `mediator.mediator`, `document_pipeline`, `mediator.claim_support_hooks`, or `complaint_phases.denoiser` from new code.
 
 ## Related package documents
 

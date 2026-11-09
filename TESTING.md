@@ -1,5 +1,7 @@
 # Complaint Generator - Modernization Summary
 
+Session reports live in `docs/archive/sessions`. Plans and profiles live in `docs/archive/reports`. The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. Tests should import versioned interfaces with `INTERFACE_SCHEMA` `complaint-generator/module-interface@1` and `INTERFACE_VERSION` `1.0.0`. The Git remote is `endomorphosis/complaint-generator`. The extracted modules are listed in [docs/architecture/consolidation_modules.md](docs/architecture/consolidation_modules.md).
+
 ## Changes Made
 
 ### 1. Git Submodules ✅
